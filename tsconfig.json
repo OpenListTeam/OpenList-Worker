@@ -6,7 +6,8 @@
     "strict": true,
     "skipLibCheck": true,
     "lib": [
-      "ESNext"
+      "ESNext",
+      "dom"
     ],
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx"
