@@ -1,18 +1,5 @@
-import * as fso from "../manage/FileObject";
-import {Requests} from "../manage/WebRequest";
-
-
-// 定义参数接口
-interface FileListParams {
-    // pageSize: number | undefined;
-    // pageNum: number | undefined;
-    mediaType: string | undefined;
-    folderId: number | undefined;
-    iconOption: string | undefined;
-    orderBy: string | undefined;
-    descending: string | undefined;
-}
-
+import * as fso from "../../manage/FileObject";
+import {Requests} from "../../shared/WebRequest";
 
 
 export class HostDriver {
@@ -26,19 +13,14 @@ export class HostDriver {
         this.configData = in_configData;
         this.serverData = in_serverData;
     }
+    // 初始驱动 =========================================================
+    async initSelf() {}
 
-    async newLogin(): Promise<boolean | string | undefined> {
-        const web_url = "https://open.e.189.cn/api/logbox/oauth2/loginSubmit.do"
-        const res_url: string = await Requests(web_url, {},
-            "POST", false, {}, "urls");
-    }
-
-    async nowLogin() {
-
-    }
+    // 载入驱动 =========================================================
+    async loadSelf() {}
 
     // 列出文件 =========================================================
-    async listFile(filePath: string): fso.PathInfo | null {
+    async listFile(filePath: string): Promise<fso.PathInfo | null> {
         const path_text: string = filePath.slice(1)
         const path_list: string[] = path_text.split("/");
         console.log(path_list);

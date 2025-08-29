@@ -1,4 +1,4 @@
-import * as sys from './ImportList'
+import * as sys from '../driver/manifest'
 
 export class FileDriver {
     public enableFlag: boolean
