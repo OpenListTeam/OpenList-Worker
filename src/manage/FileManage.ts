@@ -3,7 +3,7 @@ import * as fsd from './FileDriver'
 let path_map: Record<string, any> = {
     "/path/": {
         "enableFlag": true,
-        "driverName": "cloud189",
+        "driverName": "goodrive",
         "cachedTime": 0,
         "configData": {
             "phones": "",

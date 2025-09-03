@@ -9,7 +9,8 @@
   "dependencies": {
     "base64-js": "^1.5.1",
     "hono": "^4.9.4",
-    "pem": "^1.14.8"
+    "pem": "^1.14.8",
+    "googleapis": "^105.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

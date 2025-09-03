@@ -1,6 +1,9 @@
-import {Requests} from "../../shared/WebRequest";
+import {Requests} from "../../shared/Requests";
 
-class Cloud189PC {
+class HostClouds {
+    public configData: Record<string, any> | undefined
+    public serverData: Record<string, any> | undefined
+
     private loginParam: LoginParam | null = null;
     private VCode: string = '';
     private tokenInfo: AppSessionResp | null = null;
@@ -8,20 +11,12 @@ class Cloud189PC {
 
     async login(): Promise<Error | null> {
         // 初始化登录所需参数
-        if (!this.loginParam) {
-            const initError = await this.initLoginParam();
-            if (initError) {
-                return initError;
-            }
-        }
-
         let err: Error | null = null;
 
         try {
             const param = this.loginParam!;
-
             // 发送登录请求
-            const loginresp: LoginResp = await Requests(
+            const login_resp: LoginResp = await Requests(
                 `${AUTH_URL}/api/logbox/oauth2/loginSubmit.do`,
                 {
                     "appKey": APP_ID,
@@ -48,13 +43,11 @@ class Cloud189PC {
                 "json"
             );
 
-            if (!loginresp.ToUrl) {
-                return new Error(`login failed, No toUrl obtained, msg: ${loginresp.Msg}`);
+            if (!login_resp.ToUrl) {
+                return new Error(`login failed, No toUrl obtained, msg: ${login_resp.Msg}`);
             }
 
-            // 获取Session
-            const suffixParams = this.clientSuffix();
-            suffixParams["redirectURL"] = loginresp.ToUrl;
+            suffixParams["redirectURL"] = login_resp.ToUrl;
 
             const tokenInfo: AppSessionResp = await Requests(
                 `${API_URL}/getSessionForPC.action`,
@@ -79,27 +72,11 @@ class Cloud189PC {
             // 销毁登录参数
             this.loginParam = null;
 
-            // 遇到错误，重新加载登录参数(刷新验证码)
-            if (err && this.NoUseOcr) {
-                try {
-                    const err1 = await this.initLoginParam();
-                    if (err1) {
-                        err = new Error(`err1: ${err.message} \nerr2: ${err1.message}`);
-                    }
-                } catch (e) {
-                    // 忽略初始化错误
-                }
-            }
         }
-
         return err;
     }
 
-    private async initLoginParam(): Promise<Error | null> {
-        // 实现初始化登录参数的逻辑
-        // 这里需要根据实际情况实现
-        return null;
-    }
+
 
     private clientSuffix(): Record<string, string> {
         // 实现clientSuffix逻辑

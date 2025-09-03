@@ -1,5 +1,5 @@
 import * as fso from "../../manage/FileObject";
-import {Requests} from "../../shared/WebRequest";
+import {Requests} from "../../shared/Requests";
 
 
 export class HostDriver {
@@ -14,7 +14,9 @@ export class HostDriver {
         this.serverData = in_serverData;
     }
     // 初始驱动 =========================================================
-    async initSelf() {}
+    async initSelf() {
+
+    }
 
     // 载入驱动 =========================================================
     async loadSelf() {}

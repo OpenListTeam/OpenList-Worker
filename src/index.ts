@@ -1,7 +1,12 @@
 import {Context, Hono} from 'hono'
 import * as fsf from './manage/FileManage'
 
-const app = new Hono()
+// 绑定数据 ###############################################################################
+export type Bindings = {
+    KV_DATA: KVNamespace, D1_DATA: D1Database, ENABLE_D1: boolean
+}
+export const app = new Hono<{ Bindings: Bindings }>()
+
 
 // 列出文件 ============================================================
 app.get('/@file/list/*', async (c: Context) => {
