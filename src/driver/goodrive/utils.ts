@@ -1,5 +1,5 @@
 import {google} from 'googleapis';
-import {BaseClouds} from "../manifest";
+import {BaseClouds} from "../basicFS";
 import {Context} from "hono";
 import {JSONClient} from "google-auth-library/build/src/auth/googleauth";
 
@@ -14,12 +14,18 @@ export class HostClouds extends BaseClouds {
     declare public saving: Record<string, any> | SAVING_INFO
 
     // 构造函数 ================================================
-    constructor(c: Context, router: string) {
+    constructor(c: Context, router: string,
+                public in_configData: Record<string, any>,
+                public in_serverData: Record<string, any>,) {
         super(c, router);
+        this.config = in_configData;
+        this.saving = in_serverData;
+        console.log("HostClouds Init:", this.config, this.saving);
     }
 
     // 执行登录 ================================================
     async newLogin(): Promise<boolean> {
+        console.log('newLogin');
         this.saving.client = JSON.stringify({
             type: 'authorized_user',
             client_id: this.config.client_app_id,
@@ -31,7 +37,8 @@ export class HostClouds extends BaseClouds {
 
     // 获取接口 ================================================
     async getAuthy(): Promise<JSONClient> {
-        await this.getSaves();
+        // await this.getSaves();
+        await this.newLogin();
         if (!this.saving.client) await this.newLogin();
         const saves_info: any = JSON.parse(this.saving.client)
         return google.auth.fromJSON(saves_info);

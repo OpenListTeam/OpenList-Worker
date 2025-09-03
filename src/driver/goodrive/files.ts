@@ -1,4 +1,4 @@
-import {BaseDriver} from "../manifest";
+import {BaseDriver} from "../basicFS";
 import {HostClouds} from "./utils"
 import {google} from 'googleapis';
 import {Context} from "hono";
@@ -8,7 +8,6 @@ const SCOPES = ['https://www.googleapis.com/auth/drive.metadata.readonly'];
 
 // export class HostDriver extends BaseDriver {
 export class HostDriver {
-
     public configData: Record<string, any>
     public serverData: Record<string, any>
     public driverUtil: HostClouds
@@ -25,7 +24,11 @@ export class HostDriver {
         this.router = router;
         this.configData = in_configData;
         this.serverData = in_serverData;
-        this.driverUtil = new HostClouds(this.c, this.router)
+        this.driverUtil = new HostClouds(
+            this.c, this.router,
+            this.configData,
+            this.serverData
+        )
     }
 
     // 初始驱动 =========================================================

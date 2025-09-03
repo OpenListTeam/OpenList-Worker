@@ -11,7 +11,7 @@ export const app = new Hono<{ Bindings: Bindings }>()
 // 列出文件 ============================================================
 app.get('/@file/list/*', async (c: Context) => {
     let now_path: string = c.req.path.substring('/@file/list'.length);
-    let now_conn = await fsf.loadDriver(now_path)
+    let now_conn = await fsf.loadDriver(c, now_path)
     return c.text('Hello Hono!')
 })
 
