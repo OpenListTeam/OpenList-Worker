@@ -1,27 +1,22 @@
-export class PathInfo {
-    public pageSize: number // 文件数量
-    public pageNums: number // 页面编号
-    public filePath: string // 文件路径
-    public fileList: FileInfo[]
-
-    constructor() {
-    }
+export interface PathInfo {
+    pageSize: number // 文件数量
+    pageNums: number // 页面编号
+    filePath: string // 文件路径
+    fileList: FileInfo[]
 }
 
-export class FileInfo {
+export interface FileInfo {
     // 必要属性 ========================
-    public filePath: string // 文件路径
-    public fileName: string // 文件名称
-    public fileSize: number // 文件大小
-    public fileType: number // 文件类型
+    filePath: string // 文件路径
+    fileName: string // 文件名称
+    fileSize: number // 文件大小
+    fileType: number // 文件类型
     // 可选属性 ========================
-    public uuidData: string // 文件标识
-    public hashData: string // 文件哈希
-    public hashType: string // 文件哈希
-    public dateLast: Date   // 修改时间
-    public dateInit: Date   // 创建时间
-    constructor() {
-    }
+    uuidData: string // 文件标识
+    hashData: string // 文件哈希
+    hashType: string // 文件哈希
+    dateLast: Date   // 修改时间
+    dateInit: Date   // 创建时间
 }
 
 enum Action {
@@ -41,16 +36,13 @@ enum Status {
     UNDETECTED_ERR = 9  // 未知原因失败
 }
 
-export class FileTask {
-    public taskType: Action
-    public taskFlag: Status
-    public messages: string
+export interface FileTask {
+    taskType: Action
+    taskFlag: Status
+    messages: string
 }
 
-export class FileLink {
-    public fileLink: string
-    public fileName: string
-    public fileSize: number
-    public linkInfo: any
-    public metaInfo: any
+export interface FileLink {
+    direct: string
+    header: Record<string, any>
 }

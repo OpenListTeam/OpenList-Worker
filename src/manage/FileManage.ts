@@ -5,9 +5,7 @@ let path_map: Record<string, any> = {
         "enableFlag": true,
         "driverName": "goodrive",
         "cachedTime": 0,
-        "configData": {
-
-        },
+        "configData": {},
         "serverData": {}
     }
 }
@@ -27,8 +25,11 @@ export async function loadDriver(c, now_path: string) {
                 path_map[map_path]['serverData'],
             )
             await now_conn.InitDriver();
-            let now_list = await now_conn.driverConn.listFile(sub_path)
-            console.log(now_list)
+            // let now_list = await now_conn.driverConn.listFile(sub_path)
+            // await now_conn.driverConn.loadSelf()
+            // await now_conn.driverConn.downFile(sub_path)
+            await now_conn.driverConn.killFile(sub_path)
+            // console.log(now_list)
         }
     }
 }

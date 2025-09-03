@@ -6,6 +6,7 @@ import {JSONClient} from "google-auth-library/build/src/auth/googleauth";
 
 interface SAVING_INFO {
     client: string;
+    access: string;
 }
 
 export class HostClouds extends BaseClouds {
@@ -23,11 +24,21 @@ export class HostClouds extends BaseClouds {
         console.log("HostClouds Init:", this.config, this.saving);
     }
 
+    // 首次启动 ================================================
+    async getStart(): Promise<boolean> {
+        const client: JSONClient | any = await this.getAuthy()
+        await client.refreshAccessToken()
+        this.saving.access = client.credentials.access_token;
+        await this.getSaves();
+        return this.saving.access != undefined;
+    }
+
     // 执行登录 ================================================
     async newLogin(): Promise<boolean> {
         console.log('newLogin');
         this.saving.client = JSON.stringify({
             type: 'authorized_user',
+            // scopes: 'https://www.googleapis.com/auth/drive',
             client_id: this.config.client_app_id,
             client_secret: this.config.client_secret,
             refresh_token: this.config.refresh_token,

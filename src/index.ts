@@ -9,10 +9,15 @@ export const app = new Hono<{ Bindings: Bindings }>()
 
 
 // 列出文件 ============================================================
-app.get('/@file/list/*', async (c: Context) => {
+app.use('/@file/list/*', async (c: Context) => {
     let now_path: string = c.req.path.substring('/@file/list'.length);
     let now_conn = await fsf.loadDriver(c, now_path)
     return c.text('Hello Hono!')
+})
+
+// 增加驱动 ============================================================
+app.use('/@path/init/:driver', async (c: Context) => {
+
 })
 
 export default app

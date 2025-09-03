@@ -1,5 +1,6 @@
 import {Context} from "hono";
 import {DataBase, DataSave} from "../saving/Database";
+import {JSONClient} from "google-auth-library/build/src/auth/googleauth";
 
 export interface SAVING_INFO {
     config: any | Record<string, any> | CONFIG_INFO;
@@ -39,6 +40,9 @@ export class BaseClouds {
         this.router = router
     }
 
+    async getStart(): Promise<any> {
+
+    }
 
     // 存储信息 ================================================
     async getSaves(): Promise<CONFIG_INFO | any> {
