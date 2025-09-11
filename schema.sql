@@ -1,10 +1,10 @@
 CREATE TABLE path -- 挂载路径
 (
-    driver_uuid INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-    driver_path TEXT UNIQUE NOT NULL,
-    driver_type TEXT        NOT NULL,
-    config_data TEXT,
-    server_data TEXT
+    driver_uuid INTEGER PRIMARY KEY AUTOINCREMENT, -- 路径UUID
+    driver_path TEXT UNIQUE NOT NULL,              -- 路径名称
+    driver_type TEXT        NOT NULL,              -- 驱动类型
+    config_data TEXT,                              -- 配置数据
+    server_data TEXT                               -- 服务数据
 );
 
 CREATE TABLE user -- 用户信息
