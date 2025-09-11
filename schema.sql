@@ -1,25 +1,25 @@
 CREATE TABLE path -- 挂载路径
 (
-    driver_uuid INTEGER PRIMARY KEY AUTOINCREMENT, -- 路径UUID
-    driver_path TEXT UNIQUE NOT NULL,              -- 路径名称
-    driver_type TEXT        NOT NULL,              -- 驱动类型
-    config_data TEXT,                              -- 配置数据
-    server_data TEXT                               -- 服务数据
+    driver_uuid INTEGER AUTOINCREMENT,            -- 路径UUID
+    driver_path TEXT PRIMARY KEY UNIQUE NOT NULL, -- 路径名称
+    driver_type TEXT                    NOT NULL, -- 驱动类型
+    config_data TEXT,                             -- 配置数据
+    server_data TEXT                              -- 服务数据
 );
 
 CREATE TABLE user -- 用户信息
 (
     -- 核心信息 ===============================================
-    user_uuid INTEGER PRIMARY KEY AUTOINCREMENT, -- 用户UUID
-    user_name TEXT UNIQUE NOT NULL,              -- 用户名称
-    user_pass TEXT,                              -- 密码SHA2
-    user_mask TEXT,                              -- 用户权限
-    is_enable INTEGER,                           -- 是否启用
+    user_uuid INTEGER AUTOINCREMENT,            -- 用户UUID
+    user_name TEXT PRIMARY KEY UNIQUE NOT NULL, -- 用户名称
+    user_pass TEXT,                             -- 密码SHA2
+    user_mask TEXT,                             -- 用户权限
+    is_enable INTEGER,                          -- 是否启用
     -- 拓展信息 ===============================================
-    size_sets INTEGER,                           -- 分片大小
-    size_used INTEGER,                           -- 使用大小
-    auth_data TEXT,                              -- 认证数据
-    conn_data TEXT,                              -- 连接数据
+    size_sets INTEGER,                          -- 分片大小
+    size_used INTEGER,                          -- 使用大小
+    auth_data TEXT,                             -- 认证数据
+    conn_data TEXT,                             -- 连接数据
 );
 
 CREATE TABLE grps -- 用户分组
