@@ -45,9 +45,9 @@ CREATE TABLE encs -- 加密配置
     encs_mode INTEGER                 NOT NULL, -- 加密模式
     encs_self INTEGER                 NOT NULL, -- 自动解密
     rand_pass INTEGER                 NOT NULL, -- 随机密码
-    auth_data TEXT                              -- 认证数据
-        is_subfix TEXT    -- 启用后缀
-    subs_name TEXT                      -- 后缀名称
+    auth_data TEXT,                             -- 认证数据
+    is_subfix TEXT,                             -- 启用后缀
+    subs_name TEXT                              -- 后缀名称
 );
 CREATE TABLE mate -- 元组配置
 (
