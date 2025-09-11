@@ -2,7 +2,7 @@ import {HostClouds} from "./utils"
 import {google} from 'googleapis';
 import {Context} from "hono";
 import {JSONClient} from "google-auth-library/build/src/auth/googleauth";
-import * as fso from "../../manage/FileObject";
+import * as fso from "../FileObject";
 
 
 // export class HostDriver extends BaseDriver {
@@ -46,8 +46,10 @@ export class HostDriver {
         console.log("listFile client", client);
         const driver: any = google.drive({version: 'v3', auth: client});
         const result: Record<string, any> = await driver.files.list({
-            pageSize: 10,
-            fields: 'nextPageToken, files(id, name)',
+            // pageSize: 10,
+            // fields: 'files(id,name,mimeType,size,modifiedTime,' +
+            //     'createdTime,thumbnailLink,shortcutDetails,md5Checksum,' +
+            //     'sha1Checksum,sha256Checksum),nextPageToken',
         });
         const files: any[] = result.data.files;
         if (!files || files.length === 0) {
@@ -57,7 +59,8 @@ export class HostDriver {
 
         console.log('Files:');
         files.map((file: any): void => {
-            console.log(`${file.name} (${file.id})`);
+            console.log(file)
+            console.log(` ${file.id} ${file.size} ${file.name}  ${file.thumbnailLink}`);
         });
     }
 
@@ -86,7 +89,7 @@ export class HostDriver {
                 fields: 'id',
             });
             console.log('Folder Id:', file.data.id);
-            // return file.data.id;
+            // return task.data.id;
             return null
         } catch (err) {
             // TODO(developer) - Handle error
@@ -111,7 +114,7 @@ export class HostDriver {
                 fields: 'id',
             });
             console.log('File Id:', file.data.id);
-            // return file.data.id;
+            // return task.data.id;
             return null
         } catch (err) {
             // TODO(developer) - Handle error

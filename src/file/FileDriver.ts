@@ -1,4 +1,4 @@
-import * as sys from '../driver/manifest'
+import * as sys from './BaseObject'
 import {Context} from "hono";
 
 export class FileDriver {

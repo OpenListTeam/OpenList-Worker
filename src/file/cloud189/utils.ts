@@ -1,4 +1,19 @@
-import {Requests} from "../../shared/Requests";
+import {WebRequest} from "../../mods/WebRequest";
+
+type LoginParam = {
+    // 加密后的用户名和密码
+    RsaUsername: string;
+    RsaPassword: string;
+    // rsa密钥
+    jRsaKey: string;
+    // 请求头参数
+    Lt: string;
+    ReqId: string;
+    // 表单参数
+    ParamId: string;
+    // 验证码
+    CaptchaToken: string;
+};
 
 class HostClouds {
     public configData: Record<string, any> | undefined
@@ -16,7 +31,7 @@ class HostClouds {
         try {
             const param = this.loginParam!;
             // 发送登录请求
-            const login_resp: LoginResp = await Requests(
+            const login_resp: LoginResp = await WebRequest(
                 `${AUTH_URL}/api/logbox/oauth2/loginSubmit.do`,
                 {
                     "appKey": APP_ID,
@@ -49,7 +64,7 @@ class HostClouds {
 
             suffixParams["redirectURL"] = login_resp.ToUrl;
 
-            const tokenInfo: AppSessionResp = await Requests(
+            const tokenInfo: AppSessionResp = await WebRequest(
                 `${API_URL}/getSessionForPC.action`,
                 suffixParams,
                 "POST",

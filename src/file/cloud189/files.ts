@@ -1,5 +1,5 @@
-import * as fso from "../../manage/FileObject";
-import {Requests} from "../../shared/Requests";
+import * as fso from "../FileObject";
+import {WebRequest} from "../../mods/WebRequest";
 
 
 export class HostDriver {

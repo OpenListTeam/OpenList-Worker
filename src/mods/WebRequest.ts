@@ -1,9 +1,9 @@
-export async function Requests(APIUrl: string = "/api/login",
-                               Params: Record<string, string> | string = "",
-                               Method: string = "GET",
-                               Direct: boolean = false, // true时直接回传URL
-                               Header: Record<string, string> | undefined = undefined,
-                               Finder: string = "json",
+export async function WebRequest(APIUrl: string = "/api/login",
+                                 Params: Record<string, string> | string = "",
+                                 Method: string = "GET",
+                                 Direct: boolean = false, // true时直接回传URL
+                                 Header: Record<string, string> | undefined = undefined,
+                                 Finder: string = "json",
 ): Promise<any> {
     try {
         // 请求参数 =====================================================================
@@ -11,7 +11,8 @@ export async function Requests(APIUrl: string = "/api/login",
         const parma_url = new URL(APIUrl);
         if (typeof Params !== "string") {
             const params_map = Object.fromEntries(
-                Object.entries(Params).map(([k, v]) => [k, String(v ?? '')])
+                Object.entries(Params).map(
+                    ([k, v]: [any, any]): [any, any] => [k, String(v ?? '')])
             );
             parma_str = new URLSearchParams(params_map).toString();
             Object.keys(Params).forEach(key => {

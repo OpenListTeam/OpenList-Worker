@@ -1,3 +1,5 @@
+import {DBResult} from "./DataObject";
+
 export interface D1Filter {
     [key: string]: {      // 索引签名，允许额外未知 key
         value: unknown;
@@ -8,9 +10,7 @@ export interface D1Filter {
 // 更新数据 ####################################################################
 export async function updateDB(
     DB: D1Database, table: string,
-    values: Record<string, any>, where: Record<string, any>): Promise<D1Response & {
-    results: Record<string, unknown>[]
-}> {
+    values: Record<string, any>, where: Record<string, any>): Promise<DBResult> {
     // 构建更新的列和值部分
     const setConditions: string[] = [];
     const whereConditions: string[] = [];
@@ -38,17 +38,19 @@ export async function updateDB(
 
     try {
         // 执行更新操作
-        return await DB.prepare(sql).bind(...params).run();
+        const result = await DB.prepare(sql).bind(...params).run();
+        return {flag: true, text: result};
     } catch (e) {
         console.error('Database error:', e);
-        throw e; // 重新抛出错误以便调用者处理
+        return {flag: false, text: (e as Error).message};
+        // throw e; // 重新抛出错误以便调用者处理
     }
 }
 
 // 插入数据 ####################################################################
 export async function insertDB(
     DB: D1Database, table: string,
-    values: Record<string, any>): Promise<D1Response & { results: Record<string, unknown>[] }> {
+    values: Record<string, any>): Promise<DBResult> {
     // 构建列名和占位符数组
     const columns: string[] = [];
     const placeholders: string[] = [];
@@ -63,17 +65,17 @@ export async function insertDB(
     // 构建完整的 SQL 插入语句
     let sql = `INSERT INTO ${table} (${columns.join(', ')})
                VALUES (${placeholders.join(', ')})`;
-
     // console.log('SQL:', sql);
     // console.log('Params:', params);
+
 
     try {
         // 执行插入操作
         await DB.prepare(sql).bind(...params).run();
-        return true
+        return {flag: true, text: "OK"};
     } catch (e) {
         console.error('Database error:', e);
-        return false;
+        return {flag: false, text: (e as Error).message};
         // throw e; // 重新抛出错误以便调用者处理
     }
 }
@@ -81,12 +83,13 @@ export async function insertDB(
 // 查找数据 ################################################################################
 export async function selectDB(
     DB: D1Database,
-    table: string, where: D1Filter) {
+    table: string, where: D1Filter): Promise<DBResult> {
     // 构建查询条件数组
     const conditions: string[] = [];
     const params: any[] = [];
 
     for (const [key, condition] of Object.entries(where)) {
+        if (!key || key == "undefined") continue;
         let op = condition.op || '=';
         if (op === 'LIKE') {
             conditions.push(`${key} LIKE ?`);
@@ -116,12 +119,14 @@ export async function selectDB(
 
     try {
         // 使用参数化查询
-        let {results} = await DB.prepare(sql).bind(...params).all();
-        return results;
+        const filteredParams = params.filter(param => param !== undefined);
+        // console.log(sql, filteredParams);
+        let {results} = await DB.prepare(sql).bind(...filteredParams).all();
+        return {flag: true, text: "OK", data: results};
 
     } catch (e) {
         console.error('Database error:', e);
-        return [];
+        return {flag: false, text: (e as Error).message, data: []};
     }
 }
 
@@ -129,14 +134,21 @@ export async function selectDB(
 export async function deleteDB(
     DB: D1Database, table: string,
     where: D1Filter
-): Promise<boolean> {
+): Promise<DBResult> {
     const conditions: string[] = [];
     const params: any[] = [];
     if (Object.keys(where).length <= 0) {
-        return false;
+        return {flag: false, text: "No conditions provided", data: []};
     }
     for (const [key, value] of Object.entries(where)) {
         conditions.push(`${key} = ?`);
+        // console.log("now", key, value);
+        if(typeof value === 'object'
+            && !Array.isArray(value)
+            && value.constructor === Object) {
+            params.push(value.value);
+            continue;
+        }
         params.push(value);
     }
 
@@ -146,16 +158,16 @@ export async function deleteDB(
     if (conditions.length > 0) {
         sql += ' AND ' + conditions.join(' AND ');
     }
-
+    // console.log(table, where);
     // console.log('SQL:', sql);
     // console.log('Params:', params);
 
     try {
         await DB.prepare(sql).bind(...params).run();
-        return true;
+        return {flag: true, text: "OK"};
     } catch (e) {
         console.error('Database error:', e);
-        return false;
+        return {flag: false, text: (e as Error).message};
         // throw e;
     }
 }

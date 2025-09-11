@@ -1,32 +1,7 @@
 import {Context} from "hono";
-import {DataBase, DataSave} from "../saving/Database";
-import {JSONClient} from "google-auth-library/build/src/auth/googleauth";
-
-export interface SAVING_INFO {
-    config: any | Record<string, any> | CONFIG_INFO;
-    saving: any | Record<string, any> | undefined;
-}
-
-export interface CONFIG_INFO {
-    mount_path_id: string;
-    client_app_id: string;
-    client_secret: string;
-    refresh_token: string;
-    auth_api_urls: string;
-    auth_api_flag: boolean;
-}
-
-export class BaseDriver {
-    public config: any | Record<string, any> | CONFIG_INFO
-    public saving: any | Record<string, any> | undefined
-    public router: string
-    public c: Context
-
-    constructor(c: Context, router: string) {
-        this.c = c
-        this.router = router
-    }
-}
+import {DataManage} from "../data/DataManage";
+import {CONFIG_INFO, SAVING_INFO} from "./BaseDriver";
+import {DBSelect, DBResult} from "../data/DataObject";
 
 export class BaseClouds {
     public config: any | Record<string, any> | CONFIG_INFO
@@ -45,17 +20,18 @@ export class BaseClouds {
     }
 
     // 存储信息 ================================================
-    async getSaves(): Promise<CONFIG_INFO | any> {
-        let db_api: DataBase = new DataBase(this.c)
-
-        let saving: DataSave[] = await db_api.find(
+    async getSaves(): Promise<CONFIG_INFO | DBResult | any> {
+        let db_api: DataManage = new DataManage(this.c)
+        let result: DBResult = await db_api.find(
             this.c, {
                 main: "path",
                 keys: [{"path": this.router}],
             }
         )
+        if (!result.flag) return this.config;
+        let saving: DBSelect[] = result.data
         if (saving.length > 0) {
-            const select: DataSave = saving[0];
+            const select: DBSelect = saving[0];
             const info: SAVING_INFO | undefined = select.data
             if (!info) return null
             this.config = info.config;
@@ -66,8 +42,8 @@ export class BaseClouds {
     }
 
     // 存储信息 ================================================
-    async putSaves(): Promise<boolean> {
-        let db_api: DataBase = new DataBase(this.c)
+    async putSaves(): Promise<DBResult> {
+        let db_api: DataManage = new DataManage(this.c)
         return await db_api.save(
             this.c, {
                 main: "path",

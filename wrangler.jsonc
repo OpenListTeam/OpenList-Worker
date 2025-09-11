@@ -7,23 +7,26 @@
     "nodejs_compat"
   ],
   "vars": {
-    "ENABLE_D1": "true"
-  },
-  "kv_namespaces": [
-    {
-      "binding": "KV_DATA",
-      "id": ""
-    }
-  ],
-  "d1_databases": [
-    {
-      "binding": "D1_DATA",
-      "database_name": "",
-      "database_id": ""
-    }
-  ]
-  // "observability": {
-  //   "enabled": true,
-  //   "head_sampling_rate": 1
-  // }
+    // D1数据库配置 =====================================
+    "ENABLE_D1": true, // D1 是否启用，启用需要配置SQL信息
+    "REMOTE_D1": ""    // D1 远程地址，默认不填使用ENV绑定
+    /* D1 Database 配置指南 ==============================
+    local:// # 不填或为local:使用本地数据库：c.env.D1_DATA
+    mysql://<username>:<password>@<host>:<port>/<database>
+    maria://<username>:<password>@<host>:<port>/<database>
+    pgsql://<username>:<password>@<host>:<port>/<database>
+    =================================================== */
+
+
+  }, "kv_namespaces": [{ // <-------KV 数据库配置-------->
+      "binding": "KV_DATA",// <---------请勿修改--------->
+      "id": "" // <----修改为你创建的Cloudflare KV数据库ID
+  }],"d1_databases": [{  // <-------D1 数据库配置-------->
+      "binding": "D1_DATA",// <---------请勿修改--------->
+      "database_name": "", // <----修改为你CF D1数据库名称
+      "database_id": ""    // <----修改为你CF D1数据库UUID
+  }], "observability": { // <-------CF 日志配置项-------->
+     "enabled": false,       // 开启日志，如果需调试可以开
+     "head_sampling_rate": 1 // <--------请勿修改-------->
+   }
 }
