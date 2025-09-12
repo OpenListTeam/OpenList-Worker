@@ -1,6 +1,8 @@
 import {Context, Hono} from 'hono'
-import * as fsf from './path/PathManage'
-import {DataManage, DBSelect} from "./data/DataManage";
+import {SavesManage} from "./saves/SavesManage";
+import {DBSelect} from "./data/DataObject";
+import {KVNamespace, D1Database} from "@cloudflare/workers-types";
+
 
 // 绑定数据 ###############################################################################
 export type Bindings = {
@@ -15,9 +17,9 @@ interface PageAction {
 }
 
 // 文件管理 ###############################################################################
-app.use('/@task/:action/:method/:source', async (c: Context) => {
-    // let now_path: string = c.req.path.substring('/@task/list'.length);
-    // let now_conn = await fsf.pathManage(c, now_path)
+app.use('/@tasks/:action/:method/:source', async (c: Context) => {
+    // let now_path: string = c.req.path.substring('/@tasks/list'.length);
+    // let now_conn = await fsf.mountDriver(c, now_path)
     const action: string = c.req.param('action');
     const method: string = c.req.param('method');
     const source: string = c.req.param('source');
@@ -88,7 +90,7 @@ app.use('/@path/:action/:method/:source', async (c: Context) => {
 
 
 // 用户管理 #############################################################
-app.use('/@user/:action/:method/:source', async (c: Context) => {
+app.use('/@users/:action/:method/:source', async (c: Context) => {
     const action: string = c.req.param('action');
     const method: string = c.req.param('method');
     const source: string = c.req.param('source');
@@ -121,20 +123,21 @@ app.use('/@user/:action/:method/:source', async (c: Context) => {
 
 // 用户认证 ============================================================
 app.use('/@test/data/', async (c: Context) => {
-    let db: any = new DataManage(c);
+    let db: SavesManage = new SavesManage(c);
     let key: DBSelect = {
-        main: 'path',
-        keys: [{driver_path: '111'}],
+        main: 'mount',
+        keys: {mount_path: '000'},
         data: {
-            driver_path: '111',
-            driver_type: '111'
+            mount_path: '000',
+            mount_type: '111',
+            is_enabled: true,
         }
     }
     await db.save(key)
     console.log(await db.find(key))
     key.data = {
-        driver_path: '111',
-        driver_type: '222'
+        mount_type: '222',
+        is_enabled: false,
     }
     await db.save(key)
     console.log(await db.find(key))

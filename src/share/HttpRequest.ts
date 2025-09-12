@@ -1,9 +1,9 @@
-export async function WebRequest(APIUrl: string = "/api/login",
-                                 Params: Record<string, string> | string = "",
-                                 Method: string = "GET",
-                                 Direct: boolean = false, // true时直接回传URL
-                                 Header: Record<string, string> | undefined = undefined,
-                                 Finder: string = "json",
+export async function HttpRequest(APIUrl: string = "/api/login",
+                                  Params: Record<string, string> | string = "",
+                                  Method: string = "GET",
+                                  Direct: boolean = false, // true时直接回传URL
+                                  Header: Record<string, string> | undefined = undefined,
+                                  Finder: string = "json",
 ): Promise<any> {
     try {
         // 请求参数 =====================================================================

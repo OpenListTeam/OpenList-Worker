@@ -97,7 +97,7 @@ web_modules/
 # Output of 'npm pack'
 *.tgz
 
-# Yarn Integrity task
+# Yarn Integrity tasks
 .yarn-integrity
 
 # dotenv environment variable files
@@ -154,7 +154,7 @@ dist
 # Firebase cache directory
 .firebase/
 
-# TernJS port task
+# TernJS port tasks
 .tern-port
 
 # Stores VSCode versions used for testing VSCode extensions

@@ -1,6 +1,6 @@
-import * as fsd from '../file/FileDriver'
+import * as fsd from '../drive/FileDriver'
 
-export async function pathManage(c, now_path: string) {
+export async function mountDriver(c, now_path: string) {
     for (const map_path in path_map) {
         console.log(now_path, map_path);
         if (now_path.startsWith(map_path)) {

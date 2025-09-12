@@ -1,4 +1,4 @@
-import {WebRequest} from "../../mods/WebRequest";
+import {HttpRequest} from "../../share/HttpRequest";
 
 type LoginParam = {
     // 加密后的用户名和密码
@@ -31,7 +31,7 @@ class HostClouds {
         try {
             const param = this.loginParam!;
             // 发送登录请求
-            const login_resp: LoginResp = await WebRequest(
+            const login_resp: LoginResp = await HttpRequest(
                 `${AUTH_URL}/api/logbox/oauth2/loginSubmit.do`,
                 {
                     "appKey": APP_ID,
@@ -64,7 +64,7 @@ class HostClouds {
 
             suffixParams["redirectURL"] = login_resp.ToUrl;
 
-            const tokenInfo: AppSessionResp = await WebRequest(
+            const tokenInfo: AppSessionResp = await HttpRequest(
                 `${API_URL}/getSessionForPC.action`,
                 suffixParams,
                 "POST",

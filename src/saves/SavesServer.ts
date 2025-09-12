@@ -1,4 +1,5 @@
-import {DBResult} from "./DataObject";
+import {DBResult} from "./SavesObject";
+import {D1Database, D1Result} from "@cloudflare/workers-types";
 
 export interface D1Filter {
     [key: string]: {      // 索引签名，允许额外未知 key
@@ -10,22 +11,27 @@ export interface D1Filter {
 // 更新数据 ####################################################################
 export async function updateDB(
     DB: D1Database, table: string,
-    values: Record<string, any>, where: Record<string, any>): Promise<DBResult> {
+    values: Record<string, string>,
+    where: D1Filter): Promise<DBResult> {
     // 构建更新的列和值部分
     const setConditions: string[] = [];
     const whereConditions: string[] = [];
     const params: any[] = [];
 
     // 构建 SET 部分
+
     for (const [key, value] of Object.entries(values)) {
         setConditions.push(`${key} = ?`);
         params.push(value);
     }
 
     // 构建 WHERE 部分
-    for (const [key, value] of Object.entries(where)) {
-        whereConditions.push(`${key} = ?`);
-        params.push(value);
+    for (const [key, clause] of Object.entries(where)) {
+        // 支持 { age: { op: '>', value: 18 } } 或 { age: 18 }
+        const op = clause?.op ?? '=';
+        const val = clause?.value ?? clause;
+        whereConditions.push(`${key} ${op} ?`);
+        params.push(val);
     }
 
     // 构建完整的 SQL 更新语句
@@ -33,13 +39,13 @@ export async function updateDB(
                SET ${setConditions.join(', ')}
                WHERE ${whereConditions.join(' AND ')}`;
 
-    // console.log('SQL:', sql);
+    console.log('SQL:', sql);
     // console.log('Params:', params);
 
     try {
         // 执行更新操作
-        const result = await DB.prepare(sql).bind(...params).run();
-        return {flag: true, text: result};
+        const result: D1Result = await DB.prepare(sql).bind(...params).run();
+        return {flag: true, text: "OK"};
     } catch (e) {
         console.error('Database error:', e);
         return {flag: false, text: (e as Error).message};
@@ -143,7 +149,7 @@ export async function deleteDB(
     for (const [key, value] of Object.entries(where)) {
         conditions.push(`${key} = ?`);
         // console.log("now", key, value);
-        if(typeof value === 'object'
+        if (typeof value === 'object'
             && !Array.isArray(value)
             && value.constructor === Object) {
             params.push(value.value);

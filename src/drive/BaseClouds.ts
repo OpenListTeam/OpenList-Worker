@@ -1,7 +1,7 @@
 import {Context} from "hono";
 import {DataManage} from "../data/DataManage";
 import {CONFIG_INFO, SAVING_INFO} from "./BaseDriver";
-import {DBSelect, DBResult} from "../data/DataObject";
+import {DBSelect, DBResult} from "../Saves/DataObject";
 
 export class BaseClouds {
     public config: any | Record<string, any> | CONFIG_INFO
