@@ -1,7 +1,9 @@
 import {Context, Hono} from 'hono'
 import {SavesManage} from "./saves/SavesManage";
+import {MountManage} from "./mount/MountManage";
 import {DBSelect} from "./data/DataObject";
 import {KVNamespace, D1Database} from "@cloudflare/workers-types";
+import {getConfig} from "./share/HonoParsers";
 
 
 // 绑定数据 ###############################################################################
@@ -16,8 +18,9 @@ interface PageAction {
     data?: Record<string, any>
 }
 
+
 // 文件管理 ###############################################################################
-app.use('/@tasks/:action/:method/:source', async (c: Context) => {
+app.use('/@files/:action/:method/:source', async (c: Context) => {
     // let now_path: string = c.req.path.substring('/@tasks/list'.length);
     // let now_conn = await fsf.mountDriver(c, now_path)
     const action: string = c.req.param('action');
@@ -25,33 +28,33 @@ app.use('/@tasks/:action/:method/:source', async (c: Context) => {
     const source: string = c.req.param('source');
     const target: string | undefined = c.req.query('target');
     const driver: string | undefined = c.req.query('driver');
-    const config: string | undefined = c.req.query('config');
+    const config: Record<string, any> = await getConfig(c, 'config');
     switch (action) {
-        case "list": { // 列出文件 =====================================
+        case "list": { // 列出文件 =======================================================
             break;
         }
-        case "link": { // 获取链接 =====================================
+        case "link": { // 获取链接 =======================================================
             break;
         }
-        case "copy": { // 复制文件 =====================================
+        case "copy": { // 复制文件 =======================================================
             break;
         }
-        case "move": { // 移动文件 =====================================
+        case "move": { // 移动文件 =======================================================
             break;
         }
-        case "create": { // 创建对象 ===================================
+        case "create": { // 创建对象 =====================================================
             break;
         }
-        case "remove": { // 删除对象 ===================================
+        case "remove": { // 删除对象 =====================================================
             break;
         }
-        case "config": { // 配置对象 ===================================
+        case "config": { // 配置对象 =====================================================
             break;
         }
-        case "shared": { // 共享对象 ===================================
+        case "shared": { // 共享对象 =====================================================
             break;
         }
-        default: { // 默认应输出错误 ===================================
+        default: { // 默认应输出错误 =====================================================
             return c.json({flag: false, text: 'Invalid Action'}, 400)
         }
     }
@@ -59,33 +62,73 @@ app.use('/@tasks/:action/:method/:source', async (c: Context) => {
 })
 
 
-// 挂载管理 #############################################################
-app.use('/@path/:action/:method/:source', async (c: Context) => {
+// 挂载管理 ##############################################################################
+app.use('/@mount/:action/:method/:source', async (c: Context) => {
     const action: string = c.req.param('action');
     const method: string = c.req.param('method');
     const source: string = c.req.param('source');
-    const config: string | undefined = c.req.query('config');
+    const config: Record<string, any> = await getConfig(c, 'config');
+    console.log("@mount", action, method, source, config)
+    // 创建对象 ==========================================================================
+    let mounts: MountManage = new MountManage(c);
+    // 检查方法 ==========================================================================
+    switch (method) {
+        case "path": { // 筛选路径 =======================================================
+            config.mount_path = source ? source : config.mount_path;
+            break;
+        }
+        case "uuid": { // 筛选编号 =======================================================
+            const result: MountResult = await mounts.select();
+            if (!result.data) return c.json({
+                flag: false, text: 'No UUID Matched'
+            }, 400)
+            // for (const mount of result.data) {
+            //     if (mount.uuid === source) {
+            //         config.mount_path = mount.mount_path;
+            //         break;
+            //     }
+            // }
+            break;
+        }
+        case "none": { // 不筛选 =========================================================
+            break;
+        }
+        default: { // 默认应输出错误 =====================================================
+            return c.json({flag: false, text: 'Invalid Method'}, 400)
+        }
+    }
+    console.log("@mount", action, method, source, config)
+    // 检查参数 ==========================================================================
+    if (!config.mount_path) return c.json({flag: false, text: 'Invalid Path'}, 400)
+    // 执行操作 ==========================================================================
     switch (action) {
-        case "select": { // 查找挂载 ===================================
-            break;
+        case "select": { // 查找挂载 =====================================================
+            const result: MountResult = await mounts.select();
+            return c.json(result, result.flag ? 200 : 400)
         }
-        case "create": { // 创建挂载 ===================================
-            break;
+        case "create": { // 创建挂载 =====================================================
+            console.log("@mount", action, method, source, config)
+            if (!config.mount_path || !config.mount_type || !config.drive_conf)
+                return c.json({flag: false, text: 'Invalid Param Request'}, 400)
+            let result: MountResult = await mounts.create(config as MountConfig);
+            return c.json(result, result.flag ? 200 : 400)
         }
-        case "remove": { // 删除挂载 ===================================
-            break;
+        case "remove": { // 删除挂载 =====================================================
+            let result: MountResult = await mounts.remove(config.mount_path);
+            return c.json(result, result.flag ? 200 : 400)
         }
-        case "config": { // 配置挂载 ===================================
-            break;
+        case "config": { // 配置挂载 =====================================================
+            let result: MountResult = await mounts.config(config as MountConfig);
+            return c.json(result, result.flag ? 200 : 400)
         }
-        case "reload": { // 载入挂载 ===================================
-            break;
+        case "reload": { // 载入挂载 =====================================================
+            let result: MountResult = await mounts.reload(config.mount_path);
+            return c.json(result, result.flag ? 200 : 400)
         }
-        default: { // 默认应输出错误 ===================================
+        default: { // 默认应输出错误 =====================================================
             return c.json({flag: false, text: 'Invalid Action'}, 400)
         }
     }
-    return c.json({flag: false, text: 'Invalid Action'}, 400)
 })
 
 

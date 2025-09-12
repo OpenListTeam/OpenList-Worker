@@ -6,7 +6,8 @@ CREATE TABLE mount -- 挂载路径
     is_enabled INTEGER                 NOT NULL, -- 是否启用
     -- 拓展信息 ===============================================
     drive_conf TEXT,                             -- 配置数据
-    drive_save TEXT                              -- 服务数据
+    drive_save TEXT,                             -- 服务数据
+    cache_time INTEGER  DEFAULT 0,               -- 缓存时间
 )
 
 CREATE TABLE users -- 用户信息
@@ -21,7 +22,7 @@ CREATE TABLE users -- 用户信息
     total_size INTEGER,                          -- 分片大小
     total_used INTEGER,                          -- 使用大小
     oauth_data TEXT,                             -- 认证数据
-    mount_data TEXT                             -- 连接数据
+    mount_data TEXT                              -- 连接数据
 
 )
 

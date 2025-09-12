@@ -65,15 +65,17 @@ export async function insertDB(
     for (const [key, value] of Object.entries(values)) {
         columns.push(key);
         placeholders.push('?');
-        params.push(value);
+        console.log(key, 'Inserting value:', value);
+        // 检查是否为对象类型，如果是则转换为 JSON 字符串
+        const processedValue: string = JSON.stringify(value);
+        params.push(processedValue);
     }
 
     // 构建完整的 SQL 插入语句
     let sql = `INSERT INTO ${table} (${columns.join(', ')})
                VALUES (${placeholders.join(', ')})`;
-    // console.log('SQL:', sql);
-    // console.log('Params:', params);
-
+    console.log('SQL:', sql);
+    console.log('Params:', params);
 
     try {
         // 执行插入操作
@@ -82,7 +84,6 @@ export async function insertDB(
     } catch (e) {
         console.error('Database error:', e);
         return {flag: false, text: (e as Error).message};
-        // throw e; // 重新抛出错误以便调用者处理
     }
 }
 
