@@ -162,3 +162,5 @@ export class SavesManage {
         return await d1_fun.deleteDB(this.d1, data.main, find_keys);
     }
 }
+
+export {DBSelect, DBResult};

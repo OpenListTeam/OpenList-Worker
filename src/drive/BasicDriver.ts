@@ -1,5 +1,4 @@
 import {Context} from "hono";
-import {DataManage} from "../data/DataManage";
 
 export interface SAVING_INFO {
     config: any | Record<string, any> | CONFIG_INFO;
@@ -15,7 +14,7 @@ export interface CONFIG_INFO {
     auth_api_flag: boolean;
 }
 
-export class BaseDriver {
+export class BasicDriver {
     public config: any | Record<string, any> | CONFIG_INFO
     public saving: any | Record<string, any> | undefined
     public router: string

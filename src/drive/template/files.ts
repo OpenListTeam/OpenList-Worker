@@ -1,4 +1,4 @@
-import * as fso from "./FileObject";
+import * as fso from "../DriveObject";
 
 class HostDriver {
     public configData: Record<string, any>

@@ -1,5 +1,5 @@
 import {google} from 'googleapis';
-import {BaseClouds} from "../BaseDriver";
+import {BasicClouds} from "../BasicClouds";
 import {Context} from "hono";
 import {JSONClient} from "google-auth-library/build/src/auth/googleauth";
 
@@ -9,7 +9,7 @@ interface SAVING_INFO {
     access: string;
 }
 
-export class HostClouds extends BaseClouds {
+export class HostClouds extends BasicClouds {
     // 公共数据 ================================================
     declare public config: Record<string, any> | any
     declare public saving: Record<string, any> | SAVING_INFO
@@ -29,7 +29,7 @@ export class HostClouds extends BaseClouds {
         const client: JSONClient | any = await this.getAuthy()
         await client.refreshAccessToken()
         this.saving.access = client.credentials.access_token;
-        await this.getSaves();
+        // await this.getSaves();
         return this.saving.access != undefined;
     }
 

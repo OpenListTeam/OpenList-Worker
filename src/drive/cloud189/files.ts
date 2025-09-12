@@ -1,21 +1,31 @@
-import * as fso from "../FileObject";
+import * as fso from "../DriveObject";
 import {HttpRequest} from "../../share/HttpRequest";
+import {HostClouds} from "../goodrive/utils";
+import {Context} from "hono";
 
 
 export class HostDriver {
     public configData: Record<string, any>
     public serverData: Record<string, any>
+    public driverUtil: HostClouds
+    public router: string
+    public c: Context
 
     constructor(
+        c: Context, router: string,
         public in_configData: Record<string, any>,
         public in_serverData: Record<string, any>,
     ) {
+        // super(c, router);
+        this.c = c;
+        this.router = router;
         this.configData = in_configData;
         this.serverData = in_serverData;
-    }
-    // 初始驱动 =========================================================
-    async initSelf() {
-
+        this.driverUtil = new HostClouds(
+            this.c, this.router,
+            this.configData,
+            this.serverData
+        )
     }
 
     // 载入驱动 =========================================================

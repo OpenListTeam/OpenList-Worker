@@ -39,7 +39,7 @@ export async function updateDB(
                SET ${setConditions.join(', ')}
                WHERE ${whereConditions.join(' AND ')}`;
 
-    console.log('SQL:', sql);
+    // console.log('SQL:', sql);
     // console.log('Params:', params);
 
     try {
@@ -65,7 +65,7 @@ export async function insertDB(
     for (const [key, value] of Object.entries(values)) {
         columns.push(key);
         placeholders.push('?');
-        console.log(key, 'Inserting value:', value);
+        // console.log(key, 'Inserting value:', value);
         // 检查是否为对象类型，如果是则转换为 JSON 字符串
         const processedValue: string = JSON.stringify(value);
         params.push(processedValue);
@@ -74,8 +74,8 @@ export async function insertDB(
     // 构建完整的 SQL 插入语句
     let sql = `INSERT INTO ${table} (${columns.join(', ')})
                VALUES (${placeholders.join(', ')})`;
-    console.log('SQL:', sql);
-    console.log('Params:', params);
+    // console.log('SQL:', sql);
+    // console.log('Params:', params);
 
     try {
         // 执行插入操作

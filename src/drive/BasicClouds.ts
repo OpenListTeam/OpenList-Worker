@@ -1,9 +1,9 @@
 import {Context} from "hono";
-import {DataManage} from "../data/DataManage";
-import {CONFIG_INFO, SAVING_INFO} from "./BaseDriver";
-import {DBSelect, DBResult} from "../Saves/DataObject";
+import {SavesManage} from "../saves/SavesManage";
+import {CONFIG_INFO, SAVING_INFO} from "./BasicDriver";
+import {DBSelect, DBResult} from "../saves/SavesManage";
 
-export class BaseClouds {
+export class BasicClouds {
     public config: any | Record<string, any> | CONFIG_INFO
     public saving: any | Record<string, any> | undefined
     public router: string
@@ -21,11 +21,10 @@ export class BaseClouds {
 
     // 存储信息 ================================================
     async getSaves(): Promise<CONFIG_INFO | DBResult | any> {
-        let db_api: DataManage = new DataManage(this.c)
-        let result: DBResult = await db_api.find(
-            this.c, {
-                main: "path",
-                keys: [{"path": this.router}],
+        let db_api: SavesManage = new SavesManage(this.c)
+        let result: DBResult = await db_api.find({
+                main: "mount",
+                keys: {"mount_path": this.router},
             }
         )
         if (!result.flag) return this.config;
@@ -43,11 +42,10 @@ export class BaseClouds {
 
     // 存储信息 ================================================
     async putSaves(): Promise<DBResult> {
-        let db_api: DataManage = new DataManage(this.c)
-        return await db_api.save(
-            this.c, {
-                main: "path",
-                keys: [{"path": this.router}],
+        let db_api: SavesManage = new SavesManage(this.c)
+        return await db_api.save({
+                main: "mount",
+                keys: {"mount_path": this.router},
                 data: {
                     config: this.config,
                     saving: this.saving

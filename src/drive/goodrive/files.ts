@@ -2,10 +2,10 @@ import {HostClouds} from "./utils"
 import {google} from 'googleapis';
 import {Context} from "hono";
 import {JSONClient} from "google-auth-library/build/src/auth/googleauth";
-import * as fso from "../FileObject";
+import * as fso from "../DriveObject";
 
 
-// export class HostDriver extends BaseDriver {
+// export class HostDriver extends BasicDriver {
 export class HostDriver {
     public configData: Record<string, any>
     public serverData: Record<string, any>
@@ -37,7 +37,8 @@ export class HostDriver {
 
     // 载入驱动 =========================================================
     async loadSelf(): Promise<boolean> {
-        return await this.driverUtil.getSaves();
+        // return await this.driverUtil.getSaves();
+        return true;
     }
 
     // 列出文件 =========================================================
