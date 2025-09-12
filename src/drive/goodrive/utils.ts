@@ -29,29 +29,29 @@ export class HostClouds extends BasicClouds {
         const client: JSONClient | any = await this.getAuthy()
         await client.refreshAccessToken()
         this.saving.access = client.credentials.access_token;
-        // await this.getSaves();
         return this.saving.access != undefined;
+    }
+
+    // 获取接口 ================================================
+    async getAuthy(): Promise<JSONClient> {
+        await this.newLogin();
+        if (!this.saving.client) await this.newLogin();
+        const saves_info: any = JSON.parse(this.saving.client)
+        return google.auth.fromJSON(saves_info);
     }
 
     // 执行登录 ================================================
     async newLogin(): Promise<boolean> {
         console.log('newLogin');
+        console.log(this.config);
         this.saving.client = JSON.stringify({
             type: 'authorized_user',
-            // scopes: 'https://www.googleapis.com/auth/drive',
-            client_id: this.config.client_app_id,
+            client_id: this.config.client_id,
             client_secret: this.config.client_secret,
             refresh_token: this.config.refresh_token,
         });
         return true;
     }
 
-    // 获取接口 ================================================
-    async getAuthy(): Promise<JSONClient> {
-        // await this.getSaves();
-        await this.newLogin();
-        if (!this.saving.client) await this.newLogin();
-        const saves_info: any = JSON.parse(this.saving.client)
-        return google.auth.fromJSON(saves_info);
-    }
+
 }

@@ -5,6 +5,7 @@ import {D1Database, KVNamespace} from "@cloudflare/workers-types";
 import {getConfig} from "./share/HonoParsers";
 import {DBSelect} from "./saves/SavesObject";
 import {UsersManage} from "./users/UsersManage";
+import {FilesAction} from "./files/FilesAction";
 
 
 // 绑定数据 ###############################################################################
@@ -18,74 +19,6 @@ interface PageAction {
     text?: string,
     data?: Record<string, any>
 }
-
-
-// 文件管理 ###############################################################################
-app.use('/@files/:action/:method/*', async (c: Context): Promise<Response> => {
-    const action: string = c.req.param('action');
-    const method: string = c.req.param('method');
-    const target: string | undefined = c.req.query('target');
-    const driver: string | undefined = c.req.query('driver');
-    const config: Record<string, any> = await getConfig(c, 'config');
-    // console.log("@mount", action, method, config)
-    // 创建对象 ==========================================================================
-    // let mounts: MountManage = new MountManage(c);
-    // // 检查方法 ==========================================================================
-    // switch (method) {
-    //     case "path": { // 筛选路径 =======================================================
-    //         config.mount_path = c.req.path.split('/').slice(4).join('/');
-    //         break;
-    //     }
-    //     case "uuid": { // 筛选编号 =======================================================
-    //         const result: MountResult = await mounts.select();
-    //         if (!result.data) return c.json({
-    //             flag: false, text: 'No UUID Matched'
-    //         }, 400)
-    //         break;
-    //     }
-    //     case "none": { // 不筛选 =========================================================
-    //         break;
-    //     }
-    //     default: { // 默认应输出错误 =====================================================
-    //         return c.json({flag: false, text: 'Invalid Method'}, 400)
-    //     }
-    // }
-    // console.log("@mount", action, method, config)
-    // // 检查参数 ==========================================================================
-    // if (!config.mount_path) return c.json({flag: false, text: 'Invalid Path'}, 400)
-    // 执行操作 ==========================================================================
-    switch (action) {
-        case "list": { // 列出文件 =======================================================
-            break;
-        }
-        case "link": { // 获取链接 =======================================================
-            break;
-        }
-        case "copy": { // 复制文件 =======================================================
-            break;
-        }
-        case "move": { // 移动文件 =======================================================
-            break;
-        }
-        case "create": { // 创建对象 =====================================================
-            break;
-        }
-        case "remove": { // 删除对象 =====================================================
-            break;
-        }
-        case "config": { // 配置对象 =====================================================
-            break;
-        }
-        case "shared": { // 共享对象 =====================================================
-            break;
-        }
-        default: { // 默认应输出错误 =====================================================
-            return c.json({flag: false, text: 'Invalid Action'}, 400)
-        }
-    }
-    return c.json({flag: false, text: 'Invalid Action'}, 400)
-})
-
 
 // 挂载管理 ##############################################################################
 app.use('/@mount/:action/:method/*', async (c: Context) => {
@@ -212,23 +145,59 @@ app.use('/@users/:action/:method/:source', async (c: Context) => {
     }
 })
 
-// 文件访问 ##############################################################################
-app.use('/a/*', async (c: Context): Promise<Response> => {
-    const visit_path: string = c.req.path;
-    const mount_data: MountManage = new MountManage(c);
-    const drive_load: MountResult = await mount_data.loader(visit_path);
 
-    return c.text(visit_path);
+// 文件管理 ##############################################################################
+app.use('/@files/:action/:method/*', async (c: Context): Promise<Response> => {
+    const action: string = c.req.param('action');
+    const method: string = c.req.param('method');
+    // 创建对象 ==========================================================================
+    const source: string = c.req.path.split('/').slice(4).join('/');
+    const target: string | undefined = c.req.query('target');
+    const driver: string | undefined = c.req.query('driver');
+    const config: Record<string, any> = await getConfig(c, 'config');
+    // 检查方法 ==========================================================================
+    switch (method) {
+        case "path": { // 筛选路径 =======================================================
+            config.mount_path = target
+            break;
+        }
+        case "uuid": { // 筛选编号 =======================================================
+            break;
+        }
+        case "none": { // 不筛选 =========================================================
+            break;
+        }
+        default: { // 默认应输出错误 =====================================================
+            return c.json({flag: false, text: 'Invalid Method'}, 400)
+        }
+    }
+    const files: FilesAction = new FilesAction(c);
+    return await files.action(action, source, target, config);
 })
 
-// 文件访问 ##############################################################################
-app.use('/*', async (c: Context): Promise<Response> => {
-    const visit_path: string = c.req.path;
-    const mount_data: MountManage = new MountManage(c);
-    const drive_load: MountResult = await mount_data.loader(visit_path);
 
-    return c.text(visit_path);
+// // 文件访问 ##############################################################################
+// app.use('/:action/*', async (c: Context): Promise<Response> => {
+//     const action: string = c.req.param('action');
+//     const source: string = c.req.path.split('/').slice(1).join('/');
+//     const action_map: Record<string, string> = {
+//         "l": "list", "d": "link",
+//         "r": "remove", "c": "create",
+//     }
+//     const files: FilesAction = new FilesAction(c);
+//     return await files.action(action_map[action], source, "", {});
+// })
+
+
+// 页面访问 ##############################################################################
+app.use('*', async (c: Context): Promise<Response> => {
+    // TODO:  增加虚拟主机功能，指定域名直接访问进行下载，否则返回页面
+    console.log(c.req.path)
+    const source: string = c.req.path.split('/').slice(1).join('/');
+    const files: FilesAction = new FilesAction(c);
+    return await files.action("list", source, "", {});
 })
+
 
 
 // 用户认证 ==============================================================================

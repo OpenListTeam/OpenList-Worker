@@ -37,8 +37,7 @@ export class HostDriver {
 
     // 载入驱动 =========================================================
     async loadSelf(): Promise<boolean> {
-        // return await this.driverUtil.getSaves();
-        return true;
+        return await this.driverUtil.getAuthy() != null;
     }
 
     // 列出文件 =========================================================
@@ -51,6 +50,7 @@ export class HostDriver {
             // fields: 'files(id,name,mimeType,size,modifiedTime,' +
             //     'createdTime,thumbnailLink,shortcutDetails,md5Checksum,' +
             //     'sha1Checksum,sha256Checksum),nextPageToken',
+            q: "'my-drive' in parents"
         });
         const files: any[] = result.data.files;
         if (!files || files.length === 0) {
@@ -60,7 +60,7 @@ export class HostDriver {
 
         console.log('Files:');
         files.map((file: any): void => {
-            console.log(file)
+            // console.log(file)
             console.log(` ${file.id} ${file.size} ${file.name}  ${file.thumbnailLink}`);
         });
     }
@@ -70,7 +70,7 @@ export class HostDriver {
         const client: JSONClient | any = await this.driverUtil.getAuthy()
         const driver: any = google.drive({version: 'v3', auth: client});
         const result = await driver.files.update({
-            fileId: '',
+            fileId: "",
             requestBody: {'trashed': true},
         });
         console.log(result);
@@ -128,8 +128,7 @@ export class HostDriver {
         const client: JSONClient | any = await this.driverUtil.getAuthy()
         const driver: any = google.drive({version: 'v3', auth: client});
         try {
-            const file = await driver.files.move({
-            });
+            const file = await driver.files.move({});
             return null
         } catch (err) {
             throw err;
@@ -141,9 +140,7 @@ export class HostDriver {
         const client: JSONClient | any = await this.driverUtil.getAuthy()
         const driver: any = google.drive({version: 'v3', auth: client});
         try {
-            const file = await driver.files.copy({
-
-            });
+            const file = await driver.files.copy({});
             return null
         } catch (err) {
             throw err;

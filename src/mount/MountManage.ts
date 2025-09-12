@@ -46,17 +46,17 @@ export class MountManage {
         const all_mounts: MountResult = await this.select(mount_path);
         if (!all_mounts.data || all_mounts.data.length <= 0) return null;
         for (const now_mount of all_mounts.data) {
-            console.log(now_mount.mount_path, mount_path);
+            // console.log(now_mount.mount_path, mount_path);
             if (mount_path.startsWith(now_mount.mount_path)) {
-                console.log(now_mount.mount_path, mount_path);
+                // console.log(now_mount.mount_path, mount_path);
                 if (!now_mount.mount_type) return null;
                 let driver_item: any = sys.driver_list[now_mount.mount_type];
-                console.log(driver_item, now_mount.mount_type, sys.driver_list)
+                // console.log(driver_item, now_mount.mount_type, sys.driver_list)
                 return new driver_item(
                     this.c,
                     mount_path,
-                    now_mount.drive_conf,
-                    now_mount.drive_save
+                    JSON.parse(now_mount.drive_conf),
+                    JSON.parse(now_mount.drive_save)
                 );
             }
         }

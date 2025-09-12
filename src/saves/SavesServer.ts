@@ -67,7 +67,10 @@ export async function insertDB(
         placeholders.push('?');
         // console.log(key, 'Inserting value:', value);
         // 检查是否为对象类型，如果是则转换为 JSON 字符串
-        const processedValue: string = JSON.stringify(value);
+        const processedValue: string =
+            Object.prototype.toString.call(value) === '[object Object]'
+                ? JSON.stringify(value)          // 纯 Record 才转 JSON
+                : String(value);                 // 其余（含数组、基本类型）用 String()
         params.push(processedValue);
     }
 
