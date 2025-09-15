@@ -43,18 +43,19 @@ export class MountManage {
 
     // 过滤器
     async filter(mount_path: string): Promise<any | null> {
-        const all_mounts: MountResult = await this.select(mount_path);
+        const all_mounts: MountResult = await this.select();
+        // console.log("@filter", all_mounts);
         if (!all_mounts.data || all_mounts.data.length <= 0) return null;
         for (const now_mount of all_mounts.data) {
-            console.log(now_mount.mount_path, mount_path);
+            // console.log("@filter", now_mount.mount_path, mount_path);
             if (mount_path.startsWith(now_mount.mount_path)) {
-                console.log(now_mount.mount_path, mount_path);
+                // console.log(now_mount.mount_path, mount_path);
                 if (!now_mount.mount_type) return null;
                 let driver_item: any = sys.driver_list[now_mount.mount_type];
                 // console.log(driver_item, now_mount.mount_type, sys.driver_list)
                 return new driver_item(
                     this.c,
-                    mount_path,
+                    now_mount.mount_path,
                     JSON.parse(now_mount.drive_conf || "{}"),
                     JSON.parse(now_mount.drive_save || "{}")
                 );
@@ -106,16 +107,19 @@ export class MountManage {
         }
     }
 
-    async loader(config: MountConfig | string): Promise<any> {
+    async loader(config: MountConfig | string | any): Promise<any> {
         if (typeof config === "string") config = {mount_path: config}
         const driver: any = await this.filter(config.mount_path);
         if (!driver) return null
-
         // 加载挂载 =========================================
         await driver.loadSelf();
         if (driver.change) {
-            config.drive_save = JSON.stringify(driver.serverData)
-            await this.config(config)
+            // 重新从数据库内读取 ==========================================
+            config = await this.select(config.mount_path)
+            if (!config.data || config.data.length <= 0) return driver
+            config.data[0].drive_save = JSON.stringify(driver.serverData)
+            // console.log("Updating config:", config.data[0])
+            await this.config(config.data[0])
         }
         return driver
     }

@@ -88,7 +88,7 @@ app.use('/@mount/:action/:method/*', async (c: Context) => {
 app.use('/@users/:action/:method/:source', async (c: Context) => {
     const action: string = c.req.param('action');
     const method: string = c.req.param('method');
-    const source: string = c.req.param('source');
+    const source: string = "/" + c.req.param('source');
     const config: Record<string, any> = await getConfig(c, 'config');
     // console.log("@mount", action, method, config)
     // 创建对象 ==========================================================================
@@ -150,11 +150,13 @@ app.use('/@users/:action/:method/:source', async (c: Context) => {
 app.use('/@files/:action/:method/*', async (c: Context): Promise<Response> => {
     const action: string = c.req.param('action');
     const method: string = c.req.param('method');
+    const upload  = await c.req.parseBody();
     // 创建对象 ==========================================================================
-    const source: string = c.req.path.split('/').slice(4).join('/');
+    const source: string = "/" + c.req.path.split('/').slice(4).join('/');
     const target: string | undefined = c.req.query('target');
     const driver: string | undefined = c.req.query('driver');
     const config: Record<string, any> = await getConfig(c, 'config');
+
     // 检查方法 ==========================================================================
     switch (method) {
         case "path": { // 筛选路径 =======================================================
@@ -172,7 +174,7 @@ app.use('/@files/:action/:method/*', async (c: Context): Promise<Response> => {
         }
     }
     const files: FilesManage = new FilesManage(c);
-    return await files.action(action, source, target, config);
+    return await files.action(action, source, target, config, driver, upload);
 })
 
 
@@ -192,12 +194,11 @@ app.use('/@files/:action/:method/*', async (c: Context): Promise<Response> => {
 // 页面访问 ##############################################################################
 app.use('*', async (c: Context): Promise<Response> => {
     // TODO:  增加虚拟主机功能，指定域名直接访问进行下载，否则返回页面
-    console.log(c.req.path)
-    const source: string = c.req.path.split('/').slice(1).join('/');
+    // console.log(c.req.path)
+    const source: string = "/" + c.req.path.split('/').slice(1).join('/');
     const files: FilesManage = new FilesManage(c);
-    return await files.action("list", source, "", {});
+    return await files.action("link", source, "", {});
 })
-
 
 
 // 用户认证 ==============================================================================

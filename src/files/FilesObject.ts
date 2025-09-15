@@ -1,5 +1,7 @@
 import {CryptInfo} from "../crypt/CryptObject";
 
+export * from "./FilesObject";
+
 // 文件信息 ############################
 export interface FileInfo {
     // 必要属性 ========================
@@ -46,8 +48,9 @@ export interface FileHash {
     sha1?: string       // SHA1哈希
     sha256?: string     // SHA2哈希
 }
+
 // 任务类型 ############################
-enum FSAction {
+export enum FSAction {
     CREATE = 0,         // 创建文件
     DELETE = 1,         // 删除文件
     UPLOAD = 2,         // 上传文件
@@ -56,7 +59,7 @@ enum FSAction {
 }
 
 // FS状态码 ############################
-enum FSStatus {
+export enum FSStatus {
     SUCCESSFUL_ALL = 0, // 成功处理
     PROCESSING_NOW = 1, // 正在处理
     NETWORKING_ERR = 2, // 网络失败
@@ -66,7 +69,7 @@ enum FSStatus {
 }
 
 // 文件类型 ############################
-enum FileType {
+export enum FileType {
     F_DIR = 0,           // 文件目录
     F_ALL = 1,           // 文件全部
     F_TXT = 2,           // 文本文件
