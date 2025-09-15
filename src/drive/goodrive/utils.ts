@@ -2,17 +2,21 @@ import {google} from 'googleapis';
 import {BasicClouds} from "../BasicClouds";
 import {Context} from "hono";
 import {JSONClient} from "google-auth-library/build/src/auth/googleauth";
+import {UserRefreshClient} from "google-auth-library/build/src/auth/refreshclient";
 
-
-interface SAVING_INFO {
-    client: string;
-    access: string;
+interface CONFIG_INFO {
+    client_id: string;
+    client_secret: string;
+    refresh_token: string;
+    use_online_api: boolean;
+    url_online_api: string;
 }
 
 export class HostClouds extends BasicClouds {
     // 公共数据 ================================================
     declare public config: Record<string, any> | any
-    declare public saving: Record<string, any> | SAVING_INFO
+    declare public saving: JSONClient | any
+
 
     // 构造函数 ================================================
     constructor(c: Context, router: string,
@@ -20,38 +24,44 @@ export class HostClouds extends BasicClouds {
                 public in_serverData: Record<string, any>,) {
         super(c, router);
         this.config = in_configData;
-        this.saving = in_serverData;
-        console.log("HostClouds Init:", this.config, this.saving);
+        this.saving = in_serverData || {};
     }
 
-    // 首次启动 ================================================
-    async getStart(): Promise<boolean> {
-        const client: JSONClient | any = await this.getAuthy()
+    // 初始接口 ================================================
+    async initConfig(): Promise<boolean> {
+        const client: JSONClient | any = await this.readConfig()
         await client.refreshAccessToken()
-        this.saving.access = client.credentials.access_token;
-        return this.saving.access != undefined;
+        this.saving = client;
+        this.change = true;
+        return this.saving.credentials.access_token != undefined;
     }
 
-    // 获取接口 ================================================
-    async getAuthy(): Promise<JSONClient> {
-        await this.newLogin();
-        if (!this.saving.client) await this.newLogin();
-        const saves_info: any = JSON.parse(this.saving.client)
-        return google.auth.fromJSON(saves_info);
-    }
-
-    // 执行登录 ================================================
-    async newLogin(): Promise<boolean> {
-        console.log('newLogin');
-        console.log(this.config);
-        this.saving.client = JSON.stringify({
+    // 载入接口 ================================================
+    async readConfig(): Promise<JSONClient> {
+        const client: Record<string, any> = {
             type: 'authorized_user',
             client_id: this.config.client_id,
             client_secret: this.config.client_secret,
             refresh_token: this.config.refresh_token,
-        });
-        return true;
+        };
+        return google.auth.fromJSON(client);
     }
 
-
+    // 载入接口 ================================================
+    async loadSaving(): Promise<JSONClient> {
+        // console.log("###loadSaving", this.saving);
+        if (this.saving) {
+            let saving = this.saving;
+            if (typeof this.saving.client === 'string')
+                saving = JSON.parse(saving);
+            this.saving = await this.readConfig();
+            this.saving["credentials"] = saving["credentials"];
+        }
+        if (!this.saving || !this.saving.credentials)
+            await this.initConfig();
+        if (this.saving.isTokenExpiring(this.saving.credentials.access_token))
+            await this.initConfig();
+        // console.log("loadSaving", this.saving.constructor.name, this.saving);
+        return this.saving;
+    }
 }

@@ -5,7 +5,7 @@ import {D1Database, KVNamespace} from "@cloudflare/workers-types";
 import {getConfig} from "./share/HonoParsers";
 import {DBSelect} from "./saves/SavesObject";
 import {UsersManage} from "./users/UsersManage";
-import {FilesAction} from "./files/FilesAction";
+import {FilesManage} from "./files/FilesManage";
 
 
 // 绑定数据 ###############################################################################
@@ -95,8 +95,8 @@ app.use('/@users/:action/:method/:source', async (c: Context) => {
     let users: UsersManage = new UsersManage(c);
     // 检查方法 ==========================================================================
     switch (method) {
-        case "uuid": { // 筛选编号 =======================================================
-            const result: UsersResult = await users.select();
+        case "name": { // 筛选编号 =======================================================
+            const result: UsersResult = await users.select(source);
             if (!result.data) return c.json({
                 flag: false, text: 'No UUID Matched'
             }, 400)
@@ -162,7 +162,7 @@ app.use('/@files/:action/:method/*', async (c: Context): Promise<Response> => {
             break;
         }
         case "uuid": { // 筛选编号 =======================================================
-            break;
+            break; // TODO: 使用UUID查找文件
         }
         case "none": { // 不筛选 =========================================================
             break;
@@ -171,7 +171,7 @@ app.use('/@files/:action/:method/*', async (c: Context): Promise<Response> => {
             return c.json({flag: false, text: 'Invalid Method'}, 400)
         }
     }
-    const files: FilesAction = new FilesAction(c);
+    const files: FilesManage = new FilesManage(c);
     return await files.action(action, source, target, config);
 })
 
@@ -184,7 +184,7 @@ app.use('/@files/:action/:method/*', async (c: Context): Promise<Response> => {
 //         "l": "list", "d": "link",
 //         "r": "remove", "c": "create",
 //     }
-//     const files: FilesAction = new FilesAction(c);
+//     const files: FilesManage = new FilesManage(c);
 //     return await files.action(action_map[action], source, "", {});
 // })
 
@@ -194,7 +194,7 @@ app.use('*', async (c: Context): Promise<Response> => {
     // TODO:  增加虚拟主机功能，指定域名直接访问进行下载，否则返回页面
     console.log(c.req.path)
     const source: string = c.req.path.split('/').slice(1).join('/');
-    const files: FilesAction = new FilesAction(c);
+    const files: FilesManage = new FilesManage(c);
     return await files.action("list", source, "", {});
 })
 

@@ -17,6 +17,7 @@ export interface CONFIG_INFO {
 export class BasicDriver {
     public config: any | Record<string, any> | CONFIG_INFO
     public saving: any | Record<string, any> | undefined
+    public change: boolean = false
     public router: string
     public c: Context
 

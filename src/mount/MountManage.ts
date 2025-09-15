@@ -46,17 +46,17 @@ export class MountManage {
         const all_mounts: MountResult = await this.select(mount_path);
         if (!all_mounts.data || all_mounts.data.length <= 0) return null;
         for (const now_mount of all_mounts.data) {
-            // console.log(now_mount.mount_path, mount_path);
+            console.log(now_mount.mount_path, mount_path);
             if (mount_path.startsWith(now_mount.mount_path)) {
-                // console.log(now_mount.mount_path, mount_path);
+                console.log(now_mount.mount_path, mount_path);
                 if (!now_mount.mount_type) return null;
                 let driver_item: any = sys.driver_list[now_mount.mount_type];
                 // console.log(driver_item, now_mount.mount_type, sys.driver_list)
                 return new driver_item(
                     this.c,
                     mount_path,
-                    JSON.parse(now_mount.drive_conf),
-                    JSON.parse(now_mount.drive_save)
+                    JSON.parse(now_mount.drive_conf || "{}"),
+                    JSON.parse(now_mount.drive_save || "{}")
                 );
             }
         }
@@ -80,7 +80,9 @@ export class MountManage {
                 text: "Mount Path Already Exists",
             }
         // 添加挂载 =========================================
-        return await this.config(config);
+        const result = await this.config(config);
+        await this.reload(config.mount_path);
+        return result
     }
 
     async reload(config: MountConfig | string): Promise<MountResult> {
@@ -93,20 +95,28 @@ export class MountManage {
             }
         }
         // 添加挂载 =========================================
-        return await driver.initSelf();
+        const result = await driver.initSelf();
+        if (result) {
+            config.drive_save = JSON.stringify(driver.serverData)
+            return await this.config(config);
+        }
+        return {
+            flag: result,
+            text: result ? "Reload Success" : "Reload Fail",
+        }
     }
 
     async loader(config: MountConfig | string): Promise<any> {
         if (typeof config === "string") config = {mount_path: config}
-        const driver = await this.filter(config.mount_path);
-        if (!driver) {
-            return {
-                flag: false,
-                text: "Mount Path Not Found",
-            }
-        }
+        const driver: any = await this.filter(config.mount_path);
+        if (!driver) return null
+
         // 加载挂载 =========================================
         await driver.loadSelf();
+        if (driver.change) {
+            config.drive_save = JSON.stringify(driver.serverData)
+            await this.config(config)
+        }
         return driver
     }
 
@@ -139,7 +149,6 @@ export class MountManage {
             keys: {"mount_path": config.mount_path},
             data: config,
         });
-        await this.loader(config);
         return {
             flag: result.flag,
             text: result.text,

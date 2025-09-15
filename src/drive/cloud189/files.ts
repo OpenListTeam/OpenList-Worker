@@ -1,4 +1,4 @@
-import * as fso from "../DriveObject";
+import * as fso from "../../files/FilesObject";
 import {HttpRequest} from "../../share/HttpRequest";
 import {HostClouds} from "../goodrive/utils";
 import {Context} from "hono";
@@ -29,7 +29,9 @@ export class HostDriver {
     }
 
     // 载入驱动 =========================================================
-    async loadSelf() {}
+    async loadSelf(): Promise<boolean> {
+        return true;
+    }
 
     // 列出文件 =========================================================
     async listFile(filePath: string): Promise<fso.PathInfo | null> {
