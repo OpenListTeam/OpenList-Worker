@@ -1,35 +1,46 @@
-import * as fso from "../../files/FilesObject";
-import {HttpRequest} from "../../share/HttpRequest";
-import {HostClouds} from "../goodrive/utils";
+// 公用导入 =====================================================
 import {Context} from "hono";
+import {HostClouds} from "./utils"
+import {BasicDriver} from "../BasicDriver";
+import {DriveResult} from "../DriveObject";
+import * as fso from "../../files/FilesObject";
+// 专用导入 =====================================================
+import {HttpRequest} from "../../share/HttpRequest";
 
 
-export class HostDriver {
-    public configData: Record<string, any>
-    public serverData: Record<string, any>
-    public driverUtil: HostClouds
-    public router: string
+export class HostDriver extends BasicDriver {
+    // 公共定义 =============================
     public c: Context
+    public router: string
+    public config: Record<string, any>
+    public saving: Record<string, any>
+    public clouds: HostClouds
 
+    // 构造函数 =============================
     constructor(
         c: Context, router: string,
-        public in_configData: Record<string, any>,
-        public in_serverData: Record<string, any>,
+        public config: Record<string, any>,
+        public saving: Record<string, any>,
     ) {
-        // super(c, router);
-        this.c = c;
-        this.router = router;
-        this.configData = in_configData;
-        this.serverData = in_serverData;
-        this.driverUtil = new HostClouds(
-            this.c, this.router,
-            this.configData,
-            this.serverData
-        )
+        super(c, router, config, saving);
+        this.clouds = new HostClouds(c, router, config, saving);
     }
 
     // 载入驱动 =========================================================
-    async loadSelf(): Promise<boolean> {
+    async initSelf(): Promise<any> {
+        const result: boolean = await this.clouds.initConfig();
+        this.saving = this.clouds.saving;
+        this.change = true;
+        return result;
+    }
+
+    // 载入驱动 =========================================================
+    async loadSelf(): Promise<any> {
+        // if (this.clouds) return false;
+        const result = await this.clouds.initConfig();
+        console.log("@loadSelf", result);
+        this.change = this.clouds.change;
+        this.server = this.clouds.saving;
         return true;
     }
 
@@ -38,7 +49,6 @@ export class HostDriver {
         const path_text: string = filePath.slice(1)
         const path_list: string[] = path_text.split("/");
         console.log(path_list);
-
         let now_uuid: number = -11
         for (const now_path in path_list) {
             // 创建参数模板
@@ -55,7 +65,7 @@ export class HostDriver {
                 "https://cloud.189.cn/api/open/file/listFiles.action", {
                     method: 'POST', headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',
-                        'Cookie': this.configData['cookie']
+                        'Cookie': this.config['cookie']
                     },
                     body: JSON.stringify(params)
                 },)

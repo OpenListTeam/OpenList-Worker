@@ -4,16 +4,20 @@ import {CONFIG_INFO, SAVING_INFO} from "./BasicDriver";
 import {DBSelect, DBResult} from "../saves/SavesManage";
 
 export class BasicClouds {
-    public config: any | Record<string, any> | CONFIG_INFO
+    public config: any | Record<string, any> | undefined
     public saving: any | Record<string, any> | undefined
     public change: boolean = false
     public router: string
     public c: Context
 
     // 构造函数 ================================================
-    constructor(c: Context, router: string) {
+    constructor(c: Context, router: string,
+                public config: Record<string, any> | any,
+                public saving: Record<string, any> | any) {
         this.c = c
         this.router = router
+        this.config = config;
+        this.saving = saving || {};
     }
 
     async initConfig(): Promise<any> {

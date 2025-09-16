@@ -53,6 +53,8 @@ export class MountManage {
                 if (!now_mount.mount_type) return null;
                 let driver_item: any = sys.driver_list[now_mount.mount_type];
                 // console.log(driver_item, now_mount.mount_type, sys.driver_list)
+                // console.log(driver_item)
+                console.log("@filter Config:", now_mount)
                 return new driver_item(
                     this.c,
                     now_mount.mount_path,

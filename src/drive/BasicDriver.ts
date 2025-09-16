@@ -1,4 +1,5 @@
 import {Context} from "hono";
+import {HostClouds} from "./goodrive/utils";
 
 export interface SAVING_INFO {
     config: any | Record<string, any> | CONFIG_INFO;
@@ -15,15 +16,27 @@ export interface CONFIG_INFO {
 }
 
 export class BasicDriver {
+    public c: Context
+    public router: string
     public config: any | Record<string, any> | CONFIG_INFO
     public saving: any | Record<string, any> | undefined
+    public clouds: any | HostClouds
     public change: boolean = false
-    public router: string
-    public c: Context
 
-    constructor(c: Context, router: string) {
-        this.c = c
-        this.router = router
+    constructor(
+        c: Context, router: string,
+        public config: Record<string, any>,
+        public saving: Record<string, any>,
+    ) {
+        this.c = c;
+        this.router = router;
+        this.config = config;
+        this.saving = saving;
+        this.clouds = new HostClouds(
+            this.c, this.router,
+            this.config,
+            this.saving
+        )
     }
 }
 

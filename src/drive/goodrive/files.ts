@@ -1,43 +1,40 @@
+// 公用导入 =====================================================
+import {Context} from "hono";
 import {HostClouds} from "./utils"
 import {BasicDriver} from "../BasicDriver";
-import {google} from 'googleapis';
-import {Context} from "hono";
+import {DriveResult} from "../DriveObject";
 import * as fso from "../../files/FilesObject";
-import {FileInfo, FileType, PathInfo} from "../../files/FilesObject";
-import {drive_v3} from "googleapis/build/src/apis/drive/v3";
+// 专用导入 ==================================================
+import {google} from 'googleapis';
 import {Readable} from "node:stream";
+import {drive_v3} from "googleapis/build/src/apis/drive/v3";
 
-
+// 驱动器 ####################################################
 export class HostDriver extends BasicDriver {
-    public configData: Record<string, any>
-    public serverData: Record<string, any>
-    public driverUtil: HostClouds
+    // 公共定义 =============================
+    public c: Context
     public router: string
+    public config: Record<string, any>
+    public saving: Record<string, any>
+    public clouds: HostClouds
+    // 专有定义 =============================
     public driver: drive_v3.Drive | undefined
     public client: OAuth2Client | undefined
-    public c: Context
 
+    // 构造函数 =============================
     constructor(
         c: Context, router: string,
-        public in_configData: Record<string, any>,
-        public in_serverData: Record<string, any>,
+        public config: Record<string, any>,
+        public saving: Record<string, any>,
     ) {
-        super(c, router);
-        this.c = c;
-        this.router = router;
-        this.configData = in_configData;
-        this.serverData = in_serverData;
-        this.driverUtil = new HostClouds(
-            this.c, this.router,
-            this.configData,
-            this.serverData
-        )
+        super(c, router, config, saving);
+        this.clouds = new HostClouds(c, router, config, saving);
     }
 
     // 初始驱动 =========================================================
     async initSelf(): Promise<boolean> {
-        const result: boolean = await this.driverUtil.initConfig();
-        this.serverData = this.driverUtil.saving;
+        const result: boolean = await this.clouds.initConfig();
+        this.saving = this.clouds.saving;
         this.change = true;
         return result;
     }
@@ -45,10 +42,10 @@ export class HostDriver extends BasicDriver {
     // 载入驱动 =========================================================
     async loadSelf(): Promise<boolean> {
         if (this.driver) return false;
-        this.client = await this.driverUtil.loadSaving();
+        this.client = await this.clouds.loadSaving();
         this.driver = google.drive({version: 'v3', auth: this.client});
-        this.change = this.driverUtil.change;
-        this.serverData = this.driverUtil.saving;
+        this.change = this.clouds.change;
+        this.saving = this.clouds.saving;
         return true;
     }
 
@@ -57,7 +54,7 @@ export class HostDriver extends BasicDriver {
         if (filePath) fileUUID = await this.findUUID(filePath);
         if (!fileUUID) return {fileList: [], pageSize: 0};
         // console.log("findFile: ", fileUUID);
-        const result: FileInfo[] = await this.findPath(fileUUID)
+        const result: fso.FileInfo[] = await this.findPath(fileUUID)
         return {
             pageSize: result.length,
             filePath: filePath,
@@ -72,7 +69,7 @@ export class HostDriver extends BasicDriver {
         let url: string = "https://www.googleapis.com/drive/v3/files/"
         url += fileUUID + "?includeItemsFromAllDrives=true"
         url += "&supportsAllDrives=true&alt=media&acknowledgeAbuse=true"
-        let bearer: string = "Bearer " + this.driverUtil.saving.credentials.access_token
+        let bearer: string = "Bearer " + this.clouds.saving.credentials.access_token
         let file_link: fso.FileLink = {
             direct: url,
             header: {"Authorization": bearer}
@@ -129,23 +126,23 @@ export class HostDriver extends BasicDriver {
 
     // 创建文件 =========================================================
     async makeFile(filePath?: string | null, destName?: string | null,
-                   fileType?: FileType | null, fileUUID?: string | null,
+                   fileType?: fso.FileType | null, fileUUID?: string | null,
                    content?: any | null): Promise<fso.FileTask | null> {
         if (filePath) fileUUID = await this.findUUID(filePath);
         if (!fileUUID || !destName || !this.driver) return null;
         let mimeType: string = content?.type || 'application/octet-stream'
-        if (fileType === FileType.F_DIR) {
+        if (fileType === fso.FileType.F_DIR) {
             mimeType = 'application/vnd.google-apps.folder'
             destName = destName.replace(/\/$/, '')
         }
         try {
-            if (fileType === FileType.F_DIR) {
+            if (fileType === fso.FileType.F_DIR) {
                 const requestBody = {
                     name: destName,
                     mimeType: mimeType,
                     parents: [fileUUID],
                 }
-                const media = fileType === FileType.F_DIR ? undefined : {
+                const media = fileType === fso.FileType.F_DIR ? undefined : {
                     mimeType: mimeType,
                     body: content ? Readable.from(array) : ""
                 }
@@ -178,7 +175,7 @@ export class HostDriver extends BasicDriver {
                     'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
                     {
                         method: 'POST',
-                        headers: {Authorization: `Bearer ${this.driverUtil.saving.credentials.access_token}`},
+                        headers: {Authorization: `Bearer ${this.clouds.saving.credentials.access_token}`},
                         body
                     }
                 )
@@ -192,7 +189,7 @@ export class HostDriver extends BasicDriver {
 
     // 上传文件 =========================================================
     async pushFile(filePath?: string | null, destName?: string | null,
-                   fileType?: FileType | null, content?: string | any | null):
+                   fileType?: fso.FileType | null, content?: string | any | null):
         Promise<fso.FileTask | null> {
         return this.makeFile(filePath, destName, fileType, null, content);
     }
@@ -206,8 +203,8 @@ export class HostDriver extends BasicDriver {
         let currentUUID: string = 'root';
         console.log("Now UUID:", currentUUID);
         for (const part of parts) {
-            const files: FileInfo[] = await this.findPath(currentUUID);
-            const foundFile: FileInfo | undefined = files.find(
+            const files: fso.FileInfo[] = await this.findPath(currentUUID);
+            const foundFile: fso.FileInfo | undefined = files.find(
                 file => file.fileName === part.replace(/\/$/, ''));
             if (!foundFile || !foundFile.fileUUID) return null;
             currentUUID = foundFile.fileUUID;
@@ -217,7 +214,7 @@ export class HostDriver extends BasicDriver {
     }
 
     // 读取目录 =========================================================
-    async findPath(fileUUID: string = "root"): Promise<FileInfo[]> {
+    async findPath(fileUUID: string = "root"): Promise<fso.FileInfo[]> {
         try {
             let file_all: fso.FileInfo[] = [];
             // console.log("findPath: ", fileUUID);

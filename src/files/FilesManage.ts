@@ -51,9 +51,6 @@ export class FilesManage {
                 const file_list: any[] = await drive_load.killFile(new_source)
                 return this.c.json({flag: true, text: 'Success', data: file_list})
             }
-            case "config": { // 配置对象 =====================================================
-                break;
-            }
             case "upload": { // 上传文件 =====================================================
                 if (!upload || !upload["files"])
                     return this.c.json({flag: false, text: 'Invalid Target'}, 400)

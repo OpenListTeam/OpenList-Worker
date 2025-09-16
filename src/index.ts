@@ -25,13 +25,13 @@ app.use('/@mount/:action/:method/*', async (c: Context) => {
     const action: string = c.req.param('action');
     const method: string = c.req.param('method');
     const config: Record<string, any> = await getConfig(c, 'config');
-    // console.log("@mount", action, method, config)
+    console.log("@mount", action, method, config)
     // 创建对象 ==========================================================================
     let mounts: MountManage = new MountManage(c);
     // 检查方法 ==========================================================================
     switch (method) {
         case "path": { // 筛选路径 =======================================================
-            config.mount_path = c.req.path.split('/').slice(4).join('/');
+            config.mount_path = "/" + c.req.path.split('/').slice(4).join('/');
             break;
         }
         case "uuid": { // 筛选编号 =======================================================
@@ -150,7 +150,7 @@ app.use('/@users/:action/:method/:source', async (c: Context) => {
 app.use('/@files/:action/:method/*', async (c: Context): Promise<Response> => {
     const action: string = c.req.param('action');
     const method: string = c.req.param('method');
-    const upload  = await c.req.parseBody();
+    const upload = await c.req.parseBody();
     // 创建对象 ==========================================================================
     const source: string = "/" + c.req.path.split('/').slice(4).join('/');
     const target: string | undefined = c.req.query('target');

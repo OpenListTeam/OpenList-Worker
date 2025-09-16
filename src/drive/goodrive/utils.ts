@@ -1,8 +1,12 @@
-import {google} from 'googleapis';
-import {BasicClouds} from "../BasicClouds";
+// 公用导入 =====================================================
 import {Context} from "hono";
+import {DriveResult} from "../DriveObject";
+import {BasicClouds} from "../BasicClouds";
+import * as con from "./const";
+// 专用导入 =====================================================
+import {google} from 'googleapis';
+
 import {JSONClient} from "google-auth-library/build/src/auth/googleauth";
-import {UserRefreshClient} from "google-auth-library/build/src/auth/refreshclient";
 
 interface CONFIG_INFO {
     client_id: string;
@@ -14,17 +18,14 @@ interface CONFIG_INFO {
 
 export class HostClouds extends BasicClouds {
     // 公共数据 ================================================
-    declare public config: Record<string, any> | any
+    declare public config: CONFIG_INFO | any
     declare public saving: JSONClient | any
-
 
     // 构造函数 ================================================
     constructor(c: Context, router: string,
-                public in_configData: Record<string, any>,
-                public in_serverData: Record<string, any>,) {
-        super(c, router);
-        this.config = in_configData;
-        this.saving = in_serverData || {};
+                public config: Record<string, any> | any,
+                public saving: Record<string, any> | any) {
+        super(c, router, config, saving);
     }
 
     // 初始接口 ================================================
