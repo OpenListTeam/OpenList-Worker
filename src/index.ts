@@ -178,7 +178,7 @@ app.use('/@files/:action/:method/*', async (c: Context): Promise<Response> => {
 })
 
 
-// // 文件访问 ##############################################################################
+// // 文件访问 ###########################################################################
 // app.use('/:action/*', async (c: Context): Promise<Response> => {
 //     const action: string = c.req.param('action');
 //     const source: string = c.req.path.split('/').slice(1).join('/');

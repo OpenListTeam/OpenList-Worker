@@ -42,7 +42,7 @@ export async function HttpRequest(Method: string = "GET",
                 search_data.searchParams.append(key, Option.search[key]);
             });
         }
-        // console.log(Params, search_data.href, record_data)
+        console.log(Params, search_data.href, record_data)
         // 执行请求 =====================================================================
         const default_inf = {'Content-Type': 'application/x-www-form-urlencoded'}
         const header_data: Record<string, any> | any = Header ? Header : default_inf

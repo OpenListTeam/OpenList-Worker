@@ -4,9 +4,10 @@ import {HostClouds} from "./utils"
 import {BasicDriver} from "../BasicDriver";
 import {DriveResult} from "../DriveObject";
 import * as fso from "../../files/FilesObject";
+import * as con from "./const";
 // 专用导入 =====================================================
 import {HttpRequest} from "../../share/HttpRequest";
-
+import {v4 as uuidv4} from 'uuid';
 
 export class HostDriver extends BasicDriver {
     // 构造函数 =============================
@@ -50,24 +51,33 @@ export class HostDriver extends BasicDriver {
         for (const now_path in path_list) {
             // 创建参数模板
             console.log("#listFile", path_list[now_path]);
+            console.log("#listFile", this.saving.token.accessToken);
             const params: Record<string, any> = {
-                mediaType: "0",
+                // 头部 =============================
+                appKey: con.APP_ID,
+                timeStamp: Date.now(),
+                accessToken: this.saving.token.accessToken,
+                // paras: "",
+                // sign: "",
+                // 参数 =============================
                 folderId: now_uuid,
+                mediaType: "0",
                 iconOption: "5",
-                orderBy: "lastOpTime",
-                descending: "true",
+                // 分页 =============================
+                recursive: "0",
+                orderBy: "filename",
+                descending: "false",
             }
-            // 请求文件列表
-            const result_data: any = await fetch(
-                "https://cloud.189.cn/api/open/file/listFiles.action", {
-                    method: 'POST', headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'Cookie': this.config['cookie']
-                    },
-                    body: JSON.stringify(params)
-                },)
-            const result_json: Record<string, any> = await result_data.text()
-            console.log(result_json);
+            console.log("#listFile", params);
+            const result_data: any = await HttpRequest(
+                "POST",
+                "https://cloud.189.cn/api/open/file/listFiles.action",
+                params, {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Request-ID': uuidv4()
+                }, {finder: "json"}
+            );
+            console.log(result_data);
         }
         return null;
     }
@@ -105,7 +115,7 @@ export class HostDriver extends BasicDriver {
         }
 
         try {
-            const response = await this.clouds.httpRequest.get(fullUrl, { params });
+            const response = await this.clouds.httpRequest.get(fullUrl, {params});
             return response.data;
         } catch (error) {
             console.error("Failed to get files:", error);
