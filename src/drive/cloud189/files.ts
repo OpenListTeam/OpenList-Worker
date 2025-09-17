@@ -9,13 +9,6 @@ import {HttpRequest} from "../../share/HttpRequest";
 
 
 export class HostDriver extends BasicDriver {
-    // 公共定义 =============================
-    public c: Context
-    public router: string
-    public config: Record<string, any>
-    public saving: Record<string, any>
-    public clouds: HostClouds
-
     // 构造函数 =============================
     constructor(
         c: Context, router: string,
@@ -27,21 +20,25 @@ export class HostDriver extends BasicDriver {
     }
 
     // 载入驱动 =========================================================
-    async initSelf(): Promise<any> {
-        const result: boolean = await this.clouds.initConfig();
-        this.saving = this.clouds.saving;
-        this.change = true;
+    async initSelf(): Promise<DriveResult> {
+        const result: DriveResult = await this.clouds.initConfig();
+        console.log("@initSelf", result);
+        if (result.flag) {
+            this.saving = this.clouds.saving;
+            this.change = true;
+        }
         return result;
     }
 
     // 载入驱动 =========================================================
-    async loadSelf(): Promise<any> {
-        // if (this.clouds) return false;
-        const result = await this.clouds.initConfig();
+    async loadSelf(): Promise<DriveResult> {
+        const result: DriveResult = await this.clouds.readConfig();
         console.log("@loadSelf", result);
-        this.change = this.clouds.change;
-        this.server = this.clouds.saving;
-        return true;
+        if (result.flag) {
+            this.change = this.clouds.change;
+            this.saving = this.clouds.saving;
+        }
+        return result;
     }
 
     // 列出文件 =========================================================
@@ -52,8 +49,8 @@ export class HostDriver extends BasicDriver {
         let now_uuid: number = -11
         for (const now_path in path_list) {
             // 创建参数模板
-            console.log(path_list[now_path]);
-            const params: FileListParams = {
+            console.log("#listFile", path_list[now_path]);
+            const params: Record<string, any> = {
                 mediaType: "0",
                 folderId: now_uuid,
                 iconOption: "5",
@@ -75,6 +72,44 @@ export class HostDriver extends BasicDriver {
         return null;
     }
 
+    // 在HostDriver类中添加以下方法
+    async getFilesWithPage(fileId: string,
+                           isFamily: boolean,
+                           pageNum: number,
+                           pageSize: number,
+                           orderBy: string,
+                           orderDirection: string): Promise<any> {
+        let fullUrl = this.clouds.API_URL;
+        if (isFamily) {
+            fullUrl += "/family/file";
+        }
+        fullUrl += "/listFiles.action";
+
+        const params: Record<string, string> = {
+            folderId: fileId,
+            fileType: "0",
+            mediaAttr: "0",
+            iconOption: "5",
+            pageNum: pageNum.toString(),
+            pageSize: pageSize.toString()
+        };
+
+        if (isFamily) {
+            params.familyId = this.clouds.FamilyID;
+            params.orderBy = "1";
+            params.descending = "false";
+        } else {
+            params.recursive = "0";
+            params.orderBy = orderBy;
+            params.descending = "false";
+        }
+
+        try {
+            const response = await this.clouds.httpRequest.get(fullUrl, { params });
+            return response.data;
+        } catch (error) {
+            console.error("Failed to get files:", error);
+            throw error;
+        }
+    }
 }
-
-

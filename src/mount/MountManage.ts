@@ -2,6 +2,7 @@ import {Context} from "hono";
 import {SavesManage} from "../saves/SavesManage";
 import {DBResult} from "../saves/SavesObject";
 import * as sys from "../drive/DriveSelect";
+import {DriveResult} from "../drive/DriveObject";
 
 /**
  * 挂载点管理类，用于处理挂载点的创建、删除、配置和查询操作。
@@ -114,13 +115,16 @@ export class MountManage {
         const driver: any = await this.filter(config.mount_path);
         if (!driver) return null
         // 加载挂载 =========================================
-        await driver.loadSelf();
+        const result: DriveResult = await driver.loadSelf();
+        // console.log("@loader", result, driver.change)
+        if (!result.flag) return null;
         if (driver.change) {
             // 重新从数据库内读取 ==========================================
-            config = await this.select(config.mount_path)
+            config = await this.select(driver.router);
+            // console.log("Updating config:", config)
             if (!config.data || config.data.length <= 0) return driver
-            config.data[0].drive_save = JSON.stringify(driver.serverData)
-            // console.log("Updating config:", config.data[0])
+            config.data[0].drive_save = JSON.stringify(driver.saving)
+            console.log("Updating config:", config.data[0])
             await this.config(config.data[0])
         }
         return driver

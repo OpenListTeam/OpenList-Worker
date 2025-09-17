@@ -6,28 +6,26 @@ import * as con from "./const";
 // 专用导入 =====================================================
 import * as crypto from "crypto";
 import {HttpRequest} from "../../share/HttpRequest";
+import {JSONClient} from "google-auth-library/build/src/auth/googleauth";
+import {google} from "googleapis";
 
 
 // 驱动器 #######################################################
 export class HostClouds extends BasicClouds {
-    // 公共数据 =================================================
-    public config: Record<string, any> | undefined;
-    public saving: Record<string, any> | undefined;
-
     // 专有数据 =================================================
-    private loginParam: CONFIG_INFO | null = null;
-    private tokenParam: APP_SESSION | null = null;
+    private loginParam: Record<string, any> = {};
+    private tokenParam: APP_SESSION | Record<string, any> = {};
     private verifyCode: string | null | any = '';
 
     // 构造函数 ================================================
     constructor(c: Context, router: string,
-                public config: Record<string, any> | any,
-                public saving: Record<string, any> | any) {
-        super(c, router, config, saving);
+                public in_config: Record<string, any>,
+                public in_saving: Record<string, any>) {
+        super(c, router, in_config, in_saving);
     }
 
     // RSA加密 =====================================================
-    async rsaEncrypt(publicKey: string, data: string): string {
+    async rsaEncrypt(publicKey: string, data: string): Promise<string> {
         const buffer = Buffer.from(data, "utf8");
         const crypts = crypto.publicEncrypt(publicKey, buffer);
         return crypts.toString("base64");
@@ -36,17 +34,19 @@ export class HostClouds extends BasicClouds {
     // 获取登录参数 =================================================
     async initParams(): Promise<DriveResult> {
         // 清除登录数据 ========================================================
-        this.serverData = {};
+        this.saving = {};
         // 获取登录参数 ========================================================
         const res = await HttpRequest(
+            "GET",
             `${con.WEB_URL}/api/portal/unifyLoginForPC.action`, {
                 appId: con.APP_ID,
                 clientType: con.CLIENT_TYPE,
                 returnURL: con.RETURN_URL,
                 timeStamp: Date.now().toString(),
-            }, "GET", false, undefined, "text");
+            }, undefined, {finder: "text"});
+        // console.log(res)
         if (!res) {
-            console.log(res)
+            // console.log(res)
             return {flag: false, text: "Failed to fetch login parameters"}
         }
         // 提取登录参数 ========================================================
@@ -56,17 +56,17 @@ export class HostClouds extends BasicClouds {
         const paramId = res.match(/paramId = "(.+?)"/)?.[1];
         const reqId = res.match(/reqId = "(.+?)"/)?.[1];
         if (!captchaToken || !lt || !paramId || !reqId) {
-            console.log("res", captchaToken, lt, paramId, reqId)
+            // console.log("res", captchaToken, lt, paramId, reqId)
             return {flag: false, text: "Failed to extract login parameters"}
         }
         // 获取RSA公钥 =========================================================
-        const encryptConf = await HttpRequest(
+        const encryptConf = await HttpRequest("POST",
             `${con.AUTH_URL}/api/logbox/config/encryptConf.do`, {appId: con.APP_ID},
-            "POST", false, {"Content-Type": "application/json"}, "json"
+            {"Content-Type": "application/json"}, {finder: "json"}
         );
         // console.log(encryptConf)
         if (!encryptConf?.data?.pubKey || !encryptConf?.data?.pre) {
-            console.log("encryptConf", encryptConf)
+            // console.log("encryptConf", encryptConf)
             return {flag: false, text: "Failed to fetch RSA public key"}
         }
         const jRsaKey = `-----BEGIN PUBLIC KEY-----\n${encryptConf.data.pubKey}\n-----END PUBLIC KEY-----`;
@@ -84,6 +84,7 @@ export class HostClouds extends BasicClouds {
             rsaUsername,
             rsaPassword,
         };
+        // console.log(this.loginParam)
 
         // 检查是否需要验证码
         // const needCaptcha = await HttpRequest(
@@ -127,96 +128,118 @@ export class HostClouds extends BasicClouds {
     // 初始化配置项 =================================================
     async initConfig(): Promise<DriveResult> {
         // 初始化登录所需参数 =======================================
-        const result = await this.initParams()
+        const result: DriveResult = await this.initParams()
         if (!result.flag) {
-            console.log(result)
+            // console.log(result)
             return {flag: false, text: result.text};
         }
-        console.log(this.config, this.loginParam)
+        // console.log(this.config, this.loginParam)
         try {
             // 发送登录请求 =========================================
+            this.saving.login = {
+                "appKey": con.APP_ID,
+                "accountType": con.ACCOUNT_TYPE,
+                "userName": this.config.username,
+                "password": this.config.password,
+                "validateCode": this.verifyCode,
+                "captchaToken": this.loginParam.CaptchaToken,
+                "returnUrl": con.RETURN_URL,
+                "dynamicCheck": "FALSE",
+                "clientType": con.CLIENT_TYPE,
+                "cb_SaveName": "1",
+                "isOauth2": "false",
+                "state": "",
+                "paramId": this.loginParam.ParamId,
+                "reqId": this.loginParam.ReqId,
+                "lt": this.loginParam.Lt
+            }
             const login_resp: LOGIN_RESULT = await HttpRequest(
-                `${con.AUTH_URL}/api/logbox/oauth2/loginSubmit.do`,
-                {
-                    "appKey": con.APP_ID,
-                    "accountType": con.ACCOUNT_TYPE,
-                    "userName": this.config.username,
-                    "password": this.config.password,
-                    "validateCode": this.verifyCode,
-                    "captchaToken": this.loginParam.CaptchaToken,
-                    "returnUrl": con.RETURN_URL,
-                    "dynamicCheck": "FALSE",
-                    "clientType": con.CLIENT_TYPE,
-                    "cb_SaveName": "1",
-                    "isOauth2": "false",
-                    "state": "",
-                    "paramId": this.loginParam.ParamId,
-                    "reqId": this.loginParam.ReqId,
-                    "lt": this.loginParam.Lt
-                },
-                "POST", false, {
+                "POST", `${con.AUTH_URL}/api/logbox/oauth2/loginSubmit.do`,
+                this.saving.login, {
                     "Content-Type": "application/x-www-form-urlencoded",
+                    "Referer": con.WEB_URL,
                     "REQID": this.loginParam.ReqId,
                     "lt": this.loginParam.Lt
-                }, "json"
+                }, {finder: "json"}
             );
             // 检查登录结果 ==========================================
-            console.log(login_resp)
-            if (!login_resp.ToUrl) {
-                console.log(`login failed, msg: ${login_resp.msg}`)
+            // console.log(login_resp)
+            if (!login_resp.toUrl) {
+                console.log(`登录账号失败: ${login_resp.msg}`)
                 return {
                     flag: false,
-                    text: `login failed, msg: ${login_resp.msg}`
+                    text: `登录账号失败: ${login_resp.msg}`
                 }
 
             }
-
             // 获取Token信息 =========================================
-            suffixParams["redirectURL"] = login_resp.ToUrl;
-            const tokenInfo: APP_SESSION = await HttpRequest(
-                `${API_URL}/getSessionForPC.action`,
-                suffixParams, "POST", false, undefined, "json"
+            // this.saving.login["redirectURL"] = login_resp.toUrl;
+            const tokenInfo: APP_SESSION = await HttpRequest("POST",
+                `${con.API_URL}/getSessionForPC.action`,
+                undefined, undefined, {
+                    finder: "xml",
+                    search: {
+                        "redirectURL": login_resp.toUrl,
+                        "clientType": "TELEPC",
+                        "version": con.VERSION,
+                        "channelId": con.CHANNEL_ID,
+                        "rand": `${Math.floor(Math.random() * 1e5)}_${Math.floor(Math.random() * 1e10)}`,
+                    }
+                }
             );
+            console.log("tokenInfo:", tokenInfo)
             // 检查错误 ==============================================
-            if (tokenInfo.ResCode !== 0) {
-                console.log(`login failed, msg: ${tokenInfo}`)
+            if (!tokenInfo || !tokenInfo.accessToken) {
+                // console.log(`获取认证失败: ${tokenInfo}`)
                 return {
                     flag: false,
-                    text: `login failed, msg: ${tokenInfo}`
+                    text: `获取认证失败: ${tokenInfo}`
                 }
             }
             this.tokenParam = tokenInfo;
-            console.log(tokenInfo)
+            this.saving.token = tokenInfo;
+            // console.log(tokenInfo)
+            this.change = true;
+            return {
+                flag: true,
+                text: "OK"
+            }
             // 异常处理 ==============================================
         } catch (e) {
-            console.log(e.message)
+            console.log((e as Error).message)
             return {
                 flag: false,
-                text: `login failed, msg: ${e.message}`
+                text: `系统内部错误: ${(e as Error).message}`
             }
         } finally {
             this.verifyCode = ""; // 销毁短信验证码
-            this.loginParam = null; // 销毁登录参数
+            this.loginParam = {}; // 销毁登录参数
+        }
+    }
+
+    // 载入接口 ================================================
+    async readConfig(): Promise<DriveResult> {
+        if (!this.saving.token) return await this.initConfig();
+        this.tokenParam = this.saving.token;
+        this.loginParam = this.saving.login;
+        return {
+            flag: true,
+            text: "OK"
         }
     }
 
     async refreshSession(): Promise<Error | null> {
         try {
-            const tokenInfo = this.tokenParam;
+            const tokenInfo: APP_SESSION | Record<string, any> = this.tokenParam;
             if (!tokenInfo) {
                 return new Error("No token info available");
             }
 
-            const resp = await HttpRequest(
-                `${API_URL}/getSessionForPC.action`,
-                {
+            const resp = await HttpRequest("POST",
+                `${con.API_URL}/getSessionForPC.action`, {
                     "accessToken": tokenInfo.AccessToken,
-                    "appId": APP_ID
-                },
-                "POST",
-                false,
-                undefined,
-                "json"
+                    "appId": con.APP_ID
+                }, undefined, {finder: "json"}
             );
 
             if (resp.ResCode !== 0) {
@@ -229,167 +252,152 @@ export class HostClouds extends BasicClouds {
             return e as Error;
         }
     }
-
-    async getFiles(fileId: string, isFamily: boolean): Promise<Array<Record<string, any>> | null> {
-        const files: Array<Record<string, any>> = [];
-        for (let pageNum = 1; ; pageNum++) {
-            const resp = await this.getFilesWithPage(fileId, isFamily, pageNum, 1000, "filename", "asc");
-            if (!resp || resp.FileListAO.Count === 0) {
-                break;
-            }
-
-            files.push(...resp.FileListAO.FolderList, ...resp.FileListAO.FileList);
-        }
-        return files.length > 0 ? files : null;
-    }
-
-    async uploadFile(file: File, folderId: string, isFamily: boolean = false): Promise<Record<string, any> | null> {
-        try {
-            const uploadInfo = await this.initUpload(folderId, file.name, file.size.toString(), isFamily);
-            if (!uploadInfo) {
-                return null;
-            }
-
-            const uploadUrl = uploadInfo.UploadUrl;
-            const headers = {
-                "Content-Type": "application/octet-stream",
-                "Content-Length": file.size.toString(),
-            };
-
-            const response = await HttpRequest(
-                uploadUrl,
-                file,
-                "PUT",
-                false,
-                headers,
-                "json"
-            );
-
-            if (response.ResCode !== 0) {
-                throw new Error(response.ResMessage || "Upload failed");
-            }
-
-            return response;
-        } catch (e) {
-            console.error("Upload error:", e);
-            return null;
-        }
-    }
-
-    async deleteFile(fileId: string, isFamily: boolean = false): Promise<boolean> {
-        try {
-            const url = isFamily ? `${API_URL}/family/file/deleteFile.action` : `${API_URL}/deleteFile.action`;
-            const params = {
-                "fileId": fileId,
-            };
-
-            const response = await HttpRequest(
-                url,
-                params,
-                "POST",
-                false,
-                undefined,
-                "json"
-            );
-
-            return response.ResCode === 0;
-        } catch (e) {
-            console.error("Delete error:", e);
-            return false;
-        }
-    }
-
-    async renameFile(fileId: string, newName: string, isFamily: boolean = false): Promise<boolean> {
-        try {
-            const url = isFamily ? `${API_URL}/family/file/renameFile.action` : `${API_URL}/renameFile.action`;
-            const params = {
-                "fileId": fileId,
-                "newFileName": newName,
-            };
-
-            const response = await HttpRequest(
-                url,
-                params,
-                "POST",
-                false,
-                undefined,
-                "json"
-            );
-
-            return response.ResCode === 0;
-        } catch (e) {
-            console.error("Rename error:", e);
-            return false;
-        }
-    }
-
-    async downloadFile(fileId: string, isFamily: boolean = false): Promise<Blob | null> {
-        try {
-            const url = isFamily ? `${API_URL}/family/file/downloadFile.action` : `${API_URL}/downloadFile.action`;
-            const params = {
-                "fileId": fileId,
-            };
-
-            const response = await HttpRequest(
-                url,
-                params,
-                "GET",
-                false,
-                undefined,
-                "blob"
-            );
-
-            return response;
-        } catch (e) {
-            console.error("Download error:", e);
-            return null;
-        }
-    }
-
-    async batchDelete(fileIds: string[], isFamily: boolean = false): Promise<boolean> {
-        try {
-            const url = isFamily ? `${API_URL}/family/file/batchDeleteFile.action` : `${API_URL}/batchDeleteFile.action`;
-            const params = {
-                "fileIds": fileIds.join(","),
-            };
-
-            const response = await HttpRequest(
-                url,
-                params,
-                "POST",
-                false,
-                undefined,
-                "json"
-            );
-
-            return response.ResCode === 0;
-        } catch (e) {
-            console.error("Batch delete error:", e);
-            return false;
-        }
-    }
-
-    async batchMove(fileIds: string[], targetFolderId: string, isFamily: boolean = false): Promise<boolean> {
-        try {
-            const url = isFamily ? `${API_URL}/family/file/batchMoveFile.action` : `${API_URL}/batchMoveFile.action`;
-            const params = {
-                "fileIds": fileIds.join(","),
-                "targetFolderId": targetFolderId,
-            };
-
-            const response = await HttpRequest(
-                url,
-                params,
-                "POST",
-                false,
-                undefined,
-                "json"
-            );
-
-            return response.ResCode === 0;
-        } catch (e) {
-            console.error("Batch move error:", e);
-            return false;
-        }
-    }
 }
+
+//     async getFiles(fileId: string, isFamily: boolean): Promise<Array<Record<string, any>> | null> {
+//         const files: Array<Record<string, any>> = [];
+//         for (let pageNum = 1; ; pageNum++) {
+//             const resp = await this.getFilesWithPage(fileId, isFamily, pageNum, 1000, "filename", "asc");
+//             if (!resp || resp.FileListAO.Count === 0) {
+//                 break;
+//             }
+//
+//             files.push(...resp.FileListAO.FolderList, ...resp.FileListAO.FileList);
+//         }
+//         return files.length > 0 ? files : null;
+//     }
+//
+//     async uploadFile(file: File, folderId: string, isFamily: boolean = false): Promise<Record<string, any> | null> {
+//         try {
+//             const uploadInfo = await this.initUpload(folderId, file.name, file.size.toString(), isFamily);
+//             if (!uploadInfo) {
+//                 return null;
+//             }
+//
+//             const uploadUrl = uploadInfo.UploadUrl;
+//             const headers = {
+//                 "Content-Type": "application/octet-stream",
+//                 "Content-Length": file.size.toString(),
+//             };
+//
+//             const response = await HttpRequest("PUT",
+//                 uploadUrl, file, headers,
+//                 {finder: "json"}
+//             );
+//
+//             if (response.ResCode !== 0) {
+//                 throw new Error(response.ResMessage || "Upload failed");
+//             }
+//
+//             return response;
+//         } catch (e) {
+//             console.error("Upload error:", e);
+//             return null;
+//         }
+//     }
+//
+//     async deleteFile(fileId: string, isFamily: boolean = false): Promise<boolean> {
+//         try {
+//             const url = isFamily ? `${API_URL}/family/file/deleteFile.action` : `${API_URL}/deleteFile.action`;
+//             const params = {
+//                 "fileId": fileId,
+//             };
+//
+//             const response = await HttpRequest("POST", url, params, undefined, {finder: "json"});
+//
+//             return response.ResCode === 0;
+//         } catch (e) {
+//             console.error("Delete error:", e);
+//             return false;
+//         }
+//     }
+//
+//     async renameFile(fileId: string, newName: string, isFamily: boolean = false): Promise<boolean> {
+//         try {
+//             const url = isFamily ? `${API_URL}/family/file/renameFile.action` : `${API_URL}/renameFile.action`;
+//             const params = {
+//                 "fileId": fileId,
+//                 "newFileName": newName,
+//             };
+//
+//             const response = await HttpRequest("POST",
+//                 url,
+//                 params,
+//                 undefined,
+//                 {finder: "json"}
+//             );
+//
+//             return response.ResCode === 0;
+//         } catch (e) {
+//             console.error("Rename error:", e);
+//             return false;
+//         }
+//     }
+//
+//     async downloadFile(fileId: string, isFamily: boolean = false): Promise<Blob | null> {
+//         try {
+//             const url = isFamily ? `${API_URL}/family/file/downloadFile.action` : `${API_URL}/downloadFile.action`;
+//             const params = {
+//                 "fileId": fileId,
+//             };
+//
+//             const response = await HttpRequest(
+//                 "GET",
+//                 url,
+//                 params,
+//                 undefined,
+//                 {finder: "blob"}
+//             );
+//
+//             return response;
+//         } catch (e) {
+//             console.error("Download error:", e);
+//             return null;
+//         }
+//     }
+//
+//     async batchDelete(fileIds: string[], isFamily: boolean = false): Promise<boolean> {
+//         try {
+//             const url = isFamily ? `${API_URL}/family/file/batchDeleteFile.action` : `${API_URL}/batchDeleteFile.action`;
+//             const params = {
+//                 "fileIds": fileIds.join(","),
+//             };
+//
+//             const response = await HttpRequest("POST",
+//                 url,
+//                 params,
+//                 undefined,
+//                 {finder: "json"}
+//             );
+//
+//             return response.ResCode === 0;
+//         } catch (e) {
+//             console.error("Batch delete error:", e);
+//             return false;
+//         }
+//     }
+//
+//     async batchMove(fileIds: string[], targetFolderId: string, isFamily: boolean = false): Promise<boolean> {
+//         try {
+//             const url = isFamily ? `${API_URL}/family/file/batchMoveFile.action` : `${API_URL}/batchMoveFile.action`;
+//             const params = {
+//                 "fileIds": fileIds.join(","),
+//                 "targetFolderId": targetFolderId,
+//             };
+//
+//             const response = await HttpRequest(
+//                 "POST",
+//                 url,
+//                 params,
+//                 undefined,
+//                 {finder: "json"}
+//             );
+//
+//             return response.ResCode === 0;
+//         } catch (e) {
+//             console.error("Batch move error:", e);
+//             return false;
+//         }
+//     }
+
+

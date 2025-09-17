@@ -197,7 +197,7 @@ app.use('*', async (c: Context): Promise<Response> => {
     // console.log(c.req.path)
     const source: string = "/" + c.req.path.split('/').slice(1).join('/');
     const files: FilesManage = new FilesManage(c);
-    return await files.action("link", source, "", {});
+    return await files.action("list", source, "", {});
 })
 
 
