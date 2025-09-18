@@ -74,10 +74,32 @@ export class HostDriver extends BasicDriver {
                 "https://cloud.189.cn/api/open/file/listFiles.action",
                 params, {
                     'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-Request-ID': uuidv4()
-                }, {finder: "json"}
+                    'X-Request-ID': uuidv4(),
+                    "Cookie": ""
+                }, {finder: "xml"}
             );
-            console.log(result_data);
+            // console.log(result_data.listFiles.fileList.folder);
+            let file_all: fso.FileInfo[] = [];
+            let file_raw: any[] = result_data.listFiles.fileList.folder.concat(
+                result_data.listFiles.fileList.file
+            );
+            // console.log(result_data);
+            for (const now_file of file_raw) {
+                file_all.push({
+                    filePath: "",
+                    fileUUID: now_file.id,
+                    fileName: now_file.name,
+                    fileSize: now_file.mediaType == "0" ? 0 : 0,
+                    fileType: now_file.mediaType == "0" ? 0 : 1,
+                    fileHash: {
+                        md5: now_file.mediaType == "0" ? undefined : now_file.md5,
+                    },
+                    thumbnails: now_file.mediaType == "1" ? now_file.icon.largeUrl : "",
+                    timeModify: new Date(now_file.createDate),
+                    timeCreate: new Date(now_file.lastOpTime)
+                });
+            }
+            console.log(file_all);
         }
         return null;
     }

@@ -2,6 +2,7 @@
 type CONFIG_INFO = {
     username: string;
     password: string;
+    cookie: string;
 };
 
 type APP_SESSION = {
