@@ -10,21 +10,21 @@ import {JSONClient} from "google-auth-library/build/src/auth/googleauth";
 import {google} from "googleapis";
 
 
-// 驱动器 #######################################################
+// 驱动器 ###########################################################
 export class HostClouds extends BasicClouds {
-    // 专有数据 =================================================
+    // 专有数据 =====================================================
     private loginParam: Record<string, any> = {};
     private tokenParam: APP_SESSION | Record<string, any> = {};
     private verifyCode: string | null | any = '';
 
-    // 构造函数 ================================================
+    // 构造函数 =====================================================
     constructor(c: Context, router: string,
                 public in_config: Record<string, any>,
                 public in_saving: Record<string, any>) {
         super(c, router, in_config, in_saving);
     }
 
-    // RSA加密 =====================================================
+    // RSA加密 ======================================================
     async rsaEncrypt(publicKey: string, data: string): Promise<string> {
         const buffer = Buffer.from(data, "utf8");
         const crypts = crypto.publicEncrypt(publicKey, buffer);
