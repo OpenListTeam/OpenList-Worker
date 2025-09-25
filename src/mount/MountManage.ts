@@ -48,17 +48,18 @@ export class MountManage {
         // console.log("@filter", all_mounts);
         if (!all_mounts.data || all_mounts.data.length <= 0) return null;
         for (const now_mount of all_mounts.data) {
-            // console.log("@filter", now_mount.mount_path, mount_path);
-            if (mount_path.startsWith(now_mount.mount_path)) {
-                // console.log(now_mount.mount_path, mount_path);
+            const mount_save: string = now_mount.mount_path.replace(/\/$/, '');
+            console.log("@filter now", mount_save, mount_path);
+            if (mount_path.startsWith(mount_save)) {
+                console.log("@filter hit", mount_save, mount_path);
                 if (!now_mount.mount_type) return null;
                 let driver_item: any = sys.driver_list[now_mount.mount_type];
                 // console.log(driver_item, now_mount.mount_type, sys.driver_list)
                 // console.log(driver_item)
-                console.log("@filter Config:", now_mount)
+                console.log("@filter Config:", mount_save)
                 return new driver_item(
                     this.c,
-                    now_mount.mount_path,
+                    mount_save,
                     JSON.parse(now_mount.drive_conf || "{}"),
                     JSON.parse(now_mount.drive_save || "{}")
                 );
@@ -114,10 +115,13 @@ export class MountManage {
         if (typeof config === "string") config = {mount_path: config}
         const driver: any = await this.filter(config.mount_path);
         if (!driver) return null
+        console.log("@loader", driver.router)
+        console.log("@loader", "Find driver successfully")
         // 加载挂载 =========================================
         const result: DriveResult = await driver.loadSelf();
-        // console.log("@loader", result, driver.change)
+        console.log("@loader", result, driver.change)
         if (!result.flag) return null;
+        console.log("@loader", "Load driver successfully")
         if (driver.change) {
             // 重新从数据库内读取 ==========================================
             config = await this.select(driver.router);

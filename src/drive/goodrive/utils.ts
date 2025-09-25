@@ -29,12 +29,15 @@ export class HostClouds extends BasicClouds {
     }
 
     // 初始接口 ================================================
-    async initConfig(): Promise<boolean> {
+    async initConfig(): Promise<DriveResult> {
         const client: JSONClient | any = await this.readConfig()
         await client.refreshAccessToken()
         this.saving = client;
         this.change = true;
-        return this.saving.credentials.access_token != undefined;
+        return {
+            flag: this.saving.credentials.access_token != undefined,
+            text: "",
+        };
     }
 
     // 载入接口 ================================================

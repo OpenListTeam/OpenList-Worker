@@ -93,9 +93,9 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
       icon: <Folder />,
       defaultExpanded: true,
       items: [
-        { id: 'public-directory', title: '公共目录', icon: <Folder />, path: '/public-directory' },
-        { id: 'my-files', title: '我的文件', icon: <InsertDriveFile />, path: '/my-files' },
-        { id: 'my-shares', title: '我的分享', icon: <Share />, path: '/my-shares' }
+        { id: 'public-directory', title: '公共目录', icon: <Folder />, path: '/' },
+        { id: 'my-files', title: '我的文件', icon: <InsertDriveFile />, path: '/@pages/myfile' },
+        { id: 'my-shares', title: '我的分享', icon: <Share />, path: '/@pages/my-shares' }
       ]
     },
     {
@@ -104,8 +104,8 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
       icon: <FolderSpecial />,
       defaultExpanded: true,
       items: [
-        { id: 'directory-config', title: '目录配置', icon: <FolderSpecial />, path: '/directory-config' },
-        { id: 'crypt-config', title: '加密配置', icon: <Security />, path: '/crypt-config' }
+        { id: 'mates-config', title: '目录配置', icon: <FolderSpecial />, path: '/@pages/mates-config' },
+        { id: 'crypt-config', title: '加密配置', icon: <Security />, path: '/@pages/crypt-config' }
       ]
     },
     {
@@ -114,8 +114,8 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
       icon: <Assignment />,
       defaultExpanded: true,
       items: [
-        { id: 'task-config', title: '任务管理', icon: <Assignment />, path: '/task-config' },
-        { id: 'offline-download', title: '离线下载', icon: <CloudDownload />, path: '/offline-download' }
+        { id: 'task-config', title: '任务管理', icon: <Assignment />, path: '/@pages/task-config' },
+        { id: 'offline-download', title: '离线下载', icon: <CloudDownload />, path: '/@pages/offline-download' }
       ]
     },
     {
@@ -124,8 +124,8 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
       icon: <AccountCircle />,
       defaultExpanded: true,
       items: [
-        { id: 'mount-connection', title: '挂载连接', icon: <Cloud />, path: '/mount-connection' },
-        { id: 'account-settings', title: '账号设置', icon: <AccountCircle />, path: '/account-settings' }
+        { id: 'connection-config', title: '挂载连接', icon: <Cloud />, path: '/@pages/connection-config' },
+        { id: 'account-settings', title: '账号设置', icon: <AccountCircle />, path: '/@pages/account-settings' }
       ]
     },
     {
@@ -135,7 +135,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
       defaultExpanded: true,
       items: [
         // 挂载管理（无子菜单）
-        { id: 'mount-management', title: '挂载管理', icon: <Cloud />, path: '/mount-management' }
+        { id: 'mount-management', title: '挂载管理', icon: <Cloud />, path: '/@pages/mount-management' }
       ]
     },
     {
@@ -144,9 +144,9 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
       icon: <Group />,
       defaultExpanded: true,
       items: [
-        { id: 'user-management', title: '用户管理', icon: <Group />, path: '/user-management' },
-        { id: 'group-management', title: '分组管理', icon: <AdminPanelSettings />, path: '/group-management' },
-        { id: 'oauth-management', title: '三方登录', icon: <VpnKey />, path: '/oauth-management' }
+        { id: 'user-management', title: '用户管理', icon: <Group />, path: '/@pages/user-management' },
+        { id: 'group-management', title: '分组管理', icon: <AdminPanelSettings />, path: '/@pages/group-management' },
+        { id: 'oauth-management', title: '三方登录', icon: <VpnKey />, path: '/@pages/oauth-management' }
       ]
     },
     {
@@ -155,10 +155,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
       icon: <Settings />,
       defaultExpanded: true,
       items: [
-        { id: 'global-settings', title: '全局设置', icon: <Settings />, path: '/global-settings' },
-        { id: 'appearance-settings', title: '外观设置', icon: <Palette />, path: '/appearance-settings' },
-        { id: 'preview-settings', title: '预览设置', icon: <Visibility />, path: '/preview-settings' },
-        { id: 'site-settings', title: '站点设置', icon: <Language />, path: '/site-settings' }
+        { id: 'site-settings', title: '站点设置', icon: <Language />, path: '/@pages/site-settings' }
       ]
     },
     {
@@ -167,8 +164,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
       icon: <Settings />,
       defaultExpanded: true,
       items: [
-        { id: 'backup-restore', title: '备份恢复', icon: <Backup />, path: '/backup-restore' },
-        { id: 'about-platform', title: '关于平台', icon: <Info />, path: '/about-platform' }
+        { id: 'about-platform', title: '关于平台', icon: <Info />, path: '/@pages/about-platform' }
       ]
     }
   ];
@@ -291,7 +287,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
               horizontal: 'right',
             }}
           >
-            <MenuItem onClick={() => { handleUserMenuClose(); navigate('/account-settings'); }}>
+            <MenuItem onClick={() => { handleUserMenuClose(); navigate('/@pages/account-settings'); }}>
               <ListItemIcon>
                 <AccountCircle fontSize="small" />
               </ListItemIcon>

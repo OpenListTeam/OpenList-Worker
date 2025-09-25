@@ -126,7 +126,7 @@ const AuthPage: React.FC = () => {
 
             login(mockUser);
             showNotification('登录成功！', 'success');
-            navigate('/my-files');
+            navigate('/@pages/');
         } catch (error) {
             setError('登录失败，请检查用户名和密码');
         } finally {

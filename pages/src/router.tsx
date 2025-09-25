@@ -1,11 +1,12 @@
 import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 
 // 文件管理页面
 import PublicDirectory from './pages/Files/PublicDirectory';
 import MyFiles from './pages/Files/MyFiles';
 import UnifiedFileManager from './pages/Files/UnifiedFileManager';
 import MyFilesWrapper from './pages/Files/MyFilesWrapper';
+import DynamicFileManager from './pages/Files/DynamicFileManager';
 
 // 个人管理页面
 import MyShares from './pages/Users/MyShares';
@@ -27,35 +28,26 @@ import AboutPlatform from './pages/Admin/AboutPlatform';
 const Router: React.FC = () => {
   return (
     <Routes>
-      {/* 文件管理 */}
-      <Route 
-        path="/public-directory" 
-        element={<UnifiedFileManager defaultPath="/" title="公共目录" />} 
-      />
-      <Route 
-        path="/my-files" 
-        element={<MyFilesWrapper />} 
-      />
+      {/* 管理页面路由 */}
+      <Route path="/@pages/my-shares" element={<MyShares />} />
+      <Route path="/@pages/crypt-config" element={<CryptConfig />} />
+      <Route path="/@pages/mates-config" element={<MatesConfig />} />
+      <Route path="/@pages/connection-config" element={<ConnectionConfig />} />
+      <Route path="/@pages/task-config" element={<TaskConfig />} />
+      <Route path="/@pages/offline-download" element={<OfflineDownload />} />
+      <Route path="/@pages/account-settings" element={<AccountSettings />} />
+      <Route path="/@pages/mount-management" element={<MountManagement />} />
+      <Route path="/@pages/user-management" element={<UserManagement />} />
+      <Route path="/@pages/group-management" element={<GroupManagement />} />
+      <Route path="/@pages/oauth-management" element={<OAuthManagement />} />
+      <Route path="/@pages/site-settings" element={<SiteSettings />} />
+      <Route path="/@pages/about-platform" element={<AboutPlatform />} />
 
-      {/* 个人管理 */}
-      <Route path="/my-shares" element={<MyShares />} />
-      <Route path="/crypt-config" element={<CryptConfig />} />
-      <Route path="/mates-config" element={<MatesConfig />} />
-      <Route path="/connection-config" element={<ConnectionConfig />} />
-      <Route path="/task-config" element={<TaskConfig />} />
-      <Route path="/offline-download" element={<OfflineDownload />} />
-      <Route path="/account-settings" element={<AccountSettings />} />
-
-      {/* 系统管理 */}
-      <Route path="/mount-management" element={<MountManagement />} />
-      <Route path="/user-management" element={<UserManagement />} />
-      <Route path="/group-management" element={<GroupManagement />} />
-      <Route path="/oauth-management" element={<OAuthManagement />} />
-      <Route path="/site-settings" element={<SiteSettings />} />
-      <Route path="/about-platform" element={<AboutPlatform />} />
-
-      {/* 默认路由 */}
-      <Route path="/" element={<MyFiles />} />
+      {/* 动态文件路径路由 - /@pages/* 格式 */}
+      <Route path="/@pages/*" element={<DynamicFileManager />} />
+      
+      {/* 动态文件路径路由 - /* 格式 */}
+      <Route path="/*" element={<DynamicFileManager />} />
     </Routes>
   );
 };

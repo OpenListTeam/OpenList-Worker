@@ -160,8 +160,14 @@ export const apiService = new ApiService();
 
 // 文件管理相关API
 export const fileApi = {
-    // 获取文件列表 - 使用新的后端API
-    getFileList: (filePath: string = '/', action: string = 'list', method: string = 'path') => {
+    // 获取文件列表 - 使用新的后端API格式
+    getFileList: (filePath: string = '/') => {
+        // 直接使用路径查询，不使用target参数
+        return apiService.get(`/@files/list/path${filePath}`);
+    },
+
+    // 获取文件列表 - 旧版本兼容
+    getFileListOld: (filePath: string = '/', action: string = 'list', method: string = 'path') => {
         const encodedPath = encodeURIComponent(filePath);
         return apiService.get(`/@files/${action}/${method}${filePath}`, {
             params: { target: filePath }

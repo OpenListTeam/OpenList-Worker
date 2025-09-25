@@ -6,6 +6,7 @@ import {getConfig} from "./share/HonoParsers";
 import {DBSelect} from "./saves/SavesObject";
 import {UsersManage} from "./users/UsersManage";
 import {FilesManage} from "./files/FilesManage";
+import {cors} from 'hono/cors'
 
 
 // 绑定数据 ###############################################################################
@@ -19,6 +20,18 @@ interface PageAction {
     text?: string,
     data?: Record<string, any>
 }
+app.use('*', async (c, next) => {
+    // 设置 CORS 头
+    c.header('Access-Control-Allow-Origin', '*')
+    c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+    c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    c.header('Access-Control-Allow-Credentials', 'true')
+    // 处理预检请求
+    if (c.req.method === 'OPTIONS') {
+        return c.text('', 200)
+    }
+    await next()
+})
 
 // 挂载管理 ##############################################################################
 app.use('/@mount/:action/:method/*', async (c: Context) => {
@@ -176,52 +189,14 @@ app.use('/@files/:action/:method/*', async (c: Context): Promise<Response> => {
 })
 
 
-// // 文件访问 ###########################################################################
-// app.use('/:action/*', async (c: Context): Promise<Response> => {
-//     const action: string = c.req.param('action');
-//     const source: string = c.req.path.split('/').slice(1).join('/');
-//     const action_map: Record<string, string> = {
-//         "l": "list", "d": "link",
-//         "r": "remove", "c": "create",
-//     }
-//     const files: FilesManage = new FilesManage(c);
-//     return await files.action(action_map[action], source, "", {});
-// })
-
-
 // 页面访问 ##############################################################################
 app.use('*', async (c: Context): Promise<Response> => {
     // TODO:  增加虚拟主机功能，指定域名直接访问进行下载，否则返回页面
-    // console.log(c.req.path)
     const source: string = "/" + c.req.path.split('/').slice(1).join('/');
     const files: FilesManage = new FilesManage(c);
     return await files.action("list", source, "", {});
 })
 
 
-// 用户认证 ==============================================================================
-// app.use('/@test/data/', async (c: Context) => {
-//     let db: SavesManage = new SavesManage(c);
-//     let key: DBSelect = {
-//         main: 'mount',
-//         keys: {mount_path: '000'},
-//         data: {
-//             mount_path: '000',
-//             mount_type: '111',
-//             is_enabled: true,
-//         }
-//     }
-//     await db.save(key)
-//     console.log(await db.find(key))
-//     key.data = {
-//         mount_type: '222',
-//         is_enabled: false,
-//     }
-//     await db.save(key)
-//     console.log(await db.find(key))
-//     console.log(await db.kill(key))
-//     console.log(await db.find(key))
-//     return c.text('Hello Hono!')
-// })
 
 export default app

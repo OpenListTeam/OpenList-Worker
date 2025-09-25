@@ -13,7 +13,17 @@ import {
   Typography,
   Button,
 } from '@mui/material';
-import { Edit, Delete, Share, Download, Visibility } from '@mui/icons-material';
+import { 
+  Edit, 
+  Delete, 
+  Share, 
+  Download, 
+  Visibility, 
+  FileCopy, 
+  DriveFileMove,
+  CreateNewFolder,
+  NoteAdd 
+} from '@mui/icons-material';
 
 interface Column {
   id: string;
@@ -32,7 +42,14 @@ interface DataTableProps {
   onShare?: (row: any) => void;
   onDownload?: (row: any) => void;
   onView?: (row: any) => void;
-  actions?: ('edit' | 'delete' | 'share' | 'download' | 'view')[];
+  onCopy?: (row: any) => void;
+  onMove?: (row: any) => void;
+  onCreateFolder?: () => void;
+  onCreateFile?: () => void;
+  onRowClick?: (row: any) => void;
+  onRowDoubleClick?: (row: any) => void;
+  actions?: ('edit' | 'delete' | 'share' | 'download' | 'view' | 'copy' | 'move')[];
+  showCreateButtons?: boolean;
 }
 
 const DataTable: React.FC<DataTableProps> = ({
@@ -44,7 +61,14 @@ const DataTable: React.FC<DataTableProps> = ({
   onShare,
   onDownload,
   onView,
+  onCopy,
+  onMove,
+  onCreateFolder,
+  onCreateFile,
+  onRowClick,
+  onRowDoubleClick,
   actions = ['edit', 'delete'],
+  showCreateButtons = false,
 }) => {
   const renderStatusChip = (status: number) => (
     <Chip
@@ -57,28 +81,38 @@ const DataTable: React.FC<DataTableProps> = ({
   const renderActionButtons = (row: any) => (
     <Box sx={{ display: 'flex', gap: 0.5 }}>
       {actions.includes('view') && (
-        <IconButton size="small" onClick={() => onView?.(row)}>
+        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onView?.(row); }}>
           <Visibility fontSize="small" />
         </IconButton>
       )}
+      {actions.includes('download') && (
+        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onDownload?.(row); }}>
+          <Download fontSize="small" />
+        </IconButton>
+      )}
+      {actions.includes('copy') && (
+        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onCopy?.(row); }}>
+          <FileCopy fontSize="small" />
+        </IconButton>
+      )}
+      {actions.includes('move') && (
+        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onMove?.(row); }}>
+          <DriveFileMove fontSize="small" />
+        </IconButton>
+      )}
       {actions.includes('edit') && (
-        <IconButton size="small" onClick={() => onEdit?.(row)}>
+        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onEdit?.(row); }}>
           <Edit fontSize="small" />
         </IconButton>
       )}
       {actions.includes('delete') && (
-        <IconButton size="small" onClick={() => onDelete?.(row)}>
+        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onDelete?.(row); }}>
           <Delete fontSize="small" />
         </IconButton>
       )}
       {actions.includes('share') && (
-        <IconButton size="small" onClick={() => onShare?.(row)}>
+        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onShare?.(row); }}>
           <Share fontSize="small" />
-        </IconButton>
-      )}
-      {actions.includes('download') && (
-        <IconButton size="small" onClick={() => onDownload?.(row)}>
-          <Download fontSize="small" />
         </IconButton>
       )}
     </Box>
@@ -86,6 +120,28 @@ const DataTable: React.FC<DataTableProps> = ({
 
   return (
     <Box sx={{ width: '100%', height: '100%' }}>
+      {/* 创建按钮 */}
+      {showCreateButtons && (
+        <Box sx={{ mb: 2, display: 'flex', gap: 1 }}>
+          <Button
+            variant="outlined"
+            startIcon={<CreateNewFolder />}
+            onClick={onCreateFolder}
+            size="small"
+          >
+            新建文件夹
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<NoteAdd />}
+            onClick={onCreateFile}
+            size="small"
+          >
+            新建文件
+          </Button>
+        </Box>
+      )}
+      
       <TableContainer component={Paper} sx={{ height: '100%', borderRadius: '20px' }}>
         <Table stickyHeader sx={{ minWidth: 650 }} aria-label="data table">
           <TableHead>
@@ -107,7 +163,20 @@ const DataTable: React.FC<DataTableProps> = ({
           </TableHead>
           <TableBody>
             {data.map((row, index) => (
-              <TableRow hover role="checkbox" tabIndex={-1} key={index}>
+              <TableRow 
+                hover 
+                role="checkbox" 
+                tabIndex={-1} 
+                key={index}
+                onClick={() => onRowClick?.(row)}
+                onDoubleClick={() => onRowDoubleClick?.(row)}
+                sx={{ 
+                  cursor: onRowClick || onRowDoubleClick ? 'pointer' : 'default',
+                  '&:hover': {
+                    backgroundColor: onRowClick || onRowDoubleClick ? 'rgba(0, 0, 0, 0.04)' : 'inherit'
+                  }
+                }}
+              >
                 {columns.map((column) => {
                   const value = row[column.id];
                   return (

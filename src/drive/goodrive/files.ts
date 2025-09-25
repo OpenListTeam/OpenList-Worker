@@ -12,11 +12,8 @@ import {drive_v3} from "googleapis/build/src/apis/drive/v3";
 // 驱动器 ####################################################
 export class HostDriver extends BasicDriver {
     // 公共定义 =============================
-    public c: Context
-    public router: string
     public config: Record<string, any>
     public saving: Record<string, any>
-    public clouds: HostClouds
     // 专有定义 =============================
     public driver: drive_v3.Drive | undefined
     public client: OAuth2Client | undefined
@@ -32,21 +29,24 @@ export class HostDriver extends BasicDriver {
     }
 
     // 初始驱动 =========================================================
-    async initSelf(): Promise<boolean> {
-        const result: boolean = await this.clouds.initConfig();
+    async initSelf(): Promise<DriveResult> {
+        const result: DriveResult = await this.clouds.initConfig();
         this.saving = this.clouds.saving;
         this.change = true;
         return result;
     }
 
     // 载入驱动 =========================================================
-    async loadSelf(): Promise<boolean> {
+    async loadSelf(): Promise<DriveResult> {
         if (this.driver) return false;
         this.client = await this.clouds.loadSaving();
         this.driver = google.drive({version: 'v3', auth: this.client});
         this.change = this.clouds.change;
         this.saving = this.clouds.saving;
-        return true;
+        return {
+            flag: true,
+            text: "loadSelf"
+        };
     }
 
     // 列出目录 =========================================================
@@ -55,6 +55,7 @@ export class HostDriver extends BasicDriver {
         if (!fileUUID) return {fileList: [], pageSize: 0};
         // console.log("findFile: ", fileUUID);
         const result: fso.FileInfo[] = await this.findPath(fileUUID)
+        console.log("@listFile", result);
         return {
             pageSize: result.length,
             filePath: filePath,
@@ -198,10 +199,10 @@ export class HostDriver extends BasicDriver {
     // 读取UUID =========================================================
     async findUUID(filePath: string): Promise<string | null> {
         const parts: string[] = filePath.split('/').filter(part => part.trim() !== '');
-        console.log("Dir Find: ", filePath, parts);
+        console.log("DirFind", filePath, parts);
         if (parts.length === 0) return 'root';
         let currentUUID: string = 'root';
-        console.log("Now UUID:", currentUUID);
+        console.log("NowUUID", currentUUID);
         for (const part of parts) {
             const files: fso.FileInfo[] = await this.findPath(currentUUID);
             const foundFile: fso.FileInfo | undefined = files.find(

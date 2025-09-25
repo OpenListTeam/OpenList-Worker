@@ -46,31 +46,42 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({children}) => {
         setDarkMode(!darkMode);
     };
 
-    const getPageTitle = () => {
-        // 根据路径获取页面标题的简单映射
-        const titleMap: Record<string, string> = {
-            '/public-directory': '公共目录',
-            '/my-files': '我的文件',
-            '/my-shares': '我的分享',
-            '/directory-config': '目录配置',
-            '/crypt-config': '加密配置',
-            '/task-config': '任务管理',
-            '/offline-download': '离线下载',
-            '/mount-connection': '挂载连接',
-            '/account-settings': '账号设置',
-            '/mount-management': '挂载管理',
-            '/user-management': '用户管理',
-            '/group-management': '分组管理',
-            '/oauth-management': '三方登录',
-            '/global-settings': '全局设置',
-            '/appearance-settings': '外观设置',
-            '/preview-settings': '预览设置',
-            '/site-settings': '站点设置',
-            '/backup-restore': '备份恢复',
-            '/about-platform': '关于平台'
-        };
-        return titleMap[location.pathname] || 'OpenList';
+    // 获取页面标题
+  const getPageTitle = (pathname: string): string => {
+    // 静态页面标题映射
+    const staticTitles: { [key: string]: string } = {
+      '/@pages/my-shares': '我的分享',
+      '/@pages/mates-config': '目录配置',
+      '/@pages/crypt-config': '加密配置',
+      '/@pages/task-config': '任务管理',
+      '/@pages/offline-download': '离线下载',
+      '/@pages/connection-config': '挂载连接',
+      '/@pages/account-settings': '账号设置',
+      '/@pages/mount-management': '挂载管理',
+      '/@pages/user-management': '用户管理',
+      '/@pages/group-management': '分组管理',
+      '/@pages/oauth-management': '三方登录',
+      '/@pages/site-settings': '站点设置',
+      '/@pages/about-platform': '关于平台'
     };
+
+    // 检查静态页面
+    if (staticTitles[pathname]) {
+      return staticTitles[pathname];
+    }
+
+    // 个人文件路径处理
+    if (pathname.startsWith('/@pages/myfile')) {
+      return '我的文件';
+    }
+
+    // 公共文件路径处理
+    if (pathname.startsWith('/@pages/') || pathname === '/') {
+      return '公共目录';
+    }
+
+    return 'OpenList';
+  };
 
     return (
         <ThemeProvider theme={darkMode ? darkTheme : lightTheme}>
@@ -103,7 +114,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({children}) => {
                                 <Menu/>
                             </IconButton>
                             <Typography variant="h6" component="div" sx={{flexGrow: 1}}>
-                                {getPageTitle()}
+                                {getPageTitle(location.pathname)}
                             </Typography>
                             <IconButton color="inherit" aria-label="search">
                                 <Search/>
