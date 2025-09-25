@@ -4,10 +4,6 @@ import { Box, Typography, Paper, FormControlLabel, Switch, TextField, Button } f
 const GlobalSettings: React.FC = () => {
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        全局设置
-      </Typography>
-      
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>
           系统配置

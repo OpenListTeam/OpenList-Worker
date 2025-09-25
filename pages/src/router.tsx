@@ -2,32 +2,40 @@ import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 
 // 文件管理页面
-import PublicDirectory from './pages/FileManagement/PublicDirectory';
-import MyFiles from './pages/FileManagement/MyFiles';
+import PublicDirectory from './pages/Files/PublicDirectory';
+import MyFiles from './pages/Files/MyFiles';
+import UnifiedFileManager from './pages/Files/UnifiedFileManager';
+import MyFilesWrapper from './pages/Files/MyFilesWrapper';
 
 // 个人管理页面
-import MyShares from './pages/PersonalManagement/MyShares';
-import CryptConfig from './pages/PersonalManagement/CryptConfig';
-import MatesConfig from './pages/PersonalManagement/MatesConfig';
-import ConnectionConfig from './pages/PersonalManagement/ConnectionConfig';
-import TaskConfig from './pages/PersonalManagement/TaskConfig';
-import OfflineDownload from './pages/PersonalManagement/OfflineDownload';
-import AccountSettings from './pages/PersonalManagement/AccountSettings';
+import MyShares from './pages/Users/MyShares';
+import CryptConfig from './pages/Users/CryptConfig';
+import MatesConfig from './pages/Users/MatesConfig';
+import ConnectionConfig from './pages/Users/ConnectionConfig';
+import TaskConfig from './pages/Users/TaskConfig';
+import OfflineDownload from './pages/Users/OfflineDownload';
+import AccountSettings from './pages/Users/AccountSettings';
 
 // 系统管理页面
-import MountManagement from './pages/SystemManagement/MountManagement';
-import UserManagement from './pages/SystemManagement/UserManagement';
-import GroupManagement from './pages/SystemManagement/GroupManagement';
-import OAuthManagement from './pages/SystemManagement/OAuthManagement';
-import SiteSettings from './pages/SystemManagement/SiteSettings';
-import AboutPlatform from './pages/SystemManagement/AboutPlatform';
+import MountManagement from './pages/Admin/MountManagement';
+import UserManagement from './pages/Admin/UserManagement';
+import GroupManagement from './pages/Admin/GroupManagement';
+import OAuthManagement from './pages/Admin/OAuthManagement';
+import SiteSettings from './pages/Admin/SiteSettings';
+import AboutPlatform from './pages/Admin/AboutPlatform';
 
 const Router: React.FC = () => {
   return (
     <Routes>
       {/* 文件管理 */}
-      <Route path="/public-directory" element={<PublicDirectory />} />
-      <Route path="/my-files" element={<MyFiles />} />
+      <Route 
+        path="/public-directory" 
+        element={<UnifiedFileManager defaultPath="/" title="公共目录" />} 
+      />
+      <Route 
+        path="/my-files" 
+        element={<MyFilesWrapper />} 
+      />
 
       {/* 个人管理 */}
       <Route path="/my-shares" element={<MyShares />} />

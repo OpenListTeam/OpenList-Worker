@@ -113,6 +113,54 @@ export interface FileItem {
   tags: string;
 }
 
+// 文件哈希信息
+export interface FileHash {
+  md5?: string;
+  sha1?: string;
+  sha256?: string;
+}
+
+// 加密数据信息
+export interface CryptInfo {
+  crypt_name: string;
+  crypt_user: string;
+  crypt_pass: string;
+  crypt_type: number;
+  crypt_mode: number;
+  is_enabled: boolean;
+  crypt_self?: boolean;
+  rands_pass?: boolean;
+  write_name?: string;
+  write_info?: string;
+  oauth_data?: Record<string, any>;
+}
+
+// 文件信息 - 匹配后端FileInfo接口
+export interface FileInfo {
+  // 必要属性
+  filePath: string;      // 文件路径
+  fileName: string;      // 文件名称
+  fileSize: number;      // 文件大小
+  fileType: number;      // 文件类型 (0: 目录, 1: 文件)
+  // 拓展属性
+  fileHash?: FileHash;   // 文件哈希
+  fileUUID?: string;     // 文件标识
+  // 可选属性
+  thumbnails?: string;   // 预览地址
+  timeModify?: Date;     // 修改时间
+  timeCreate?: Date;     // 创建时间
+  fileCrypts?: CryptInfo;// 加密数据
+  fileExtend?: Record<string, string>;
+}
+
+// 目录信息 - 匹配后端PathInfo接口
+export interface PathInfo {
+  pageSize?: number;     // 文件数量
+  pageNums?: number;     // 页面编号
+  filePath?: string;     // 文件路径
+  fileList?: FileInfo[]; // 文件列表
+}
+
 // 菜单项
 export interface MenuItem {
   id: string;

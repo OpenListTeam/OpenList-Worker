@@ -4,10 +4,6 @@ import { Box, Typography, Paper, FormControlLabel, Switch, FormControl, InputLab
 const PreviewSettings: React.FC = () => {
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        预览设置
-      </Typography>
-      
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>
           文件预览配置

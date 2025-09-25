@@ -4,10 +4,6 @@ import { Box, Typography, Paper, FormControl, InputLabel, Select, MenuItem, Butt
 const AppearanceSettings: React.FC = () => {
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        外观设置
-      </Typography>
-      
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>
           主题设置

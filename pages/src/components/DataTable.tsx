@@ -86,11 +86,7 @@ const DataTable: React.FC<DataTableProps> = ({
 
   return (
     <Box sx={{ width: '100%', height: '100%' }}>
-      <Typography variant="h5" gutterBottom sx={{ mb: 2 }}>
-        {title}
-      </Typography>
-      
-      <TableContainer component={Paper} sx={{ height: 'calc(100% - 60px)', borderRadius: '20px' }}>
+      <TableContainer component={Paper} sx={{ height: '100%', borderRadius: '20px' }}>
         <Table stickyHeader sx={{ minWidth: 650 }} aria-label="data table">
           <TableHead>
             <TableRow>

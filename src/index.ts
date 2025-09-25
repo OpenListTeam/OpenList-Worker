@@ -25,7 +25,6 @@ app.use('/@mount/:action/:method/*', async (c: Context) => {
     const action: string = c.req.param('action');
     const method: string = c.req.param('method');
     const config: Record<string, any> = await getConfig(c, 'config');
-    console.log("@mount", action, method, config)
     // 创建对象 ==========================================================================
     let mounts: MountManage = new MountManage(c);
     // 检查方法 ==========================================================================
@@ -48,7 +47,6 @@ app.use('/@mount/:action/:method/*', async (c: Context) => {
             return c.json({flag: false, text: 'Invalid Method'}, 400)
         }
     }
-    console.log("@mount", action, method, config)
     // 检查参数 ==========================================================================
     if (!config.mount_path && action != "select")
         return c.json({flag: false, text: 'Invalid Path'}, 400)

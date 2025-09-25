@@ -14,10 +14,6 @@ const BackupRestore: React.FC = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        备份与恢复
-      </Typography>
-      
       <Box sx={{ mb: 3, display: 'flex', gap: 2 }}>
         <Button variant="contained" startIcon={<Download />} onClick={() => setBackupDialogOpen(true)}>
           创建备份

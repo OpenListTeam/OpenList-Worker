@@ -66,11 +66,7 @@ const AccountSettings: React.FC = () => {
 
   return (
     <Box sx={{ width: '100%', height: '100%', p: 3 }}>
-      <Typography variant="h5" gutterBottom>
-        账号设置
-      </Typography>
-
-      <Grid container spacing={3} sx={{ mt: 2 }}>
+      <Grid container spacing={3}>
         <Grid item xs={12} md={3}>
           <Card sx={{ borderRadius: '20px' }}>
             <CardContent sx={{ textAlign: 'center' }}>
