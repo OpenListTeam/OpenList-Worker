@@ -31,6 +31,7 @@ import FileUploadDialog from '../../components/FileUploadDialog';
 import FilePreview from './FilePreview';
 import { FileInfo, PathInfo } from '../../types';
 import axios from 'axios';
+import { downloadFile, FileInfo as DownloadFileInfo } from '../../utils/downloadUtils';
 
 const DynamicFileManager: React.FC = () => {
   const location = useLocation();
@@ -77,23 +78,45 @@ const DynamicFileManager: React.FC = () => {
 
   // 检查是否为个人文件路径
   const isPersonalFile = (pathname: string): boolean => {
-    return pathname.startsWith('/@pages/myfile');
+    try {
+      const decodedPathname = decodeURIComponent(pathname);
+      return decodedPathname.startsWith('/@pages/myfile');
+    } catch (error) {
+      console.error('URL解码失败:', error, 'pathname:', pathname);
+      return pathname.startsWith('/@pages/myfile');
+    }
   };
 
   // 从URL路径解析文件路径
   const parsePathFromUrl = (pathname: string): string => {
-    // 个人文件路径: /@pages/myfile/sub/ -> /sub/
-    if (pathname.startsWith('/@pages/myfile/')) {
-      const filePath = pathname.substring(15); // 去掉 '/@pages/myfile/' 前缀
-      return filePath || '/';
+    try {
+      // 先对URL进行解码处理中文字符
+      const decodedPathname = decodeURIComponent(pathname);
+      
+      // 个人文件路径: /@pages/myfile/sub/ -> /sub/
+      if (decodedPathname.startsWith('/@pages/myfile/')) {
+        const filePath = decodedPathname.substring(15); // 去掉 '/@pages/myfile/' 前缀
+        return filePath || '/';
+      }
+      // 个人文件根路径: /@pages/myfile -> /
+      if (decodedPathname === '/@pages/myfile') {
+        return '/';
+      }
+      // 公共文件路径: 直接使用路径（不再有/@pages/前缀）
+      // 如果是根路径或其他路径，直接使用
+      return decodedPathname === '/' ? '/' : decodedPathname;
+    } catch (error) {
+      console.error('URL解码失败:', error, 'pathname:', pathname);
+      // 如果解码失败，使用原始路径
+      if (pathname.startsWith('/@pages/myfile/')) {
+        const filePath = pathname.substring(15);
+        return filePath || '/';
+      }
+      if (pathname === '/@pages/myfile') {
+        return '/';
+      }
+      return pathname === '/' ? '/' : pathname;
     }
-    // 个人文件根路径: /@pages/myfile -> /
-    if (pathname === '/@pages/myfile') {
-      return '/';
-    }
-    // 公共文件路径: 直接使用路径（不再有/@pages/前缀）
-    // 如果是根路径或其他路径，直接使用
-    return pathname === '/' ? '/' : pathname;
   };
 
   // 构建后端API路径
@@ -174,86 +197,25 @@ const DynamicFileManager: React.FC = () => {
   const handleFileDownload = async (fileOrName: any) => {
     // 如果传入的是对象，提取文件名；如果是字符串，直接使用
     const fileName = typeof fileOrName === 'string' ? fileOrName : fileOrName.name;
-    try {
-      // 构建下载API路径
-      const backendPath = buildBackendPath(currentPath, location.pathname);
-      // 确保路径格式正确，去掉末尾的斜杠（除非是根路径）
-      const cleanBackendPath = backendPath === '/' ? '' : backendPath.replace(/\/$/, '');
-      // 构建下载API URL，确保路径正确分隔，避免双斜杠
-      let downloadApiUrl: string;
-      if (cleanBackendPath === '' || cleanBackendPath === '/') {
-        // 根路径情况
-        downloadApiUrl = `http://127.0.0.1:8787/@files/link/path/${fileName}`;
-      } else {
-        // 子路径情况，确保有正确的斜杠分隔，避免双斜杠
-        const normalizedPath = cleanBackendPath.startsWith('/') ? cleanBackendPath : `/${cleanBackendPath}`;
-        // 移除路径中的双斜杠
-        const cleanPath = normalizedPath.replace(/\/+/g, '/');
-        downloadApiUrl = `http://127.0.0.1:8787/@files/link/path${cleanPath}/${fileName}`;
+    
+    // 构造文件信息对象
+    const fileInfo: DownloadFileInfo = {
+      name: fileName,
+      path: currentPath,
+      size: 0, // 这里可以从文件列表中获取实际大小
+      created_at: '',
+      modified_at: '',
+      is_dir: false
+    };
+
+    await downloadFile({
+      fileInfo,
+      currentPath: location.pathname,
+      onError: setError,
+      onSuccess: () => {
+        showMessage('文件下载成功');
       }
-      
-      console.log('下载API URL:', downloadApiUrl);
-      
-      const response = await axios.get(downloadApiUrl);
-      
-      if (response.data && response.data.flag && response.data.data && response.data.data.length > 0) {
-        const downloadData = response.data.data[0];
-        const directUrl = downloadData.direct;
-        const headers = downloadData.header || {};
-        
-        if (directUrl) {
-          // 检查header字段是否不为空
-          const hasHeaders = headers && Object.keys(headers).length > 0;
-          
-          if (hasHeaders) {
-            // 如果有header，使用fetch下载并保存到本地
-            try {
-              console.log('使用fetch下载，携带headers:', headers);
-              
-              const fetchResponse = await fetch(directUrl, {
-                method: 'GET',
-                headers: headers
-              });
-              
-              if (!fetchResponse.ok) {
-                throw new Error(`下载失败: ${fetchResponse.status} ${fetchResponse.statusText}`);
-              }
-              
-              // 获取文件内容
-              const blob = await fetchResponse.blob();
-              
-              // 创建下载链接并触发下载
-              const downloadUrl = window.URL.createObjectURL(blob);
-              const link = document.createElement('a');
-              link.href = downloadUrl;
-              link.download = fileName;
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-              
-              // 清理URL对象
-              window.URL.revokeObjectURL(downloadUrl);
-              
-              showMessage('文件下载成功');
-            } catch (fetchError) {
-              console.error('Fetch下载失败:', fetchError);
-              setError('下载文件失败: ' + (fetchError as Error).message);
-            }
-          } else {
-            // 如果没有header，按原来的方式跳转
-            console.log('没有header，使用原方式下载');
-            window.open(directUrl, '_blank');
-          }
-        } else {
-          setError('获取下载链接失败');
-        }
-      } else {
-        setError('获取下载链接失败');
-      }
-    } catch (err) {
-      console.error('下载文件错误:', err);
-      setError('下载文件失败，请检查网络连接');
-    }
+    });
   };
 
   // 处理文件夹单击导航
@@ -285,8 +247,19 @@ const DynamicFileManager: React.FC = () => {
     } else {
       // 点击文件 - 跳转到预览页面
       const fullFilePath = currentPath === '/' ? `/${row.name}` : `${currentPath}/${row.name}`;
-      const backendPath = buildBackendPath(fullFilePath, location.pathname);
-      navigate(backendPath);
+      
+      // 构建正确的前端路由路径
+      let targetPath: string;
+      if (isPersonalFile(location.pathname)) {
+        // 个人文件：使用 /@pages/myfile 前缀
+        const cleanFilePath = cleanPath(fullFilePath);
+        targetPath = `/@pages/myfile${cleanFilePath}`;
+      } else {
+        // 公共文件：直接使用路径
+        targetPath = cleanPath(fullFilePath);
+      }
+      
+      navigate(targetPath);
     }
   };
 

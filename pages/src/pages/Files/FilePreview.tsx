@@ -38,6 +38,13 @@ import {
   ContentCopy,
 } from '@mui/icons-material';
 import axios from 'axios';
+import { 
+  downloadFile, 
+  FileInfo as DownloadFileInfo,
+  parseFilePathFromUrl,
+  isPersonalFile,
+  buildBackendPath
+} from '../../utils/downloadUtils';
 
 interface FilePreviewInfo {
   name: string;
@@ -59,38 +66,7 @@ const FilePreview: React.FC = () => {
   const [fileInfo, setFileInfo] = useState<FilePreviewInfo | null>(null);
   const [selectedHashType, setSelectedHashType] = useState<string>('md5');
 
-  // 从URL路径解析文件路径
-  const parseFilePathFromUrl = (pathname: string): string => {
-    // 个人文件路径: /@pages/myfile/sub/file.txt -> /sub/file.txt
-    if (pathname.startsWith('/@pages/myfile/')) {
-      const filePath = pathname.substring(15); // 去掉 '/@pages/myfile/' 前缀
-      return filePath || '/';
-    }
-    // 个人文件根路径: /@pages/myfile -> /
-    if (pathname === '/@pages/myfile') {
-      return '/';
-    }
-    // 公共文件路径: 直接使用路径
-    return pathname === '/' ? '/' : pathname;
-  };
 
-  // 检查是否为个人文件路径
-  const isPersonalFile = (pathname: string): boolean => {
-    return pathname.startsWith('/@pages/myfile');
-  };
-
-  // 构建后端API路径
-  const buildBackendPath = (filePath: string, pathname: string): string => {
-    const username = 'testuser'; // TODO: 从用户上下文获取实际用户名
-    
-    if (isPersonalFile(pathname)) {
-      // 个人文件需要添加 /@home/<username>/ 前缀
-      return `/@home/${username}${filePath}`;
-    } else {
-      // 公共文件直接使用路径
-      return filePath;
-    }
-  };
 
   // 获取文件信息
   const fetchFileInfo = async () => {
@@ -361,6 +337,23 @@ const FilePreview: React.FC = () => {
     return breadcrumbs;
   };
 
+  // 处理文件下载
+  const handleFileDownload = async () => {
+    if (!fileInfo) {
+      setError('文件信息不存在');
+      return;
+    }
+
+    await downloadFile({
+      fileInfo: fileInfo as DownloadFileInfo,
+      currentPath: location.pathname,
+      onError: setError,
+      onSuccess: () => {
+        console.log('文件下载成功');
+      }
+    });
+  };
+
   // 返回上级目录
   const handleGoBack = () => {
     const breadcrumbs = generateBreadcrumbs();
@@ -445,7 +438,7 @@ const FilePreview: React.FC = () => {
                   {fileInfo.name}
                 </Typography>
                 <Box display="flex" gap={1}>
-                  <IconButton color="primary" size="small" title="下载">
+                  <IconButton color="primary" size="small" title="下载" onClick={handleFileDownload}>
                     <Download />
                   </IconButton>
                   <IconButton color="primary" size="small" title="分享">

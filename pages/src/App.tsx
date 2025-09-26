@@ -7,6 +7,8 @@ import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import { zhCN } from '@mui/material/locale';
 import ErrorBoundary from './components/ErrorBoundary';
 import AuthPage from './pages/Login/AuthPage';
+import DownloadProgress from './components/DownloadProgress';
+import { useDownloadProgress } from './hooks/useDownloadProgress';
 
 // 创建应用主题
 const theme = createTheme(
@@ -60,6 +62,7 @@ const theme = createTheme(
 const AppContent = () => {
     const location = useLocation();
     const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
+    const { downloads, removeDownload } = useDownloadProgress();
 
     if (isAuthPage) {
         // 认证页面不使用MainLayout
@@ -73,9 +76,16 @@ const AppContent = () => {
 
     // 其他页面使用MainLayout
     return (
-        <MainLayout>
-            <Router />
-        </MainLayout>
+        <>
+            <MainLayout>
+                <Router />
+            </MainLayout>
+            {/* 下载进度条组件，全局显示 */}
+            <DownloadProgress 
+                downloads={downloads} 
+                onRemove={removeDownload} 
+            />
+        </>
     );
 };
 
