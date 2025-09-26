@@ -12,6 +12,8 @@ import {
   Card,
   CardContent,
   Snackbar,
+  useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import {
   Folder,
@@ -23,14 +25,18 @@ import {
   CreateNewFolder,
   NoteAdd,
 } from '@mui/icons-material';
-import DataTable from '../../components/DataTable';
+import ResponsiveDataTable from '../../components/ResponsiveDataTable';
 import { PathSelectDialog, NameInputDialog } from '../../components/FileOperationDialogs';
+import FileUploadDialog from '../../components/FileUploadDialog';
 import { FileInfo, PathInfo } from '../../types';
 import axios from 'axios';
 
 const DynamicFileManager: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pathInfo, setPathInfo] = useState<PathInfo | null>(null);
@@ -42,13 +48,19 @@ const DynamicFileManager: React.FC = () => {
     title: '',
     operation: '' as 'copy' | 'move' | '',
     selectedFile: null as any,
+    onConfirm: (() => {}) as (targetPath: string) => void,
   });
   
   const [nameInputDialog, setNameInputDialog] = useState({
     open: false,
     title: '',
     placeholder: '',
-    operation: '' as 'createFolder' | 'createFile' | '',
+    type: '' as 'folder' | 'file' | '',
+  });
+
+  // 上传对话框状态
+  const [uploadDialog, setUploadDialog] = useState({
+    open: false,
   });
 
   // 消息提示状态
@@ -282,15 +294,25 @@ const DynamicFileManager: React.FC = () => {
     }
 
     try {
-      const backendPath = buildBackendPath(currentPath, file.name);
+      // 构建完整的文件路径
+      const fullFilePath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
+      const backendPath = buildBackendPath(fullFilePath, location.pathname);
       const cleanBackendPath = cleanPath(backendPath);
       const deleteApiUrl = `${import.meta.env.VITE_API_BASE_URL}/@files/remove/path${cleanBackendPath}`;
+      
+      console.log('删除操作调试信息:');
+      console.log('- currentPath:', currentPath);
+      console.log('- file.name:', file.name);
+      console.log('- fullFilePath:', fullFilePath);
+      console.log('- backendPath:', backendPath);
+      console.log('- cleanBackendPath:', cleanBackendPath);
+      console.log('- deleteApiUrl:', deleteApiUrl);
       
       const response = await axios.delete(deleteApiUrl);
       
       if (response.data.flag) {
         showMessage('文件删除成功');
-        fetchFileList(); // 刷新文件列表
+        fetchFileList(currentPath); // 刷新文件列表
       } else {
         showMessage('删除失败: ' + response.data.text, 'error');
       }
@@ -307,7 +329,7 @@ const DynamicFileManager: React.FC = () => {
       title: `复制 "${file.name}" 到`,
       onConfirm: handlePathSelectConfirm,
       operation: 'copy',
-      sourceFile: file
+      selectedFile: file
     });
   };
 
@@ -318,17 +340,95 @@ const DynamicFileManager: React.FC = () => {
       title: `移动 "${file.name}" 到`,
       onConfirm: handlePathSelectConfirm,
       operation: 'move',
-      sourceFile: file
+      selectedFile: file
     });
+  };
+
+  // 处理文件分享
+  const handleFileShare = async (file: any) => {
+    try {
+      const fullFilePath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
+      const filePath = buildBackendPath(fullFilePath, location.pathname);
+      const cleanFilePath = cleanPath(filePath);
+      
+      const apiUrl = `${import.meta.env.VITE_API_BASE_URL}/@files/share/path${cleanFilePath}`;
+      const response = await axios.post(apiUrl);
+      
+      if (response.data.flag) {
+        const shareUrl = response.data.data?.shareUrl || response.data.text;
+        // 复制分享链接到剪贴板
+        await navigator.clipboard.writeText(shareUrl);
+        showMessage(`分享链接已复制到剪贴板: ${shareUrl}`);
+      } else {
+        showMessage(`创建分享链接失败: ${response.data.text}`, 'error');
+      }
+    } catch (error) {
+      console.error('创建分享链接错误:', error);
+      showMessage('创建分享链接失败，请检查网络连接', 'error');
+    }
+  };
+
+  // 处理获取文件链接 - 修改为复制URL+路径格式
+  const handleFileLink = async (file: any) => {
+    try {
+      const fullFilePath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
+      
+      // 构建URL+路径格式，例如：http://localhost:8086/dir/1.jpg
+      const baseUrl = window.location.origin.replace(':3000', ':8086'); // 将前端端口3000替换为后端端口8086
+      const copyUrl = `${baseUrl}${fullFilePath}`;
+      
+      // 复制URL+路径到剪贴板
+      await navigator.clipboard.writeText(copyUrl);
+      showMessage(`文件链接已复制到剪贴板: ${copyUrl}`);
+    } catch (error) {
+      console.error('复制文件链接错误:', error);
+      showMessage('复制文件链接失败', 'error');
+    }
+  };
+
+  // 处理文件压缩
+  const handleFileArchive = async (file: any) => {
+    try {
+      const fullFilePath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
+      const filePath = buildBackendPath(fullFilePath, location.pathname);
+      const cleanFilePath = cleanPath(filePath);
+      
+      const apiUrl = `${import.meta.env.VITE_API_BASE_URL}/@files/archive/path${cleanFilePath}`;
+      const response = await axios.post(apiUrl);
+      
+      if (response.data.flag) {
+        showMessage(`文件 "${file.name}" 压缩成功`);
+        fetchFileList(currentPath); // 刷新文件列表
+      } else {
+        showMessage(`压缩失败: ${response.data.text}`, 'error');
+      }
+    } catch (error) {
+      console.error('压缩文件错误:', error);
+      showMessage('压缩文件失败，请检查网络连接', 'error');
+    }
+  };
+
+  // 处理文件设置
+  const handleFileSettings = async (file: any) => {
+    try {
+      // 这里可以打开文件属性对话框或设置面板
+      showMessage(`打开 "${file.name}" 的设置面板`, 'info');
+      // TODO: 实现文件设置功能，比如权限设置、属性修改等
+    } catch (error) {
+      console.error('打开文件设置错误:', error);
+      showMessage('打开文件设置失败', 'error');
+    }
   };
 
   // 处理路径选择确认
   const handlePathSelectConfirm = async (targetPath: string) => {
-    const { operation, sourceFile } = pathSelectDialog;
-    if (!sourceFile) return;
+    const { operation, selectedFile } = pathSelectDialog;
+    if (!selectedFile) return;
 
     try {
-      const sourcePath = buildBackendPath(currentPath, sourceFile.name);
+      // 构建完整的源文件路径
+      const fullSourcePath = currentPath === '/' ? `/${selectedFile.name}` : `${currentPath}/${selectedFile.name}`;
+      const sourcePath = buildBackendPath(fullSourcePath, location.pathname);
       const cleanSourcePath = cleanPath(sourcePath);
       const cleanTargetPath = cleanPath(targetPath);
       
@@ -339,7 +439,7 @@ const DynamicFileManager: React.FC = () => {
       
       if (response.data.flag) {
         showMessage(`文件${operation === 'copy' ? '复制' : '移动'}成功`);
-        fetchFileList(); // 刷新文件列表
+        fetchFileList(currentPath); // 刷新文件列表
       } else {
         showMessage(`${operation === 'copy' ? '复制' : '移动'}失败: ` + response.data.text, 'error');
       }
@@ -348,7 +448,7 @@ const DynamicFileManager: React.FC = () => {
       showMessage(`${operation === 'copy' ? '复制' : '移动'}文件失败，请检查网络连接`, 'error');
     }
     
-    setPathSelectDialog({ open: false, title: '', onConfirm: () => {}, operation: '', sourceFile: null });
+    setPathSelectDialog({ open: false, title: '', onConfirm: () => {}, operation: '', selectedFile: null });
   };
 
   // 处理创建文件夹
@@ -356,8 +456,7 @@ const DynamicFileManager: React.FC = () => {
     setNameInputDialog({
       open: true,
       title: '创建文件夹',
-      label: '文件夹名称',
-      onConfirm: handleNameInputConfirm,
+      placeholder: '文件夹名称',
       type: 'folder'
     });
   };
@@ -367,10 +466,26 @@ const DynamicFileManager: React.FC = () => {
     setNameInputDialog({
       open: true,
       title: '创建文件',
-      label: '文件名称',
-      onConfirm: handleNameInputConfirm,
+      placeholder: '文件名称',
       type: 'file'
     });
+  };
+
+  // 处理上传文件
+  const handleUpload = () => {
+    setUploadDialog({
+      open: true,
+    });
+  };
+
+  // 处理上传完成
+  const handleUploadComplete = () => {
+    setSnackbar({
+      open: true,
+      message: '文件上传完成',
+      severity: 'success',
+    });
+    // 不再自动刷新文件列表，等待用户手动关闭对话框时再刷新
   };
 
   // 处理名称输入确认
@@ -378,17 +493,29 @@ const DynamicFileManager: React.FC = () => {
     const { type } = nameInputDialog;
     
     try {
+      // 构建目标路径，文件夹需要以/结尾
       const targetName = type === 'folder' ? `${name}/` : name;
-      const targetPath = buildBackendPath(currentPath, targetName);
+      const targetPath = buildBackendPath(currentPath, name); // 注意这里使用name而不是targetName
       const cleanTargetPath = cleanPath(targetPath);
       
-      const apiUrl = `${import.meta.env.VITE_API_BASE_URL}/@files/create/path${cleanTargetPath}?target=${encodeURIComponent(targetName)}`;
+      // target参数需要确保文件夹以/结尾，文件不以/结尾
+      const targetParam = type === 'folder' ? `${name}/` : name;
+      const apiUrl = `${import.meta.env.VITE_API_BASE_URL}/@files/create/path${cleanTargetPath}?target=${encodeURIComponent(targetParam)}`;
+      
+      // 调试日志
+      console.log('创建文件/文件夹调试信息:');
+      console.log('- type:', type);
+      console.log('- name:', name);
+      console.log('- targetParam:', targetParam);
+      console.log('- targetParam ends with /:', targetParam.endsWith('/'));
+      console.log('- apiUrl:', apiUrl);
+      console.log('- decoded target:', decodeURIComponent(targetParam));
       
       const response = await axios.post(apiUrl);
       
       if (response.data.flag) {
         showMessage(`${type === 'folder' ? '文件夹' : '文件'}创建成功`);
-        fetchFileList(); // 刷新文件列表
+        fetchFileList(currentPath); // 刷新文件列表
       } else {
         showMessage(`创建失败: ` + response.data.text, 'error');
       }
@@ -397,7 +524,7 @@ const DynamicFileManager: React.FC = () => {
       showMessage(`创建${type === 'folder' ? '文件夹' : '文件'}失败，请检查网络连接`, 'error');
     }
     
-    setNameInputDialog({ open: false, title: '', label: '', onConfirm: () => {}, type: '' });
+    setNameInputDialog({ open: false, title: '', placeholder: '', type: '' });
   };
 
   // 当路径改变时更新当前路径并获取文件列表
@@ -524,34 +651,32 @@ const DynamicFileManager: React.FC = () => {
     {
       id: 'icon',
       label: '',
-      minWidth: 50,
+      minWidth: 40,
       align: 'center' as const,
       format: (value: any) => value,
+      priority: 3, // 图标列优先级：第三优先隐藏
     },
     {
       id: 'name',
       label: '名称',
       minWidth: 200,
       format: (value: string) => value,
-    },
-    {
-      id: 'type',
-      label: '类型',
-      minWidth: 100,
-      format: (value: string) => value,
+      priority: 0, // 文件名列优先级最高，始终显示
     },
     {
       id: 'size',
       label: '大小',
-      minWidth: 100,
+      minWidth: 120,
       align: 'right' as const,
       format: (value: string) => value,
+      priority: 2, // 大小列优先级：第二优先隐藏
     },
     {
       id: 'modified',
       label: '修改时间',
-      minWidth: 180,
+      minWidth: 200,
       format: (value: string) => value,
+      priority: 1, // 修改时间优先级：第一优先隐藏
     },
   ];
 
@@ -581,9 +706,9 @@ const DynamicFileManager: React.FC = () => {
   const tableData = prepareTableData();
 
   return (
-    <Box p={3}>
+    <Box p={isMobile ? 1 : 3}>
       <Card>
-        <CardContent>
+        <CardContent sx={{ p: isMobile ? 1 : 2, '&:last-child': { pb: isMobile ? 1 : 2 } }}>
           {/* 路径栏和工具栏 */}
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
             {/* 面包屑导航 */}
@@ -631,7 +756,7 @@ const DynamicFileManager: React.FC = () => {
                 </IconButton>
               </Tooltip>
               <Tooltip title="上传文件">
-                <IconButton>
+                <IconButton onClick={handleUpload}>
                   <Upload />
                 </IconButton>
               </Tooltip>
@@ -639,11 +764,11 @@ const DynamicFileManager: React.FC = () => {
           </Box>
 
           {/* 文件列表 */}
-          <DataTable
+          <ResponsiveDataTable
             title="文件列表"
             columns={columns}
             data={tableData}
-            actions={['download', 'copy', 'move', 'delete']}
+            actions={['download', 'link', 'copy', 'move', 'archive', 'settings', 'delete']}
             onRowClick={handleRowClick}
             onRowDoubleClick={(row) => {
               if (row.is_dir) {
@@ -654,6 +779,10 @@ const DynamicFileManager: React.FC = () => {
             onDelete={handleFileDelete}
             onCopy={handleFileCopy}
             onMove={handleFileMove}
+            onLink={handleFileLink}
+            onArchive={handleFileArchive}
+            onSettings={handleFileSettings}
+            onShare={handleFileShare}
           />
 
           {/* 路径选择对话框 */}
@@ -663,16 +792,30 @@ const DynamicFileManager: React.FC = () => {
             currentPath={currentPath}
             isPersonalFile={isPersonalFile(location.pathname)}
             onConfirm={pathSelectDialog.onConfirm}
-            onClose={() => setPathSelectDialog({ open: false, title: '', onConfirm: () => {}, operation: '', sourceFile: null })}
+            onClose={() => setPathSelectDialog({ open: false, title: '', operation: '', selectedFile: null, onConfirm: () => {} })}
           />
 
           {/* 名称输入对话框 */}
           <NameInputDialog
-            open={nameInputDialog.open}
-            title={nameInputDialog.title}
-            placeholder={nameInputDialog.label}
-            onConfirm={nameInputDialog.onConfirm}
-            onClose={() => setNameInputDialog({ open: false, title: '', label: '', onConfirm: () => {}, type: '' })}
+              open={nameInputDialog.open}
+              title={nameInputDialog.title}
+              placeholder={nameInputDialog.placeholder}
+              onConfirm={handleNameInputConfirm}
+              onClose={() => setNameInputDialog({ open: false, title: '', placeholder: '', type: '' })}
+            />
+
+          {/* 文件上传对话框 */}
+          <FileUploadDialog
+            open={uploadDialog.open}
+            onClose={(hasSuccessfulUploads) => {
+              setUploadDialog({ open: false });
+              // 只有在有成功上传时才刷新文件列表
+              if (hasSuccessfulUploads) {
+                fetchFileList(currentPath);
+              }
+            }}
+            currentPath={currentPath}
+            onUploadComplete={handleUploadComplete}
           />
 
           {/* 消息提示 */}

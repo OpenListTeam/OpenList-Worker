@@ -73,7 +73,7 @@ class ErrorBoundary extends Component<Props, State> {
               <div style={{ 
                 backgroundColor: '#ffebee',
                 border: '1px solid #f44336',
-                borderRadius: '4px',
+                borderRadius: '15px',
                 padding: '10px',
                 fontFamily: 'monospace',
                 fontSize: '14px',
@@ -96,7 +96,7 @@ class ErrorBoundary extends Component<Props, State> {
                   <div style={{ 
                     backgroundColor: '#ffebee',
                     border: '1px solid #f44336',
-                    borderRadius: '4px',
+                    borderRadius: '15px',
                     padding: '10px',
                     fontFamily: 'monospace',
                     fontSize: '12px',
@@ -125,7 +125,7 @@ class ErrorBoundary extends Component<Props, State> {
               <div style={{ 
                 backgroundColor: '#ffebee',
                 border: '1px solid #f44336',
-                borderRadius: '4px',
+                borderRadius: '15px',
                 padding: '10px',
                 fontFamily: 'monospace',
                 fontSize: '12px',
@@ -147,7 +147,7 @@ class ErrorBoundary extends Component<Props, State> {
                 backgroundColor: '#1976d2',
                 color: 'white',
                 border: 'none',
-                borderRadius: '4px',
+                borderRadius: '15px',
                 cursor: 'pointer',
                 fontSize: '16px',
                 fontWeight: 'bold'

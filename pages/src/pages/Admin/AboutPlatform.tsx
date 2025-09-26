@@ -55,7 +55,7 @@ const AboutPlatform: React.FC = () => {
     <Box sx={{ width: '100%', height: '100%', p: 3 }}>
       <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
-          <Card sx={{ borderRadius: '20px' }}>
+          <Card sx={{ borderRadius: '15px' }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <Info color="primary" sx={{ mr: 1 }} />
@@ -93,7 +93,7 @@ const AboutPlatform: React.FC = () => {
         </Grid>
 
         <Grid item xs={12} md={6}>
-          <Card sx={{ borderRadius: '20px' }}>
+          <Card sx={{ borderRadius: '15px' }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <Code color="primary" sx={{ mr: 1 }} />
@@ -115,7 +115,7 @@ const AboutPlatform: React.FC = () => {
         </Grid>
 
         <Grid item xs={12}>
-          <Card sx={{ borderRadius: '20px' }}>
+          <Card sx={{ borderRadius: '15px' }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <Speed color="primary" sx={{ mr: 1 }} />
@@ -142,7 +142,7 @@ const AboutPlatform: React.FC = () => {
         </Grid>
 
         <Grid item xs={12}>
-          <Card sx={{ borderRadius: '20px' }}>
+          <Card sx={{ borderRadius: '15px' }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <People color="primary" sx={{ mr: 1 }} />

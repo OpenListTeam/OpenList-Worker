@@ -75,9 +75,12 @@ interface MenuGroup {
 interface GroupedSidebarProps {
   darkMode: boolean;
   onDarkModeToggle: () => void;
+  open: boolean;
+  onClose: () => void;
+  isMobile: boolean;
 }
 
-const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeToggle }) => {
+const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeToggle, open, onClose, isMobile }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { state, logout } = useApp();
@@ -102,7 +105,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
       id: 'directory-management',
       title: '目录管理',
       icon: <FolderSpecial />,
-      defaultExpanded: true,
+      defaultExpanded: false,
       items: [
         { id: 'mates-config', title: '目录配置', icon: <FolderSpecial />, path: '/@pages/mates-config' },
         { id: 'crypt-config', title: '加密配置', icon: <Security />, path: '/@pages/crypt-config' }
@@ -112,7 +115,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
       id: 'task-management',
       title: '任务管理',
       icon: <Assignment />,
-      defaultExpanded: true,
+      defaultExpanded: false,
       items: [
         { id: 'task-config', title: '任务管理', icon: <Assignment />, path: '/@pages/task-config' },
         { id: 'offline-download', title: '离线下载', icon: <CloudDownload />, path: '/@pages/offline-download' }
@@ -122,7 +125,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
       id: 'personal-settings',
       title: '个人设置',
       icon: <AccountCircle />,
-      defaultExpanded: true,
+      defaultExpanded: false,
       items: [
         { id: 'connection-config', title: '挂载连接', icon: <Cloud />, path: '/@pages/connection-config' },
         { id: 'account-settings', title: '账号设置', icon: <AccountCircle />, path: '/@pages/account-settings' }
@@ -132,7 +135,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
       id: 'system-management',
       title: '系统管理',
       icon: <AdminPanelSettings />,
-      defaultExpanded: true,
+      defaultExpanded: false,
       items: [
         // 挂载管理（无子菜单）
         { id: 'mount-management', title: '挂载管理', icon: <Cloud />, path: '/@pages/mount-management' }
@@ -142,7 +145,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
       id: 'user-management',
       title: '用户管理',
       icon: <Group />,
-      defaultExpanded: true,
+      defaultExpanded: false,
       items: [
         { id: 'user-management', title: '用户管理', icon: <Group />, path: '/@pages/user-management' },
         { id: 'group-management', title: '分组管理', icon: <AdminPanelSettings />, path: '/@pages/group-management' },
@@ -153,7 +156,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
       id: 'system-settings',
       title: '系统设置',
       icon: <Settings />,
-      defaultExpanded: true,
+      defaultExpanded: false,
       items: [
         { id: 'site-settings', title: '站点设置', icon: <Language />, path: '/@pages/site-settings' }
       ]
@@ -162,7 +165,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
       id: 'more-settings',
       title: '更多设置',
       icon: <Settings />,
-      defaultExpanded: true,
+      defaultExpanded: false,
       items: [
         { id: 'about-platform', title: '关于平台', icon: <Info />, path: '/@pages/about-platform' }
       ]
@@ -234,7 +237,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
               display: 'flex',
               alignItems: 'center',
               backgroundColor: 'action.hover',
-              borderRadius: '16px',
+              borderRadius: '15px',
               p: 1.5,
               cursor: 'pointer',
               '&:hover': {
@@ -314,7 +317,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
               startIcon={<Login />}
               onClick={handleLogin}
               sx={{
-                borderRadius: '12px',
+                borderRadius: '15px',
                 textTransform: 'none',
                 fontWeight: 'medium'
               }}
@@ -327,7 +330,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
               startIcon={<PersonAdd />}
               onClick={handleRegister}
               sx={{
-                borderRadius: '12px',
+                borderRadius: '15px',
                 textTransform: 'none',
                 fontWeight: 'medium'
               }}
@@ -345,7 +348,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
       <ListItemButton 
         onClick={() => handleGroupToggle(group.id)}
         sx={{
-          borderRadius: '20px',
+          borderRadius: '15px',
           margin: '4px 8px',
           backgroundColor: 'transparent',
           width: '180px',
@@ -380,7 +383,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
               onClick={() => handleMenuClick(item.path)}
               sx={{
                 backgroundColor: isActive(item.path) ? 'primary.light' : 'transparent',
-                borderRadius: '20px',
+                borderRadius: '15px',
                 margin: '2px 10px',
                 cursor: 'pointer',
                 pl: 2,
@@ -412,25 +415,40 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
     </Box>
   );
 
+  // 如果是桌面端且侧边栏关闭，则不渲染
+  if (!isMobile && !open) {
+    return null;
+  }
+
   return (
     <Drawer
-      variant="permanent"
+      variant={isMobile ? "temporary" : "permanent"}
+      open={isMobile ? open : true} // 移动端使用open状态，桌面端总是true（通过上面的条件渲染控制）
+      onClose={onClose}
+      ModalProps={{
+        keepMounted: true, // 更好的移动端性能
+      }}
       sx={{
-        width: 220,
-        height: 'calc(100vh - 10px)',
+        width: isMobile ? 280 : 220, // 移动端稍微宽一点
+        height: isMobile ? '100vh' : 'calc(100vh - 10px)',
         flexShrink: 0,
-        marginBottom: '10px',
+        marginBottom: isMobile ? 0 : '10px',
         '& .MuiDrawer-paper': {
-          width: 220,
-          height: 'calc(100% - 18px)',
+          width: isMobile ? 280 : 220,
+          height: isMobile ? '100%' : 'calc(100% - 18px)',
           boxSizing: 'border-box',
           backgroundColor: 'background.paper',
-          borderRadius: '30px',
-          margin: '8px 22px 0px 8px',
+          borderRadius: isMobile ? '0 15px 15px 0' : '15px', // 移动端右侧圆角
+          margin: isMobile ? 0 : '8px 22px 0px 8px',
           border: 'none',
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          boxShadow: isMobile ? '2px 0 8px rgba(0,0,0,0.15)' : '0 4px 12px rgba(0,0,0,0.15)', // 移动端右侧阴影
+          // 移动端从左侧滑入的动画
+          ...(isMobile && {
+            transform: open ? 'translateX(0)' : 'translateX(-100%)',
+            transition: 'transform 0.3s ease-in-out',
+          }),
         },
       }}
     >
@@ -482,7 +500,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
         />
         
         {/* 存储空间显示 */}
-        <Box sx={{ backgroundColor: 'action.hover', borderRadius: '20px', p: 2 }}>
+        <Box sx={{ backgroundColor: 'action.hover', borderRadius: '15px', p: 2 }}>
           <Typography variant="body2">存储空间</Typography>
           <LinearProgress variant="determinate" value={50} sx={{ mt: 1 }} />
           <Typography variant="caption">5GB / 10GB</Typography>

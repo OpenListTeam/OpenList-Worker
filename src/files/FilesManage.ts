@@ -12,8 +12,11 @@ export class FilesManage {
         this.d = d
     }
 
-    async action(action: string, source: string | undefined, target: string | undefined,
-                 config?: Record<string, any> | undefined, driver?: string | undefined,
+    async action(action?: string | undefined,
+                 source?: string | undefined,
+                 target?: string | undefined,
+                 config?: Record<string, any> | undefined,
+                 driver?: string | undefined,
                  upload?: { [key: string]: any } | undefined): Promise<any> {
         // 检查参数 ==========================================================================
         const mount_data: MountManage = new MountManage(this.c);

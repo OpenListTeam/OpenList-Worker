@@ -20,13 +20,13 @@ export const lightTheme = createTheme({
     },
   },
   shape: {
-    borderRadius: 12,
+    borderRadius: 15,
   },
   components: {
     MuiDrawer: {
       styleOverrides: {
         paper: {
-          borderRadius: '30px',
+          borderRadius: '15px',
           margin: '8px 24px 8px 8px',
           border: 'none',
         },
@@ -35,14 +35,14 @@ export const lightTheme = createTheme({
     MuiAppBar: {
       styleOverrides: {
         root: {
-          borderRadius: '30px',
+          borderRadius: '15px',
         },
       },
     },
     MuiPaper: {
       styleOverrides: {
         root: {
-          borderRadius: '20px',
+          borderRadius: '15px',
         },
       },
     },
@@ -95,13 +95,13 @@ export const darkTheme = createTheme({
     },
   },
   shape: {
-    borderRadius: 12,
+    borderRadius: 15,
   },
   components: {
     MuiDrawer: {
       styleOverrides: {
         paper: {
-          borderRadius: '30px',
+          borderRadius: '15px',
           margin: '8px 24px 8px 8px',
           border: 'none',
         },
@@ -110,14 +110,14 @@ export const darkTheme = createTheme({
     MuiAppBar: {
       styleOverrides: {
         root: {
-          borderRadius: '30px',
+          borderRadius: '15px',
         },
       },
     },
     MuiPaper: {
       styleOverrides: {
         root: {
-          borderRadius: '20px',
+          borderRadius: '15px',
         },
       },
     },

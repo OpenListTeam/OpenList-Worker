@@ -68,7 +68,7 @@ const AccountSettings: React.FC = () => {
     <Box sx={{ width: '100%', height: '100%', p: 3 }}>
       <Grid container spacing={3}>
         <Grid item xs={12} md={3}>
-          <Card sx={{ borderRadius: '20px' }}>
+          <Card sx={{ borderRadius: '15px' }}>
             <CardContent sx={{ textAlign: 'center' }}>
               <Avatar sx={{ width: 80, height: 80, mx: 'auto', mb: 2 }}>
                 {userInfo.username.charAt(0).toUpperCase()}
@@ -81,7 +81,7 @@ const AccountSettings: React.FC = () => {
             </CardContent>
           </Card>
 
-          <Card sx={{ borderRadius: '20px', mt: 2 }}>
+          <Card sx={{ borderRadius: '15px', mt: 2 }}>
             <List>
               {menuItems.map((item, index) => (
                 <ListItem key={index} disablePadding>
@@ -96,7 +96,7 @@ const AccountSettings: React.FC = () => {
         </Grid>
 
         <Grid item xs={12} md={9}>
-          <Card sx={{ borderRadius: '20px', mb: 3 }}>
+          <Card sx={{ borderRadius: '15px', mb: 3 }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 个人信息
@@ -137,7 +137,7 @@ const AccountSettings: React.FC = () => {
             </CardContent>
           </Card>
 
-          <Card sx={{ borderRadius: '20px' }}>
+          <Card sx={{ borderRadius: '15px' }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 修改密码

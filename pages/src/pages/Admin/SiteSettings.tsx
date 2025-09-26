@@ -37,7 +37,7 @@ const SiteSettings: React.FC = () => {
     <Box sx={{ width: '100%', height: '100%', p: 3 }}>
       <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
-          <Card sx={{ borderRadius: '20px' }}>
+          <Card sx={{ borderRadius: '15px' }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 基本信息
@@ -77,7 +77,7 @@ const SiteSettings: React.FC = () => {
         </Grid>
 
         <Grid item xs={12} md={6}>
-          <Card sx={{ borderRadius: '20px' }}>
+          <Card sx={{ borderRadius: '15px' }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 限制设置
@@ -107,7 +107,7 @@ const SiteSettings: React.FC = () => {
         </Grid>
 
         <Grid item xs={12} md={6}>
-          <Card sx={{ borderRadius: '20px' }}>
+          <Card sx={{ borderRadius: '15px' }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 功能设置
