@@ -28,6 +28,7 @@ import {
 import ResponsiveDataTable from '../../components/ResponsiveDataTable';
 import { PathSelectDialog, NameInputDialog } from '../../components/FileOperationDialogs';
 import FileUploadDialog from '../../components/FileUploadDialog';
+import FilePreview from './FilePreview';
 import { FileInfo, PathInfo } from '../../types';
 import axios from 'axios';
 
@@ -346,26 +347,7 @@ const DynamicFileManager: React.FC = () => {
 
   // 处理文件分享
   const handleFileShare = async (file: any) => {
-    try {
-      const fullFilePath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
-      const filePath = buildBackendPath(fullFilePath, location.pathname);
-      const cleanFilePath = cleanPath(filePath);
-      
-      const apiUrl = `${import.meta.env.VITE_API_BASE_URL}/@files/share/path${cleanFilePath}`;
-      const response = await axios.post(apiUrl);
-      
-      if (response.data.flag) {
-        const shareUrl = response.data.data?.shareUrl || response.data.text;
-        // 复制分享链接到剪贴板
-        await navigator.clipboard.writeText(shareUrl);
-        showMessage(`分享链接已复制到剪贴板: ${shareUrl}`);
-      } else {
-        showMessage(`创建分享链接失败: ${response.data.text}`, 'error');
-      }
-    } catch (error) {
-      console.error('创建分享链接错误:', error);
-      showMessage('创建分享链接失败，请检查网络连接', 'error');
-    }
+    // 分享功能已移除
   };
 
   // 处理获取文件链接 - 修改为复制URL+路径格式
@@ -388,24 +370,7 @@ const DynamicFileManager: React.FC = () => {
 
   // 处理文件压缩
   const handleFileArchive = async (file: any) => {
-    try {
-      const fullFilePath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
-      const filePath = buildBackendPath(fullFilePath, location.pathname);
-      const cleanFilePath = cleanPath(filePath);
-      
-      const apiUrl = `${import.meta.env.VITE_API_BASE_URL}/@files/archive/path${cleanFilePath}`;
-      const response = await axios.post(apiUrl);
-      
-      if (response.data.flag) {
-        showMessage(`文件 "${file.name}" 压缩成功`);
-        fetchFileList(currentPath); // 刷新文件列表
-      } else {
-        showMessage(`压缩失败: ${response.data.text}`, 'error');
-      }
-    } catch (error) {
-      console.error('压缩文件错误:', error);
-      showMessage('压缩文件失败，请检查网络连接', 'error');
-    }
+    // 压缩功能已移除
   };
 
   // 处理文件设置
@@ -679,6 +644,21 @@ const DynamicFileManager: React.FC = () => {
       priority: 1, // 修改时间优先级：第一优先隐藏
     },
   ];
+
+  // 检查URL是否为目录（以/结尾）还是文件
+  const isDirectoryUrl = (pathname: string): boolean => {
+    // 根路径总是目录
+    if (pathname === '/' || pathname === '/@pages/myfile') {
+      return true;
+    }
+    // 以/结尾的是目录
+    return pathname.endsWith('/');
+  };
+
+  // 如果URL不是目录（即文件），显示文件预览页面
+  if (!isDirectoryUrl(location.pathname)) {
+    return <FilePreview />;
+  }
 
   if (loading) {
     return (

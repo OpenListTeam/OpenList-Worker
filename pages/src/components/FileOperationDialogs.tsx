@@ -16,11 +16,16 @@ import {
   Breadcrumbs,
   Link,
   CircularProgress,
+  TreeView,
+  TreeItem,
 } from '@mui/material';
 import {
   Folder,
   Home,
   NavigateNext,
+  ExpandMore,
+  ChevronRight,
+  FolderOpen,
 } from '@mui/icons-material';
 import axios from 'axios';
 
@@ -45,6 +50,14 @@ interface NameInputDialogProps {
 interface FolderInfo {
   name: string;
   is_dir: boolean;
+}
+
+interface TreeNode {
+  id: string;
+  name: string;
+  path: string;
+  children?: TreeNode[];
+  loaded?: boolean;
 }
 
 // 路径选择对话框
@@ -78,18 +91,20 @@ export const PathSelectDialog: React.FC<PathSelectDialogProps> = ({
       
       let apiUrl: string;
       if (cleanBackendPath === '' || cleanBackendPath === '/') {
-        apiUrl = 'http://127.0.0.1:8787/@files/list/path/?filetype=0';
+        apiUrl = 'http://127.0.0.1:8787/@files/list/path/';
       } else {
         const pathWithSlash = cleanBackendPath.startsWith('/') ? cleanBackendPath : `/${cleanBackendPath}`;
-        apiUrl = `http://127.0.0.1:8787/@files/list/path${pathWithSlash}/?filetype=0`;
+        apiUrl = `http://127.0.0.1:8787/@files/list/path${pathWithSlash}/`;
       }
 
       const response = await axios.get(apiUrl);
-      if (response.data && response.data.flag && response.data.data) {
-        // 确保 response.data.data 是数组
-        const dataArray = Array.isArray(response.data.data) ? response.data.data : [];
-        const folderList = dataArray.filter((item: any) => item.is_dir || item.filetype === 0);
-        setFolders(folderList);
+      if (response.data && response.data.flag && response.data.data && response.data.data.fileList) {
+        // 使用返回数据中的fileType字段进行过滤，fileType === 0 表示文件夹
+        const folderList = response.data.data.fileList.filter((item: any) => item.fileType === 0);
+        setFolders(folderList.map((item: any) => ({
+          name: item.fileName,
+          is_dir: true
+        })));
       } else {
         setFolders([]);
       }
