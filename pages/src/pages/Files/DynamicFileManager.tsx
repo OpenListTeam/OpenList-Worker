@@ -42,6 +42,10 @@ const DynamicFileManager: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [pathInfo, setPathInfo] = useState<PathInfo | null>(null);
   const [currentPath, setCurrentPath] = useState<string>('/');
+  
+  // 排序状态
+  const [sortBy, setSortBy] = useState<string>('name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // 对话框状态
   const [pathSelectDialog, setPathSelectDialog] = useState({
@@ -261,11 +265,12 @@ const DynamicFileManager: React.FC = () => {
     let targetPath: string;
     
     if (isPersonal) {
-      // 个人文件路径
-      targetPath = `/@pages/myfile${newPath}`;
+      // 个人文件路径 - 确保路径以 / 结尾
+      const normalizedPath = newPath.endsWith('/') ? newPath : newPath + '/';
+      targetPath = `/@pages/myfile${normalizedPath}`;
     } else {
-      // 公共文件路径 - 直接使用路径，不添加/@pages/前缀
-      targetPath = newPath;
+      // 公共文件路径 - 确保路径以 / 结尾
+      targetPath = newPath.endsWith('/') ? newPath : newPath + '/';
     }
     
     console.log('导航到:', targetPath, '新路径:', newPath, '当前路径:', currentPath, '清理后路径:', cleanCurrentPath);
@@ -278,8 +283,10 @@ const DynamicFileManager: React.FC = () => {
       // 点击文件夹 - 导航到新路径
       handleFolderClick(row.name);
     } else {
-      // 点击文件 - 下载文件
-      handleFileDownload(row.name);
+      // 点击文件 - 跳转到预览页面
+      const fullFilePath = currentPath === '/' ? `/${row.name}` : `${currentPath}/${row.name}`;
+      const backendPath = buildBackendPath(fullFilePath, location.pathname);
+      navigate(backendPath);
     }
   };
 
@@ -325,10 +332,11 @@ const DynamicFileManager: React.FC = () => {
 
   // 处理文件复制
   const handleFileCopy = (file: any) => {
+    console.log('handleFileCopy 被调用，file 参数:', file);
     setPathSelectDialog({
       open: true,
       title: `复制 "${file.name}" 到`,
-      onConfirm: handlePathSelectConfirm,
+      onConfirm: (targetPath: string) => handlePathSelectConfirm(targetPath, 'copy', file),
       operation: 'copy',
       selectedFile: file
     });
@@ -336,10 +344,11 @@ const DynamicFileManager: React.FC = () => {
 
   // 处理文件移动
   const handleFileMove = (file: any) => {
+    console.log('handleFileMove 被调用，file 参数:', file);
     setPathSelectDialog({
       open: true,
       title: `移动 "${file.name}" 到`,
-      onConfirm: handlePathSelectConfirm,
+      onConfirm: (targetPath: string) => handlePathSelectConfirm(targetPath, 'move', file),
       operation: 'move',
       selectedFile: file
     });
@@ -347,7 +356,20 @@ const DynamicFileManager: React.FC = () => {
 
   // 处理文件分享
   const handleFileShare = async (file: any) => {
-    // 分享功能已移除
+    try {
+      const fullFilePath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
+      const backendPath = buildBackendPath(fullFilePath, location.pathname);
+      
+      // 构建分享链接
+      const shareUrl = `${window.location.origin}/share${backendPath}`;
+      
+      // 复制分享链接到剪贴板
+      await navigator.clipboard.writeText(shareUrl);
+      showMessage(`分享链接已复制到剪贴板: ${shareUrl}`);
+    } catch (error) {
+      console.error('分享文件错误:', error);
+      showMessage('分享文件失败', 'error');
+    }
   };
 
   // 处理获取文件链接 - 修改为复制URL+路径格式
@@ -386,26 +408,45 @@ const DynamicFileManager: React.FC = () => {
   };
 
   // 处理路径选择确认
-  const handlePathSelectConfirm = async (targetPath: string) => {
-    const { operation, selectedFile } = pathSelectDialog;
-    if (!selectedFile) return;
+  const handlePathSelectConfirm = async (targetPath: string, operation: string, selectedFile: any) => {
+    console.log('=== handlePathSelectConfirm 开始 ===');
+    console.log('targetPath:', targetPath);
+    console.log('operation:', operation);
+    console.log('selectedFile:', selectedFile);
+    console.log('currentPath:', currentPath);
+    
+    if (!selectedFile) {
+      console.log('错误: selectedFile 为空');
+      return;
+    }
 
     try {
       // 构建完整的源文件路径
       const fullSourcePath = currentPath === '/' ? `/${selectedFile.name}` : `${currentPath}/${selectedFile.name}`;
+      console.log('fullSourcePath:', fullSourcePath);
+      
       const sourcePath = buildBackendPath(fullSourcePath, location.pathname);
+      console.log('sourcePath:', sourcePath);
+      
       const cleanSourcePath = cleanPath(sourcePath);
       const cleanTargetPath = cleanPath(targetPath);
+      console.log('cleanSourcePath:', cleanSourcePath);
+      console.log('cleanTargetPath:', cleanTargetPath);
       
       const action = operation === 'copy' ? 'copy' : 'move';
       const apiUrl = `${import.meta.env.VITE_API_BASE_URL}/@files/${action}/path${cleanSourcePath}?target=${encodeURIComponent(cleanTargetPath)}`;
+      console.log('apiUrl:', apiUrl);
       
+      console.log('发送请求...');
       const response = await axios.post(apiUrl);
+      console.log('响应:', response);
       
       if (response.data.flag) {
+        console.log('操作成功');
         showMessage(`文件${operation === 'copy' ? '复制' : '移动'}成功`);
         fetchFileList(currentPath); // 刷新文件列表
       } else {
+        console.log('操作失败:', response.data.text);
         showMessage(`${operation === 'copy' ? '复制' : '移动'}失败: ` + response.data.text, 'error');
       }
     } catch (error) {
@@ -413,7 +454,9 @@ const DynamicFileManager: React.FC = () => {
       showMessage(`${operation === 'copy' ? '复制' : '移动'}文件失败，请检查网络连接`, 'error');
     }
     
-    setPathSelectDialog({ open: false, title: '', onConfirm: () => {}, operation: '', selectedFile: null });
+    console.log('关闭对话框...');
+    setPathSelectDialog(prev => ({ ...prev, open: false }));
+    console.log('=== handlePathSelectConfirm 结束 ===');
   };
 
   // 处理创建文件夹
@@ -518,15 +561,54 @@ const DynamicFileManager: React.FC = () => {
   };
 
   // 格式化时间
-  const formatDate = (dateString?: string): string => {
-    if (!dateString) return '-';
-    try {
-      // 处理ISO字符串格式的时间
-      const date = new Date(dateString);
-      return date.toLocaleString('zh-CN');
-    } catch (error) {
-      console.error('日期格式化错误:', error);
+  const formatDate = (dateInput?: string | number): string => {
+    if (!dateInput || (typeof dateInput === 'string' && dateInput.trim() === '')) {
       return '-';
+    }
+    
+    try {
+      let date: Date;
+      
+      // 处理不同的输入格式
+      if (typeof dateInput === 'number') {
+        // 数字时间戳处理
+        const timestamp = dateInput < 10000000000 ? dateInput * 1000 : dateInput;
+        date = new Date(timestamp);
+      } else if (typeof dateInput === 'string') {
+        const trimmed = dateInput.trim();
+        
+        // 检查是否为纯数字字符串（时间戳）
+        if (/^\d+$/.test(trimmed)) {
+          const timestamp = parseInt(trimmed, 10);
+          date = new Date(timestamp < 10000000000 ? timestamp * 1000 : timestamp);
+        } else {
+          // 直接尝试解析日期字符串（包括ISO 8601格式）
+          date = new Date(trimmed);
+        }
+      } else {
+        return String(dateInput);
+      }
+      
+      // 验证日期是否有效
+      if (isNaN(date.getTime())) {
+        // 如果转换失败，返回原文本
+        return String(dateInput);
+      }
+      
+      // 格式化为本地时间字符串
+      return date.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+    } catch (error) {
+      console.error('日期格式化错误:', error, '输入:', dateInput);
+      // 如果转换失败，返回原文本
+      return String(dateInput);
     }
   };
 
@@ -562,11 +644,16 @@ const DynamicFileManager: React.FC = () => {
     let targetPath: string;
     
     if (isPersonal) {
-      // 个人文件路径
-      targetPath = path === '/' ? '/@pages/myfile' : `/@pages/myfile${path}`;
+      // 个人文件路径 - 确保路径以 / 结尾
+      if (path === '/') {
+        targetPath = '/@pages/myfile/';
+      } else {
+        const normalizedPath = path.endsWith('/') ? path : path + '/';
+        targetPath = `/@pages/myfile${normalizedPath}`;
+      }
     } else {
-      // 公共文件路径 - 直接使用路径
-      targetPath = path;
+      // 公共文件路径 - 确保路径以 / 结尾
+      targetPath = path.endsWith('/') ? path : path + '/';
     }
     
     navigate(targetPath);
@@ -581,11 +668,12 @@ const DynamicFileManager: React.FC = () => {
     let targetPath: string;
     
     if (isPersonal) {
-      // 个人文件路径
-      targetPath = `/@pages/myfile${newPath}`;
+      // 个人文件路径 - 确保路径以 / 结尾
+      const normalizedPath = newPath.endsWith('/') ? newPath : newPath + '/';
+      targetPath = `/@pages/myfile${normalizedPath}`;
     } else {
-      // 公共文件路径 - 直接使用路径
-      targetPath = newPath;
+      // 公共文件路径 - 确保路径以 / 结尾
+      targetPath = newPath.endsWith('/') ? newPath : newPath + '/';
     }
     
     navigate(targetPath);
@@ -600,15 +688,48 @@ const DynamicFileManager: React.FC = () => {
   const prepareTableData = () => {
     if (!pathInfo?.fileList) return [];
 
-    return pathInfo.fileList.map((file: FileInfo) => ({
-      id: file.fileUUID || file.fileName, // 使用fileUUID作为唯一标识
-      name: file.fileName,
-      type: file.fileType === 0 ? '文件夹' : '文件',
-      size: file.fileType === 0 ? '-' : formatFileSize(file.fileSize || 0),
-      modified: formatDate(file.timeModify),
-      icon: file.fileType === 0 ? <Folder color="primary" /> : <InsertDriveFile />,
-      is_dir: file.fileType === 0
-    }));
+    const tableData = pathInfo.fileList.map((file: FileInfo) => ({
+        id: file.fileUUID || file.fileName, // 使用fileUUID作为唯一标识
+        name: file.fileName,
+        type: file.fileType === 0 ? '文件夹' : '文件',
+        size: file.fileType === 0 ? '-' : formatFileSize(file.fileSize || 0),
+        modified: formatDate(file.timeModify),
+        icon: file.fileType === 0 ? <Folder color="primary" /> : <InsertDriveFile />,
+        is_dir: file.fileType === 0,
+        fileSize: file.fileSize || 0, // 保留原始文件大小用于排序
+        timeModify: file.timeModify // 保留原始修改时间用于排序
+      }));
+
+    // 排序逻辑：目录在前，然后按指定字段排序
+    return tableData.sort((a, b) => {
+      // 首先按目录/文件分类，目录在前
+      if (a.is_dir !== b.is_dir) {
+        return a.is_dir ? -1 : 1;
+      }
+
+      // 然后按指定字段排序
+      let compareValue = 0;
+      switch (sortBy) {
+        case 'name':
+          compareValue = a.name.localeCompare(b.name, 'zh-CN', { numeric: true });
+          break;
+        case 'size':
+          // 目录大小都为0，文件按实际大小排序
+          if (a.is_dir && b.is_dir) {
+            compareValue = a.name.localeCompare(b.name, 'zh-CN', { numeric: true });
+          } else {
+            compareValue = a.fileSize - b.fileSize;
+          }
+          break;
+        case 'modified':
+          compareValue = new Date(a.timeModify).getTime() - new Date(b.timeModify).getTime();
+          break;
+        default:
+          compareValue = a.name.localeCompare(b.name, 'zh-CN', { numeric: true });
+      }
+
+      return sortOrder === 'asc' ? compareValue : -compareValue;
+    });
   };
 
   // 表格列定义
@@ -620,6 +741,7 @@ const DynamicFileManager: React.FC = () => {
       align: 'center' as const,
       format: (value: any) => value,
       priority: 3, // 图标列优先级：第三优先隐藏
+      sortable: false,
     },
     {
       id: 'name',
@@ -627,6 +749,7 @@ const DynamicFileManager: React.FC = () => {
       minWidth: 200,
       format: (value: string) => value,
       priority: 0, // 文件名列优先级最高，始终显示
+      sortable: true,
     },
     {
       id: 'size',
@@ -635,6 +758,7 @@ const DynamicFileManager: React.FC = () => {
       align: 'right' as const,
       format: (value: string) => value,
       priority: 2, // 大小列优先级：第二优先隐藏
+      sortable: true,
     },
     {
       id: 'modified',
@@ -642,6 +766,7 @@ const DynamicFileManager: React.FC = () => {
       minWidth: 200,
       format: (value: string) => value,
       priority: 1, // 修改时间优先级：第一优先隐藏
+      sortable: true,
     },
   ];
 
@@ -653,6 +778,12 @@ const DynamicFileManager: React.FC = () => {
     }
     // 以/结尾的是目录
     return pathname.endsWith('/');
+  };
+
+  // 处理排序
+  const handleSort = (columnId: string, order: 'asc' | 'desc') => {
+    setSortBy(columnId);
+    setSortOrder(order);
   };
 
   // 如果URL不是目录（即文件），显示文件预览页面
@@ -748,7 +879,7 @@ const DynamicFileManager: React.FC = () => {
             title="文件列表"
             columns={columns}
             data={tableData}
-            actions={['download', 'link', 'copy', 'move', 'archive', 'settings', 'delete']}
+            actions={['download', 'share', 'link', 'copy', 'move', 'archive', 'settings', 'delete']}
             onRowClick={handleRowClick}
             onRowDoubleClick={(row) => {
               if (row.is_dir) {
@@ -763,6 +894,9 @@ const DynamicFileManager: React.FC = () => {
             onArchive={handleFileArchive}
             onSettings={handleFileSettings}
             onShare={handleFileShare}
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            onSort={handleSort}
           />
 
           {/* 路径选择对话框 */}

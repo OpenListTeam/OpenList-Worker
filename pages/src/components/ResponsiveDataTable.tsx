@@ -11,6 +11,7 @@ import {
   Box,
   useTheme,
   useMediaQuery,
+  TableSortLabel,
 } from '@mui/material';
 import { 
   Edit, 
@@ -32,6 +33,7 @@ interface Column {
   align?: 'right' | 'left' | 'center';
   format?: (value: any) => React.ReactNode;
   priority?: number; // 优先级，数字越小优先级越高，0为最高优先级（不会被隐藏）
+  sortable?: boolean; // 是否可排序
 }
 
 interface ResponsiveDataTableProps {
@@ -51,6 +53,9 @@ interface ResponsiveDataTableProps {
   onRowClick?: (row: any) => void;
   onRowDoubleClick?: (row: any) => void;
   actions?: ('edit' | 'delete' | 'share' | 'download' | 'view' | 'copy' | 'move' | 'link' | 'archive' | 'settings')[];
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  onSort?: (columnId: string, order: 'asc' | 'desc') => void;
 }
 
 const ResponsiveDataTable: React.FC<ResponsiveDataTableProps> = ({
@@ -70,11 +75,26 @@ const ResponsiveDataTable: React.FC<ResponsiveDataTableProps> = ({
   onRowClick,
   onRowDoubleClick,
   actions = ['edit', 'delete'],
+  sortBy,
+  sortOrder,
+  onSort,
 }) => {
   const [visibleColumns, setVisibleColumns] = useState<Column[]>(columns);
   const [showActionColumn, setShowActionColumn] = useState<boolean>(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const theme = useTheme();
+
+  // 处理排序
+  const handleSort = (columnId: string) => {
+    if (!onSort) return;
+    
+    let newOrder: 'asc' | 'desc' = 'asc';
+    if (sortBy === columnId && sortOrder === 'asc') {
+      newOrder = 'desc';
+    }
+    
+    onSort(columnId, newOrder);
+  };
 
   // 计算可见列
   const calculateVisibleColumns = () => {
@@ -206,7 +226,17 @@ const ResponsiveDataTable: React.FC<ResponsiveDataTableProps> = ({
                   }}
                   sx={{ fontWeight: 'bold' }}
                 >
-                  {column.label}
+                  {column.sortable && onSort ? (
+                    <TableSortLabel
+                      active={sortBy === column.id}
+                      direction={sortBy === column.id ? sortOrder : 'asc'}
+                      onClick={() => handleSort(column.id)}
+                    >
+                      {column.label}
+                    </TableSortLabel>
+                  ) : (
+                    column.label
+                  )}
                 </TableCell>
               ))}
               {showActionColumn && (

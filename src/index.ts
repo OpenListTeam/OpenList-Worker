@@ -84,6 +84,10 @@ app.use('/@mount/:action/:method/*', async (c: Context) => {
             let result: MountResult = await mounts.config(config as MountConfig);
             return c.json(result, result.flag ? 200 : 400)
         }
+        case "driver": { // 配置挂载 =====================================================
+
+            return c.json()
+        }
         case "reload": { // 载入挂载 =====================================================
             let result: MountResult = await mounts.reload(config.mount_path);
             return c.json(result, result.flag ? 200 : 400)

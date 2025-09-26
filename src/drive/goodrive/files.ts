@@ -90,10 +90,10 @@ export class HostDriver extends BasicDriver {
 
         if (!this.driver || !this.driver.files)
             return {taskFlag: fso.FSStatus.FILESYSTEM_ERR};
-        if (!dest?.uuid) return {taskFlag: fso.FSStatus.FILESYSTEM_ERR};
-        if (!file?.uuid) return {taskFlag: fso.FSStatus.FILESYSTEM_ERR};
         if (file?.path) file.uuid = await this.findUUID(file.path);
         if (dest?.path) dest.uuid = await this.findUUID(dest.path);
+        if (!dest?.uuid) return {taskFlag: fso.FSStatus.FILESYSTEM_ERR};
+        if (!file?.uuid) return {taskFlag: fso.FSStatus.FILESYSTEM_ERR};
         try {
             const result: any = this.driver.files.copy({// @ts-ignore
                 fileId: file.uuid, requestBody: {parents: [dest.uuid]}
