@@ -169,5 +169,60 @@ export class MountManage {
         }
     }
 
+    /**
+     * 获取所有可用的驱动列表。
+     * @returns 返回操作结果，包含成功标志、描述信息和驱动列表数据。
+     */
+    async driver(): Promise<MountResult> {
+        try {
+            const { getAvailableDrivers } = await import('../drive/DriveSelect');
+            const drivers = getAvailableDrivers();
+            return {
+                flag: true,
+                text: 'Driver list retrieved successfully',
+                data: drivers,
+            };
+        } catch (error) {
+            return {
+                flag: false,
+                text: 'Failed to retrieve driver list: ' + (error as Error).message,
+                data: [],
+            };
+        }
+    }
+
+    /**
+     * 获取指定驱动的配置字段。
+     * @param driverType - 驱动类型。
+     * @returns 返回操作结果，包含成功标志、描述信息和配置字段数据。
+     */
+    async driverConfig(driverType: string): Promise<MountResult> {
+        try {
+            const { getDriverConfigFields } = await import('../drive/DriveSelect');
+            const fields = getDriverConfigFields(driverType);
+            if (fields.length === 0) {
+                return {
+                    flag: false,
+                    text: 'Invalid driver type',
+                    data: [],
+                };
+            }
+            return {
+                flag: true,
+                text: 'Driver config fields retrieved successfully',
+                data: {
+                    type: driverType,
+                    fields: fields,
+                },
+            };
+        } catch (error) {
+            return {
+                flag: false,
+                text: 'Failed to retrieve driver config fields: ' + (error as Error).message,
+                data: [],
+            };
+        }
+    }
+
 
 }

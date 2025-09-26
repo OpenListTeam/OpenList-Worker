@@ -17,6 +17,10 @@ export interface Mount {
   drive_conf?: string;
   drive_save?: string;
   cache_time?: number;
+  order_number?: number;
+  proxy_mode?: string;
+  proxy_url?: string;
+  remarks?: string;
 }
 
 // 用户信息
