@@ -20,9 +20,7 @@ import {
   Download, 
   Visibility, 
   FileCopy, 
-  DriveFileMove,
-  CreateNewFolder,
-  NoteAdd 
+  DriveFileMove
 } from '@mui/icons-material';
 
 interface Column {
@@ -44,12 +42,9 @@ interface DataTableProps {
   onView?: (row: any) => void;
   onCopy?: (row: any) => void;
   onMove?: (row: any) => void;
-  onCreateFolder?: () => void;
-  onCreateFile?: () => void;
   onRowClick?: (row: any) => void;
   onRowDoubleClick?: (row: any) => void;
   actions?: ('edit' | 'delete' | 'share' | 'download' | 'view' | 'copy' | 'move')[];
-  showCreateButtons?: boolean;
 }
 
 const DataTable: React.FC<DataTableProps> = ({
@@ -63,12 +58,9 @@ const DataTable: React.FC<DataTableProps> = ({
   onView,
   onCopy,
   onMove,
-  onCreateFolder,
-  onCreateFile,
   onRowClick,
   onRowDoubleClick,
   actions = ['edit', 'delete'],
-  showCreateButtons = false,
 }) => {
   const renderStatusChip = (status: number) => (
     <Chip
@@ -120,28 +112,6 @@ const DataTable: React.FC<DataTableProps> = ({
 
   return (
     <Box sx={{ width: '100%', height: '100%' }}>
-      {/* 创建按钮 */}
-      {showCreateButtons && (
-        <Box sx={{ mb: 2, display: 'flex', gap: 1 }}>
-          <Button
-            variant="outlined"
-            startIcon={<CreateNewFolder />}
-            onClick={onCreateFolder}
-            size="small"
-          >
-            新建文件夹
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<NoteAdd />}
-            onClick={onCreateFile}
-            size="small"
-          >
-            新建文件
-          </Button>
-        </Box>
-      )}
-      
       <TableContainer component={Paper} sx={{ height: '100%', borderRadius: '20px' }}>
         <Table stickyHeader sx={{ minWidth: 650 }} aria-label="data table">
           <TableHead>

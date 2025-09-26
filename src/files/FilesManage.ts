@@ -1,6 +1,7 @@
 import {Context} from "hono";
 import {MountManage} from "../mount/MountManage";
 import {FileType} from "./FilesObject";
+import {FileFind} from "../drive/DriveObject";
 
 export class FilesManage {
     public c: Context
@@ -27,38 +28,40 @@ export class FilesManage {
         // 执行操作 ==========================================================================
         switch (action) {
             case "list": { // 列出文件 =======================================================
-                const file_list: any[] = await drive_load.listFile(source)
+                const file_list: any[] = await drive_load.listFile({path: source})
                 return this.c.json({flag: true, text: 'Success', data: file_list})
             }
             case "link": { // 获取链接 =======================================================
-                const file_list: any[] = await drive_load.downFile(source)
+                const file_list: any[] = await drive_load.downFile({path: source})
                 return this.c.json({flag: true, text: 'Success', data: file_list})
             }
             case "copy": { // 复制文件 =======================================================
                 console.log("@action", "copy", source, target)
-                const file_list: any[] = await drive_load.copyFile(source, target)
+                const file_list: any[] = await drive_load.copyFile({path: source}, {path: target})
                 return this.c.json({flag: true, text: 'Success', data: file_list})
             }
             case "move": { // 移动文件 =======================================================
                 console.log("@action", "moveFile", source, target)
-                const file_list: any[] = await drive_load.moveFile(source, target)
+                const file_list: any[] = await drive_load.moveFile({path: source}, {path: target})
                 return this.c.json({flag: true, text: 'Success', data: file_list})
             }
             case "create": { // 创建对象 =====================================================
                 if (!target) return this.c.json({flag: false, text: 'Invalid Target'}, 400)
-                const file_list: any[] = await drive_load.makeFile(source, target,
+                const file_list: any[] = await drive_load.makeFile(
+                    {path: source},
+                    target,
                     target.endsWith("/") ? FileType.F_DIR : FileType.F_ALL)
                 return this.c.json({flag: true, text: 'Success', data: file_list})
             }
             case "remove": { // 删除对象 =====================================================
-                const file_list: any[] = await drive_load.killFile(source)
+                const file_list: any[] = await drive_load.killFile({path: source})
                 return this.c.json({flag: true, text: 'Success', data: file_list})
             }
             case "upload": { // 上传文件 =====================================================
                 if (!upload || !upload["files"])
                     return this.c.json({flag: false, text: 'Invalid Target'}, 400)
                 const file_list: any[] = await drive_load.pushFile(
-                    source, upload["files"].name, FileType.F_ALL, upload["files"])
+                    {path: source}, upload["files"].name, FileType.F_ALL, upload["files"])
                 return this.c.json({flag: true, text: 'Success', data: file_list})
             }
             default: { // 默认应输出错误 =====================================================

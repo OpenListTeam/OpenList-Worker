@@ -2,6 +2,11 @@ import {CryptInfo} from "../crypt/CryptObject";
 
 export * from "./FilesObject";
 
+export interface FileFind {
+    path?: string | null;
+    uuid?: string | null;
+}
+
 // 文件信息 ############################
 export interface FileInfo {
     // 必要属性 ========================
@@ -22,24 +27,26 @@ export interface FileInfo {
 
 // 目录信息 ############################
 export interface PathInfo {
-    pageSize?: number  // 文件数量
-    pageNums?: number  // 页面编号
-    filePath?: string  // 文件路径
-    fileList?: FileInfo[]
+    pageSize?: number | null // 文件数量
+    pageNums?: number | null  // 页面编号
+    filePath?: string | null  // 文件路径
+    fileList?: FileInfo[]     // 文件列表
 }
 
 // 任务信息 ############################
 export interface FileTask {
-    taskType: FSAction  // 任务类型
-    taskFlag: FSStatus  // 任务状态
+    taskType?: FSAction  // 任务类型
+    taskFlag?: FSStatus  // 任务状态
     messages?: string   // 任务消息
 }
 
 // 下载连接 ############################
 export interface FileLink {
+    status?: boolean    // 下载状态
     direct?: string     // 下载地址
     stream?: any        // 下载FD流
     header?: Record<string, string>
+    result?: string     // 文本结果
 }
 
 // 文件哈希 ############################

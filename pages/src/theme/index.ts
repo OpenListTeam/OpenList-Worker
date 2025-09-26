@@ -46,6 +46,22 @@ export const lightTheme = createTheme({
         },
       },
     },
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          border: 'none',
+          boxShadow: 'none',
+        },
+      },
+    },
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          border: 'none',
+          boxShadow: 'none',
+        },
+      },
+    },
     MuiCardContent: {
       styleOverrides: {
         root: {

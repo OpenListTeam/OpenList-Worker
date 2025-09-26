@@ -2,10 +2,6 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 
 // 文件管理页面
-import PublicDirectory from './pages/Files/PublicDirectory';
-import MyFiles from './pages/Files/MyFiles';
-import UnifiedFileManager from './pages/Files/UnifiedFileManager';
-import MyFilesWrapper from './pages/Files/MyFilesWrapper';
 import DynamicFileManager from './pages/Files/DynamicFileManager';
 
 // 个人管理页面

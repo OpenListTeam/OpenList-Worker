@@ -21,6 +21,7 @@ import {
   Refresh,
   Upload,
   CreateNewFolder,
+  NoteAdd,
 } from '@mui/icons-material';
 import DataTable from '../../components/DataTable';
 import { PathSelectDialog, NameInputDialog } from '../../components/FileOperationDialogs';
@@ -91,6 +92,20 @@ const DynamicFileManager: React.FC = () => {
       // 公共文件直接使用路径
       return filePath;
     }
+  };
+
+  // 清理路径，移除多余的斜杠并规范化路径
+  const cleanPath = (path: string): string => {
+    if (!path) return '/';
+    
+    // 确保路径以斜杠开头
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    
+    // 移除路径中的双斜杠和多余斜杠
+    const cleanedPath = normalizedPath.replace(/\/+/g, '/');
+    
+    // 移除末尾的斜杠（除非是根路径）
+    return cleanedPath === '/' ? cleanedPath : cleanedPath.replace(/\/$/, '');
   };
 
   // 获取文件列表 - 使用新的API格式
@@ -569,15 +584,50 @@ const DynamicFileManager: React.FC = () => {
     <Box p={3}>
       <Card>
         <CardContent>
-          {/* 标题和工具栏 */}
+          {/* 路径栏和工具栏 */}
           <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-            <Typography variant="h5" component="h1">
-              公共目录
-            </Typography>
+            {/* 面包屑导航 */}
+            <Box flex={1}>
+              <Breadcrumbs separator={<NavigateNext fontSize="small" />}>
+                {breadcrumbs.map((breadcrumb, index) => (
+                  <Link
+                    key={index}
+                    component="button"
+                    variant="body2"
+                    onClick={() => handleBreadcrumbClick(breadcrumb.path)}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 0.5,
+                      textDecoration: 'none',
+                      color: index === breadcrumbs.length - 1 ? 'text.primary' : 'primary.main',
+                      '&:hover': {
+                        textDecoration: 'underline',
+                      },
+                    }}
+                  >
+                    {breadcrumb.icon}
+                    {breadcrumb.label}
+                  </Link>
+                ))}
+              </Breadcrumbs>
+            </Box>
+            
+            {/* 操作按钮 */}
             <Box>
               <Tooltip title="刷新">
                 <IconButton onClick={handleRefresh}>
                   <Refresh />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="新建文件夹">
+                <IconButton onClick={handleCreateFolder}>
+                  <CreateNewFolder />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="新建文件">
+                <IconButton onClick={handleCreateFile}>
+                  <NoteAdd />
                 </IconButton>
               </Tooltip>
               <Tooltip title="上传文件">
@@ -585,39 +635,7 @@ const DynamicFileManager: React.FC = () => {
                   <Upload />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="新建文件夹">
-                <IconButton>
-                  <CreateNewFolder />
-                </IconButton>
-              </Tooltip>
             </Box>
-          </Box>
-
-          {/* 面包屑导航 */}
-          <Box mb={2}>
-            <Breadcrumbs separator={<NavigateNext fontSize="small" />}>
-              {breadcrumbs.map((breadcrumb, index) => (
-                <Link
-                  key={index}
-                  component="button"
-                  variant="body2"
-                  onClick={() => handleBreadcrumbClick(breadcrumb.path)}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5,
-                    textDecoration: 'none',
-                    color: index === breadcrumbs.length - 1 ? 'text.primary' : 'primary.main',
-                    '&:hover': {
-                      textDecoration: 'underline',
-                    },
-                  }}
-                >
-                  {breadcrumb.icon}
-                  {breadcrumb.label}
-                </Link>
-              ))}
-            </Breadcrumbs>
           </Box>
 
           {/* 文件列表 */}
@@ -626,7 +644,6 @@ const DynamicFileManager: React.FC = () => {
             columns={columns}
             data={tableData}
             actions={['download', 'copy', 'move', 'delete']}
-            showCreateButtons={true}
             onRowClick={handleRowClick}
             onRowDoubleClick={(row) => {
               if (row.is_dir) {
@@ -637,8 +654,6 @@ const DynamicFileManager: React.FC = () => {
             onDelete={handleFileDelete}
             onCopy={handleFileCopy}
             onMove={handleFileMove}
-            onCreateFolder={handleCreateFolder}
-            onCreateFile={handleCreateFile}
           />
 
           {/* 路径选择对话框 */}

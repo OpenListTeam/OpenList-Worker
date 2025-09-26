@@ -12,8 +12,8 @@ export class BasicClouds {
 
     // 构造函数 ================================================
     constructor(c: Context, router: string,
-                public config: Record<string, any> | any,
-                public saving: Record<string, any> | any) {
+                config: Record<string, any> | any,
+                saving: Record<string, any> | any) {
         this.c = c
         this.router = router
         this.config = config;
