@@ -165,7 +165,31 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({children}) => {
                                 edge="start" 
                                 color="inherit" 
                                 aria-label="menu" 
-                                sx={{mr: isMobile ? 1 : 2}}
+                                sx={{
+                                    mr: isMobile ? 1 : 2,
+                                    // 确保在窄屏幕下有足够的点击区域
+                                    minWidth: isMobile ? '48px' : '40px',
+                                    minHeight: isMobile ? '48px' : '40px',
+                                    padding: isMobile ? '12px' : '8px',
+                                    // 确保按钮在最上层
+                                    zIndex: 1300,
+                                    // 增加点击区域
+                                    '&:before': {
+                                        content: '""',
+                                        position: 'absolute',
+                                        top: '-8px',
+                                        left: '-8px',
+                                        right: '-8px',
+                                        bottom: '-8px',
+                                        zIndex: -1,
+                                    },
+                                    // 确保在移动端有更好的触摸体验
+                                    '@media (pointer: coarse)': {
+                                        minWidth: '56px',
+                                        minHeight: '56px',
+                                        padding: '16px',
+                                    }
+                                }}
                                 onClick={handleSidebarToggle}
                             >
                                 <Menu/>

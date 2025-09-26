@@ -56,17 +56,16 @@ export const PathSelectDialog: React.FC<PathSelectDialogProps> = ({
   currentPath,
   isPersonalFile,
 }) => {
-  const [selectedPath, setSelectedPath] = useState(currentPath || '/');
+  const [selectedPath, setSelectedPath] = useState<string>('/');
   const [folders, setFolders] = useState<FolderInfo[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<boolean>(false);
 
   // 构建后端路径
-  const buildBackendPath = (filePath: string): string => {
+  const buildBackendPath = (path: string) => {
     if (isPersonalFile) {
-      const username = 'admin'; // 这里应该从用户状态获取
-      return `/@home/${username}${filePath}`;
+      return path === '/' ? '/personal' : `/personal${path}`;
     } else {
-      return filePath;
+      return path;
     }
   };
 
@@ -79,16 +78,20 @@ export const PathSelectDialog: React.FC<PathSelectDialogProps> = ({
       
       let apiUrl: string;
       if (cleanBackendPath === '' || cleanBackendPath === '/') {
-        apiUrl = 'http://127.0.0.1:8787/@files/list/path/';
+        apiUrl = 'http://127.0.0.1:8787/@files/list/path/?filetype=0';
       } else {
         const pathWithSlash = cleanBackendPath.startsWith('/') ? cleanBackendPath : `/${cleanBackendPath}`;
-        apiUrl = `http://127.0.0.1:8787/@files/list/path${pathWithSlash}/`;
+        apiUrl = `http://127.0.0.1:8787/@files/list/path${pathWithSlash}/?filetype=0`;
       }
 
       const response = await axios.get(apiUrl);
       if (response.data && response.data.flag && response.data.data) {
-        const folderList = response.data.data.filter((item: any) => item.is_dir);
+        // 确保 response.data.data 是数组
+        const dataArray = Array.isArray(response.data.data) ? response.data.data : [];
+        const folderList = dataArray.filter((item: any) => item.is_dir || item.filetype === 0);
         setFolders(folderList);
+      } else {
+        setFolders([]);
       }
     } catch (error) {
       console.error('获取文件夹列表失败:', error);
@@ -100,10 +103,11 @@ export const PathSelectDialog: React.FC<PathSelectDialogProps> = ({
 
   useEffect(() => {
     if (open) {
-      setSelectedPath(currentPath);
-      fetchFolders(currentPath);
+      // 默认从根目录开始
+      setSelectedPath('/');
+      fetchFolders('/');
     }
-  }, [open, currentPath]);
+  }, [open]);
 
   const handleFolderClick = (folderName: string) => {
     const newPath = selectedPath === '/' ? `/${folderName}` : `${selectedPath}/${folderName}`;
@@ -118,11 +122,15 @@ export const PathSelectDialog: React.FC<PathSelectDialogProps> = ({
 
   // 生成面包屑导航
   const generateBreadcrumbs = () => {
-    const pathParts = (selectedPath || '/').split('/').filter(part => part !== '');
-    const breadcrumbs = [{ label: '根目录', path: '/' }];
+    const breadcrumbs = [];
+    const pathParts = selectedPath.split('/').filter(part => part !== '');
     
+    // 根目录
+    breadcrumbs.push({ label: '根目录', path: '/' });
+    
+    // 子目录
     let currentPath = '';
-    pathParts.forEach(part => {
+    pathParts.forEach((part, index) => {
       currentPath += `/${part}`;
       breadcrumbs.push({ label: part, path: currentPath });
     });
@@ -135,9 +143,6 @@ export const PathSelectDialog: React.FC<PathSelectDialogProps> = ({
       <DialogTitle>{title}</DialogTitle>
       <DialogContent>
         <Box sx={{ mb: 2 }}>
-          <Typography variant="subtitle2" gutterBottom>
-            当前选择的路径:
-          </Typography>
           <Breadcrumbs separator={<NavigateNext fontSize="small" />}>
             {generateBreadcrumbs().map((breadcrumb, index) => (
               <Link
