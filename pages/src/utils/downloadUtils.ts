@@ -130,12 +130,13 @@ export const downloadFile = async ({
           try {
             console.log('使用fetch下载，携带headers:', headers);
             
-            // 开始下载，显示进度条
-            downloadManager.startDownload(downloadId, fileInfo.name);
+            // 开始下载，显示进度条，获取AbortController
+            const abortController = downloadManager.startDownload(downloadId, fileInfo.name);
             
             const fetchResponse = await fetch(directUrl, {
               method: 'GET',
-              headers: headers
+              headers: headers,
+              signal: abortController.signal
             });
             
             if (!fetchResponse.ok) {
@@ -204,8 +205,15 @@ export const downloadFile = async ({
             onSuccess?.();
           } catch (fetchError) {
             console.error('Fetch下载失败:', fetchError);
-            downloadManager.failDownload(downloadId, '下载文件失败: ' + (fetchError as Error).message);
-            onError?.('下载文件失败: ' + (fetchError as Error).message);
+            
+            // 检查是否是用户取消的错误
+            if ((fetchError as Error).name === 'AbortError') {
+              console.log('下载已被用户取消');
+              // 不需要调用failDownload，因为downloadManager.cancelDownload已经处理了状态
+            } else {
+              downloadManager.failDownload(downloadId, '下载文件失败: ' + (fetchError as Error).message);
+              onError?.('下载文件失败: ' + (fetchError as Error).message);
+            }
           }
         } else {
           // 如果没有header，按原来的方式跳转

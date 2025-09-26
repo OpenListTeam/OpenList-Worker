@@ -19,6 +19,10 @@ export const useDownloadProgress = () => {
     downloadManager.removeDownload(id);
   };
 
+  const cancelDownload = (id: string) => {
+    downloadManager.cancelDownload(id);
+  };
+
   const clearAllDownloads = () => {
     downloadManager.clearAll();
   };
@@ -26,6 +30,7 @@ export const useDownloadProgress = () => {
   return {
     downloads,
     removeDownload,
+    cancelDownload,
     clearAllDownloads
   };
 };

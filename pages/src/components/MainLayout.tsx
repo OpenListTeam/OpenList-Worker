@@ -22,6 +22,7 @@ import {
 import {lightTheme, darkTheme} from '../theme';
 import GroupedSidebar from './GroupedSidebar.tsx';
 import {useApp} from './AppContext';
+import {useDownloadProgress} from '../hooks/useDownloadProgress';
 
 const MainLayout: React.FC<{ children: React.ReactNode }> = ({children}) => {
     const { state, dispatch } = useApp();
@@ -41,6 +42,10 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({children}) => {
         }
     });
     const location = useLocation();
+    
+    // 下载队列相关状态
+    const { downloads, isVisible: downloadQueueVisible, toggleVisibility } = useDownloadProgress();
+    const downloadCount = downloads.filter(d => d.status === 'downloading' || d.status === 'pending').length;
 
     // 响应式侧边栏控制
     useEffect(() => {
@@ -138,6 +143,9 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({children}) => {
                     open={!state.sidebarCollapsed}
                     onClose={handleSidebarToggle}
                     isMobile={isMobile}
+                    downloadQueueVisible={downloadQueueVisible}
+                    onToggleDownloadQueue={toggleVisibility}
+                    downloadCount={downloadCount}
                 />
 
                 {/* 主内容区域 */}

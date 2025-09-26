@@ -52,7 +52,10 @@ import {
   Login,
   PersonAdd,
   Logout,
-  MoreVert
+  MoreVert,
+  // 下载队列图标
+  Download,
+  Queue
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from './AppContext.tsx';
@@ -78,9 +81,22 @@ interface GroupedSidebarProps {
   open: boolean;
   onClose: () => void;
   isMobile: boolean;
+  // 下载队列相关
+  downloadQueueVisible: boolean;
+  onToggleDownloadQueue: () => void;
+  downloadCount: number;
 }
 
-const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeToggle, open, onClose, isMobile }) => {
+const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ 
+  darkMode, 
+  onDarkModeToggle, 
+  open, 
+  onClose, 
+  isMobile,
+  downloadQueueVisible,
+  onToggleDownloadQueue,
+  downloadCount
+}) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { state, logout } = useApp();
@@ -498,6 +514,46 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ darkMode, onDarkModeTog
           }
           sx={{ mb: 2 }}
         />
+        
+        {/* 下载队列托管图标 */}
+        <Box 
+          sx={{ 
+            backgroundColor: downloadQueueVisible ? 'primary.light' : 'action.hover', 
+            borderRadius: '15px', 
+            p: 2, 
+            mb: 2,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            '&:hover': {
+              backgroundColor: downloadQueueVisible ? 'primary.main' : 'action.selected',
+            },
+          }}
+          onClick={onToggleDownloadQueue}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Download sx={{ fontSize: 20 }} />
+            <Typography variant="body2">下载队列</Typography>
+          </Box>
+          {downloadCount > 0 && (
+            <Box 
+              sx={{ 
+                backgroundColor: 'error.main', 
+                color: 'white', 
+                borderRadius: '50%', 
+                minWidth: 20, 
+                height: 20, 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                fontSize: '0.75rem'
+              }}
+            >
+              {downloadCount > 99 ? '99+' : downloadCount}
+            </Box>
+          )}
+        </Box>
         
         {/* 存储空间显示 */}
         <Box sx={{ backgroundColor: 'action.hover', borderRadius: '15px', p: 2 }}>

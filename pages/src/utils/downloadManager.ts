@@ -5,6 +5,7 @@ type DownloadProgressCallback = (downloads: DownloadProgressInfo[]) => void;
 class DownloadManager {
   private downloads: Map<string, DownloadProgressInfo> = new Map();
   private callbacks: Set<DownloadProgressCallback> = new Set();
+  private abortControllers: Map<string, AbortController> = new Map();
 
   // 订阅下载状态变化
   subscribe(callback: DownloadProgressCallback): () => void {
@@ -25,7 +26,10 @@ class DownloadManager {
   }
 
   // 开始下载
-  startDownload(id: string, fileName: string): void {
+  startDownload(id: string, fileName: string): AbortController {
+    const abortController = new AbortController();
+    this.abortControllers.set(id, abortController);
+    
     const download: DownloadProgressInfo = {
       id,
       fileName,
@@ -34,6 +38,8 @@ class DownloadManager {
     };
     this.downloads.set(id, download);
     this.notify();
+    
+    return abortController;
   }
 
   // 更新下载进度
@@ -73,11 +79,37 @@ class DownloadManager {
     }
   }
 
+  // 取消下载
+  cancelDownload(id: string): void {
+    const abortController = this.abortControllers.get(id);
+    if (abortController) {
+      abortController.abort();
+      this.abortControllers.delete(id);
+    }
+    
+    const download = this.downloads.get(id);
+    if (download) {
+      download.status = 'cancelled';
+      this.downloads.set(id, download);
+      this.notify();
+      
+      // 1秒后移除已取消的下载
+      setTimeout(() => {
+        this.removeDownload(id);
+      }, 1000);
+    }
+  }
+
   // 移除下载记录
   removeDownload(id: string): void {
     if (this.downloads.has(id)) {
       this.downloads.delete(id);
       this.notify();
+    }
+    
+    // 同时清理AbortController
+    if (this.abortControllers.has(id)) {
+      this.abortControllers.delete(id);
     }
   }
 
@@ -88,6 +120,10 @@ class DownloadManager {
 
   // 清除所有下载记录
   clearAll(): void {
+    // 取消所有正在进行的下载
+    this.abortControllers.forEach(controller => controller.abort());
+    this.abortControllers.clear();
+    
     this.downloads.clear();
     this.notify();
   }

@@ -62,7 +62,7 @@ const theme = createTheme(
 const AppContent = () => {
     const location = useLocation();
     const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
-    const { downloads, removeDownload } = useDownloadProgress();
+    const { downloads, removeDownload, cancelDownload, clearAllDownloads } = useDownloadProgress();
 
     if (isAuthPage) {
         // 认证页面不使用MainLayout
@@ -83,7 +83,9 @@ const AppContent = () => {
             {/* 下载进度条组件，全局显示 */}
             <DownloadProgress 
                 downloads={downloads} 
-                onRemove={removeDownload} 
+                onRemove={removeDownload}
+                onCancel={cancelDownload}
+                onClearAll={clearAllDownloads}
             />
         </>
     );
