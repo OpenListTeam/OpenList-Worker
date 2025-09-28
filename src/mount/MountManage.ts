@@ -43,180 +43,79 @@ export class MountManage {
     }
 
 
-    
     /**
-     * 过滤挂载点，返回与指定路径相关的挂载点
-     * 
-     * 匹配规则：
-     * 1. 精确匹配：挂载点路径与访问路径完全相同
-     * 2. 父级挂载：挂载点是访问路径的父级（特别处理根路径 "/" 作为所有路径的父级）
-     * 3. 子级挂载：挂载点是访问路径的子级（挂载点以访问路径开头）
-     * 
-     * 排序规则：
-     * 1. 精确匹配优先
-     * 2. 其他匹配按路径长度降序排列
-     * 
-     * 示例场景：
-     * - 挂载点：["/", "/test/", "/sub/", "/sub/temp"]，访问路径："/sub/"
-     *   匹配结果：["/sub/", "/sub/temp", "/"]
-     *   说明："/sub/" 精确匹配优先，"/sub/temp" 是子级，"/" 是父级，"/test/" 无关不匹配
-     * 
-     * - 挂载点：["/", "/sub/"]，访问路径："/sub/"
-     *   匹配结果：["/sub/", "/"]
-     *   说明："/sub/" 精确匹配，"/" 是父级
-     * 
-     * @param mount_path 要匹配的路径？
-     * @param fetch_full 只要父级信息？
-     * @param check_flag 是否检查标志？
-     * @returns 匹配的挂载点数组或null
+     * 过滤挂载点，返回与指定路径相关的挂载点和子目录挂载
+     *
+     * 功能：
+     * 1. 查找访问路径的最长前缀匹配挂载点（用于载入驱动和列出文件）
+     * 2. 查找访问路径的子一级目录挂载点（作为文件夹返回）
+     *
+     * 示例：访问 "/sub/" 时
+     * - 挂载点：["/", "/sub/", "/sub/temp/", "/tests/"]
+     * - 最长前缀匹配："/sub/" 或 "/" （如果没有"/sub/"）
+     * - 子一级目录："/sub/temp/" （作为文件夹显示）
+     * - 不会匹配："/tests/" （与访问路径无关）
+     *
+     * @param mount_path 要匹配的路径
+     * @param fetch_full 是否返回完整驱动列表（包含主驱动和子目录驱动）
+     * @param check_flag 是否检查挂载点启用状态
+     * @returns 驱动实例或驱动数组，如果没有匹配则返回null
      */
     async filter(mount_path: string,
                  fetch_full: boolean = false,
-                 check_flag: boolean = false): Promise<any | null> {
-        const all_mounts: MountResult = await this.select();
-        // console.log("@filter", all_mounts);
-        if (!all_mounts.data || all_mounts.data.length <= 0) return null;
-
-        // 标准化输入路径
-        const normalized_path = mount_path.replace(/\/$/, '');
-
-        // 找到所有匹配的挂载点
-        const matched_mounts: MountConfig[] = [];
-        for (const now_mount of all_mounts.data) {
-            // 如果启用check_flag，过滤掉未启用的挂载点
-            if (check_flag && (now_mount.is_enabled === null || now_mount.is_enabled === 0)) {
-                console.log("@filter skipped disabled mount", now_mount.mount_path);
-                continue;
+                 check_flag: boolean = false): Promise<any[]> {
+        let all_mount: MountResult = await this.select();
+        let out_mount: MountConfig[] = [];
+        let max_check: string = '';
+        for (const now_mount of all_mount.data) {
+            console.log(mount_path, now_mount.mount_path)
+            // 检查启用状态 =========================================
+            if (check_flag && !now_mount.is_enabled) continue;
+            // 检查最长前缀 =========================================
+            if (mount_path.startsWith(now_mount.mount_path)) {
+                if (now_mount.mount_path.length > max_check.length) {
+                    max_check = now_mount.mount_path;
+                    console.log("当前挂载", max_check)
+                }
             }
-            
-            const mount_save: string = now_mount.mount_path.replace(/\/$/, '');
-            console.log("@filter now", mount_save, normalized_path);
-            
-            // 正确的匹配逻辑：
-            // 1. 精确匹配：挂载点路径与访问路径完全相同
-            // 2. 父级挂载：挂载点是访问路径的父级（访问路径以挂载点开头）
-            // 3. 子级挂载：挂载点是访问路径的子级（挂载点以访问路径开头）
-            const isExactMatch = normalized_path === mount_save;
-            const isParentMount = (mount_save === '' && normalized_path !== '') || // 根路径是所有非根路径的父级
-                                  (mount_save !== '' && normalized_path.startsWith(mount_save + '/'));
-            const isChildMount = mount_save.startsWith(normalized_path + '/');
-            
-            if (isExactMatch || isParentMount || isChildMount) {
-                matched_mounts.push(now_mount);
-                console.log("@filter matched", mount_save, normalized_path);
+            // 检查嵌套挂载： 当前挂载路径是以访问路径开头的=========
+            if (now_mount.mount_path.startsWith(mount_path)
+                && now_mount.mount_path !== mount_path) {
+                if (now_mount.mount_path.substring(
+                    mount_path.length
+                ).replace(/^\/+|\/+$/g, '')) {
+                    console.log("嵌套挂载", now_mount.mount_path)
+                    let driver_item: any = sys.driver_list[
+                        now_mount.mount_type]
+                    out_mount.push(
+                        new driver_item(
+                            this.c,
+                            now_mount.mount_path.replace(/\/$/, ''),
+                            JSON.parse(now_mount.drive_conf || "{}"),
+                            JSON.parse(now_mount.drive_save || "{}")
+                        )
+                    );
+                }
             }
         }
-
-        // 如果没有匹配的挂载点，返回null
-        if (matched_mounts.length === 0) return null;
-
-        // 对匹配的挂载点进行排序：精确匹配优先，然后按路径长度排序
-        matched_mounts.sort((a, b) => {
-            const mount_a = a.mount_path.replace(/\/$/, '');
-            const mount_b = b.mount_path.replace(/\/$/, '');
-            
-            // 精确匹配的排在最前面
-            const isExactA = mount_a === normalized_path;
-            const isExactB = mount_b === normalized_path;
-            
-            if (isExactA && !isExactB) return -1;
-            if (!isExactA && isExactB) return 1;
-            
-            // 如果都是精确匹配或都不是精确匹配，按路径长度排序（长路径优先）
-            return mount_b.length - mount_a.length;
-        });
-
-        if (fetch_full) {
-            // 返回匹配路径下的所有下一级路径的驱动列表
-            const result_drivers: any[] = [];
-            
-            // 1. 找到精确匹配或最长匹配的主驱动
-            let main_mount: MountConfig | null = null;
-            
-            // 首先查找精确匹配
-            for (const mount of matched_mounts) {
-                const mount_path = mount.mount_path.replace(/\/$/, '');
-                if (mount_path === normalized_path) {
-                    main_mount = mount;
-                    break;
+        // 处理主驱动 ==========================================================
+        if (max_check.length)
+            for (const now_mount of all_mount.data) {
+                if (now_mount.mount_path === max_check) {
+                    let driver_item: any = sys.driver_list[now_mount.mount_type]
+                    out_mount.unshift(
+                        new driver_item(
+                            this.c,
+                            now_mount.mount_path.replace(/\/$/, ''),
+                            JSON.parse(now_mount.drive_conf || "{}"),
+                            JSON.parse(now_mount.drive_save || "{}")
+                        )
+                    );
                 }
             }
-            
-            // 如果没有精确匹配，找最长匹配（作为父级）
-            if (!main_mount) {
-                for (const mount of matched_mounts) {
-                    const mount_path = mount.mount_path.replace(/\/$/, '');
-                    if (normalized_path.startsWith(mount_path)) {
-                        if (!main_mount || mount_path.length > main_mount.mount_path.replace(/\/$/, '').length) {
-                            main_mount = mount;
-                        }
-                    }
-                }
-            }
-
-            // 添加主驱动
-            if (main_mount && main_mount.mount_type) {
-                let driver_item: any = sys.driver_list[main_mount.mount_type];
-                if (driver_item) {
-                    result_drivers.push(new driver_item(
-                        this.c,
-                        main_mount.mount_path.replace(/\/$/, ''),
-                        JSON.parse(main_mount.drive_conf || "{}"),
-                        JSON.parse(main_mount.drive_save || "{}")
-                    ));
-                }
-            }
-
-            // 2. 找到所有直接子目录驱动
-            for (const mount of matched_mounts) {
-                const mount_path = mount.mount_path.replace(/\/$/, '');
-                
-                // 检查是否是输入路径的直接子目录
-                if (mount_path.startsWith(normalized_path + '/') && mount.mount_type) {
-                    // 确保是直接子目录，不是更深层级
-                    const relative_path = mount_path.substring(normalized_path.length + 1);
-                    if (!relative_path.includes('/')) {
-                        let driver_item: any = sys.driver_list[mount.mount_type];
-                        if (driver_item) {
-                            result_drivers.push(new driver_item(
-                                this.c,
-                                mount_path,
-                                JSON.parse(mount.drive_conf || "{}"),
-                                JSON.parse(mount.drive_save || "{}")
-                            ));
-                        }
-                    }
-                }
-            }
-
-            console.log("@filter fetch_full result count:", result_drivers.length);
-            return result_drivers;
-        } else {
-            // 默认行为：找到最长路径的挂载点，返回单个driver
-            let longest_mount: MountConfig = matched_mounts[0];
-            for (const mount of matched_mounts) {
-                const current_path = mount.mount_path.replace(/\/$/, '');
-                const longest_path = longest_mount.mount_path.replace(/\/$/, '');
-                if (current_path.length > longest_path.length) {
-                    longest_mount = mount;
-                }
-            }
-
-            console.log("@filter hit longest", longest_mount.mount_path, normalized_path);
-            if (!longest_mount.mount_type) return null;
-
-            let driver_item: any = sys.driver_list[longest_mount.mount_type];
-            // console.log(driver_item, longest_mount.mount_type, sys.driver_list)
-            // console.log(driver_item)
-            console.log("@filter Config:", longest_mount.mount_path)
-            return new driver_item(
-                this.c,
-                longest_mount.mount_path.replace(/\/$/, ''),
-                JSON.parse(longest_mount.drive_conf || "{}"),
-                JSON.parse(longest_mount.drive_save || "{}")
-            );
-        }
+        return out_mount;
     }
+
 
     /**
      * 创建挂载点。
@@ -274,35 +173,43 @@ export class MountManage {
         }
     }
 
-    async loader(config: MountConfig | string | any): Promise<any> {
+    async loader(config: MountConfig | string | any,
+                 fetch_full: boolean = false,
+                 check_flag: boolean = false): Promise<any> {
         if (typeof config === "string") config = {mount_path: config}
-        const driver: any = await this.filter(config.mount_path);
-        if (!driver) return null
-        console.log("@loader", driver.router)
+        const driver_list: any[] = await this.filter(
+            config.mount_path, fetch_full, check_flag);
+        if (!driver_list) return null
+        const driver_core = driver_list[0];
+        
+        // 查看driver_core的详细信息
+        console.log("@loader", "driver_core类型:", typeof driver_core);
+        console.log("@loader", "driver_core构造函数名:", driver_core.constructor.name);
+        console.log("@loader", "driver_core所有属性:", Object.getOwnPropertyNames(driver_core));
+        console.log("@loader", "driver_core原型方法:", Object.getOwnPropertyNames(Object.getPrototypeOf(driver_core)));
+        
+        // 查看一些常见属性
+        if (driver_core.router) console.log("@loader", "router:", driver_core.router);
+        if (driver_core.saving) console.log("@loader", "saving:", JSON.stringify(driver_core.saving, null, 2));
+        if (driver_core.change !== undefined) console.log("@loader", "change:", driver_core.change);
+        
         console.log("@loader", "Find driver successfully")
-        // 加载挂载 =========================================
-        const result: DriveResult = await driver.loadSelf();
-        console.log("@loader", result, driver.change)
+        // 加载挂载 ========================================================
+        const result: DriveResult = await driver_core.loadSelf();
+        console.log("@loader", "loadSelf结果:", JSON.stringify(result, null, 2));
+        console.log("@loader", "driver_core.change:", driver_core.change);
         if (!result.flag) return null;
         console.log("@loader", "Load driver successfully")
-
-        // 更新日志信息
-        const logUpdate = {
-            mount_path: driver.router,
-            drive_logs: result.text
-        };
-
-        if (driver.change) {
+        if (driver_core.change) {
             // 重新从数据库内读取 ==========================================
-            config = await this.select(driver.router);
-            // console.log("Updating config:", config)
-            if (!config.data || config.data.length <= 0) return driver
-            config.data[0].drive_save = JSON.stringify(driver.saving)
+            config = await this.select(driver_core.router);
+            if (!config.data || config.data.length <= 0) return driver_list
+            config.data[0].drive_save = JSON.stringify(driver_core.saving)
             config.data[0].drive_logs = result.text;
-            console.log("Updating config:", config.data[0])
+            console.log("Updating config:", JSON.stringify(config.data[0], null, 2))
             await this.config(config.data[0])
         }
-        return driver
+        return driver_list
     }
 
     /**
