@@ -144,7 +144,7 @@ export class MountManage {
 
     async reload(config: MountConfig | string): Promise<MountResult> {
         if (typeof config === "string") config = {mount_path: config}
-        const driver = await this.filter(config.mount_path);
+        const driver: any[] = await this.filter(config.mount_path);
         console.log("@reload", config)
         if (!driver) {
             const errorMessage = "Mount Path Not Found";
@@ -159,10 +159,10 @@ export class MountManage {
             }
         }
         // 添加挂载 =========================================
-        const driveResult: DriveResult = await driver.initSelf();
+        const driveResult: DriveResult = await driver[0].initSelf();
 
         // 无论成功还是失败，都要保存drive_save和drive_logs
-        config.drive_save = JSON.stringify(driver.saving) || "{}";
+        config.drive_save = JSON.stringify(driver[0].saving) || "{}";
         config.drive_logs = driveResult.text || "OK";
 
         // 保存配置到数据库
@@ -181,18 +181,18 @@ export class MountManage {
             config.mount_path, fetch_full, check_flag);
         if (!driver_list) return null
         const driver_core = driver_list[0];
-        
+
         // 查看driver_core的详细信息
         console.log("@loader", "driver_core类型:", typeof driver_core);
         console.log("@loader", "driver_core构造函数名:", driver_core.constructor.name);
         console.log("@loader", "driver_core所有属性:", Object.getOwnPropertyNames(driver_core));
         console.log("@loader", "driver_core原型方法:", Object.getOwnPropertyNames(Object.getPrototypeOf(driver_core)));
-        
+
         // 查看一些常见属性
         if (driver_core.router) console.log("@loader", "router:", driver_core.router);
         if (driver_core.saving) console.log("@loader", "saving:", JSON.stringify(driver_core.saving, null, 2));
         if (driver_core.change !== undefined) console.log("@loader", "change:", driver_core.change);
-        
+
         console.log("@loader", "Find driver successfully")
         // 加载挂载 ========================================================
         const result: DriveResult = await driver_core.loadSelf();
