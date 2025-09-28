@@ -20,7 +20,8 @@ import {
   Download, 
   Visibility, 
   FileCopy, 
-  DriveFileMove
+  DriveFileMove,
+  Replay
 } from '@mui/icons-material';
 
 interface Column {
@@ -35,6 +36,7 @@ interface DataTableProps {
   title: string;
   columns: Column[];
   data: any[];
+  loading?: boolean;
   onEdit?: (row: any) => void;
   onDelete?: (row: any) => void;
   onShare?: (row: any) => void;
@@ -42,15 +44,17 @@ interface DataTableProps {
   onView?: (row: any) => void;
   onCopy?: (row: any) => void;
   onMove?: (row: any) => void;
+  onReload?: (row: any) => void;
   onRowClick?: (row: any) => void;
   onRowDoubleClick?: (row: any) => void;
-  actions?: ('edit' | 'delete' | 'share' | 'download' | 'view' | 'copy' | 'move')[];
+  actions?: ('edit' | 'delete' | 'share' | 'download' | 'view' | 'copy' | 'move' | 'reload')[];
 }
 
 const DataTable: React.FC<DataTableProps> = ({
   title,
   columns,
   data,
+  loading = false,
   onEdit,
   onDelete,
   onShare,
@@ -58,6 +62,7 @@ const DataTable: React.FC<DataTableProps> = ({
   onView,
   onCopy,
   onMove,
+  onReload,
   onRowClick,
   onRowDoubleClick,
   actions = ['edit', 'delete'],
@@ -73,37 +78,47 @@ const DataTable: React.FC<DataTableProps> = ({
   const renderActionButtons = (row: any) => (
     <Box sx={{ display: 'flex', gap: 0.5 }}>
       {actions.includes('view') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onView?.(row); }}>
+        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onView?.(row); }} disabled={loading}>
           <Visibility fontSize="small" />
         </IconButton>
       )}
       {actions.includes('download') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onDownload?.(row); }}>
+        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onDownload?.(row); }} disabled={loading}>
           <Download fontSize="small" />
         </IconButton>
       )}
       {actions.includes('copy') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onCopy?.(row); }}>
+        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onCopy?.(row); }} disabled={loading}>
           <FileCopy fontSize="small" />
         </IconButton>
       )}
       {actions.includes('move') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onMove?.(row); }}>
+        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onMove?.(row); }} disabled={loading}>
           <DriveFileMove fontSize="small" />
         </IconButton>
       )}
+      {actions.includes('reload') && (
+        <IconButton 
+          size="small" 
+          onClick={(e) => { e.stopPropagation(); onReload?.(row); }} 
+          disabled={loading}
+          title="重新加载"
+        >
+          <Replay fontSize="small" />
+        </IconButton>
+      )}
       {actions.includes('edit') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onEdit?.(row); }}>
+        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onEdit?.(row); }} disabled={loading}>
           <Edit fontSize="small" />
         </IconButton>
       )}
       {actions.includes('delete') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onDelete?.(row); }}>
+        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onDelete?.(row); }} disabled={loading}>
           <Delete fontSize="small" />
         </IconButton>
       )}
       {actions.includes('share') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onShare?.(row); }}>
+        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onShare?.(row); }} disabled={loading}>
           <Share fontSize="small" />
         </IconButton>
       )}

@@ -11,7 +11,7 @@ export interface D1Filter {
 // 更新数据 ####################################################################
 export async function updateDB(
     DB: D1Database, table: string,
-    values: Record<string, string>,
+    values: Record<string, any>,
     where: D1Filter): Promise<DBResult> {
     // 构建更新的列和值部分
     const setConditions: string[] = [];
@@ -19,10 +19,14 @@ export async function updateDB(
     const params: any[] = [];
 
     // 构建 SET 部分
-
     for (const [key, value] of Object.entries(values)) {
         setConditions.push(`${key} = ?`);
-        params.push(value);
+        // 检查是否为对象类型，如果是则转换为 JSON 字符串
+        const processedValue: string =
+            Object.prototype.toString.call(value) === '[object Object]'
+                ? JSON.stringify(value)          // 纯 Record 才转 JSON
+                : String(value);                 // 其余（含数组、基本类型）用 String()
+        params.push(processedValue);
     }
 
     // 构建 WHERE 部分

@@ -219,7 +219,7 @@ export class HostDriver extends BasicDriver {
     async findUUID(path: string): Promise<string | null> {
         const parts: string[] = path.split('/').filter(part => part.trim() !== '');
         console.log("DirFind", path, parts);
-        if (parts.length === 0) return 'root';
+        if (parts.length === 0 || path === '/') return 'root';
         let currentUUID: string = 'root';
         console.log("NowUUID", currentUUID);
         for (const part of parts) {

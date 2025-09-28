@@ -33,7 +33,14 @@ const MyShares: React.FC = () => {
       const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/@shares/list`);
       
       if (response.data.flag) {
-        setShares(response.data.data || []);
+        const data = response.data.data;
+        // 确保数据是数组类型
+        if (Array.isArray(data)) {
+          setShares(data);
+        } else {
+          setShares([]);
+          console.warn('API返回的数据不是数组类型:', data);
+        }
       } else {
         setError(response.data.text || '获取分享列表失败');
       }

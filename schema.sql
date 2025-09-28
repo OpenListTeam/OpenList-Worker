@@ -8,6 +8,11 @@ CREATE TABLE mount -- 挂载路径
     drive_conf TEXT,                             -- 配置数据
     drive_save TEXT,                             -- 服务数据
     cache_time INTEGER DEFAULT 0,                -- 缓存时间
+    index_list INTEGER DEFAULT 0,                -- 显示序号
+    proxy_mode INTEGER DEFAULT 0,                -- 代理模式
+    proxy_data TEXT,                             -- 代理数据
+    drive_logs TEXT,                             -- 驱动日志
+    drive_tips TEXT,                             -- 提示信息
 )
 
 CREATE TABLE users -- 用户信息

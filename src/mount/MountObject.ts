@@ -5,14 +5,15 @@ interface MountConfig {
     drive_conf?: Record<string, any> | any;
     drive_save?: Record<string, any> | any;
     cache_time?: number;
-    order_number?: number;
-    proxy_mode?: string;
-    proxy_url?: string;
-    remarks?: string;
+    index_list?: number;
+    proxy_mode?: number;
+    proxy_data?: string;
+    drive_logs?: string;
+    drive_tips?: string;
 }
 
 interface MountResult {
     flag: boolean;
     text: string;
-    data?: MountConfig[];
+    data?: MountConfig[] | any;
 }

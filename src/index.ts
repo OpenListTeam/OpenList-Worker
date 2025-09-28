@@ -20,6 +20,7 @@ interface PageAction {
     text?: string,
     data?: Record<string, any>
 }
+
 app.use('*', async (c, next) => {
     // 设置 CORS 头
     c.header('Access-Control-Allow-Origin', '*')
@@ -85,24 +86,8 @@ app.use('/@mount/:action/:method/*', async (c: Context) => {
             return c.json(result, result.flag ? 200 : 400)
         }
         case "driver": { // 获取驱动列表和配置 =====================================================
-            switch (method) {
-                case "none": // 获取驱动列表 (默认方法)
-                case "list": { // 获取驱动列表
-                    let result: MountResult = await mounts.driver();
-                    return c.json(result, result.flag ? 200 : 400)
-                }
-                case "config": { // 获取驱动配置字段
-                    const driverType = c.req.query('type');
-                    if (!driverType) {
-                        return c.json({flag: false, text: 'Missing driver type parameter'}, 400)
-                    }
-                    let result: MountResult = await mounts.driverConfig(driverType);
-                    return c.json(result, result.flag ? 200 : 400)
-                }
-                default: {
-                    return c.json({flag: false, text: 'Invalid Method'}, 400)
-                }
-            }
+            let result: MountResult = await mounts.driver();
+            return c.json(result, result.flag ? 200 : 400)
         }
         case "reload": { // 载入挂载 =====================================================
             let result: MountResult = await mounts.reload(config.mount_path);
@@ -216,7 +201,6 @@ app.use('*', async (c: Context): Promise<Response> => {
     const files: FilesManage = new FilesManage(c);
     return await files.action("list", source, "", {});
 })
-
 
 
 export default app

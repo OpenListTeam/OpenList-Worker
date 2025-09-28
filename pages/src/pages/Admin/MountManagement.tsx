@@ -139,25 +139,18 @@ const MountManagement: React.FC = () => {
 
   const columns = [
     { 
-      id: 'order_number', 
+      id: 'index_list', 
       label: '序号', 
-      minWidth: 80,
-      format: (value: number) => value || 1
+      minWidth: 60,
+      format: (value: number) => value !== undefined && value !== null ? value : 1
     },
     { id: 'mount_path', label: '挂载路径', minWidth: 150 },
     { id: 'mount_type', label: '驱动类型', minWidth: 120 },
     { 
       id: 'proxy_mode', 
       label: '代理模式', 
-      minWidth: 100,
-      format: (value: string) => {
-        const modeMap = {
-          'direct': '直链下载',
-          'clouds': '云端代理',
-          'proxys': '代理地址'
-        };
-        return modeMap[value as keyof typeof modeMap] || '直链下载';
-      }
+      minWidth: 80,
+      format: (value: number) => value === 1 ? '代理' : '直连'
     },
     { 
       id: 'is_enabled', 
@@ -174,20 +167,20 @@ const MountManagement: React.FC = () => {
     { 
       id: 'cache_time', 
       label: '缓存时间(秒)', 
-      minWidth: 120,
+      minWidth: 100,
       format: (value: number) => value === 0 ? '无缓存' : `${value}秒`
     },
     { 
-      id: 'remarks', 
-      label: '备注', 
+      id: 'proxy_data', 
+      label: '代理地址', 
       minWidth: 150,
       format: (value: string) => value || '-'
     },
     { 
-      id: 'drive_conf', 
-      label: '配置状态', 
-      minWidth: 120,
-      format: (value: string) => value ? '已配置' : '未配置'
+      id: 'drive_logs', 
+      label: '日志', 
+      minWidth: 150,
+      format: (value: string) => value || '-'
     }
   ];
 
@@ -199,10 +192,10 @@ const MountManagement: React.FC = () => {
       mount_path: '',
       is_enabled: true,
       cache_time: 3600,
-      order_number: 1,
-      proxy_mode: 'direct',
-      proxy_url: '',
-      remarks: ''
+      index_list: 1,
+      proxy_mode: 0,
+      proxy_data: '',
+      drive_tips: ''
     });
     setError('');
     setDialogOpen(true);
@@ -225,10 +218,10 @@ const MountManagement: React.FC = () => {
       mount_type: mount.mount_type,
       is_enabled: mount.is_enabled === 1,
       cache_time: mount.cache_time || 3600,
-      order_number: mount.order_number || 1,
-      proxy_mode: mount.proxy_mode || 'direct',
-      proxy_url: mount.proxy_url || '',
-      remarks: mount.remarks || '',
+      index_list: mount.index_list || 1,
+      proxy_mode: mount.proxy_mode || 0,
+      proxy_data: mount.proxy_data || '',
+      drive_tips: mount.drive_tips || '',
       ...driveConf
     };
     setFormData(editFormData);
@@ -286,9 +279,9 @@ const MountManagement: React.FC = () => {
       }
     }
 
-    // 验证代理URL
-    if (formData.proxy_mode === 'proxys' && !formData.proxy_url) {
-      setError('代理模式选择代理地址时，必须填写代理URL地址');
+    // 验证代理数据
+    if (formData.proxy_mode === 1 && !formData.proxy_data) {
+      setError('代理模式选择代理时，必须填写代理数据');
       return;
     }
 
@@ -305,10 +298,10 @@ const MountManagement: React.FC = () => {
       mount_type: selectedDriver,
       is_enabled: formData.is_enabled ? 1 : 0,
       cache_time: formData.cache_time || 3600,
-      order_number: formData.order_number || 1,
-      proxy_mode: formData.proxy_mode || 'direct',
-      proxy_url: formData.proxy_url || '',
-      remarks: formData.remarks || '',
+      index_list: formData.index_list || 1,
+      proxy_mode: formData.proxy_mode || 0,
+      proxy_data: formData.proxy_data || '',
+      drive_tips: formData.drive_tips || '',
       drive_conf: JSON.stringify(driveConf)
     };
 
@@ -334,26 +327,75 @@ const MountManagement: React.FC = () => {
     }
   };
 
+  // 单个挂载点重新加载
   const handleReload = async (mount: Mount) => {
     try {
-      const response = await fetch('/@mount/reload/none', {
+      setLoading(true);
+      const response = await fetch(`/@mount/reload/path${mount.mount_path}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          mount_path: mount.mount_path
-        })
+        }
       });
       const result = await response.json();
       
       if (result.flag) {
+        setError('');
+        // 重新加载挂载点列表以获取最新状态
         await loadMounts();
       } else {
-        setError(result.text || '重载失败');
+        setError(result.text || `重新加载挂载点 "${mount.mount_path}" 失败`);
       }
     } catch (err) {
-      setError('网络错误，重载失败');
+      setError(`重新加载挂载点 "${mount.mount_path}" 时发生网络错误`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 全部重新加载
+  const handleReloadAll = async () => {
+    if (!confirm('确定要重新加载所有挂载点吗？这可能需要一些时间。')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+      
+      // 为每个挂载点调用重新加载
+      const reloadPromises = mounts.map(async (mount) => {
+        try {
+          const response = await fetch(`/@mount/reload/path${mount.mount_path}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          });
+          const result = await response.json();
+          return { mount: mount.mount_path, success: result.flag, message: result.text };
+        } catch (err) {
+          return { mount: mount.mount_path, success: false, message: '网络错误' };
+        }
+      });
+
+      const results = await Promise.all(reloadPromises);
+      
+      // 检查结果
+      const failedMounts = results.filter(r => !r.success);
+      if (failedMounts.length > 0) {
+        const failedPaths = failedMounts.map(r => `${r.mount}: ${r.message}`).join('\n');
+        setError(`以下挂载点重新加载失败：\n${failedPaths}`);
+      } else {
+        setError('');
+      }
+      
+      // 重新加载挂载点列表
+      await loadMounts();
+    } catch (err) {
+      setError('全部重新加载时发生错误');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -441,6 +483,20 @@ const MountManagement: React.FC = () => {
           >
             刷新
           </Button>
+          <Button
+            variant="contained"
+            startIcon={<Replay />}
+            onClick={handleReloadAll}
+            disabled={loading || mounts.length === 0}
+            sx={{ 
+              backgroundColor: '#ffa726',
+              '&:hover': {
+                backgroundColor: '#ff9800'
+              }
+            }}
+          >
+            全部重新加载
+          </Button>
         </Box>
       </Box>
       
@@ -457,7 +513,8 @@ const MountManagement: React.FC = () => {
         loading={loading}
         onEdit={handleEdit}
         onDelete={handleDelete}
-        actions={['edit', 'delete']}
+        onReload={handleReload}
+        actions={['edit', 'delete', 'reload']}
       />
 
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth>
@@ -515,8 +572,8 @@ const MountManagement: React.FC = () => {
                 fullWidth
                 type="number"
                 label="序号"
-                value={formData.order_number || 1}
-                onChange={(e) => setFormData(prev => ({ ...prev, order_number: parseInt(e.target.value) || 1 }))}
+                value={formData.index_list || 1}
+                onChange={(e) => setFormData(prev => ({ ...prev, index_list: parseInt(e.target.value) || 1 }))}
                 margin="normal"
                 inputProps={{ min: 1 }}
               />
@@ -526,13 +583,12 @@ const MountManagement: React.FC = () => {
               <FormControl fullWidth margin="normal">
                 <InputLabel>代理模式</InputLabel>
                 <Select
-                  value={formData.proxy_mode || 'direct'}
+                  value={formData.proxy_mode || 0}
                   label="代理模式"
                   onChange={(e) => setFormData(prev => ({ ...prev, proxy_mode: e.target.value }))}
                 >
-                  <MenuItem value="direct">直链下载</MenuItem>
-                  <MenuItem value="clouds">云端代理</MenuItem>
-                  <MenuItem value="proxys">代理地址</MenuItem>
+                  <MenuItem value={0}>直连</MenuItem>
+                  <MenuItem value={1}>代理</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -543,12 +599,12 @@ const MountManagement: React.FC = () => {
             <Grid item xs={12} sx={{ width: '44%' }}>
               <TextField
                 fullWidth
-                label="代理URL地址"
-                value={formData.proxy_url || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, proxy_url: e.target.value }))}
+                label="代理地址"
+                value={formData.proxy_data || ''}
+                onChange={(e) => setFormData(prev => ({ ...prev, proxy_data: e.target.value }))}
                 placeholder="http://proxy.example.com:8080"
                 margin="normal"
-                disabled={formData.proxy_mode !== 'proxys'}
+                disabled={formData.proxy_mode !== 1}
                 sx={{ width: '100%' }}
               />
             </Grid>
@@ -567,13 +623,13 @@ const MountManagement: React.FC = () => {
               </FormControl>
             </Grid>
 
-            {/* 第四行：备注 */}
+            {/* 第四行：备注信息 */}
             <Grid item xs={12} sx={{ width: '100%' }}>
               <TextField
                 fullWidth
-                label="备注"
-                value={formData.remarks || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, remarks: e.target.value }))}
+                label="备注信息"
+                value={formData.drive_tips || ''}
+                onChange={(e) => setFormData(prev => ({ ...prev, drive_tips: e.target.value }))}
                 placeholder="请输入备注信息"
                 margin="normal"
                 multiline

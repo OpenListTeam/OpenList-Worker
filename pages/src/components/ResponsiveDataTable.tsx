@@ -247,7 +247,7 @@ const ResponsiveDataTable: React.FC<ResponsiveDataTableProps> = ({
             </TableRow>
           </TableHead>
           <TableBody>
-            {data.map((row, index) => (
+            {(Array.isArray(data) ? data : []).map((row, index) => (
               <TableRow 
                 hover 
                 role="checkbox" 

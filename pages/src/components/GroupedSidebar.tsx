@@ -43,6 +43,7 @@ import {
   Language,
   Backup,
   Info,
+  Storage,
   // 展开收起图标
   ExpandLess,
   ExpandMore,
@@ -52,10 +53,7 @@ import {
   Login,
   PersonAdd,
   Logout,
-  MoreVert,
-  // 下载队列图标
-  Download,
-  Queue
+  MoreVert
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from './AppContext.tsx';
@@ -81,10 +79,6 @@ interface GroupedSidebarProps {
   open: boolean;
   onClose: () => void;
   isMobile: boolean;
-  // 下载队列相关
-  downloadQueueVisible: boolean;
-  onToggleDownloadQueue: () => void;
-  downloadCount: number;
 }
 
 const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ 
@@ -92,10 +86,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({
   onDarkModeToggle, 
   open, 
   onClose, 
-  isMobile,
-  downloadQueueVisible,
-  onToggleDownloadQueue,
-  downloadCount
+  isMobile
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -115,16 +106,6 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({
         { id: 'public-directory', title: '公共目录', icon: <Folder />, path: '/' },
         { id: 'my-files', title: '我的文件', icon: <InsertDriveFile />, path: '/@pages/myfile' },
         { id: 'my-shares', title: '我的分享', icon: <Share />, path: '/@pages/my-shares' }
-      ]
-    },
-    {
-      id: 'directory-management',
-      title: '目录管理',
-      icon: <FolderSpecial />,
-      defaultExpanded: false,
-      items: [
-        { id: 'mates-config', title: '目录配置', icon: <FolderSpecial />, path: '/@pages/mates-config' },
-        { id: 'crypt-config', title: '加密配置', icon: <Security />, path: '/@pages/crypt-config' }
       ]
     },
     {
@@ -148,13 +129,14 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({
       ]
     },
     {
-      id: 'system-management',
-      title: '系统管理',
-      icon: <AdminPanelSettings />,
+      id: 'storage-management',
+      title: '存储管理',
+      icon: <Storage />,
       defaultExpanded: false,
       items: [
-        // 挂载管理（无子菜单）
-        { id: 'mount-management', title: '挂载管理', icon: <Cloud />, path: '/@pages/mount-management' }
+        { id: 'mount-management', title: '挂载管理', icon: <Cloud />, path: '/@pages/mount-management' },
+        { id: 'mates-config', title: '目录配置', icon: <FolderSpecial />, path: '/@pages/mates-config' },
+        { id: 'crypt-config', title: '加密配置', icon: <Security />, path: '/@pages/crypt-config' }
       ]
     },
     {
@@ -174,15 +156,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({
       icon: <Settings />,
       defaultExpanded: false,
       items: [
-        { id: 'site-settings', title: '站点设置', icon: <Language />, path: '/@pages/site-settings' }
-      ]
-    },
-    {
-      id: 'more-settings',
-      title: '更多设置',
-      icon: <Settings />,
-      defaultExpanded: false,
-      items: [
+        { id: 'site-settings', title: '站点设置', icon: <Language />, path: '/@pages/site-settings' },
         { id: 'about-platform', title: '关于平台', icon: <Info />, path: '/@pages/about-platform' }
       ]
     }
@@ -514,46 +488,6 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({
           }
           sx={{ mb: 2 }}
         />
-        
-        {/* 下载队列托管图标 */}
-        <Box 
-          sx={{ 
-            backgroundColor: downloadQueueVisible ? 'primary.light' : 'action.hover', 
-            borderRadius: '15px', 
-            p: 2, 
-            mb: 2,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            '&:hover': {
-              backgroundColor: downloadQueueVisible ? 'primary.main' : 'action.selected',
-            },
-          }}
-          onClick={onToggleDownloadQueue}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Download sx={{ fontSize: 20 }} />
-            <Typography variant="body2">下载队列</Typography>
-          </Box>
-          {downloadCount > 0 && (
-            <Box 
-              sx={{ 
-                backgroundColor: 'error.main', 
-                color: 'white', 
-                borderRadius: '50%', 
-                minWidth: 20, 
-                height: 20, 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center',
-                fontSize: '0.75rem'
-              }}
-            >
-              {downloadCount > 99 ? '99+' : downloadCount}
-            </Box>
-          )}
-        </Box>
         
         {/* 存储空间显示 */}
         <Box sx={{ backgroundColor: 'action.hover', borderRadius: '15px', p: 2 }}>
