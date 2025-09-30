@@ -4,7 +4,7 @@ import {DriveResult} from "../DriveObject";
 import {BasicClouds} from "../BasicClouds";
 import * as con from "./const";
 // 专用导入 =====================================================
-import * as crypto from "crypto";
+import crypto from "crypto";
 import {HttpRequest} from "../../share/HttpRequest";
 
 
@@ -12,6 +12,7 @@ import {HttpRequest} from "../../share/HttpRequest";
 export class HostClouds extends BasicClouds {
     // 专有数据 =====================================================
     private loginParam: Record<string, any> = {};
+    private tokenParam: Record<string, any> = {};
     private verifyCode: string | null | any = '';
 
     // 构造函数 =====================================================
@@ -159,6 +160,7 @@ export class HostClouds extends BasicClouds {
                     text: `获取认证失败: ${tokenInfo}`
                 }
             }
+            this.tokenParam = tokenInfo;
             this.saving.token = tokenInfo;
             this.change = true;
             return {
@@ -182,10 +184,58 @@ export class HostClouds extends BasicClouds {
     async readConfig(): Promise<DriveResult> {
         if (!this.saving.token) return await this.initConfig()
         this.loginParam = this.saving.login;
+        this.tokenParam = this.saving.token;
         return {
             flag: true,
             text: "OK"
         }
+    }
+
+    signatureV2(method: string, path: URL | string, params: string, appSession?: {sessionKey: string, sessionSecret: string}): Record<string, string> {
+        const requestURI: string = path instanceof URL ? (path.pathname + path.search) : path.toString()
+        const { sessionKey, sessionSecret } = appSession || this.tokenParam
+        const dateOfGmt: string = new Date().toUTCString()
+        const requestID: string = crypto.randomUUID()
+        let signData: string = `SessionKey=${sessionKey}&Operate=${method}&RequestURI=${requestURI}&Date=${dateOfGmt}${params && `&params=${params}`}`
+        
+        // 详细调试日志
+        console.log("=== Cloud189 Signature Debug ===")
+        console.log("method:", method)
+        console.log("path (original):", path)
+        console.log("requestURI:", requestURI)
+        console.log("sessionKey:", sessionKey)
+        console.log("sessionSecret:", sessionSecret)
+        console.log("dateOfGmt:", dateOfGmt)
+        console.log("params:", params)
+        console.log("signData:", signData)
+        
+        const signature = crypto.createHmac("sha1", sessionSecret).update(signData).digest("hex");
+        console.log("signature:", signature)
+        console.log("=== End Debug ===")
+
+        return {
+            "Date": dateOfGmt,
+            "SessionKey": sessionKey,
+            "X-Request-ID": requestID,
+            "Signature": signature
+        }
+    }
+
+    aseEncrypt(key: string, origData: string | Uint8Array): string {
+        console.log("=== AES Encrypt Debug ===")
+        console.log("key:", key)
+        console.log("key length:", key.length)
+        console.log("origData:", origData)
+        
+        const ciph = crypto.createCipheriv("aes-128-ecb", key, Buffer.alloc(0)).setAutoPadding(true)
+        const encrypted = ciph.update(Buffer.from(origData)).toString('hex') + ciph.final('hex')
+        const result = encrypted.toUpperCase()
+        
+        console.log("encrypted (before uppercase):", encrypted)
+        console.log("encrypted (final):", result)
+        console.log("=== End AES Debug ===")
+        
+        return result
     }
 }
 

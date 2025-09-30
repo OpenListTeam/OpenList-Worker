@@ -51,7 +51,7 @@ export async function HttpRequest(Method: string = "GET",
             search_data.href, {
                 method: Method,
                 body: Method == "GET" ? undefined : record_data,
-                headers: Method == "GET" ? undefined : header_data,
+                headers: header_data,
                 redirect: Option.finder === "urls" ? 'manual' : undefined,
             }
         );

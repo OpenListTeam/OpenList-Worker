@@ -18,6 +18,7 @@ import * as fso from "../../files/FilesObject";
 import * as con from "./const";
 import {HttpRequest} from "../../share/HttpRequest";
 
+
 /**
  * 天翼云盘文件操作驱动器类
  *
@@ -64,7 +65,7 @@ export class HostDriver extends BasicDriver {
     async downFile(file?: fso.FileFind): Promise<fso.FileLink[] | null> {
         if (file?.path) file.uuid = await this.findUUID(file.path);
         if (!file?.uuid) return [{status: false, result: "No UUID"}];
-        
+
         try {
             const url = `${con.API_URL}/getFileDownloadUrl.action`;
             const params = {
@@ -83,7 +84,7 @@ export class HostDriver extends BasicDriver {
                     header: {"Authorization": `Bearer ${this.clouds.tokenParam?.accessToken}`}
                 }];
             }
-            
+
             return [{status: false, result: "获取下载链接失败"}];
         } catch (e) {
             console.error("下载文件失败:", e);
@@ -213,7 +214,7 @@ export class HostDriver extends BasicDriver {
         if (type === fso.FileType.F_DIR) {
             return this.makeFile(file, name, type, data);
         }
-        
+
         // 文件上传逻辑
         if (file?.path) {
             const parent: string = file.path.substring(0, file?.path.lastIndexOf('/'));
@@ -235,8 +236,6 @@ export class HostDriver extends BasicDriver {
         console.log("DirFind", path, parts);
         if (parts.length === 0 || path === '/') return '-11';
         let currentUUID: string = '-11';
-        console.log("NowUUID", currentUUID);
-        
         for (const part of parts) {
             const files: fso.FileInfo[] = await this.findPath(currentUUID);
             const foundFile: fso.FileInfo | undefined = files.find(
@@ -260,17 +259,54 @@ export class HostDriver extends BasicDriver {
                 pageNum: "1",
                 pageSize: "1000"
             };
-
-            const response = await HttpRequest("GET", url, params, {
-                "Authorization": `Bearer ${this.clouds.tokenParam?.accessToken}`,
+    
+            // 获取session信息
+            const tokenParam = this.clouds.tokenParam;
+            if (!tokenParam || !tokenParam.sessionKey || !tokenParam.sessionSecret) {
+                console.error("缺少session信息");
+                return [];
+            }
+    
+            // 生成签名
+            const urlObj = new URL(url);
+            const searchParams = new URLSearchParams(params);
+            
+            // 加密参数
+            const encryptedParams = this.clouds.aseEncrypt(
+                tokenParam.sessionSecret.slice(0, 16), 
+                searchParams.toString()
+            );
+            
+            // 设置URL的search参数（与SDK保持一致）
+            urlObj.search = `params=${encryptedParams}`;
+            
+            // 生成签名头
+            const signatureHeaders = this.clouds.signatureV2(
+                "GET", 
+                urlObj, 
+                encryptedParams,
+                { sessionKey: tokenParam.sessionKey, sessionSecret: tokenParam.sessionSecret }
+            );
+    
+            // 构建最终URL
+            const finalUrl = urlObj.toString();
+    
+            const response = await HttpRequest("GET",
+                finalUrl, 
+                undefined, {
+                "Date": signatureHeaders.Date,
+                "SessionKey": signatureHeaders.SessionKey,
+                "X-Request-ID": signatureHeaders["X-Request-ID"],
+                "Signature": signatureHeaders.Signature,
                 "Content-Type": "application/json"
             }, {finder: "json"});
-
+    
+            console.log("findPath", response);
             if (response.ResCode === 0) {
                 const fileList = response.FileListAO?.FileList || [];
                 const folderList = response.FileListAO?.FolderList || [];
                 const allFiles = [...folderList, ...fileList];
-
+    
                 return allFiles.map((file: any) => ({
                     filePath: file.path || "",
                     fileName: file.fileName || file.name,
@@ -281,7 +317,7 @@ export class HostDriver extends BasicDriver {
                     timeModify: file.lastOpTime ? new Date(file.lastOpTime) : undefined
                 }));
             }
-            
+    
             return [];
         } catch (e) {
             console.error("查找路径失败:", e);
