@@ -11,11 +11,19 @@ export default defineConfig({
         target: 'http://localhost:8787',
         changeOrigin: true
       },
-      '/@user': {
+      '/@users': {
         target: 'http://localhost:8787',
         changeOrigin: true
       },
       '/@files': {
+        target: 'http://localhost:8787',
+        changeOrigin: true
+      },
+      '/@admin': {
+        target: 'http://localhost:8787',
+        changeOrigin: true
+      },
+      '/api': {
         target: 'http://localhost:8787',
         changeOrigin: true
       }

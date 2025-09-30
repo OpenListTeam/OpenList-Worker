@@ -90,10 +90,10 @@ export const PathSelectDialog: React.FC<PathSelectDialogProps> = ({
       
       let apiUrl: string;
       if (cleanBackendPath === '' || cleanBackendPath === '/') {
-        apiUrl = 'http://127.0.0.1:8787/@files/list/path/';
+        apiUrl = '/@files/list/path/';
       } else {
         const pathWithSlash = cleanBackendPath.startsWith('/') ? cleanBackendPath : `/${cleanBackendPath}`;
-        apiUrl = `http://127.0.0.1:8787/@files/list/path${pathWithSlash}/`;
+        apiUrl = `/@files/list/path${pathWithSlash}/`;
       }
 
       const response = await axios.get(apiUrl);

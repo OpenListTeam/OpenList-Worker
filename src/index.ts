@@ -48,7 +48,7 @@ app.use('/@mount/:action/:method/*', async (c: Context) => {
             return c.json(authResult, 401);
         }
     }
-
+    console.log("@mount", action, method, config)
     // 创建对象 ==========================================================================
     let mounts: MountManage = new MountManage(c);
     // 检查方法 ==========================================================================

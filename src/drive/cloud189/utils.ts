@@ -3,7 +3,6 @@ import {Context} from "hono";
 import {DriveResult} from "../DriveObject";
 import {BasicClouds} from "../BasicClouds";
 import * as con from "./const";
-import {APP_SESSION} from "./metas";
 // 专用导入 =====================================================
 import * as crypto from "crypto";
 import {HttpRequest} from "../../share/HttpRequest";
@@ -93,6 +92,7 @@ export class HostClouds extends BasicClouds {
                 userName: rsaUsername,
             }, {REQID: reqId}, "text"
         );
+        console.log("needCaptcha",needCaptcha)
         if (needCaptcha === "0") return {flag: false, text: "Failed to get Captcha"}
         // 获取验证码图片 =======================================================
         const imgRes = await HttpRequest("GET",
@@ -149,11 +149,7 @@ export class HostClouds extends BasicClouds {
             // console.log(login_resp)
             if (!login_resp.toUrl) {
                 console.log(`登录账号失败: ${login_resp.msg}`)
-                return {
-                    flag: false,
-                    text: `登录账号失败: ${login_resp.msg}`
-                }
-
+                return {flag: false, text: `登录账号失败: ${login_resp.msg}`}
             }
             // 获取Token信息 =========================================
             // this.saving.login["redirectURL"] = login_resp.toUrl;
@@ -179,7 +175,7 @@ export class HostClouds extends BasicClouds {
                     text: `获取认证失败: ${tokenInfo}`
                 }
             }
-            this.tokenParam = tokenInfo;
+            this._tokenParam = tokenInfo;
             this.saving.token = tokenInfo;
             // console.log(tokenInfo)
             this.change = true;
@@ -236,151 +232,5 @@ export class HostClouds extends BasicClouds {
         }
     }
 }
-
-//     async getFiles(fileId: string, isFamily: boolean): Promise<Array<Record<string, any>> | null> {
-//         const files: Array<Record<string, any>> = [];
-//         for (let pageNum = 1; ; pageNum++) {
-//             const resp = await this.getFilesWithPage(fileId, isFamily, pageNum, 1000, "filename", "asc");
-//             if (!resp || resp.FileListAO.Count === 0) {
-//                 break;
-//             }
-//
-//             files.push(...resp.FileListAO.FolderList, ...resp.FileListAO.FileList);
-//         }
-//         return files.length > 0 ? files : null;
-//     }
-//
-//     async uploadFile(file: File, folderId: string, isFamily: boolean = false): Promise<Record<string, any> | null> {
-//         try {
-//             const uploadInfo = await this.initUpload(folderId, file.name, file.size.toString(), isFamily);
-//             if (!uploadInfo) {
-//                 return null;
-//             }
-//
-//             const uploadUrl = uploadInfo.UploadUrl;
-//             const headers = {
-//                 "Content-Type": "application/octet-stream",
-//                 "Content-Length": file.size.toString(),
-//             };
-//
-//             const response = await HttpRequest("PUT",
-//                 uploadUrl, file, headers,
-//                 {finder: "json"}
-//             );
-//
-//             if (response.ResCode !== 0) {
-//                 throw new Error(response.ResMessage || "Upload failed");
-//             }
-//
-//             return response;
-//         } catch (e) {
-//             console.error("Upload error:", e);
-//             return null;
-//         }
-//     }
-//
-//     async deleteFile(fileId: string, isFamily: boolean = false): Promise<boolean> {
-//         try {
-//             const url = isFamily ? `${API_URL}/family/file/deleteFile.action` : `${API_URL}/deleteFile.action`;
-//             const params = {
-//                 "fileId": fileId,
-//             };
-//
-//             const response = await HttpRequest("POST", url, params, undefined, {finder: "json"});
-//
-//             return response.ResCode === 0;
-//         } catch (e) {
-//             console.error("Delete error:", e);
-//             return false;
-//         }
-//     }
-//
-//     async renameFile(fileId: string, newName: string, isFamily: boolean = false): Promise<boolean> {
-//         try {
-//             const url = isFamily ? `${API_URL}/family/file/renameFile.action` : `${API_URL}/renameFile.action`;
-//             const params = {
-//                 "fileId": fileId,
-//                 "newFileName": newName,
-//             };
-//
-//             const response = await HttpRequest("POST",
-//                 url,
-//                 params,
-//                 undefined,
-//                 {finder: "json"}
-//             );
-//
-//             return response.ResCode === 0;
-//         } catch (e) {
-//             console.error("Rename error:", e);
-//             return false;
-//         }
-//     }
-//
-//     async downloadFile(fileId: string, isFamily: boolean = false): Promise<Blob | null> {
-//         try {
-//             const url = isFamily ? `${API_URL}/family/file/downloadFile.action` : `${API_URL}/downloadFile.action`;
-//             const params = {
-//                 "fileId": fileId,
-//             };
-//
-//             const response = await HttpRequest(
-//                 "GET",
-//                 url,
-//                 params,
-//                 undefined,
-//                 {finder: "blob"}
-//             );
-//
-//             return response;
-//         } catch (e) {
-//             console.error("Download error:", e);
-//             return null;
-//         }
-//     }
-//
-//     async batchDelete(fileIds: string[], isFamily: boolean = false): Promise<boolean> {
-//         try {
-//             const url = isFamily ? `${API_URL}/family/file/batchDeleteFile.action` : `${API_URL}/batchDeleteFile.action`;
-//             const params = {
-//                 "fileIds": fileIds.join(","),
-//             };
-//
-//             const response = await HttpRequest("POST",
-//                 url,
-//                 params,
-//                 undefined,
-//                 {finder: "json"}
-//             );
-//
-//             return response.ResCode === 0;
-//         } catch (e) {
-//             console.error("Batch delete error:", e);
-//             return false;
-//         }
-//     }
-//
-//     async batchMove(fileIds: string[], targetFolderId: string, isFamily: boolean = false): Promise<boolean> {
-//         try {
-//             const url = isFamily ? `${API_URL}/family/file/batchMoveFile.action` : `${API_URL}/batchMoveFile.action`;
-//             const params = {
-//                 "fileIds": fileIds.join(","),
-//                 "targetFolderId": targetFolderId,
-//             };
-//
-//             const response = await HttpRequest(
-//                 "POST",
-//                 url,
-//                 params,
-//                 undefined,
-//                 {finder: "json"}
-//             );
-//
-//             return response.ResCode === 0;
-//         } catch (e) {
-//             console.error("Batch move error:", e);
-//             return false;
-//         }
-//     }
 
 

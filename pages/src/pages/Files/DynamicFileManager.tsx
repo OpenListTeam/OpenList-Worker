@@ -342,7 +342,7 @@ const DynamicFileManager: React.FC = () => {
       const fullFilePath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
       
       // 构建URL+路径格式，例如：http://localhost:8086/dir/1.jpg
-      const baseUrl = window.location.origin.replace(':3000', ':8086'); // 将前端端口3000替换为后端端口8086
+      const baseUrl = window.location.origin; // 使用当前前端地址，通过代理访问后端
       const copyUrl = `${baseUrl}${fullFilePath}`;
       
       // 复制URL+路径到剪贴板

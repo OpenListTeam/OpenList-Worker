@@ -24,6 +24,7 @@ import {
 import { Add, Edit, Delete, Refresh, Replay } from '@mui/icons-material';
 import DataTable from '../../components/DataTable';
 import { Mount } from '../../types';
+import apiService from '../../posts/api';
 
 interface Driver {
   key: string;
@@ -55,8 +56,7 @@ const MountManagement: React.FC = () => {
   const loadMounts = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/@mount/select/none');
-      const result = await response.json();
+      const result = await apiService.get('/@mount/select/none');
       if (result.flag) {
         setMounts(result.data || []);
       } else {
@@ -73,15 +73,7 @@ const MountManagement: React.FC = () => {
   const loadDrivers = async () => {
     try {
       console.log('正在请求驱动列表: /@mount/driver/none');
-      const response = await fetch('/@mount/driver/none');
-      console.log('响应状态:', response.status, response.statusText);
-      
-      if (!response.ok) {
-        console.error('HTTP错误:', response.status, response.statusText);
-        return;
-      }
-      
-      const result = await response.json();
+      const result = await apiService.get('/@mount/driver/none');
       console.log('驱动列表响应:', result);
       
       if (result.flag && result.data) {
@@ -244,16 +236,9 @@ const MountManagement: React.FC = () => {
     }
 
     try {
-      const response = await fetch('/@mount/remove/none', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          mount_path: mount.mount_path
-        })
+      const result = await apiService.post('/@mount/remove/none', {
+        mount_path: mount.mount_path
       });
-      const result = await response.json();
       
       if (result.flag) {
         await loadMounts();
@@ -307,14 +292,7 @@ const MountManagement: React.FC = () => {
 
     try {
       const action = editingMount ? 'config' : 'create';
-      const response = await fetch(`/@mount/${action}/none`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(mountConfig)
-      });
-      const result = await response.json();
+      const result = await apiService.post(`/@mount/${action}/none`, mountConfig);
       
       if (result.flag) {
         setDialogOpen(false);
@@ -331,13 +309,7 @@ const MountManagement: React.FC = () => {
   const handleReload = async (mount: Mount) => {
     try {
       setLoading(true);
-      const response = await fetch(`/@mount/reload/path${mount.mount_path}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-      const result = await response.json();
+      const result = await apiService.post(`/@mount/reload/path${mount.mount_path}`, {});
       
       if (result.flag) {
         setError('');
@@ -366,13 +338,7 @@ const MountManagement: React.FC = () => {
       // 为每个挂载点调用重新加载
       const reloadPromises = mounts.map(async (mount) => {
         try {
-          const response = await fetch(`/@mount/reload/path${mount.mount_path}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            }
-          });
-          const result = await response.json();
+          const result = await apiService.post(`/@mount/reload/path${mount.mount_path}`, {});
           return { mount: mount.mount_path, success: result.flag, message: result.text };
         } catch (err) {
           return { mount: mount.mount_path, success: false, message: '网络错误' };
