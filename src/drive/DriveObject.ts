@@ -1,6 +1,6 @@
 export interface DriveResult {
     flag: boolean;
-    text: string;
+    text?: string;
     data?: MountConfig[];
 }
 

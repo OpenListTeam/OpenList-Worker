@@ -28,6 +28,7 @@ export interface Mount {
 export interface User {
   users_uuid: number;
   users_name: string;
+  users_mail?: string;  // 添加邮箱字段
   users_pass: string;
   users_mask: string;
   is_enabled: number;
@@ -36,6 +37,29 @@ export interface User {
   oauth_data?: string;
   mount_data?: string;
 }
+
+// 用户配置接口（与后端保持一致）
+export interface UsersConfig {
+  users_name: string;
+  users_mail?: string;
+  users_pass: string;
+  users_mask: string;
+  is_enabled: boolean;
+  total_size: number;
+  total_used: number;
+  oauth_data: string;
+  mount_data: string;
+}
+
+// 用户操作结果接口
+export interface UsersResult {
+  flag: boolean;
+  text: string;
+  data?: UsersConfig[];
+  token?: string;
+}
+
+
 
 // 用户分组
 export interface Group {

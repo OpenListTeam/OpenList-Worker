@@ -3,19 +3,23 @@ import {Context} from "hono";
 import {DriveResult} from "../DriveObject";
 import {BasicClouds} from "../BasicClouds";
 import * as con from "./const";
+import {APP_SESSION} from "./metas";
 // 专用导入 =====================================================
 import * as crypto from "crypto";
 import {HttpRequest} from "../../share/HttpRequest";
-import {JSONClient} from "google-auth-library/build/src/auth/googleauth";
-import {google} from "googleapis";
 
 
 // 驱动器 ###########################################################
 export class HostClouds extends BasicClouds {
     // 专有数据 =====================================================
     private loginParam: Record<string, any> = {};
-    private tokenParam: APP_SESSION | Record<string, any> = {};
+    private _tokenParam: APP_SESSION | Record<string, any> = {};
     private verifyCode: string | null | any = '';
+
+    // 公共访问器
+    get tokenParam(): APP_SESSION | Record<string, any> {
+        return this._tokenParam;
+    }
 
     // 构造函数 =====================================================
     constructor(c: Context, router: string,
@@ -77,51 +81,30 @@ export class HostClouds extends BasicClouds {
         // 保存登录参数 =========================================================
         this.loginParam = {
             CaptchaToken: captchaToken,
-            Lt: lt,
-            ParamId: paramId,
-            ReqId: reqId,
-            jRsaKey,
-            rsaUsername,
-            rsaPassword,
+            Lt: lt, ParamId: paramId,
+            ReqId: reqId, jRsaKey,
+            rsaUsername, rsaPassword,
         };
-        // console.log(this.loginParam)
-
-        // 检查是否需要验证码
-        // const needCaptcha = await HttpRequest(
-        //     `${AUTH_URL}/api/logbox/oauth2/needcaptcha.do`,
-        //     {
-        //         appKey: APP_ID,
-        //         accountType: ACCOUNT_TYPE,
-        //         userName: rsaUsername,
-        //     },
-        //     "POST",
-        //     false,
-        //     { REQID: reqId },
-        //     "text"
-        // );
-        //
-        // if (needCaptcha === "0") {
-        //     return null;
-        // }
-        //
-        // // 获取验证码图片
-        // const imgRes = await HttpRequest(
-        //     `${AUTH_URL}/api/logbox/oauth2/picCaptcha.do`,
-        //     {
-        //         token: captchaToken,
-        //         REQID: reqId,
-        //         rnd: Date.now().toString(),
-        //     },
-        //     "GET",
-        //     false,
-        //     undefined,
-        //     "blob"
-        // );
-        //
-        // if (imgRes?.size > 20) {
-        //     // 处理OCR或返回Base64图片
-        //     return new Error(`Need verification code: ${imgRes}`);
-        // }
+        // 检查是否需要验证码 ===================================================
+        const needCaptcha = await HttpRequest("POST",
+            `${con.AUTH_URL}/api/logbox/oauth2/needcaptcha.do`, {
+                appKey: con.APP_ID,
+                accountType: con.ACCOUNT_TYPE,
+                userName: rsaUsername,
+            }, {REQID: reqId}, "text"
+        );
+        if (needCaptcha === "0") return {flag: false, text: "Failed to get Captcha"}
+        // 获取验证码图片 =======================================================
+        const imgRes = await HttpRequest("GET",
+            `${con.AUTH_URL}/api/logbox/oauth2/picCaptcha.do`, {
+                token: captchaToken,
+                REQID: reqId,
+                rnd: Date.now().toString(),
+            }, undefined, "blob"
+        );
+        console.log(imgRes)
+        if (imgRes?.size > 20)
+            return {flag: false, text: `Need verification code: ${imgRes}`}
         return {flag: true, text: "OK"};
     }
 
@@ -220,7 +203,7 @@ export class HostClouds extends BasicClouds {
     // 载入接口 ================================================
     async readConfig(): Promise<DriveResult> {
         if (!this.saving.token) return await this.initConfig();
-        this.tokenParam = this.saving.token;
+        this._tokenParam = this.saving.token;
         this.loginParam = this.saving.login;
         return {
             flag: true,
@@ -237,7 +220,7 @@ export class HostClouds extends BasicClouds {
 
             const resp = await HttpRequest("POST",
                 `${con.API_URL}/getSessionForPC.action`, {
-                    "accessToken": tokenInfo.AccessToken,
+                    "accessToken": tokenInfo.accessToken,
                     "appId": con.APP_ID
                 }, undefined, {finder: "json"}
             );
@@ -246,7 +229,7 @@ export class HostClouds extends BasicClouds {
                 return new Error(resp.ResMessage || "Failed to refresh session");
             }
 
-            this.tokenParam = resp;
+            this._tokenParam = resp;
             return null;
         } catch (e) {
             return e as Error;

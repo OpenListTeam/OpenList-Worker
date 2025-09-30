@@ -29,6 +29,9 @@ import {
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../components/AppContext.tsx';
+import { userApi } from '../../posts/api';
+import { getUserAvatarUrl } from '../../utils/gravatar';
+import type { UsersResult, UsersConfig } from '../../types';
 
 interface TabPanelProps {
     children?: React.ReactNode;
@@ -111,24 +114,66 @@ const AuthPage: React.FC = () => {
         setError('');
 
         try {
-            // 模拟登录API调用
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // 模拟登录成功
-            const mockUser = {
-                id: '1',
-                username: loginForm.username,
-                email: `${loginForm.username}@example.com`,
-                avatar: '',
-                role: 'user' as const,
-                permissions: ['read', 'write']
+            // 调用真实的登录API
+            const loginData: UsersConfig = {
+                users_name: loginForm.username,
+                users_pass: loginForm.password
             };
 
-            login(mockUser);
-            showNotification('登录成功！', 'success');
-            navigate('/@pages/');
-        } catch (error) {
-            setError('登录失败，请检查用户名和密码');
+            const response: UsersResult = await userApi.login(loginData);
+            
+            if (response.flag && response.token && response.data && response.data.length > 0) {
+                // 保存token到localStorage
+                localStorage.setItem('token', response.token);
+                
+                // 设置axios默认header
+                const apiService = (await import('../../posts/api')).apiService;
+                apiService.instance.defaults.headers.common['Authorization'] = `Bearer ${response.token}`;
+                
+                // 获取用户信息
+                const userInfo = response.data[0];
+                const user = {
+                    id: userInfo.users_name,
+                    username: userInfo.users_name,
+                    email: userInfo.users_mail || '',
+                    avatar: getUserAvatarUrl({ email: userInfo.users_mail || '' }, 80),
+                    role: 'user' as const,
+                    permissions: ['read', 'write']
+                };
+
+                // 保存用户信息到localStorage
+                localStorage.setItem('user', JSON.stringify(user));
+                
+                login(user);
+                showNotification('登录成功！', 'success');
+                navigate('/@pages/');
+            } else {
+                setError(response.text || '登录失败');
+            }
+        } catch (error: any) {
+            console.error('登录错误:', error);
+            
+            // 处理不同类型的错误
+            if (error.name === 'ApiError') {
+                // API错误，显示具体错误信息
+                setError(error.message);
+            } else if (error.response?.data) {
+                // HTTP响应错误
+                const responseData = error.response.data;
+                if (responseData.text) {
+                    setError(responseData.text);
+                } else if (responseData.message) {
+                    setError(responseData.message);
+                } else {
+                    setError('登录失败，请稍后重试');
+                }
+            } else if (error.message) {
+                // 其他错误，显示错误消息
+                setError(error.message);
+            } else {
+                // 未知错误
+                setError('登录失败，请检查网络连接或稍后重试');
+            }
         } finally {
             setLoading(false);
         }
@@ -177,25 +222,57 @@ const AuthPage: React.FC = () => {
         setError('');
 
         try {
-            // 模拟注册API调用
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            // 调用真实的注册API
+            const registerData: UsersConfig = {
+                users_name: registerForm.username,
+                users_mail: registerForm.email,
+                users_pass: registerForm.password
+            };
+
+            const response: UsersResult = await userApi.register(registerData);
             
-            showNotification('注册成功！请登录', 'success');
-            setTabValue(0); // 切换到登录标签
+            if (response.flag) {
+                showNotification('注册成功！请登录', 'success');
+                setTabValue(0); // 切换到登录标签
+                
+                // 清空注册表单
+                setRegisterForm({
+                    username: '',
+                    email: '',
+                    password: '',
+                    confirmPassword: '',
+                    showPassword: false,
+                    showConfirmPassword: false,
+                    agreeTerms: false,
+                    agreePrivacy: false,
+                });
+            } else {
+                setError(response.text || '注册失败');
+            }
+        } catch (error: any) {
+            console.error('注册错误:', error);
             
-            // 清空注册表单
-            setRegisterForm({
-                username: '',
-                email: '',
-                password: '',
-                confirmPassword: '',
-                showPassword: false,
-                showConfirmPassword: false,
-                agreeTerms: false,
-                agreePrivacy: false,
-            });
-        } catch (error) {
-            setError('注册失败，请稍后重试');
+            // 处理不同类型的错误
+            if (error.name === 'ApiError') {
+                // API错误，显示具体错误信息
+                setError(error.message);
+            } else if (error.response?.data) {
+                // HTTP响应错误
+                const responseData = error.response.data;
+                if (responseData.text) {
+                    setError(responseData.text);
+                } else if (responseData.message) {
+                    setError(responseData.message);
+                } else {
+                    setError('注册失败，请稍后重试');
+                }
+            } else if (error.message) {
+                // 其他错误，显示错误消息
+                setError(error.message);
+            } else {
+                // 未知错误
+                setError('注册失败，请检查网络连接或稍后重试');
+            }
         } finally {
             setLoading(false);
         }

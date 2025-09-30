@@ -1,6 +1,7 @@
 import { createContext, useContext, useReducer, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import React from 'react';
+import { getUserAvatarUrl } from '../utils/gravatar';
 
 // 用户类型定义
 interface User {
@@ -204,6 +205,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (savedUser && savedToken) {
             try {
                 const user = JSON.parse(savedUser);
+                // 如果用户没有头像或头像为空，使用Gravatar生成
+                if (!user.avatar || user.avatar === '') {
+                    user.avatar = getUserAvatarUrl({ email: user.email || '' }, 80);
+                }
                 dispatch({ type: 'SET_USER', payload: user });
                 dispatch({ type: 'SET_AUTHENTICATED', payload: true });
             } catch (error) {

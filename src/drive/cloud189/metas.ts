@@ -1,11 +1,11 @@
 
-type CONFIG_INFO = {
+interface CONFIG_INFO {
     username: string;
     password: string;
-    cookie: string;
-};
+    cookie?: string;
+}
 
-type APP_SESSION = {
+interface APP_SESSION {
     loginName?: string;
     sessionKey?: string;
     sessionSecret?: string;
@@ -17,10 +17,37 @@ type APP_SESSION = {
     accessToken?: string;
     refreshToken?: string;
     isSaveName?: boolean;
-};
+    cookies?: string;
+    userId?: string;
+}
 
-type LOGIN_RESULT = {
+interface LOGIN_RESULT {
     toUrl: string;
     msg?: string;
     result: number;
-};
+}
+
+interface FILE_INFO {
+    id: string;
+    name: string;
+    size: number;
+    isFolder: boolean;
+    createTime: string;
+    lastOpTime: string;
+    parentId: string;
+    path?: string;
+    downloadUrl?: string;
+}
+
+interface FOLDER_INFO {
+    fileListAO: {
+        count: number;
+        fileList: FILE_INFO[];
+    };
+}
+
+interface UPLOAD_RESULT {
+    uploadFileId: string;
+    fileName: string;
+    fileSize: number;
+}

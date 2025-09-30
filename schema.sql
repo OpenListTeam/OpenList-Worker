@@ -18,8 +18,8 @@ CREATE TABLE mount -- 挂载路径
 CREATE TABLE users -- 用户信息
 (
     -- 核心信息 ===============================================
-    users_uuid INTEGER AUTOINCREMENT   NOT NULL, -- 用户UUID
     users_name TEXT PRIMARY KEY UNIQUE NOT NULL, -- 用户名称
+    users_mail TEXT                    NOT NULL, -- 密码SHA2
     users_pass TEXT                    NOT NULL, -- 密码SHA2
     users_mask TEXT                    NOT NULL, -- 用户权限
     is_enabled INTEGER                 NOT NULL, -- 是否启用
@@ -86,34 +86,34 @@ CREATE TABLE share -- 分享配置
 CREATE TABLE token -- 连接配置
 (
     -- 核心信息 ===============================================
-    token_uuid TEXT                    NOT NULL, -- 唯一UUID
-    token_path TEXT                    NOT NULL, -- 连接路径
-    token_user TEXT                    NOT NULL, -- 所属用户
-    token_type TEXT                    NOT NULL, -- 连接类型
-    token_info TEXT                    NOT NULL, -- 登录信息
-    is_enabled INTEGER                 NOT NULL, -- 是否启用
+    token_uuid TEXT    NOT NULL, -- 唯一UUID
+    token_path TEXT    NOT NULL, -- 连接路径
+    token_user TEXT    NOT NULL, -- 所属用户
+    token_type TEXT    NOT NULL, -- 连接类型
+    token_info TEXT    NOT NULL, -- 登录信息
+    is_enabled INTEGER NOT NULL, -- 是否启用
     -- 拓展信息 ===============================================
 )
 
 CREATE TABLE tasks -- 任务配置
 (
     -- 核心信息 ===============================================
-    tasks_uuid TEXT                    NOT NULL, -- 唯一UUID
-    tasks_type TEXT                    NOT NULL, -- 任务类型
-    tasks_user TEXT                    NOT NULL, -- 所属用户
-    tasks_info TEXT                    NOT NULL, -- 任务信息
-    tasks_flag INTEGER                 NOT NULL, -- 任务状态
+    tasks_uuid TEXT    NOT NULL, -- 唯一UUID
+    tasks_type TEXT    NOT NULL, -- 任务类型
+    tasks_user TEXT    NOT NULL, -- 所属用户
+    tasks_info TEXT    NOT NULL, -- 任务信息
+    tasks_flag INTEGER NOT NULL, -- 任务状态
     -- 拓展信息 ===============================================
 )
 
 CREATE TABLE fetch -- 离线下载
 (
     -- 核心信息 ===============================================
-    fetch_uuid TEXT                    NOT NULL, -- 唯一UUID
-    fetch_from TEXT                    NOT NULL, -- 所属用户
-    fetch_dest TEXT                    NOT NULL, -- 任务类型
-    fetch_user TEXT                    NOT NULL, -- 所属用户
-    fetch_flag INTEGER                 NOT NULL, -- 任务状态
+    fetch_uuid TEXT    NOT NULL, -- 唯一UUID
+    fetch_from TEXT    NOT NULL, -- 所属用户
+    fetch_dest TEXT    NOT NULL, -- 任务类型
+    fetch_user TEXT    NOT NULL, -- 所属用户
+    fetch_flag INTEGER NOT NULL, -- 任务状态
     -- 拓展信息 ===============================================
 )
 
@@ -133,3 +133,9 @@ CREATE TABLE cache -- 缓存信息
     cache_time INTEGER,                          -- 过期时间
     -- 拓展信息 ===============================================
 )
+
+CREATE TABLE admin -- 全局设置
+(
+    admin_keys TEXT PRIMARY KEY UNIQUE NOT NULL, -- 设置路径
+    admin_data TEXT
+);

@@ -32,6 +32,7 @@ import FilePreview from './FilePreview';
 import { FileInfo, PathInfo } from '../../types';
 import axios from 'axios';
 import { downloadFile, FileInfo as DownloadFileInfo } from '../../utils/downloadUtils';
+import { fileApi } from '../../posts/api';
 
 const DynamicFileManager: React.FC = () => {
   const location = useLocation();
@@ -158,24 +159,15 @@ const DynamicFileManager: React.FC = () => {
       const backendPath = buildBackendPath(path, location.pathname);
       // 确保路径格式正确，去掉末尾的斜杠（除非是根路径）
       const cleanBackendPath = backendPath === '/' ? '' : backendPath.replace(/\/$/, '');
-      // 构建API URL，确保路径正确分隔
-      let apiUrl: string;
-      if (cleanBackendPath === '' || cleanBackendPath === '/') {
-        // 根路径情况
-        apiUrl = `http://127.0.0.1:8787/@files/list/path`;
-      } else {
-        // 子路径情况，确保有正确的斜杠分隔
-        const pathWithSlash = cleanBackendPath.startsWith('/') ? cleanBackendPath : `/${cleanBackendPath}`;
-        apiUrl = `http://127.0.0.1:8787/@files/list/path${pathWithSlash}`;
-      }
       
-      console.log('API URL:', apiUrl, 'Original path:', path, 'Backend path:', backendPath, 'Clean path:', cleanBackendPath);
+      console.log('获取文件列表:', 'Original path:', path, 'Backend path:', backendPath, 'Clean path:', cleanBackendPath);
       
-      const response = await axios.get(apiUrl);
+      // 使用fileApi.getFileList()，这样会经过响应拦截器处理
+      const response = await fileApi.getFileList(cleanBackendPath || '/');
       
-      if (response.data && response.data.flag && response.data.data) {
+      if (response && response.flag && response.data) {
         // 后端返回格式: { flag: true, text: "Success", data: { pageSize, filePath, fileList } }
-        const apiData = response.data.data;
+        const apiData = response.data;
         const pathInfo: PathInfo = {
           pageSize: apiData.pageSize,
           filePath: apiData.filePath,
@@ -279,7 +271,6 @@ const DynamicFileManager: React.FC = () => {
       const fullFilePath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
       const backendPath = buildBackendPath(fullFilePath, location.pathname);
       const cleanBackendPath = cleanPath(backendPath);
-      const deleteApiUrl = `${import.meta.env.VITE_API_BASE_URL}/@files/remove/path${cleanBackendPath}`;
       
       console.log('删除操作调试信息:');
       console.log('- currentPath:', currentPath);
@@ -287,15 +278,15 @@ const DynamicFileManager: React.FC = () => {
       console.log('- fullFilePath:', fullFilePath);
       console.log('- backendPath:', backendPath);
       console.log('- cleanBackendPath:', cleanBackendPath);
-      console.log('- deleteApiUrl:', deleteApiUrl);
       
-      const response = await axios.delete(deleteApiUrl);
+      // 使用fileApi.removeFile()，这样会经过响应拦截器处理
+      const response = await fileApi.removeFile(cleanBackendPath);
       
-      if (response.data.flag) {
+      if (response && response.flag) {
         showMessage('文件删除成功');
         fetchFileList(currentPath); // 刷新文件列表
       } else {
-        showMessage('删除失败: ' + response.data.text, 'error');
+        showMessage('删除失败: ' + (response?.text || '未知错误'), 'error');
       }
     } catch (error) {
       console.error('删除文件错误:', error);
@@ -406,21 +397,20 @@ const DynamicFileManager: React.FC = () => {
       console.log('cleanSourcePath:', cleanSourcePath);
       console.log('cleanTargetPath:', cleanTargetPath);
       
-      const action = operation === 'copy' ? 'copy' : 'move';
-      const apiUrl = `${import.meta.env.VITE_API_BASE_URL}/@files/${action}/path${cleanSourcePath}?target=${encodeURIComponent(cleanTargetPath)}`;
-      console.log('apiUrl:', apiUrl);
-      
       console.log('发送请求...');
-      const response = await axios.post(apiUrl);
+      // 使用fileApi的新函数，这样会经过响应拦截器处理
+      const response = operation === 'copy' 
+        ? await fileApi.copyFile(cleanSourcePath, cleanTargetPath)
+        : await fileApi.moveFileNew(cleanSourcePath, cleanTargetPath);
       console.log('响应:', response);
       
-      if (response.data.flag) {
+      if (response && response.flag) {
         console.log('操作成功');
         showMessage(`文件${operation === 'copy' ? '复制' : '移动'}成功`);
         fetchFileList(currentPath); // 刷新文件列表
       } else {
-        console.log('操作失败:', response.data.text);
-        showMessage(`${operation === 'copy' ? '复制' : '移动'}失败: ` + response.data.text, 'error');
+        console.log('操作失败:', response?.text);
+        showMessage(`${operation === 'copy' ? '复制' : '移动'}失败: ` + (response?.text || '未知错误'), 'error');
       }
     } catch (error) {
       console.error(`${operation === 'copy' ? '复制' : '移动'}文件错误:`, error);
@@ -481,7 +471,6 @@ const DynamicFileManager: React.FC = () => {
       
       // target参数需要确保文件夹以/结尾，文件不以/结尾
       const targetParam = type === 'folder' ? `${name}/` : name;
-      const apiUrl = `${import.meta.env.VITE_API_BASE_URL}/@files/create/path${cleanTargetPath}?target=${encodeURIComponent(targetParam)}`;
       
       // 调试日志
       console.log('创建文件/文件夹调试信息:');
@@ -489,16 +478,17 @@ const DynamicFileManager: React.FC = () => {
       console.log('- name:', name);
       console.log('- targetParam:', targetParam);
       console.log('- targetParam ends with /:', targetParam.endsWith('/'));
-      console.log('- apiUrl:', apiUrl);
+      console.log('- cleanTargetPath:', cleanTargetPath);
       console.log('- decoded target:', decodeURIComponent(targetParam));
       
-      const response = await axios.post(apiUrl);
+      // 使用fileApi.createFileOrFolder()，这样会经过响应拦截器处理
+      const response = await fileApi.createFileOrFolder(cleanTargetPath, targetParam);
       
-      if (response.data.flag) {
+      if (response && response.flag) {
         showMessage(`${type === 'folder' ? '文件夹' : '文件'}创建成功`);
         fetchFileList(currentPath); // 刷新文件列表
       } else {
-        showMessage(`创建失败: ` + response.data.text, 'error');
+        showMessage(`创建失败: ` + (response?.text || '未知错误'), 'error');
       }
     } catch (error) {
       console.error(`创建${type === 'folder' ? '文件夹' : '文件'}错误:`, error);

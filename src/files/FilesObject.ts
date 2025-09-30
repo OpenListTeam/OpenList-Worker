@@ -1,4 +1,5 @@
 import {CryptInfo} from "../crypt/CryptObject";
+import {ErrCode} from "../enums";
 
 export * from "./FilesObject";
 
@@ -27,7 +28,7 @@ export interface FileInfo {
 
 // 目录信息 ############################
 export interface PathInfo {
-    pageSize?: number | null // 文件数量
+    pageSize?: number | null  // 文件数量
     pageNums?: number | null  // 页面编号
     filePath?: string | null  // 文件路径
     fileList?: FileInfo[]     // 文件列表

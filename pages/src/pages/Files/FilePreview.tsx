@@ -38,6 +38,7 @@ import {
   ContentCopy,
 } from '@mui/icons-material';
 import axios from 'axios';
+import { fileApi } from '../../posts/api';
 import { 
   downloadFile, 
   FileInfo as DownloadFileInfo,
@@ -84,16 +85,12 @@ const FilePreview: React.FC = () => {
       const backendDirPath = buildBackendPath(dirPath, location.pathname);
       const cleanBackendDirPath = backendDirPath === '/' ? '' : backendDirPath.replace(/\/$/, '');
       
-      // 构建目录列表API URL
-      const apiUrl = cleanBackendDirPath === '' || cleanBackendDirPath === '/' 
-        ? 'http://127.0.0.1:8787/@files/list/path/'
-        : `http://127.0.0.1:8787/@files/list/path${cleanBackendDirPath}/`;
-
-      const response = await axios.get(apiUrl);
+      // 使用fileApi.getFileList()，这样会经过响应拦截器处理
+      const response = await fileApi.getFileList(cleanBackendDirPath || '/');
       
-      if (response.data && response.data.flag && response.data.data && response.data.data.fileList) {
+      if (response && response.flag && response.data && response.data.fileList) {
         // 在文件列表中查找目标文件
-        const targetFile = response.data.data.fileList.find((file: any) => file.fileName === fileName);
+        const targetFile = response.data.fileList.find((file: any) => file.fileName === fileName);
         
         if (targetFile) {
           // 调试：打印原始数据

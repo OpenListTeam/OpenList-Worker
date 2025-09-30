@@ -77,28 +77,72 @@ class ApiService {
 
         // 响应拦截器
         this.instance.interceptors.response.use(
-            (response: AxiosResponse<ApiResponse>) => {
+            (response: AxiosResponse) => {
                 const {data} = response;
 
-                // 统一处理响应格式
-                if (data.success) {
-                    return data.data;
-                } else {
-                    throw new ApiError(data.message, data.code, response);
+                // 处理后端的响应格式 {flag: boolean, text: string, data?: any}
+                if (data && typeof data === 'object') {
+                    if (data.hasOwnProperty('flag')) {
+                        // 后端格式：{flag: boolean, text: string, data?: any}
+                        if (data.flag) {
+                            return data; // 返回完整的响应数据
+                        } else {
+                            // 移除字符串判断，只通过HTTP状态码处理未登录状态
+                            throw new ApiError(data.text || '操作失败', response.status, response);
+                        }
+                    } else if (data.hasOwnProperty('success')) {
+                        // 标准格式：{success: boolean, message: string, data: any}
+                        if (data.success) {
+                            return data.data;
+                        } else {
+                            throw new ApiError(data.message, data.code, response);
+                        }
+                    }
                 }
+                
+                // 直接返回数据（用于其他格式的响应）
+                return data;
             },
-            (error: AxiosError<ApiResponse>) => {
+            (error: AxiosError) => {
                 if (error.response) {
                     // 服务器响应错误
                     const {data, status} = error.response;
-                    throw new ApiError(
-                        data?.message || '服务器错误',
-                        data?.code || status,
-                        error.response
-                    );
+                    
+                    // 处理401未登录状态
+                    if (status === 401) {
+                        // 清除本地存储的token
+                        localStorage.removeItem('token');
+                        localStorage.removeItem('user');
+                        
+                        // 检查当前是否已经在登录页面，避免无限重定向
+                        if (window.location.pathname !== '/login') {
+                            // 跳转到登录页面
+                            window.location.href = '/login';
+                        }
+                        
+                        // 处理后端错误响应格式
+                        if (data && typeof data === 'object') {
+                            if (data.hasOwnProperty('flag') && data.hasOwnProperty('text')) {
+                                throw new ApiError(data.text || '用户未登录', status, error.response);
+                            }
+                        }
+                        
+                        throw new ApiError('用户未登录', status, error.response);
+                    }
+                    
+                    // 处理其他后端错误响应格式
+                    if (data && typeof data === 'object') {
+                        if (data.hasOwnProperty('flag') && data.hasOwnProperty('text')) {
+                            throw new ApiError(data.text || '服务器错误', status, error.response);
+                        } else if (data.hasOwnProperty('message')) {
+                            throw new ApiError(data.message || '服务器错误', data.code || status, error.response);
+                        }
+                    }
+                    
+                    throw new ApiError('服务器错误', status, error.response);
                 } else if (error.request) {
                     // 请求发送失败
-                    throw new ApiError('网络连接失败', 0);
+                    throw new ApiError('网络连接失败，请检查网络设置', 0);
                 } else {
                     // 其他错误
                     throw new ApiError('请求配置错误', -1);
@@ -209,10 +253,38 @@ export const fileApi = {
     // 分享文件
     shareFile: (path: string, expiresIn?: number) =>
         apiService.post('/files/share', {path, expiresIn}),
+
+    // 新的后端API格式的操作函数
+    // 删除文件或文件夹
+    removeFile: (filePath: string) =>
+        apiService.delete(`/@files/remove/path${filePath}`),
+
+    // 移动文件或文件夹
+    moveFileNew: (sourcePath: string, targetPath: string) =>
+        apiService.post(`/@files/move/path${sourcePath}?target=${encodeURIComponent(targetPath)}`),
+
+    // 复制文件或文件夹
+    copyFile: (sourcePath: string, targetPath: string) =>
+        apiService.post(`/@files/copy/path${sourcePath}?target=${encodeURIComponent(targetPath)}`),
+
+    // 创建文件或文件夹
+    createFileOrFolder: (path: string, target: string) =>
+        apiService.post(`/@files/create/path${path}?target=${encodeURIComponent(target)}`),
 };
 
-// 用户管理相关API
+// 用户相关API
 export const userApi = {
+    // 用户登录
+    login: (loginData: { users_name: string; users_pass: string }) =>
+        apiService.post('/@users/login/none', loginData),
+
+    // 用户注册
+    register: (registerData: { users_name: string; users_mail?: string; users_pass: string }) =>
+        apiService.post('/@users/create/none', registerData),
+
+    // 用户登出
+    logout: () => apiService.post('/@users/logout/none', {}),
+
     // 获取用户信息
     getUserInfo: () => apiService.get('/user/info'),
 
