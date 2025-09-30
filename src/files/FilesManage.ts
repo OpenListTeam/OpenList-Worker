@@ -20,7 +20,7 @@ export class FilesManage {
         // 检查参数 ==========================================================================
         console.log("@action before", action, source, target, config)
         let mount_data: MountManage = new MountManage(this.c);
-        let drive_load: any[] = await mount_data.loader(source, action == "list", action == "list");
+        let drive_load: any = await mount_data.loader(source, action == "list", action == "list");
         if (!drive_load) return this.c.json({flag: false, text: '404 NOT FOUND'}, 404)
         let drive_text: any = await drive_load[0].loadSelf();
         console.log("@action list", source, drive_load[0].router)
