@@ -257,7 +257,8 @@ export class HostDriver extends BasicDriver {
                 orderBy: "1",
                 descending: "false",
                 pageNum: "1",
-                pageSize: "1000"
+                pageSize: "1000",
+                noCache: Math.random().toString().substring(2, 17) // 添加noCache参数
             };
     
             // 获取session信息
@@ -267,37 +268,30 @@ export class HostDriver extends BasicDriver {
                 return [];
             }
     
-            // 生成签名
+            // 构建URL with直接编码的参数（不加密）
             const urlObj = new URL(url);
             const searchParams = new URLSearchParams(params);
+            urlObj.search = searchParams.toString();
             
-            // 加密参数
-            const encryptedParams = this.clouds.aseEncrypt(
-                tokenParam.sessionSecret.slice(0, 16), 
-                searchParams.toString()
-            );
-            
-            // 设置URL的search参数（与SDK保持一致）
-            urlObj.search = `params=${encryptedParams}`;
-            
-            // 生成签名头
+            // 生成签名头 - 使用完整URL路径包含查询参数
             const signatureHeaders = this.clouds.signatureV2(
                 "GET", 
                 urlObj, 
-                encryptedParams,
+                "", // 不传递加密参数，因为参数已经在URL中
                 { sessionKey: tokenParam.sessionKey, sessionSecret: tokenParam.sessionSecret }
             );
     
             // 构建最终URL
             const finalUrl = urlObj.toString();
+            console.log("Final URL:", finalUrl);
     
             const response = await HttpRequest("GET",
                 finalUrl, 
                 undefined, {
-                "Date": signatureHeaders.Date,
-                "SessionKey": signatureHeaders.SessionKey,
-                "X-Request-ID": signatureHeaders["X-Request-ID"],
-                "Signature": signatureHeaders.Signature,
+                "date": signatureHeaders.Date,
+                "sessionkey": signatureHeaders.SessionKey,
+                "x-request-id": signatureHeaders["X-Request-ID"],
+                "signature": signatureHeaders.Signature,
                 "Content-Type": "application/json"
             }, {finder: "json"});
     

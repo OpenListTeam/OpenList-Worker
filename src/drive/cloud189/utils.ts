@@ -192,11 +192,17 @@ export class HostClouds extends BasicClouds {
     }
 
     signatureV2(method: string, path: URL | string, params: string, appSession?: {sessionKey: string, sessionSecret: string}): Record<string, string> {
+        // 对于URL对象，使用完整路径包含查询参数
         const requestURI: string = path instanceof URL ? (path.pathname + path.search) : path.toString()
         const { sessionKey, sessionSecret } = appSession || this.tokenParam
         const dateOfGmt: string = new Date().toUTCString()
         const requestID: string = crypto.randomUUID()
-        let signData: string = `SessionKey=${sessionKey}&Operate=${method}&RequestURI=${requestURI}&Date=${dateOfGmt}${params && `&params=${params}`}`
+        
+        // 当使用直接URL编码时，不需要额外的params参数
+        let signData: string = `SessionKey=${sessionKey}&Operate=${method}&RequestURI=${requestURI}&Date=${dateOfGmt}`
+        if (params) {
+            signData += `&params=${params}`
+        }
         
         // 详细调试日志
         console.log("=== Cloud189 Signature Debug ===")
@@ -205,11 +211,13 @@ export class HostClouds extends BasicClouds {
         console.log("requestURI:", requestURI)
         console.log("sessionKey:", sessionKey)
         console.log("sessionSecret:", sessionSecret)
+        console.log("sessionSecret (truncated for HMAC):", sessionSecret.slice(0, 16))
         console.log("dateOfGmt:", dateOfGmt)
         console.log("params:", params)
         console.log("signData:", signData)
         
-        const signature = crypto.createHmac("sha1", sessionSecret).update(signData).digest("hex");
+        // 使用截断的sessionSecret进行HMAC签名（与Go实现保持一致）
+        const signature = crypto.createHmac("sha1", sessionSecret.slice(0, 16)).update(signData).digest("hex");
         console.log("signature:", signature)
         console.log("=== End Debug ===")
 
