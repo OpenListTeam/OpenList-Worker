@@ -8,12 +8,21 @@ import {
   DialogActions, 
   TextField,
   Typography,
-  Alert
+  Alert,
+  ButtonGroup,
+  Snackbar,
+  Chip
 } from '@mui/material';
-import { Add } from '@mui/icons-material';
+import { 
+  Add, 
+  PlayArrow, 
+  Pause, 
+  Stop, 
+  Delete,
+  Download
+} from '@mui/icons-material';
 import DataTable from '../../components/DataTable';
 import { PathSelectDialog } from '../../components/FileOperationDialogs';
-import { Chip } from '@mui/material';
 import { useApp } from '../../components/AppContext';
 import apiService from '../../posts/api';
 import type { Fetch } from '../../types';
@@ -27,6 +36,11 @@ const OfflineDownload: React.FC = () => {
   const [downloadUrl, setDownloadUrl] = useState('');
   const [selectedPath, setSelectedPath] = useState('/');
   const [error, setError] = useState('');
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success' as 'success' | 'error' | 'warning' | 'info'
+  });
 
   // 获取离线下载任务列表
   const fetchDownloadTasks = async () => {
@@ -142,12 +156,150 @@ const OfflineDownload: React.FC = () => {
     setPathSelectOpen(false);
   };
 
+  // Snackbar管理
+  const showSnackbar = (message: string, severity: 'success' | 'error' | 'warning' | 'info' = 'success') => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
+  };
+
+  // 批量操作函数
+  const handleStartAllTasks = async () => {
+    try {
+      const pausedTasks = data.filter(task => task.fetch_flag === 2); // 暂停状态
+      let successCount = 0;
+      
+      for (const task of pausedTasks) {
+        const response = await apiService.post('/@fetch/status/none/', {
+          fetch_uuid: task.fetch_uuid,
+          fetch_flag: 0 // 设置为待下载状态
+        });
+        if (response.flag) successCount++;
+      }
+      
+      if (successCount > 0) {
+        showSnackbar(`成功启动 ${successCount} 个任务`, 'success');
+        fetchData(); // 刷新数据
+      } else {
+        showSnackbar('没有可启动的任务', 'warning');
+      }
+    } catch (error) {
+      showSnackbar('启动任务失败', 'error');
+    }
+  };
+
+  const handlePauseAllTasks = async () => {
+    try {
+      const runningTasks = data.filter(task => task.fetch_flag === 0 || task.fetch_flag === 1); // 待下载或下载中
+      let successCount = 0;
+      
+      for (const task of runningTasks) {
+        const response = await apiService.post('/@fetch/status/none/', {
+          fetch_uuid: task.fetch_uuid,
+          fetch_flag: 2 // 设置为暂停状态
+        });
+        if (response.flag) successCount++;
+      }
+      
+      if (successCount > 0) {
+        showSnackbar(`成功暂停 ${successCount} 个任务`, 'success');
+        fetchData(); // 刷新数据
+      } else {
+        showSnackbar('没有可暂停的任务', 'warning');
+      }
+    } catch (error) {
+      showSnackbar('暂停任务失败', 'error');
+    }
+  };
+
+  const handleStopAllTasks = async () => {
+    try {
+      const activeTasks = data.filter(task => task.fetch_flag !== 3 && task.fetch_flag !== 4); // 非已完成和失败状态
+      let successCount = 0;
+      
+      for (const task of activeTasks) {
+        const response = await apiService.post('/@fetch/status/none/', {
+          fetch_uuid: task.fetch_uuid,
+          fetch_flag: 4 // 设置为失败/停止状态
+        });
+        if (response.flag) successCount++;
+      }
+      
+      if (successCount > 0) {
+        showSnackbar(`成功停止 ${successCount} 个任务`, 'success');
+        fetchData(); // 刷新数据
+      } else {
+        showSnackbar('没有可停止的任务', 'warning');
+      }
+    } catch (error) {
+      showSnackbar('停止任务失败', 'error');
+    }
+  };
+
+  const handleDeleteCompletedTasks = async () => {
+    try {
+      const completedTasks = data.filter(task => task.fetch_flag === 3 || task.fetch_flag === 4); // 已完成或失败状态
+      let successCount = 0;
+      
+      for (const task of completedTasks) {
+        const response = await apiService.post('/@fetch/remove/none/', {
+          fetch_uuid: task.fetch_uuid
+        });
+        if (response.flag) successCount++;
+      }
+      
+      if (successCount > 0) {
+        showSnackbar(`成功删除 ${successCount} 个已完成任务`, 'success');
+        fetchData(); // 刷新数据
+      } else {
+        showSnackbar('没有可删除的已完成任务', 'warning');
+      }
+    } catch (error) {
+      showSnackbar('删除任务失败', 'error');
+    }
+  };
+
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }} className="MuiBox-root css-1cacf56">
-        <Typography variant="h2">
-          离线下载
-        </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4">离线下载</Typography>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <ButtonGroup variant="outlined" size="small">
+            <Button
+              startIcon={<PlayArrow />}
+              onClick={handleStartAllTasks}
+            >
+              开始所有
+            </Button>
+            <Button
+              startIcon={<Pause />}
+              onClick={handlePauseAllTasks}
+            >
+              暂停所有
+            </Button>
+            <Button
+              startIcon={<Stop />}
+              onClick={handleStopAllTasks}
+            >
+              停止所有
+            </Button>
+            <Button
+              startIcon={<Delete />}
+              onClick={handleDeleteCompletedTasks}
+            >
+              清理已完成
+            </Button>
+          </ButtonGroup>
+          <Button
+            variant="contained"
+            startIcon={<Add />}
+            onClick={handleAddDownload}
+          >
+            添加下载
+          </Button>
+        </Box>
       </Box>
       <DataTable
         title="离线下载"
@@ -157,16 +309,18 @@ const OfflineDownload: React.FC = () => {
         onEdit={handleEdit}
         onDelete={handleDelete}
         actions={['edit', 'delete']}
-        toolbar={
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={handleAddDownload}
-          >
-            新增下载
-          </Button>
-        }
       />
+
+      {/* Snackbar */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
 
       {/* 新增下载对话框 */}
       <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} maxWidth="sm" fullWidth>

@@ -251,7 +251,7 @@ const MyShares: React.FC = () => {
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }} className="MuiBox-root css-1cacf56">
-        <Typography variant="h2">
+        <Typography variant="h4">
           我的分享
         </Typography>
       </Box>

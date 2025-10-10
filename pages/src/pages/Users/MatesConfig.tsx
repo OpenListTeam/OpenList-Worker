@@ -271,7 +271,7 @@ const MatesConfig: React.FC = () => {
         onEdit={handleEdit}
         onDelete={handleDelete}
         onToggleStatus={handleToggleStatus}
-        actions={['edit', 'delete', 'toggle']}
+        actions={['add', 'edit', 'delete', 'toggle']}
         addButtonText="添加路径配置"
       />
 

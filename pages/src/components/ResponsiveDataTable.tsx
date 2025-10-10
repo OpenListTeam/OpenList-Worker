@@ -12,6 +12,8 @@ import {
   useTheme,
   useMediaQuery,
   TableSortLabel,
+  Typography,
+  Button,
 } from '@mui/material';
 import { 
   Edit, 
@@ -24,7 +26,8 @@ import {
   Archive,
   Settings,
   Link,
-  CloudDownload
+  CloudDownload,
+  Add
 } from '@mui/icons-material';
 
 interface Column {
@@ -52,9 +55,10 @@ interface ResponsiveDataTableProps {
   onLink?: (row: any) => void;
   onArchive?: (row: any) => void;
   onSettings?: (row: any) => void;
+  onAdd?: () => void;
   onRowClick?: (row: any) => void;
   onRowDoubleClick?: (row: any) => void;
-  actions?: ('edit' | 'delete' | 'share' | 'download' | 'offline' | 'view' | 'copy' | 'move' | 'link' | 'archive' | 'settings')[];
+  actions?: ('edit' | 'delete' | 'share' | 'download' | 'offline' | 'view' | 'copy' | 'move' | 'link' | 'archive' | 'settings' | 'add')[];
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
   onSort?: (columnId: string, order: 'asc' | 'desc') => void;
@@ -75,6 +79,7 @@ const ResponsiveDataTable: React.FC<ResponsiveDataTableProps> = ({
   onLink,
   onArchive,
   onSettings,
+  onAdd,
   onRowClick,
   onRowDoubleClick,
   actions = ['edit', 'delete'],
@@ -220,7 +225,39 @@ const ResponsiveDataTable: React.FC<ResponsiveDataTableProps> = ({
 
   return (
     <Box ref={containerRef} sx={{ width: '100%' }}>
-      <TableContainer component={Paper} sx={{ borderRadius: '15px', overflowX: 'auto' }}>
+      {/* 标题栏和添加按钮 */}
+      {(title || (actions?.includes('add') && onAdd)) && (
+        <Box 
+          sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between', 
+            mb: 2,
+            p: 2,
+            backgroundColor: 'background.paper',
+            borderRadius: '15px 15px 0 0',
+            borderBottom: '1px solid',
+            borderColor: 'divider'
+          }}
+        >
+          {title && (
+            <Typography variant="h6" component="h3" sx={{ fontWeight: 'bold' }}>
+              {title}
+            </Typography>
+          )}
+          {actions?.includes('add') && onAdd && (
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              onClick={onAdd}
+              sx={{ borderRadius: '10px' }}
+            >
+              添加
+            </Button>
+          )}
+        </Box>
+      )}
+      <TableContainer component={Paper} sx={{ borderRadius: title || (actions?.includes('add') && onAdd) ? '0 0 15px 15px' : '15px', overflowX: 'auto' }}>
         <Table stickyHeader sx={{ width: '100%', tableLayout: 'auto' }} aria-label="responsive data table">
           <TableHead>
             <TableRow>
