@@ -262,7 +262,7 @@ const OAuthManagement: React.FC = () => {
   }
 
   return (
-    <Box>
+    <Box sx={{ p: 3 }}>
       <Box 
         className="MuiBox-root css-1cacf56" 
         sx={{ 
