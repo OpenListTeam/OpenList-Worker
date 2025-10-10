@@ -188,7 +188,7 @@ export interface CryptInfo {
   crypt_self?: boolean;
   rands_pass?: boolean;
   write_name?: string;
-  write_info?: string;
+  // write_info?: string;
   oauth_data?: Record<string, any>;
 }
 

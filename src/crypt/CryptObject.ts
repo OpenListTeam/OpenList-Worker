@@ -12,7 +12,7 @@ export interface CryptInfo {
     crypt_self: boolean // 是否存储密码
     rands_pass: boolean // 是否随机密码
     write_name: string  // 写入后缀名称
-    write_info: string  // 写入后缀名称
+    // write_info: string  // 写入后缀名称
     oauth_data: Record<string, any>
 }
 

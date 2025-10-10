@@ -1035,7 +1035,7 @@ app.use('/@crypt/:action/:method/*', async (c: Context): Promise<any> => {
                 crypt_self: config.crypt_self || false,
                 rands_pass: config.rands_pass || false,
                 write_name: config.write_name || "",
-                write_info: config.write_info || "",
+                // write_info: config.write_info || "",
                 oauth_data: config.oauth_data || {}
             };
             let result = await crypt.create(cryptData);

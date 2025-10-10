@@ -60,7 +60,7 @@ export class CryptManage {
                 crypt_self: cryptData.crypt_self ?? false, // 默认不存储密码
                 rands_pass: cryptData.rands_pass ?? false, // 默认不随机密码
                 write_name: cryptData.write_name ?? "", // 默认无后缀
-                write_info: cryptData.write_info ?? "", // 默认无信息
+                // write_info: cryptData.write_info ?? "", // 默认无信息
                 oauth_data: cryptData.oauth_data ?? {}
             };
 
