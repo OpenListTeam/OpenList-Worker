@@ -1,8 +1,13 @@
 import {Context} from "hono";
 import {DBResult} from "../saves/SavesObject";
 import {SavesManage} from "../saves/SavesManage";
-import * as bcrypt from "bcryptjs";
 import {UsersConfig, UsersResult} from "./UsersObject";
+import {GroupManage} from "../group/GroupManage";
+import {GroupConfig} from "../group/GroupObject";
+import * as bcrypt from 'bcryptjs';
+import {sign, verify} from 'hono/jwt';
+import {BindsManage} from "../binds/BindsManage";
+import {BindsData} from "../binds/BindsObject";
 
 const reg = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -109,13 +114,58 @@ export class UsersManage {
         let result_data: UsersConfig[] = []
         if (result.data.length > 0) {
             for (const item of result.data) {
-                result_data.push(item as UsersConfig)
+                const userData = item as UsersConfig;
+                // 如果用户有用户组，则继承用户组权限
+                if (userData.group_name) {
+                    const inheritedData = await this.inheritGroupPermissions(userData);
+                    result_data.push(inheritedData);
+                } else {
+                    result_data.push(userData);
+                }
             }
         }
         return {
             flag: result.flag,
             text: result.text,
             data: result_data,
+        }
+    }
+
+    /**
+     * 继承用户组权限
+     * @param userData - 用户数据
+     * @returns 返回继承用户组权限后的用户数据
+     */
+    async inheritGroupPermissions(userData: UsersConfig): Promise<UsersConfig> {
+        try {
+            if (!userData.group_name) {
+                return userData;
+            }
+
+            const groupManage = new GroupManage(this.c);
+            const groupResult = await groupManage.select(userData.group_name);
+            
+            if (!groupResult.flag || !groupResult.data || groupResult.data.length === 0) {
+                return userData;
+            }
+
+            const groupData = groupResult.data[0] as GroupConfig;
+            const inheritedData = { ...userData };
+
+            // 如果用户没有设置权限掩码，则使用用户组的权限掩码
+            if (!inheritedData.users_mask && groupData.group_mask) {
+                inheritedData.users_mask = groupData.group_mask.toString();
+            }
+
+            // 如果用户没有设置启用状态，则使用用户组的启用状态
+            if (inheritedData.is_enabled === undefined && groupData.is_enabled !== undefined) {
+                inheritedData.is_enabled = groupData.is_enabled;
+            }
+
+            return inheritedData;
+        } catch (error) {
+            console.error("继承用户组权限时发生错误:", error);
+            return userData;
         }
     }
 
@@ -262,6 +312,304 @@ export class UsersManage {
         } catch (error) {
             console.error("Token验证失败:", error);
             return null;
+        }
+    }
+
+    /**
+     * OAuth登录或绑定账户
+     * @param oauthUserInfo - OAuth用户信息
+     * @returns 返回操作结果，包含JWT token
+     */
+    async oauthLogin(oauthUserInfo: {
+        oauth_name: string;
+        oauth_user_id: string;
+        email?: string;
+        name?: string;
+        avatar?: string;
+        raw_data: string;
+    }): Promise<UsersResult> {
+        try {
+            const db = new SavesManage(this.c);
+            const bindsManage = new BindsManage(this.c);
+
+            // 使用BindsManage查找OAuth绑定
+            const bindResult = await bindsManage.findByOAuthUserId(oauthUserInfo.oauth_name, oauthUserInfo.oauth_user_id);
+            
+            let existingUser = null;
+            if (bindResult.flag && bindResult.data && bindResult.data.length > 0) {
+                const bind = bindResult.data[0];
+                
+                // 检查绑定是否启用
+                if (bind.is_enabled !== 1) {
+                    return {
+                        flag: false,
+                        text: "OAuth绑定已被禁用"
+                    };
+                }
+
+                // 查找绑定的用户
+                const userResult: DBResult = await db.find({
+                    main: "users",
+                    keys: {"users_name": bind.binds_user}
+                });
+
+                if (userResult.flag && userResult.data.length > 0) {
+                    existingUser = userResult.data[0];
+                }
+            }
+
+            if (existingUser) {
+                // 用户已存在，直接登录
+                if (!existingUser.is_enabled) {
+                    return {
+                        flag: false,
+                        text: "账户已被禁用"
+                    };
+                }
+
+                // 生成token
+                const token = existingUser.users_name + "_" + Date.now().toString(36);
+
+                // 返回用户信息
+                const userInfo: UsersConfig = {
+                    users_name: existingUser.users_name,
+                    users_mail: existingUser.users_mail,
+                    is_enabled: existingUser.is_enabled,
+                    total_size: existingUser.total_size,
+                    total_used: existingUser.total_used
+                };
+
+                return {
+                    flag: true,
+                    text: "OAuth登录成功",
+                    token: token,
+                    data: [userInfo]
+                };
+            } else {
+                // 用户不存在，创建新用户
+                const username = `oauth_${oauthUserInfo.oauth_name}_${oauthUserInfo.oauth_user_id}`;
+                const email = oauthUserInfo.email || `${username}@oauth.local`;
+
+                const newUserConfig: UsersConfig = {
+                    users_name: username,
+                    users_mail: email,
+                    users_pass: await bcrypt.hash(Math.random().toString(36), 10), // 随机密码
+                    users_mask: "",
+                    is_enabled: true,
+                    total_size: 1024 * 1024 * 1024, // 默认1GB存储空间
+                    total_used: 0,
+                    mount_data: ""
+                };
+
+                // 创建用户
+                const createResult = await this.config(newUserConfig);
+                if (!createResult.flag) {
+                    return createResult;
+                }
+
+                // 为新用户创建OAuth绑定记录
+                const bindsData: BindsData = {
+                    oauth_user_id: oauthUserInfo.oauth_user_id,
+                    email: oauthUserInfo.email,
+                    name: oauthUserInfo.name,
+                    avatar: oauthUserInfo.avatar,
+                    raw_data: oauthUserInfo.raw_data,
+                    created_at: Date.now()
+                };
+
+                const bindCreateResult = await bindsManage.create({
+                    oauth_name: oauthUserInfo.oauth_name,
+                    binds_user: username,
+                    binds_data: JSON.stringify(bindsData),
+                    is_enabled: 1
+                });
+
+                if (!bindCreateResult.flag) {
+                    // 如果绑定创建失败，记录错误但不影响登录
+                    console.error("创建OAuth绑定记录失败:", bindCreateResult.text);
+                }
+
+                // 生成token
+                const token = username + "_" + Date.now().toString(36);
+
+                // 返回用户信息
+                const userInfo: UsersConfig = {
+                    users_name: username,
+                    users_mail: email,
+                    is_enabled: true,
+                    total_size: 1024 * 1024 * 1024,
+                    total_used: 0
+                };
+
+                return {
+                    flag: true,
+                    text: "OAuth注册并登录成功",
+                    token: token,
+                    data: [userInfo]
+                };
+            }
+
+        } catch (error) {
+            console.error("OAuth登录过程中发生错误:", error);
+            return {
+                flag: false,
+                text: "OAuth登录失败，请稍后重试"
+            };
+        }
+    }
+
+    /**
+     * 绑定OAuth账户到现有用户
+     * @param username - 用户名
+     * @param oauthUserInfo - OAuth用户信息
+     * @returns 返回操作结果
+     */
+    async bindOAuth(username: string, oauthUserInfo: {
+        oauth_name: string;
+        oauth_user_id: string;
+        email?: string;
+        name?: string;
+        avatar?: string;
+        raw_data: string;
+    }): Promise<UsersResult> {
+        try {
+            const db = new SavesManage(this.c);
+            const bindsManage = new BindsManage(this.c);
+
+            // 查找用户
+            const userResult: DBResult = await db.find({
+                main: "users",
+                keys: {"users_name": username},
+            });
+
+            if (userResult.data.length === 0) {
+                return {
+                    flag: false,
+                    text: "用户不存在"
+                };
+            }
+
+            // 检查是否已存在此OAuth账户的绑定
+            const existingBindResult = await bindsManage.findByOAuthUserId(oauthUserInfo.oauth_name, oauthUserInfo.oauth_user_id);
+            if (existingBindResult.flag && existingBindResult.data && existingBindResult.data.length > 0) {
+                return {
+                    flag: false,
+                    text: "此OAuth账户已被其他用户绑定"
+                };
+            }
+
+            // 检查用户是否已绑定此OAuth提供商
+            const userBindResult = await bindsManage.select(oauthUserInfo.oauth_name, username);
+            if (userBindResult.flag && userBindResult.data && userBindResult.data.length > 0) {
+                return {
+                    flag: false,
+                    text: "您已绑定此OAuth提供商的账户"
+                };
+            }
+
+            // 准备绑定数据
+            const bindsData: BindsData = {
+                oauth_user_id: oauthUserInfo.oauth_user_id,
+                email: oauthUserInfo.email,
+                name: oauthUserInfo.name,
+                avatar: oauthUserInfo.avatar,
+                raw_data: oauthUserInfo.raw_data,
+                created_at: Date.now()
+            };
+
+            // 创建绑定记录
+            const bindResult = await bindsManage.create({
+                oauth_name: oauthUserInfo.oauth_name,
+                binds_user: username,
+                binds_data: JSON.stringify(bindsData),
+                is_enabled: 1
+            });
+
+            if (!bindResult.flag) {
+                return {
+                    flag: false,
+                    text: bindResult.text
+                };
+            }
+
+            return {
+                flag: true,
+                text: "OAuth账户绑定成功"
+            };
+
+        } catch (error) {
+            console.error("绑定OAuth账户过程中发生错误:", error);
+            return {
+                flag: false,
+                text: "绑定OAuth账户失败，请稍后重试"
+            };
+        }
+    }
+
+    /**
+     * 解绑OAuth账户
+     * @param username - 用户名
+     * @param oauthName - OAuth提供商名称
+     * @param oauthUserId - OAuth用户ID
+     * @returns 返回操作结果
+     */
+    async unbindOAuth(username: string, oauthName: string, oauthUserId: string): Promise<UsersResult> {
+        try {
+            const db = new SavesManage(this.c);
+            const bindsManage = new BindsManage(this.c);
+
+            // 查找用户
+            const userResult: DBResult = await db.find({
+                main: "users",
+                keys: {"users_name": username},
+            });
+
+            if (userResult.data.length === 0) {
+                return {
+                    flag: false,
+                    text: "用户不存在"
+                };
+            }
+
+            // 查找要解绑的OAuth绑定
+            const bindResult = await bindsManage.findByOAuthUserId(oauthName, oauthUserId);
+            if (!bindResult.flag || !bindResult.data || bindResult.data.length === 0) {
+                return {
+                    flag: false,
+                    text: "未找到要解绑的OAuth账户"
+                };
+            }
+
+            const bind = bindResult.data[0];
+            
+            // 验证绑定是否属于当前用户
+            if (bind.binds_user !== username) {
+                return {
+                    flag: false,
+                    text: "无权解绑此OAuth账户"
+                };
+            }
+
+            // 删除绑定记录
+            const removeResult = await bindsManage.remove(oauthName, username);
+            if (!removeResult.flag) {
+                return {
+                    flag: false,
+                    text: removeResult.text
+                };
+            }
+
+            return {
+                flag: true,
+                text: "OAuth账户解绑成功"
+            };
+
+        } catch (error) {
+            console.error("解绑OAuth账户过程中发生错误:", error);
+            return {
+                flag: false,
+                text: "解绑OAuth账户失败，请稍后重试"
+            };
         }
     }
 

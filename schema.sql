@@ -31,13 +31,22 @@ CREATE TABLE users -- 用户信息
 
 )
 
-CREATE TABLE oauth -- 授权认证
+CREATE TABLE oauth -- 授权认证系统配置
 (
     -- 核心信息 ===============================================
     oauth_name TEXT PRIMARY KEY UNIQUE NOT NULL, -- 授权名称
     oauth_type TEXT                    NOT NULL, -- 授权类型
     oauth_data TEXT                    NOT NULL, -- 授权数据
     is_enabled INTEGER                 NOT NULL  -- 是否启用
+)
+
+CREATE TABLE binds -- 授权认证用户绑定
+(
+    -- 核心信息 ===============================================
+    oauth_name TEXT    NOT NULL, -- 授权名称
+    binds_user TEXT    NOT NULL, -- 授权名称
+    binds_data TEXT    NOT NULL, -- 授权数据
+    is_enabled INTEGER NOT NULL  -- 是否启用
 )
 
 CREATE TABLE crypt -- 加密配置
@@ -74,13 +83,13 @@ CREATE TABLE mates -- 元组配置
 CREATE TABLE share -- 分享配置
 (
     -- 核心信息 ===============================================
-    share_uuid TEXT PRIMARY KEY UNIQUE NOT NULL, -- 分享路径
+    share_uuid TEXT PRIMARY KEY UNIQUE NOT NULL, -- 分享UUID
     share_path TEXT                    NOT NULL, -- 分享路径
     share_pass TEXT                    NOT NULL, -- 分享密码
     share_user TEXT                    NOT NULL, -- 分享用户
     share_date INTEGER                 NOT NULL, -- 分享日期
     share_ends INTEGER                 NOT NULL, -- 有效期限
-    is_enabled INTEGER                 NOT NULL, -- 是否启用
+    is_enabled INTEGER                 NOT NULL  -- 是否启用
 )
 
 CREATE TABLE token -- 连接配置
@@ -91,7 +100,7 @@ CREATE TABLE token -- 连接配置
     token_user TEXT    NOT NULL, -- 所属用户
     token_type TEXT    NOT NULL, -- 连接类型
     token_info TEXT    NOT NULL, -- 登录信息
-    is_enabled INTEGER NOT NULL, -- 是否启用
+    is_enabled INTEGER NOT NULL  -- 是否启用
     -- 拓展信息 ===============================================
 )
 
@@ -102,7 +111,7 @@ CREATE TABLE tasks -- 任务配置
     tasks_type TEXT    NOT NULL, -- 任务类型
     tasks_user TEXT    NOT NULL, -- 所属用户
     tasks_info TEXT    NOT NULL, -- 任务信息
-    tasks_flag INTEGER NOT NULL, -- 任务状态
+    tasks_flag INTEGER NOT NULL  -- 任务状态
     -- 拓展信息 ===============================================
 )
 
@@ -113,7 +122,7 @@ CREATE TABLE fetch -- 离线下载
     fetch_from TEXT    NOT NULL, -- 所属用户
     fetch_dest TEXT    NOT NULL, -- 任务类型
     fetch_user TEXT    NOT NULL, -- 所属用户
-    fetch_flag INTEGER NOT NULL, -- 任务状态
+    fetch_flag INTEGER NOT NULL  -- 任务状态
     -- 拓展信息 ===============================================
 )
 
@@ -130,7 +139,7 @@ CREATE TABLE cache -- 缓存信息
     -- 核心信息 ===============================================
     cache_path TEXT PRIMARY KEY UNIQUE NOT NULL, -- 缓存路径
     cache_info INTEGER,                          -- 缓存信息
-    cache_time INTEGER,                          -- 过期时间
+    cache_time INTEGER                           -- 过期时间
     -- 拓展信息 ===============================================
 )
 

@@ -7,6 +7,7 @@ import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
 import { zhCN } from '@mui/material/locale';
 import ErrorBoundary from './components/ErrorBoundary';
 import AuthPage from './pages/Login/AuthPage';
+import OAuthCallback from './pages/OAuth/OAuthCallback';
 import DownloadProgress from './components/DownloadProgress';
 import { useDownloadProgress } from './hooks/useDownloadProgress';
 
@@ -61,7 +62,7 @@ const theme = createTheme(
 // 应用内容组件，处理条件渲染
 const AppContent = () => {
     const location = useLocation();
-    const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
+    const isAuthPage = location.pathname === '/login' || location.pathname === '/register' || location.pathname === '/oauth/callback';
     const { downloads, removeDownload, cancelDownload, clearAllDownloads } = useDownloadProgress();
 
     if (isAuthPage) {
@@ -70,6 +71,7 @@ const AppContent = () => {
             <Routes>
                 <Route path="/login" element={<AuthPage />} />
                 <Route path="/register" element={<AuthPage />} />
+                <Route path="/oauth/callback" element={<OAuthCallback />} />
             </Routes>
         );
     }

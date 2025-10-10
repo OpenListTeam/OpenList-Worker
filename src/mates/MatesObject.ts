@@ -12,3 +12,10 @@ export interface MatesConfig {
     crypt_name?: string;
     cache_time?: number;
 }
+
+export interface MatesResult {
+    flag: boolean;
+    text?: string;
+    code?: number;
+    data?: MatesConfig[];
+}

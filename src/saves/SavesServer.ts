@@ -39,7 +39,7 @@ export async function updateDB(
     }
 
     // 构建完整的 SQL 更新语句
-    let sql = `UPDATE ${table}
+    let sql = `UPDATE \`${table}\`
                SET ${setConditions.join(', ')}
                WHERE ${whereConditions.join(' AND ')}`;
 
@@ -79,7 +79,7 @@ export async function insertDB(
     }
 
     // 构建完整的 SQL 插入语句
-    let sql = `INSERT INTO ${table} (${columns.join(', ')})
+    let sql = `INSERT INTO \`${table}\` (${columns.join(', ')})
                VALUES (${placeholders.join(', ')})`;
     // console.log('SQL:', sql);
     // console.log('Params:', params);
@@ -122,7 +122,7 @@ export async function selectDB(
 
     // 构建完整的 SQL 查询
     let sql = `SELECT *
-               FROM ${table}
+               FROM \`${table}\`
                WHERE 1 = 1`;
     if (conditions.length > 0) {
         sql += ' AND ' + conditions.join(' AND ');
@@ -167,7 +167,7 @@ export async function deleteDB(
     }
 
     let sql = `DELETE
-               FROM ${table}
+               FROM \`${table}\`
                WHERE 1 = 1`;
     if (conditions.length > 0) {
         sql += ' AND ' + conditions.join(' AND ');

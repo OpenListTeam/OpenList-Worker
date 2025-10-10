@@ -1,9 +1,13 @@
-export interface ShareConfig {
-    share_uuid: string;
-    share_path: string;
-    share_pass: string;
-    share_user: string;
-    share_date: number;
-    share_ends: number;
+export interface OauthConfig {
+    oauth_name: string;
+    oauth_type: string;
+    oauth_data: string;
     is_enabled: number;
+}
+
+export interface OauthResult {
+    flag: boolean;
+    text?: string;
+    code?: number;
+    data?: OauthConfig[];
 }

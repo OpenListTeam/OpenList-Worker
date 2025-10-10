@@ -1,39 +1,49 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import DataTable from '../../components/DataTable';
 import { Task } from '../../types';
-import { Chip } from '@mui/material';
+import { Chip, Alert, CircularProgress, Box } from '@mui/material';
+import apiService from '../../posts/api';
 
 const TaskConfig: React.FC = () => {
-  const [tasks] = useState<Task[]>([
-    {
-      tasks_uuid: 'task-001',
-      tasks_type: 'sync',
-      tasks_user: 'current_user',
-      tasks_info: '{"source": "/local", "target": "/onedrive", "schedule": "daily"}',
-      tasks_flag: 1,
-    },
-    {
-      tasks_uuid: 'task-002',
-      tasks_type: 'backup',
-      tasks_user: 'current_user',
-      tasks_info: '{"source": "/documents", "target": "/backup", "schedule": "weekly"}',
-      tasks_flag: 2,
-    },
-    {
-      tasks_uuid: 'task-003',
-      tasks_type: 'cleanup',
-      tasks_user: 'current_user',
-      tasks_info: '{"path": "/temp", "older_than": 7}',
-      tasks_flag: 0,
-    },
-  ]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // 获取任务列表
+  const fetchTasks = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await apiService.request('/@tasks/select/none/', 'POST', {});
+      if (response.flag) {
+        setTasks(response.data || []);
+      } else {
+        setError(response.text || '获取任务列表失败');
+      }
+    } catch (err) {
+      console.error('获取任务列表错误:', err);
+      setError('网络错误，请稍后重试');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTasks();
+  }, []);
 
   const getTypeText = (type: string) => {
     const typeMap: { [key: string]: string } = {
+      'upload': '上传任务',
+      'download': '下载任务',
       'sync': '同步任务',
       'backup': '备份任务',
+      'compress': '压缩任务',
+      'extract': '解压任务',
+      'convert': '转换任务',
+      'scan': '扫描任务',
       'cleanup': '清理任务',
-      'index': '索引任务',
+      'other': '其他任务',
     };
     return typeMap[type] || type;
   };
@@ -82,11 +92,43 @@ const TaskConfig: React.FC = () => {
 
   const handleEdit = (task: Task) => {
     console.log('编辑任务配置:', task);
+    // TODO: 实现编辑任务功能
   };
 
-  const handleDelete = (task: Task) => {
-    console.log('删除任务配置:', task);
+  const handleDelete = async (task: Task) => {
+    try {
+      const response = await apiService.request('/@tasks/remove/none/', 'POST', {
+        tasks_uuid: task.tasks_uuid
+      });
+      if (response.flag) {
+        // 删除成功，重新获取任务列表
+        await fetchTasks();
+      } else {
+        setError(response.text || '删除任务失败');
+      }
+    } catch (err) {
+      console.error('删除任务错误:', err);
+      setError('删除任务失败，请稍后重试');
+    }
   };
+
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box p={2}>
+        <Alert severity="error" onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      </Box>
+    );
+  }
 
   return (
     <DataTable

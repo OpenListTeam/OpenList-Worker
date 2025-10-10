@@ -39,15 +39,15 @@ import {
   Share,
   DriveFileMove,
   FileCopy,
+  CloudDownload,
 } from '@mui/icons-material';
 import ResponsiveDataTable from '../../components/ResponsiveDataTable';
 import { PathSelectDialog, NameInputDialog } from '../../components/FileOperationDialogs';
 import FileUploadDialog from '../../components/FileUploadDialog';
 import FilePreview from './FilePreview';
 import { FileInfo, PathInfo } from '../../types';
-import axios from 'axios';
 import { downloadFile, FileInfo as DownloadFileInfo } from '../../utils/downloadUtils';
-import { fileApi } from '../../posts/api';
+import apiService, { fileApi } from '../../posts/api';
 
 const DynamicFileManager: React.FC = () => {
   const location = useLocation();
@@ -379,6 +379,34 @@ const DynamicFileManager: React.FC = () => {
     } catch (error) {
       console.error('打开文件设置错误:', error);
       showMessage('打开文件设置失败', 'error');
+    }
+  };
+
+  // 处理离线下载
+  const handleOfflineDownload = async (file: any) => {
+    try {
+      const fullFilePath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
+      const backendPath = buildBackendPath(fullFilePath, location.pathname);
+      
+      // 构建文件的完整URL
+      const baseUrl = window.location.origin;
+      const fileUrl = `${baseUrl}${backendPath}`;
+      
+      // 创建离线下载任务
+      const response = await apiService.post('/@fetch/create/none', {
+        fetch_from: fileUrl,
+        fetch_dest: currentPath,
+        fetch_user: appState.user?.username || ''
+      });
+
+      if (response.flag) {
+        showMessage(`已创建离线下载任务: ${file.name}`);
+      } else {
+        showMessage(response.text || '创建离线下载任务失败', 'error');
+      }
+    } catch (error: any) {
+      console.error('创建离线下载任务错误:', error);
+      showMessage(error.response?.data?.text || '创建离线下载任务失败', 'error');
     }
   };
 
@@ -938,6 +966,17 @@ const DynamicFileManager: React.FC = () => {
                     <Download fontSize="small" />
                   </IconButton>
                 </Tooltip>
+                <Tooltip title="离线下载">
+                  <IconButton 
+                    size="small" 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOfflineDownload(file);
+                    }}
+                  >
+                    <CloudDownload fontSize="small" />
+                  </IconButton>
+                </Tooltip>
                 <Tooltip title="分享">
                   <IconButton 
                     size="small" 
@@ -1113,7 +1152,7 @@ const DynamicFileManager: React.FC = () => {
               title="文件列表"
               columns={columns}
               data={filteredData}
-              actions={['download', 'share', 'link', 'copy', 'move', 'archive', 'settings', 'delete']}
+              actions={['download', 'offline', 'share', 'link', 'copy', 'move', 'archive', 'settings', 'delete']}
               onRowClick={handleRowClick}
               onRowDoubleClick={(row) => {
                 if (row.is_dir) {
@@ -1121,6 +1160,7 @@ const DynamicFileManager: React.FC = () => {
                 }
               }}
               onDownload={handleFileDownload}
+              onOffline={handleOfflineDownload}
               onDelete={handleFileDelete}
               onCopy={handleFileCopy}
               onMove={handleFileMove}
@@ -1155,6 +1195,17 @@ const DynamicFileManager: React.FC = () => {
               horizontal: 'right',
             }}
           >
+            <MenuItem onClick={() => {
+              handleMoreMenuClose();
+              if (selectedFileForMenu) {
+                handleOfflineDownload(selectedFileForMenu);
+              }
+            }}>
+              <ListItemIcon>
+                <CloudDownload fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>离线下载</ListItemText>
+            </MenuItem>
             <MenuItem onClick={() => {
               handleMoreMenuClose();
               if (selectedFileForMenu) {

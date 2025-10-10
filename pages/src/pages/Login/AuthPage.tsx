@@ -26,11 +26,15 @@ import {
     VisibilityOff,
     Login as LoginIcon,
     PersonAdd as RegisterIcon,
+    Google as GoogleIcon,
+    GitHub as GitHubIcon,
+    Microsoft as MicrosoftIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../../components/AppContext.tsx';
 import { userApi } from '../../posts/api';
 import { getUserAvatarUrl } from '../../utils/gravatar';
+import oauthService from '../../services/OAuthService';
 import type { UsersResult, UsersConfig } from '../../types';
 
 interface TabPanelProps {
@@ -78,6 +82,10 @@ const AuthPage: React.FC = () => {
     // 通用状态
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    
+    // OAuth状态
+    const [oauthProviders, setOauthProviders] = useState<Array<{ oauth_name: string; oauth_type: string; is_enabled: boolean }>>([]);
+    const [oauthLoading, setOauthLoading] = useState<Record<string, boolean>>({});
 
     // 根据路由设置初始标签页
     useEffect(() => {
@@ -87,6 +95,30 @@ const AuthPage: React.FC = () => {
             setTabValue(0);
         }
     }, [location.pathname]);
+
+    // 获取OAuth提供商列表
+    useEffect(() => {
+        const fetchOAuthProviders = async (retryCount = 0) => {
+            try {
+                const response = await oauthService.getAvailableProviders();
+                if (response.flag && response.data) {
+                    // 只显示已启用的提供商
+                    setOauthProviders(response.data.filter(provider => provider.is_enabled === 1));
+                } else if (retryCount < 2) {
+                    // 如果失败且重试次数少于2次，则重试
+                    setTimeout(() => fetchOAuthProviders(retryCount + 1), 1000 * (retryCount + 1));
+                }
+            } catch (error) {
+                console.error('获取OAuth提供商失败:', error);
+                if (retryCount < 2) {
+                    // 如果失败且重试次数少于2次，则重试
+                    setTimeout(() => fetchOAuthProviders(retryCount + 1), 1000 * (retryCount + 1));
+                }
+            }
+        };
+
+        fetchOAuthProviders();
+    }, []);
 
     const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
         setTabValue(newValue);
@@ -127,7 +159,7 @@ const AuthPage: React.FC = () => {
                 localStorage.setItem('token', response.token);
                 
                 // 设置axios默认header
-                const apiService = (await import('../../posts/api')).apiService;
+                const apiService = (await import('../../posts/api')).default;
                 apiService.instance.defaults.headers.common['Authorization'] = `Bearer ${response.token}`;
                 
                 // 获取用户信息
@@ -176,6 +208,77 @@ const AuthPage: React.FC = () => {
             }
         } finally {
             setLoading(false);
+        }
+    };
+
+    // OAuth登录处理
+    const handleOAuthLogin = async (oauthName: string) => {
+        try {
+            setOauthLoading(prev => ({ ...prev, [oauthName]: true }));
+            setError(''); // 清除之前的错误
+            
+            // 获取授权URL
+            const redirectUri = `${window.location.origin}/oauth/callback`;
+            const result = await oauthService.getAuthUrl(oauthName, redirectUri);
+            
+            if (result.flag && result.data?.auth_url) {
+                // 保存state到sessionStorage用于验证
+                sessionStorage.setItem('oauth_state', result.data.state);
+                sessionStorage.setItem('oauth_name', oauthName);
+                
+                // 跳转到OAuth授权页面
+                window.location.href = result.data.auth_url;
+            } else {
+                // 根据错误类型提供更友好的提示
+                let errorMessage = result.text || '获取OAuth授权URL失败';
+                if (errorMessage.includes('未登录')) {
+                    errorMessage = `${oauthName} OAuth配置需要管理员权限，请联系管理员配置`;
+                } else if (errorMessage.includes('不存在')) {
+                    errorMessage = `${oauthName} OAuth配置不存在，请联系管理员配置`;
+                } else if (errorMessage.includes('禁用')) {
+                    errorMessage = `${oauthName} OAuth登录已被禁用，请联系管理员`;
+                }
+                setError(errorMessage);
+            }
+        } catch (error: any) {
+            console.error('OAuth登录失败:', error);
+            let errorMessage = 'OAuth登录失败';
+            if (error.name === 'NetworkError' || error.message.includes('fetch')) {
+                errorMessage = '网络连接失败，请检查网络连接后重试';
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+            setError(errorMessage);
+        } finally {
+            setOauthLoading(prev => ({ ...prev, [oauthName]: false }));
+        }
+    };
+
+    // 获取OAuth提供商图标
+    const getOAuthIcon = (oauthType: string) => {
+        switch (oauthType.toLowerCase()) {
+            case 'google':
+                return <GoogleIcon />;
+            case 'github':
+                return <GitHubIcon />;
+            case 'microsoft':
+                return <MicrosoftIcon />;
+            default:
+                return <LoginIcon />;
+        }
+    };
+
+    // 获取OAuth提供商颜色
+    const getOAuthColor = (oauthType: string) => {
+        switch (oauthType.toLowerCase()) {
+            case 'google':
+                return '#4285f4';
+            case 'github':
+                return '#333';
+            case 'microsoft':
+                return '#0078d4';
+            default:
+                return '#1976d2';
         }
     };
 
@@ -397,6 +500,47 @@ const AuthPage: React.FC = () => {
                             >
                                 {loading ? <CircularProgress size={24} /> : '登录'}
                             </Button>
+
+                            {/* OAuth登录分隔线 */}
+                            {oauthProviders.length > 0 && (
+                                <>
+                                    <Divider sx={{ my: 2 }}>
+                                        <Typography variant="body2" color="text.secondary">
+                                            或使用第三方登录
+                                        </Typography>
+                                    </Divider>
+
+                                    {/* OAuth登录按钮 */}
+                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                        {oauthProviders.map((provider) => (
+                                            <Button
+                                                key={provider.oauth_name}
+                                                fullWidth
+                                                variant="outlined"
+                                                size="large"
+                                                disabled={oauthLoading[provider.oauth_name]}
+                                                startIcon={getOAuthIcon(provider.oauth_type)}
+                                                onClick={() => handleOAuthLogin(provider.oauth_name)}
+                                                sx={{
+                                                    py: 1.5,
+                                                    borderColor: getOAuthColor(provider.oauth_type),
+                                                    color: getOAuthColor(provider.oauth_type),
+                                                    '&:hover': {
+                                                        borderColor: getOAuthColor(provider.oauth_type),
+                                                        backgroundColor: `${getOAuthColor(provider.oauth_type)}10`,
+                                                    }
+                                                }}
+                                            >
+                                                {oauthLoading[provider.oauth_name] ? (
+                                                    <CircularProgress size={20} />
+                                                ) : (
+                                                    `使用 ${provider.oauth_name} 登录`
+                                                )}
+                                            </Button>
+                                        ))}
+                                    </Box>
+                                </>
+                            )}
                         </Box>
                     </TabPanel>
 

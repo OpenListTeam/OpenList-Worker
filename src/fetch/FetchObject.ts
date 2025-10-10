@@ -1,8 +1,14 @@
-export interface TokenConfig {
-    token_uuid: string;
-    token_path: string;
-    token_user: string;
-    token_type: string;
-    token_info: string;
-    is_enabled: number;
+export interface FetchConfig {
+    fetch_uuid: string;
+    fetch_from: string;
+    fetch_dest: string;
+    fetch_user: string;
+    fetch_flag: number;
+}
+
+export interface FetchResult {
+    flag: boolean;
+    text?: string;
+    code?: number;
+    data?: FetchConfig[];
 }

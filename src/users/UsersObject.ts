@@ -8,6 +8,7 @@ interface UsersConfig {
     total_used?: number;
     oauth_data?: string;
     mount_data?: string;
+    group_name?: string;  // 用户组名称，可选
 }
 
 interface UsersResult {

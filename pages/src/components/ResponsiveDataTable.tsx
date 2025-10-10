@@ -23,7 +23,8 @@ import {
   DriveFileMove,
   Archive,
   Settings,
-  Link
+  Link,
+  CloudDownload
 } from '@mui/icons-material';
 
 interface Column {
@@ -44,6 +45,7 @@ interface ResponsiveDataTableProps {
   onDelete?: (row: any) => void;
   onShare?: (row: any) => void;
   onDownload?: (row: any) => void;
+  onOffline?: (row: any) => void;
   onView?: (row: any) => void;
   onCopy?: (row: any) => void;
   onMove?: (row: any) => void;
@@ -52,7 +54,7 @@ interface ResponsiveDataTableProps {
   onSettings?: (row: any) => void;
   onRowClick?: (row: any) => void;
   onRowDoubleClick?: (row: any) => void;
-  actions?: ('edit' | 'delete' | 'share' | 'download' | 'view' | 'copy' | 'move' | 'link' | 'archive' | 'settings')[];
+  actions?: ('edit' | 'delete' | 'share' | 'download' | 'offline' | 'view' | 'copy' | 'move' | 'link' | 'archive' | 'settings')[];
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
   onSort?: (columnId: string, order: 'asc' | 'desc') => void;
@@ -66,6 +68,7 @@ const ResponsiveDataTable: React.FC<ResponsiveDataTableProps> = ({
   onDelete,
   onShare,
   onDownload,
+  onOffline,
   onView,
   onCopy,
   onMove,
@@ -156,55 +159,60 @@ const ResponsiveDataTable: React.FC<ResponsiveDataTableProps> = ({
   }, [columns]);
 
   const renderActionButtons = (row: any) => (
-    <Box sx={{ display: 'flex', gap: 0.5 }}>
+    <Box sx={{ display: 'flex', gap: 0.25, flexWrap: 'wrap', justifyContent: 'center' }}>
       {actions.includes('view') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onView?.(row); }}>
-          <Visibility fontSize="small" />
+        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onView?.(row); }}>
+          <Visibility sx={{ fontSize: '16px' }} />
         </IconButton>
       )}
       {actions.includes('download') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onDownload?.(row); }}>
-          <Download fontSize="small" />
+        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onDownload?.(row); }}>
+          <Download sx={{ fontSize: '16px' }} />
+        </IconButton>
+      )}
+      {actions.includes('offline') && (
+        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onOffline?.(row); }}>
+          <CloudDownload sx={{ fontSize: '16px' }} />
         </IconButton>
       )}
       {actions.includes('link') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onLink?.(row); }}>
-          <Link fontSize="small" />
+        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onLink?.(row); }}>
+          <Link sx={{ fontSize: '16px' }} />
         </IconButton>
       )}
       {actions.includes('copy') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onCopy?.(row); }}>
-          <FileCopy fontSize="small" />
+        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onCopy?.(row); }}>
+          <FileCopy sx={{ fontSize: '16px' }} />
         </IconButton>
       )}
       {actions.includes('move') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onMove?.(row); }}>
-          <DriveFileMove fontSize="small" />
+        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onMove?.(row); }}>
+          <DriveFileMove sx={{ fontSize: '16px' }} />
         </IconButton>
       )}
       {actions.includes('archive') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onArchive?.(row); }}>
-          <Archive fontSize="small" />
+        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onArchive?.(row); }}>
+          <Archive sx={{ fontSize: '16px' }} />
         </IconButton>
       )}
       {actions.includes('settings') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onSettings?.(row); }}>
-          <Settings fontSize="small" />
+        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onSettings?.(row); }}>
+          <Settings sx={{ fontSize: '16px' }} />
         </IconButton>
       )}
       {actions.includes('edit') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onEdit?.(row); }}>
-          <Edit fontSize="small" />
+        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onEdit?.(row); }}>
+          <Edit sx={{ fontSize: '16px' }} />
         </IconButton>
       )}
       {actions.includes('share') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onShare?.(row); }}>
-          <Share fontSize="small" />
+        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onShare?.(row); }}>
+          <Share sx={{ fontSize: '16px' }} />
         </IconButton>
       )}
       {actions.includes('delete') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onDelete?.(row); }}>
-          <Delete fontSize="small" />
+        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onDelete?.(row); }}>
+          <Delete sx={{ fontSize: '16px' }} />
         </IconButton>
       )}
     </Box>
@@ -240,7 +248,7 @@ const ResponsiveDataTable: React.FC<ResponsiveDataTableProps> = ({
                 </TableCell>
               ))}
               {showActionColumn && (
-                <TableCell align="center" sx={{ fontWeight: 'bold', width: '300px', minWidth: '300px', maxWidth: '300px', padding: '8px' }}>
+                <TableCell align="center" sx={{ fontWeight: 'bold', width: '150px', minWidth: '150px', maxWidth: '150px', padding: '4px' }}>
                   操作
                 </TableCell>
               )}
@@ -280,7 +288,7 @@ const ResponsiveDataTable: React.FC<ResponsiveDataTableProps> = ({
                   );
                 })}
                 {showActionColumn && (
-                  <TableCell align="center" sx={{ width: '300px', minWidth: '300px', maxWidth: '300px', padding: '8px' }}>
+                  <TableCell align="center" sx={{ width: '150px', minWidth: '150px', maxWidth: '150px', padding: '4px' }}>
                     {renderActionButtons(row)}
                   </TableCell>
                 )}

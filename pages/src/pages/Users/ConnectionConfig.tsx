@@ -1,35 +1,56 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import DataTable from '../../components/DataTable';
 import { Token } from '../../types';
-import { Chip } from '@mui/material';
+import { Chip, CircularProgress, Alert } from '@mui/material';
+import apiService from '../../posts/api';
+import { useApp } from '../../components/AppContext';
 
 const ConnectionConfig: React.FC = () => {
-  const [tokens] = useState<Token[]>([
-    {
-      token_uuid: 'token-001',
-      token_path: '/api/v1/files',
-      token_user: 'current_user',
-      token_type: 'api',
-      token_info: '{"key": "api_key_123", "permissions": ["read", "write"]}',
-      is_enabled: 1,
-    },
-    {
-      token_uuid: 'token-002',
-      token_path: '/webdav',
-      token_user: 'current_user',
-      token_type: 'webdav',
-      token_info: '{"username": "user", "password": "pass123"}',
-      is_enabled: 1,
-    },
-    {
-      token_uuid: 'token-003',
-      token_path: '/ftp',
-      token_user: 'current_user',
-      token_type: 'ftp',
-      token_info: '{"host": "ftp.example.com", "port": 21}',
-      is_enabled: 0,
-    },
-  ]);
+  const [tokens, setTokens] = useState<Token[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>('');
+  const { state } = useApp();
+
+  // 获取当前用户的连接配置
+  const loadTokens = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      if (!state.user?.users_name) {
+        setError('用户未登录');
+        return;
+      }
+
+      const result = await apiService.post('/@token/user/none', {
+        token_user: state.user.users_name
+      });
+      
+      if (result.flag) {
+        // 转换后端数据格式到前端格式
+        const convertedTokens = (result.data || []).map((token: any) => ({
+          token_uuid: token.token_uuid,
+          token_path: token.token_name || '', // 使用token_name作为路径显示
+          token_user: token.token_user,
+          token_type: token.token_type || 'api',
+          token_info: token.token_data || '',
+          is_enabled: token.is_enabled || 0,
+        }));
+        setTokens(convertedTokens);
+      } else {
+        setError(result.text || '获取连接配置失败');
+      }
+    } catch (err) {
+      setError('网络错误，请稍后重试');
+      console.error('获取连接配置失败:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTokens();
+  }, [state.user]);
 
   const getTypeText = (type: string) => {
     const typeMap: { [key: string]: string } = {
@@ -79,15 +100,37 @@ const ConnectionConfig: React.FC = () => {
     console.log('删除连接配置:', token);
   };
 
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px' }}>
+        <CircularProgress />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div>
+        <h2>连接配置</h2>
+        <Alert severity="error" style={{ marginBottom: '16px' }}>
+          {error}
+        </Alert>
+      </div>
+    );
+  }
+
   return (
-    <DataTable
-      title="连接配置"
-      columns={columns}
-      data={tokens}
-      onEdit={handleEdit}
-      onDelete={handleDelete}
-      actions={['edit', 'delete']}
-    />
+    <div>
+      <h2>连接配置</h2>
+      <DataTable
+        title="连接配置"
+        columns={columns}
+        data={tokens}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        actions={['edit', 'delete']}
+      />
+    </div>
   );
 };
 

@@ -197,6 +197,26 @@ class ApiService {
         });
         return response.data as Blob;
     }
+
+    // 通用请求方法
+    async request<T = any>(url: string, method: string = 'GET', data?: any, config?: AxiosRequestConfig): Promise<T> {
+        const upperMethod = method.toUpperCase();
+        
+        switch (upperMethod) {
+            case 'GET':
+                return this.instance.get(url, config);
+            case 'POST':
+                return this.instance.post(url, data, config);
+            case 'PUT':
+                return this.instance.put(url, data, config);
+            case 'DELETE':
+                return this.instance.delete(url, config);
+            case 'PATCH':
+                return this.instance.patch(url, data, config);
+            default:
+                throw new Error(`不支持的HTTP方法: ${method}`);
+        }
+    }
 }
 
 // 创建API服务实例
