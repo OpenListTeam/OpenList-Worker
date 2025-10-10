@@ -56,9 +56,7 @@ export const isPersonalFile = (pathname: string): boolean => {
 };
 
 // 构建后端API路径
-export const buildBackendPath = (filePath: string, pathname: string): string => {
-  const username = 'testuser'; // TODO: 从用户上下文获取实际用户名
-  
+export const buildBackendPath = (filePath: string, pathname: string, username: string = 'testuser'): string => {
   if (isPersonalFile(pathname)) {
     // 个人文件需要添加 /@home/<username>/ 前缀
     return `/@home/${username}${filePath}`;

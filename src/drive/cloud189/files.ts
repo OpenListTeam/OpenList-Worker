@@ -16,7 +16,7 @@ import {DriveResult} from "../DriveObject";
 import * as fso from "../../files/FilesObject";
 // 专用导入 ================================================
 import * as con from "./const";
-import {HttpRequest} from "../../share/HttpRequest";
+import {HttpRequest} from "../../types/HttpRequest";
 
 
 /**

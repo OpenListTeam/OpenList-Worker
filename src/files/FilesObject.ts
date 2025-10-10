@@ -1,5 +1,5 @@
 import {CryptInfo} from "../crypt/CryptObject";
-import {ErrCode} from "../enums";
+import {StatusCode} from "../enums";
 
 export * from "./FilesObject";
 

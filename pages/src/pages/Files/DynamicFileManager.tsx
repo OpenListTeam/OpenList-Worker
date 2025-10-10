@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useApp } from '../../components/AppContext';
 import {
   Box,
   Typography,
@@ -14,6 +15,13 @@ import {
   Snackbar,
   useTheme,
   useMediaQuery,
+  Grid,
+  CardActions,
+  Chip,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import {
   Folder,
@@ -24,6 +32,13 @@ import {
   Upload,
   CreateNewFolder,
   NoteAdd,
+  Edit,
+  Delete,
+  MoreVert,
+  Download,
+  Share,
+  DriveFileMove,
+  FileCopy,
 } from '@mui/icons-material';
 import ResponsiveDataTable from '../../components/ResponsiveDataTable';
 import { PathSelectDialog, NameInputDialog } from '../../components/FileOperationDialogs';
@@ -37,6 +52,7 @@ import { fileApi } from '../../posts/api';
 const DynamicFileManager: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { state: appState } = useApp();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   
@@ -48,6 +64,11 @@ const DynamicFileManager: React.FC = () => {
   // 排序状态
   const [sortBy, setSortBy] = useState<string>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  // 搜索和视图状态
+  const [searchValue, setSearchValue] = useState('');
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+  const [filteredData, setFilteredData] = useState<any[]>([]);
 
   // 对话框状态
   const [pathSelectDialog, setPathSelectDialog] = useState({
@@ -62,7 +83,8 @@ const DynamicFileManager: React.FC = () => {
     open: false,
     title: '',
     placeholder: '',
-    type: '' as 'folder' | 'file' | '',
+    type: '' as 'folder' | 'file' | 'rename' | '',
+    selectedFile: null as any,
   });
 
   // 上传对话框状态
@@ -77,6 +99,10 @@ const DynamicFileManager: React.FC = () => {
     severity: 'success' as 'success' | 'error' | 'warning' | 'info',
   });
 
+  // 更多操作菜单状态
+  const [moreMenuAnchor, setMoreMenuAnchor] = useState<null | HTMLElement>(null);
+  const [selectedFileForMenu, setSelectedFileForMenu] = useState<any>(null);
+
   // 检查是否为个人文件路径
   const isPersonalFile = (pathname: string): boolean => {
     try {
@@ -90,31 +116,41 @@ const DynamicFileManager: React.FC = () => {
 
   // 从URL路径解析文件路径
   const parsePathFromUrl = (pathname: string): string => {
+    console.log('parsePathFromUrl: 输入路径:', pathname);
     try {
       // 先对URL进行解码处理中文字符
       const decodedPathname = decodeURIComponent(pathname);
+      console.log('parsePathFromUrl: 解码后路径:', decodedPathname);
       
+      // 个人文件根路径: /@pages/myfile -> /
+      if (decodedPathname === '/@pages/myfile') {
+        console.log('parsePathFromUrl: 个人文件根路径，返回 /');
+        return '/';
+      }
       // 个人文件路径: /@pages/myfile/sub/ -> /sub/
       if (decodedPathname.startsWith('/@pages/myfile/')) {
         const filePath = decodedPathname.substring(15); // 去掉 '/@pages/myfile/' 前缀
-        return filePath || '/';
-      }
-      // 个人文件根路径: /@pages/myfile -> /
-      if (decodedPathname === '/@pages/myfile') {
-        return '/';
+        const result = filePath || '/';
+        console.log('parsePathFromUrl: 个人文件路径，结果:', result);
+        return result;
       }
       // 公共文件路径: 直接使用路径（不再有/@pages/前缀）
       // 如果是根路径或其他路径，直接使用
-      return decodedPathname === '/' ? '/' : decodedPathname;
+      const result = decodedPathname === '/' ? '/' : decodedPathname;
+      console.log('parsePathFromUrl: 公共文件路径，结果:', result);
+      return result;
     } catch (error) {
       console.error('URL解码失败:', error, 'pathname:', pathname);
       // 如果解码失败，使用原始路径
+      if (pathname === '/@pages/myfile') {
+        console.log('parsePathFromUrl: 解码失败，个人文件根路径，返回 /');
+        return '/';
+      }
       if (pathname.startsWith('/@pages/myfile/')) {
         const filePath = pathname.substring(15);
-        return filePath || '/';
-      }
-      if (pathname === '/@pages/myfile') {
-        return '/';
+        const result = filePath || '/';
+        console.log('parsePathFromUrl: 解码失败，个人文件路径，结果:', result);
+        return result;
       }
       return pathname === '/' ? '/' : pathname;
     }
@@ -122,8 +158,8 @@ const DynamicFileManager: React.FC = () => {
 
   // 构建后端API路径
   const buildBackendPath = (filePath: string, pathname: string): string => {
-    // 模拟用户名，实际应该从用户上下文获取
-    const username = 'testuser'; // TODO: 从用户上下文获取实际用户名
+    // 从用户上下文获取实际用户名
+    const username = appState.user?.username || 'testuser';
     
     if (isPersonalFile(pathname)) {
       // 个人文件需要添加 /@home/<username>/ 前缀
@@ -212,46 +248,24 @@ const DynamicFileManager: React.FC = () => {
 
   // 处理文件夹单击导航
   const handleFolderClick = (folderName: string) => {
-    // 确保路径构建时避免双斜杠
-    const cleanCurrentPath = currentPath.endsWith('/') && currentPath !== '/' ? currentPath.slice(0, -1) : currentPath;
-    const newPath = cleanCurrentPath === '/' ? `/${folderName}` : `${cleanCurrentPath}/${folderName}`;
-    const isPersonal = isPersonalFile(location.pathname);
-    let targetPath: string;
+    // 使用相对路径导航，直接在当前路径基础上添加文件夹名
+    const relativePath = `${folderName}/`;
     
-    if (isPersonal) {
-      // 个人文件路径 - 确保路径以 / 结尾
-      const normalizedPath = newPath.endsWith('/') ? newPath : newPath + '/';
-      targetPath = `/@pages/myfile${normalizedPath}`;
-    } else {
-      // 公共文件路径 - 确保路径以 / 结尾
-      targetPath = newPath.endsWith('/') ? newPath : newPath + '/';
-    }
-    
-    console.log('导航到:', targetPath, '新路径:', newPath, '当前路径:', currentPath, '清理后路径:', cleanCurrentPath);
-    navigate(targetPath);
+    console.log('相对路径导航到:', relativePath, '文件夹名:', folderName, '当前路径:', currentPath);
+    navigate(relativePath, { relative: 'path' });
   };
 
   // 处理文件/文件夹单击
   const handleRowClick = (row: any) => {
     if (row.is_dir) {
-      // 点击文件夹 - 导航到新路径
+      // 点击文件夹 - 使用相对路径导航
       handleFolderClick(row.name);
     } else {
-      // 点击文件 - 跳转到预览页面
-      const fullFilePath = currentPath === '/' ? `/${row.name}` : `${currentPath}/${row.name}`;
+      // 点击文件 - 使用相对路径跳转到预览页面
+      const relativePath = row.name;
       
-      // 构建正确的前端路由路径
-      let targetPath: string;
-      if (isPersonalFile(location.pathname)) {
-        // 个人文件：使用 /@pages/myfile 前缀
-        const cleanFilePath = cleanPath(fullFilePath);
-        targetPath = `/@pages/myfile${cleanFilePath}`;
-      } else {
-        // 公共文件：直接使用路径
-        targetPath = cleanPath(fullFilePath);
-      }
-      
-      navigate(targetPath);
+      console.log('文件相对路径导航到:', relativePath, '文件名:', row.name, '当前路径:', currentPath);
+      navigate(relativePath, { relative: 'path' });
     }
   };
 
@@ -371,6 +385,30 @@ const DynamicFileManager: React.FC = () => {
     }
   };
 
+  // 处理更多操作菜单
+  const handleMoreMenuOpen = (event: React.MouseEvent<HTMLElement>, file: any) => {
+    event.stopPropagation();
+    setMoreMenuAnchor(event.currentTarget);
+    setSelectedFileForMenu(file);
+  };
+
+  const handleMoreMenuClose = () => {
+    setMoreMenuAnchor(null);
+    setSelectedFileForMenu(null);
+  };
+
+  // 处理文件重命名
+  const handleFileRename = (file: any) => {
+    handleMoreMenuClose();
+    setNameInputDialog({
+      open: true,
+      title: `重命名 "${file.name}"`,
+      placeholder: '新名称',
+      type: 'rename',
+      selectedFile: file
+    });
+  };
+
   // 处理路径选择确认
   const handlePathSelectConfirm = async (targetPath: string, operation: string, selectedFile: any) => {
     console.log('=== handlePathSelectConfirm 开始 ===');
@@ -392,8 +430,12 @@ const DynamicFileManager: React.FC = () => {
       const sourcePath = buildBackendPath(fullSourcePath, location.pathname);
       console.log('sourcePath:', sourcePath);
       
+      // 目标路径也需要使用buildBackendPath处理
+      const backendTargetPath = buildBackendPath(targetPath, location.pathname);
+      console.log('backendTargetPath:', backendTargetPath);
+      
       const cleanSourcePath = cleanPath(sourcePath);
-      const cleanTargetPath = cleanPath(targetPath);
+      const cleanTargetPath = cleanPath(backendTargetPath);
       console.log('cleanSourcePath:', cleanSourcePath);
       console.log('cleanTargetPath:', cleanTargetPath);
       
@@ -428,7 +470,8 @@ const DynamicFileManager: React.FC = () => {
       open: true,
       title: '创建文件夹',
       placeholder: '文件夹名称',
-      type: 'folder'
+      type: 'folder',
+      selectedFile: null
     });
   };
 
@@ -438,7 +481,8 @@ const DynamicFileManager: React.FC = () => {
       open: true,
       title: '创建文件',
       placeholder: '文件名称',
-      type: 'file'
+      type: 'file',
+      selectedFile: null
     });
   };
 
@@ -461,49 +505,173 @@ const DynamicFileManager: React.FC = () => {
 
   // 处理名称输入确认
   const handleNameInputConfirm = async (name: string) => {
-    const { type } = nameInputDialog;
+    const { type, selectedFile } = nameInputDialog;
     
     try {
-      // 构建目标路径，文件夹需要以/结尾
-      const targetName = type === 'folder' ? `${name}/` : name;
-      const targetPath = buildBackendPath(currentPath, name); // 注意这里使用name而不是targetName
-      const cleanTargetPath = cleanPath(targetPath);
-      
-      // target参数需要确保文件夹以/结尾，文件不以/结尾
-      const targetParam = type === 'folder' ? `${name}/` : name;
-      
-      // 调试日志
-      console.log('创建文件/文件夹调试信息:');
-      console.log('- type:', type);
-      console.log('- name:', name);
-      console.log('- targetParam:', targetParam);
-      console.log('- targetParam ends with /:', targetParam.endsWith('/'));
-      console.log('- cleanTargetPath:', cleanTargetPath);
-      console.log('- decoded target:', decodeURIComponent(targetParam));
-      
-      // 使用fileApi.createFileOrFolder()，这样会经过响应拦截器处理
-      const response = await fileApi.createFileOrFolder(cleanTargetPath, targetParam);
-      
-      if (response && response.flag) {
-        showMessage(`${type === 'folder' ? '文件夹' : '文件'}创建成功`);
-        fetchFileList(currentPath); // 刷新文件列表
+      if (type === 'rename') {
+        // 处理重命名操作
+        if (!selectedFile) {
+          showMessage('重命名失败：未选择文件', 'error');
+          return;
+        }
+        
+        // 构建完整的文件路径
+        const fullFilePath = currentPath === '/' ? `/${selectedFile.name}` : `${currentPath}/${selectedFile.name}`;
+        const backendPath = buildBackendPath(fullFilePath, location.pathname);
+        const cleanBackendPath = cleanPath(backendPath);
+        
+        console.log('重命名操作调试信息:');
+        console.log('- selectedFile:', selectedFile);
+        console.log('- newName:', name);
+        console.log('- fullFilePath:', fullFilePath);
+        console.log('- backendPath:', backendPath);
+        console.log('- cleanBackendPath:', cleanBackendPath);
+        
+        // 使用新的重命名API
+        const response = await fileApi.renameFileNew(cleanBackendPath, name);
+        
+        if (response && response.flag) {
+          showMessage('重命名成功');
+          fetchFileList(currentPath); // 刷新文件列表
+        } else {
+          showMessage('重命名失败: ' + (response?.text || '未知错误'), 'error');
+        }
       } else {
-        showMessage(`创建失败: ` + (response?.text || '未知错误'), 'error');
+        // 处理创建文件/文件夹操作
+        const basePath = buildBackendPath(currentPath, location.pathname);
+        const cleanBasePath = cleanPath(basePath);
+        
+        // 构建完整的目标路径
+        const fileName = type === 'folder' ? `${name}/` : name;
+        const fullTargetPath = cleanBasePath.endsWith('/') 
+          ? `${cleanBasePath}${fileName}` 
+          : `${cleanBasePath}/${fileName}`;
+        
+        console.log('创建文件/文件夹调试信息:');
+        console.log('- type:', type);
+        console.log('- name:', name);
+        console.log('- cleanBasePath:', cleanBasePath);
+        console.log('- fullTargetPath:', fullTargetPath);
+        
+        // 使用fileApi.createFileOrFolder()
+        const response = await fileApi.createFileOrFolder(cleanBasePath, fullTargetPath);
+        
+        if (response && response.flag) {
+          showMessage(`${type === 'folder' ? '文件夹' : '文件'}创建成功`);
+          fetchFileList(currentPath); // 刷新文件列表
+        } else {
+          showMessage(`创建失败: ` + (response?.text || '未知错误'), 'error');
+        }
       }
     } catch (error) {
-      console.error(`创建${type === 'folder' ? '文件夹' : '文件'}错误:`, error);
-      showMessage(`创建${type === 'folder' ? '文件夹' : '文件'}失败，请检查网络连接`, 'error');
+      const operation = type === 'rename' ? '重命名' : `创建${type === 'folder' ? '文件夹' : '文件'}`;
+      console.error(`${operation}错误:`, error);
+      showMessage(`${operation}失败，请检查网络连接`, 'error');
     }
     
-    setNameInputDialog({ open: false, title: '', placeholder: '', type: '' });
+    setNameInputDialog({ open: false, title: '', placeholder: '', type: '', selectedFile: null });
   };
 
   // 当路径改变时更新当前路径并获取文件列表
   useEffect(() => {
+    console.log('DynamicFileManager: location.pathname变化:', location.pathname);
     const filePath = parsePathFromUrl(location.pathname);
+    console.log('DynamicFileManager: 解析后的文件路径:', filePath);
     setCurrentPath(filePath);
     fetchFileList(filePath);
   }, [location.pathname]);
+
+  // 添加事件监听器来响应MainLayout的搜索和视图切换事件
+  useEffect(() => {
+    const handleSearchChange = (event: CustomEvent) => {
+      const newSearchValue = event.detail.searchValue;
+      setSearchValue(newSearchValue);
+      
+      // 更新过滤数据
+      const tableData = prepareTableData();
+      const filtered = filterData(newSearchValue, tableData);
+      setFilteredData(filtered);
+    };
+
+    const handleSearchReset = () => {
+      console.log('DynamicFileManager: 收到searchReset事件，当前路径:', currentPath, 'location.pathname:', location.pathname);
+      console.log('DynamicFileManager: pathInfo.fileList长度:', pathInfo.fileList?.length || 0);
+      
+      // 防护措施：确保在搜索重置时不会意外触发任何导航
+      const currentLocationPath = location.pathname;
+      console.log('DynamicFileManager: 搜索重置前记录当前路径:', currentLocationPath);
+      
+      // 使用更安全的方式重置搜索状态
+      try {
+        // 立即重置搜索值
+        setSearchValue('');
+        
+        // 确保使用当前目录的完整文件列表
+        if (pathInfo.fileList && pathInfo.fileList.length > 0) {
+          // 使用pathInfo.fileList重新生成表格数据
+          const currentTableData = prepareTableData();
+          setFilteredData(currentTableData);
+          console.log('DynamicFileManager: 使用pathInfo.fileList重置，数据行数:', currentTableData.length);
+        } else {
+          // 如果pathInfo.fileList为空，重新获取文件列表
+          console.log('DynamicFileManager: pathInfo.fileList为空，重新获取文件列表');
+          const currentFilePath = parsePathFromUrl(location.pathname);
+          fetchFileList(currentFilePath);
+        }
+        
+        // 如果路径发生了变化，强制恢复到原始路径
+        if (location.pathname !== currentLocationPath) {
+          console.warn('DynamicFileManager: 检测到路径变化，强制恢复:', {
+            from: location.pathname,
+            to: currentLocationPath
+          });
+          navigate(currentLocationPath, { replace: true });
+        }
+      } catch (error) {
+        console.error('DynamicFileManager: searchReset处理出错:', error);
+        // 如果出错，至少重置搜索值并重新获取文件列表
+        setSearchValue('');
+        const currentFilePath = parsePathFromUrl(location.pathname);
+        fetchFileList(currentFilePath);
+      }
+      
+      // 延迟检查路径是否意外改变
+      setTimeout(() => {
+        if (location.pathname !== currentLocationPath) {
+          console.warn('DynamicFileManager: 延迟检测到搜索重置后路径意外改变!', {
+            before: currentLocationPath,
+            after: location.pathname
+          });
+          // 强制恢复到原始路径
+          navigate(currentLocationPath, { replace: true });
+        }
+      }, 100);
+    };
+
+    const handlePageRefresh = () => {
+      // 使用当前的location.pathname来获取最新路径，而不是依赖currentPath状态
+      const currentFilePath = parsePathFromUrl(location.pathname);
+      fetchFileList(currentFilePath);
+    };
+
+    const handleViewModeChange = (event: CustomEvent) => {
+      setViewMode(event.detail.viewMode);
+    };
+
+    // 添加事件监听器
+    window.addEventListener('searchChange', handleSearchChange as EventListener);
+    window.addEventListener('searchReset', handleSearchReset);
+    window.addEventListener('pageRefresh', handlePageRefresh);
+    window.addEventListener('viewModeChange', handleViewModeChange as EventListener);
+
+    // 清理事件监听器
+    return () => {
+      window.removeEventListener('searchChange', handleSearchChange as EventListener);
+      window.removeEventListener('searchReset', handleSearchReset);
+      window.removeEventListener('pageRefresh', handlePageRefresh);
+      window.removeEventListener('viewModeChange', handleViewModeChange as EventListener);
+    };
+  }, []); // 移除currentPath依赖，避免不必要的重新设置
 
   // 格式化文件大小
   const formatFileSize = (size: string | number): string => {
@@ -624,27 +792,32 @@ const DynamicFileManager: React.FC = () => {
 
   // 处理文件夹双击
   const handleFolderDoubleClick = (folderName: string) => {
-    // 确保路径构建时避免双斜杠
-    const cleanCurrentPath = currentPath.endsWith('/') && currentPath !== '/' ? currentPath.slice(0, -1) : currentPath;
-    const newPath = cleanCurrentPath === '/' ? `/${folderName}` : `${cleanCurrentPath}/${folderName}`;
-    const isPersonal = isPersonalFile(location.pathname);
-    let targetPath: string;
+    // 使用相对路径导航，直接在当前路径基础上添加文件夹名
+    const relativePath = `${folderName}/`;
     
-    if (isPersonal) {
-      // 个人文件路径 - 确保路径以 / 结尾
-      const normalizedPath = newPath.endsWith('/') ? newPath : newPath + '/';
-      targetPath = `/@pages/myfile${normalizedPath}`;
-    } else {
-      // 公共文件路径 - 确保路径以 / 结尾
-      targetPath = newPath.endsWith('/') ? newPath : newPath + '/';
-    }
-    
-    navigate(targetPath);
+    console.log('双击文件夹相对路径导航到:', relativePath, '文件夹名:', folderName, '当前路径:', currentPath);
+    navigate(relativePath, { relative: 'path' });
   };
 
   // 刷新当前目录
   const handleRefresh = () => {
     fetchFileList(currentPath);
+  };
+
+  // 搜索过滤函数
+  const filterData = (searchTerm: string | any, data: any[]) => {
+    // 确保searchTerm是字符串类型
+    const searchString = typeof searchTerm === 'string' ? searchTerm : String(searchTerm || '');
+    
+    if (!searchString.trim()) {
+      return data;
+    }
+    
+    const term = searchString.toLowerCase();
+    return data.filter(item => 
+      item.name.toLowerCase().includes(term) ||
+      item.type.toLowerCase().includes(term)
+    );
   };
 
   // 准备表格数据
@@ -693,6 +866,109 @@ const DynamicFileManager: React.FC = () => {
 
       return sortOrder === 'asc' ? compareValue : -compareValue;
     });
+  };
+
+  // 当数据变化时更新过滤数据
+  useEffect(() => {
+    const tableData = prepareTableData();
+    const filtered = filterData(searchValue, tableData);
+    setFilteredData(filtered);
+  }, [pathInfo, sortBy, sortOrder, searchValue]);
+
+  // 网格视图渲染函数
+  const renderGridView = () => {
+    return (
+      <Grid container spacing={2}>
+        {filteredData.map((file) => (
+          <Grid item xs={12} sm={6} md={4} lg={3} key={file.id}>
+            <Card 
+              sx={{ 
+                height: 200, // 固定高度，确保所有格子大小一样
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                '&:hover': {
+                  boxShadow: 3,
+                  transform: 'translateY(-2px)',
+                  transition: 'all 0.2s ease-in-out'
+                }
+              }}
+              onClick={() => handleRowClick(file)}
+              onDoubleClick={() => {
+                if (file.is_dir) {
+                  handleFolderDoubleClick(file.name);
+                }
+              }}
+            >
+              <CardContent sx={{ 
+                textAlign: 'center', 
+                pb: 1, 
+                flex: 1, 
+                display: 'flex', 
+                flexDirection: 'column', 
+                justifyContent: 'center' 
+              }}>
+                <Box sx={{ fontSize: '3rem', mb: 1 }}>
+                  {file.icon}
+                </Box>
+                <Typography 
+                  variant="body2" 
+                  sx={{ 
+                    fontWeight: 'medium',
+                    wordBreak: 'break-word',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                  }}
+                  title={file.name}
+                >
+                  {file.name}
+                </Typography>
+                {!file.is_dir && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                    {file.size}
+                  </Typography>
+                )}
+              </CardContent>
+              <CardActions sx={{ justifyContent: 'center', pt: 0, pb: 1 }}>
+                <Tooltip title="下载">
+                  <IconButton 
+                    size="small" 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleFileDownload(file);
+                    }}
+                  >
+                    <Download fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="分享">
+                  <IconButton 
+                    size="small" 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleFileShare(file);
+                    }}
+                  >
+                    <Share fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="更多操作">
+                  <IconButton 
+                    size="small" 
+                    onClick={(e) => handleMoreMenuOpen(e, file)}
+                  >
+                    <MoreVert fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </CardActions>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+    );
   };
 
   // 表格列定义
@@ -838,29 +1114,97 @@ const DynamicFileManager: React.FC = () => {
           </Box>
 
           {/* 文件列表 */}
-          <ResponsiveDataTable
-            title="文件列表"
-            columns={columns}
-            data={tableData}
-            actions={['download', 'share', 'link', 'copy', 'move', 'archive', 'settings', 'delete']}
-            onRowClick={handleRowClick}
-            onRowDoubleClick={(row) => {
-              if (row.is_dir) {
-                handleFolderDoubleClick(row.name);
-              }
+          {viewMode === 'table' ? (
+            <ResponsiveDataTable
+              title="文件列表"
+              columns={columns}
+              data={filteredData}
+              actions={['download', 'share', 'link', 'copy', 'move', 'archive', 'settings', 'delete']}
+              onRowClick={handleRowClick}
+              onRowDoubleClick={(row) => {
+                if (row.is_dir) {
+                  handleFolderDoubleClick(row.name);
+                }
+              }}
+              onDownload={handleFileDownload}
+              onDelete={handleFileDelete}
+              onCopy={handleFileCopy}
+              onMove={handleFileMove}
+              onLink={handleFileLink}
+              onArchive={handleFileArchive}
+              onSettings={handleFileSettings}
+              onShare={handleFileShare}
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              onSort={handleSort}
+            />
+          ) : (
+            <Box>
+              <Typography variant="h6" sx={{ mb: 2 }}>
+                文件列表
+              </Typography>
+              {renderGridView()}
+            </Box>
+          )}
+
+          {/* 更多操作菜单 */}
+          <Menu
+            anchorEl={moreMenuAnchor}
+            open={Boolean(moreMenuAnchor)}
+            onClose={handleMoreMenuClose}
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'right',
             }}
-            onDownload={handleFileDownload}
-            onDelete={handleFileDelete}
-            onCopy={handleFileCopy}
-            onMove={handleFileMove}
-            onLink={handleFileLink}
-            onArchive={handleFileArchive}
-            onSettings={handleFileSettings}
-            onShare={handleFileShare}
-            sortBy={sortBy}
-            sortOrder={sortOrder}
-            onSort={handleSort}
-          />
+            transformOrigin={{
+              vertical: 'top',
+              horizontal: 'right',
+            }}
+          >
+            <MenuItem onClick={() => {
+              handleMoreMenuClose();
+              if (selectedFileForMenu) {
+                handleFileMove(selectedFileForMenu);
+              }
+            }}>
+              <ListItemIcon>
+                <DriveFileMove fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>移动</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => {
+              handleMoreMenuClose();
+              if (selectedFileForMenu) {
+                handleFileCopy(selectedFileForMenu);
+              }
+            }}>
+              <ListItemIcon>
+                <FileCopy fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>复制</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => {
+              if (selectedFileForMenu) {
+                handleFileRename(selectedFileForMenu);
+              }
+            }}>
+              <ListItemIcon>
+                <Edit fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>重命名</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => {
+              handleMoreMenuClose();
+              if (selectedFileForMenu) {
+                handleFileDelete(selectedFileForMenu);
+              }
+            }}>
+              <ListItemIcon>
+                <Delete fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>删除</ListItemText>
+            </MenuItem>
+          </Menu>
 
           {/* 路径选择对话框 */}
           <PathSelectDialog
@@ -878,7 +1222,7 @@ const DynamicFileManager: React.FC = () => {
               title={nameInputDialog.title}
               placeholder={nameInputDialog.placeholder}
               onConfirm={handleNameInputConfirm}
-              onClose={() => setNameInputDialog({ open: false, title: '', placeholder: '', type: '' })}
+              onClose={() => setNameInputDialog({ open: false, title: '', placeholder: '', type: '', selectedFile: null })}
             />
 
           {/* 文件上传对话框 */}

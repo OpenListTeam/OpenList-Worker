@@ -9,15 +9,29 @@ import {
     Toolbar,
     IconButton,
     useTheme,
-    useMediaQuery
+    useMediaQuery,
+    TextField,
+    InputAdornment,
+    Collapse,
+    Avatar,
+    Menu as MuiMenu,
+    MenuItem,
+    ListItemIcon,
+    ListItemText,
+    Divider,
+    Tooltip
 } from '@mui/material';
 import {
     Menu,
     Search,
     Refresh,
-    MoreVert,
     GridView,
-    AccountCircle
+    AccountCircle,
+    TableView,
+    ViewModule,
+    Close,
+    Logout,
+    Settings
 } from '@mui/icons-material';
 import {lightTheme, darkTheme} from '../theme';
 import GroupedSidebar from './GroupedSidebar.tsx';
@@ -25,7 +39,8 @@ import {useApp} from './AppContext';
 import {useDownloadProgress} from '../hooks/useDownloadProgress';
 
 const MainLayout: React.FC<{ children: React.ReactNode }> = ({children}) => {
-    const { state, dispatch } = useApp();
+    const { state, dispatch, logout } = useApp();
+    const navigate = useNavigate();
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md')); // 768px以下为移动端
     const isTablet = useMediaQuery(theme.breakpoints.down('lg')); // 1024px以下为平板
@@ -42,6 +57,12 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({children}) => {
         }
     });
     const location = useLocation();
+    
+    // 顶栏功能状态
+    const [searchOpen, setSearchOpen] = useState(false);
+    const [searchValue, setSearchValue] = useState('');
+    const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+    const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
     
     // 下载队列相关状态
     const { downloads, isVisible: downloadQueueVisible, toggleVisibility } = useDownloadProgress();
@@ -93,6 +114,54 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({children}) => {
         // 标记这是用户的手动操作
         localStorage.setItem('userManualSidebarAction', 'true');
         dispatch({ type: 'TOGGLE_SIDEBAR' });
+    };
+
+    // 顶栏功能处理函数
+    const handleSearchToggle = () => {
+        console.log('搜索切换:', { searchOpen, currentPath: location.pathname });
+        setSearchOpen(!searchOpen);
+        if (searchOpen) {
+            console.log('关闭搜索，重置搜索值，当前路径:', location.pathname);
+            setSearchValue('');
+            // 触发搜索重置事件
+            window.dispatchEvent(new CustomEvent('searchReset'));
+            console.log('已触发searchReset事件');
+        }
+    };
+
+    const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const value = event.target.value;
+        setSearchValue(value);
+        // 触发搜索事件
+        window.dispatchEvent(new CustomEvent('searchChange', { detail: { searchValue: value } }));
+    };
+
+    const handleRefresh = () => {
+        // 触发刷新事件
+        window.dispatchEvent(new CustomEvent('pageRefresh'));
+        // 刷新当前页面
+        window.location.reload();
+    };
+
+    const handleViewModeToggle = () => {
+        const newMode = viewMode === 'table' ? 'grid' : 'table';
+        setViewMode(newMode);
+        // 触发视图模式切换事件
+        window.dispatchEvent(new CustomEvent('viewModeChange', { detail: { viewMode: newMode } }));
+    };
+
+    const handleUserMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+        setUserMenuAnchor(event.currentTarget);
+    };
+
+    const handleUserMenuClose = () => {
+        setUserMenuAnchor(null);
+    };
+
+    const handleLogout = () => {
+        logout();
+        handleUserMenuClose();
+        navigate('/login');
     };
 
     // 获取页面标题
@@ -202,42 +271,170 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({children}) => {
                             >
                                 <Menu/>
                             </IconButton>
-                            <Typography 
-                                variant={isMobile ? "subtitle1" : "h6"} 
-                                component="div" 
-                                sx={{
-                                    flexGrow: 1,
-                                    fontSize: isMobile ? '1rem' : '1.25rem',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap'
-                                }}
-                            >
-                                {getPageTitle(location.pathname)}
-                            </Typography>
-                            {/* 在移动端只显示必要的按钮 */}
-                            {!isMobile && (
-                                <IconButton color="inherit" aria-label="search">
-                                    <Search/>
-                                </IconButton>
-                            )}
-                            <IconButton color="inherit" aria-label="refresh">
-                                <Refresh/>
-                            </IconButton>
-                            {!isMobile && (
-                                <>
-                                    <IconButton color="inherit" aria-label="more">
-                                        <MoreVert/>
+                            
+                            {/* 标题和搜索框 */}
+                            <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center' }}>
+                                {!searchOpen ? (
+                                    <Typography 
+                                        variant={isMobile ? "subtitle1" : "h6"} 
+                                        component="div" 
+                                        sx={{
+                                            fontSize: isMobile ? '1rem' : '1.25rem',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap'
+                                        }}
+                                    >
+                                        {getPageTitle(location.pathname)}
+                                    </Typography>
+                                ) : (
+                                    <TextField
+                                        fullWidth
+                                        variant="outlined"
+                                        placeholder="搜索..."
+                                        value={searchValue}
+                                        onChange={handleSearchChange}
+                                        size="small"
+                                        sx={{
+                                            '& .MuiOutlinedInput-root': {
+                                                color: 'inherit',
+                                                '& fieldset': {
+                                                    borderColor: 'rgba(255, 255, 255, 0.3)',
+                                                },
+                                                '&:hover fieldset': {
+                                                    borderColor: 'rgba(255, 255, 255, 0.5)',
+                                                },
+                                                '&.Mui-focused fieldset': {
+                                                    borderColor: 'rgba(255, 255, 255, 0.7)',
+                                                },
+                                            },
+                                            '& .MuiInputBase-input::placeholder': {
+                                                color: 'rgba(255, 255, 255, 0.7)',
+                                                opacity: 1,
+                                            },
+                                        }}
+                                        InputProps={{
+                                            endAdornment: (
+                                                <InputAdornment position="end">
+                                                    <IconButton
+                                                        size="small"
+                                                        onClick={handleSearchToggle}
+                                                        sx={{ color: 'inherit' }}
+                                                    >
+                                                        <Close />
+                                                    </IconButton>
+                                                </InputAdornment>
+                                            ),
+                                        }}
+                                        autoFocus
+                                    />
+                                )}
+                            </Box>
+
+                            {/* 功能按钮 */}
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                {/* 搜索按钮 */}
+                                {!searchOpen && (
+                                    <Tooltip title="搜索">
+                                        <IconButton color="inherit" onClick={handleSearchToggle}>
+                                            <Search/>
+                                        </IconButton>
+                                    </Tooltip>
+                                )}
+                                
+                                {/* 刷新按钮 */}
+                                <Tooltip title="刷新">
+                                    <IconButton color="inherit" onClick={handleRefresh}>
+                                        <Refresh/>
                                     </IconButton>
-                                    <IconButton color="inherit" aria-label="view">
-                                        <GridView/>
+                                </Tooltip>
+                                
+                                {/* 视图切换按钮 */}
+                                {!isMobile && (
+                                    <Tooltip title={viewMode === 'table' ? '切换到网格视图' : '切换到表格视图'}>
+                                        <IconButton color="inherit" onClick={handleViewModeToggle}>
+                                            {viewMode === 'table' ? <ViewModule/> : <TableView/>}
+                                        </IconButton>
+                                    </Tooltip>
+                                )}
+                                
+                                {/* 用户菜单按钮 */}
+                                <Tooltip title="用户菜单">
+                                    <IconButton color="inherit" onClick={handleUserMenuOpen}>
+                                        {state.isAuthenticated && state.user ? (
+                                            <Avatar
+                                                src={state.user.avatar}
+                                                alt={state.user.username}
+                                                sx={{ width: 32, height: 32 }}
+                                            >
+                                                {state.user.username?.charAt(0).toUpperCase()}
+                                            </Avatar>
+                                        ) : (
+                                            <AccountCircle/>
+                                        )}
                                     </IconButton>
-                                </>
-                            )}
-                            <IconButton color="inherit" aria-label="account">
-                                <AccountCircle/>
-                            </IconButton>
+                                </Tooltip>
+                            </Box>
                         </Toolbar>
+
+                        {/* 用户菜单 */}
+                        <MuiMenu
+                            anchorEl={userMenuAnchor}
+                            open={Boolean(userMenuAnchor)}
+                            onClose={handleUserMenuClose}
+                            anchorOrigin={{
+                                vertical: 'bottom',
+                                horizontal: 'right',
+                            }}
+                            transformOrigin={{
+                                vertical: 'top',
+                                horizontal: 'right',
+                            }}
+                        >
+                            {state.isAuthenticated && state.user ? (
+                                [
+                                    <MenuItem key="user-info" disabled>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', py: 1 }}>
+                                            <Avatar
+                                                src={state.user.avatar}
+                                                alt={state.user.username}
+                                                sx={{ width: 40, height: 40, mr: 2 }}
+                                            >
+                                                {state.user.username?.charAt(0).toUpperCase()}
+                                            </Avatar>
+                                            <Box>
+                                                <Typography variant="body2" fontWeight="medium">
+                                                    {state.user.username}
+                                                </Typography>
+                                                <Typography variant="caption" color="text.secondary">
+                                                    {state.user.email}
+                                                </Typography>
+                                            </Box>
+                                        </Box>
+                                    </MenuItem>,
+                                    <Divider key="divider" />,
+                                    <MenuItem key="settings" onClick={() => { handleUserMenuClose(); navigate('/@pages/account-settings'); }}>
+                                        <ListItemIcon>
+                                            <Settings fontSize="small" />
+                                        </ListItemIcon>
+                                        <ListItemText>账号设置</ListItemText>
+                                    </MenuItem>,
+                                    <MenuItem key="logout" onClick={handleLogout}>
+                                        <ListItemIcon>
+                                            <Logout fontSize="small" />
+                                        </ListItemIcon>
+                                        <ListItemText>退出登录</ListItemText>
+                                    </MenuItem>
+                                ]
+                            ) : (
+                                <MenuItem onClick={() => { handleUserMenuClose(); navigate('/login'); }}>
+                                    <ListItemIcon>
+                                        <AccountCircle fontSize="small" />
+                                    </ListItemIcon>
+                                    <ListItemText>登录</ListItemText>
+                                </MenuItem>
+                            )}
+                        </MuiMenu>
                     </AppBar>
 
                     {/* 路由内容区域 */}

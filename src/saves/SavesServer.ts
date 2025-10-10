@@ -128,8 +128,8 @@ export async function selectDB(
         sql += ' AND ' + conditions.join(' AND ');
     }
 
-    // console.log('SQL:', sql);
-    // console.log('Params:', params);
+    console.log('SQL:', sql);
+    console.log('Params:', params);
 
     try {
         // 使用参数化查询

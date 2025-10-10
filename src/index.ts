@@ -1,13 +1,10 @@
-import {Context, Hono} from 'hono'
-import {SavesManage} from "./saves/SavesManage";
+import {Context, Hono, Next} from 'hono'
 import {MountManage} from "./mount/MountManage";
 import {D1Database, KVNamespace} from "@cloudflare/workers-types";
-import {getConfig} from "./share/HonoParsers";
-import {DBSelect} from "./saves/SavesObject";
+import {getConfig} from "./types/HonoParsers";
 import {UsersManage} from "./users/UsersManage";
 import {UsersResult, UsersConfig} from "./users/UsersObject";
 import {FilesManage} from "./files/FilesManage";
-import {cors} from 'hono/cors'
 
 
 // 绑定数据 ###############################################################################
@@ -16,27 +13,20 @@ export type Bindings = {
 }
 export const app = new Hono<{ Bindings: Bindings }>()
 
-interface PageAction {
-    flag: boolean,
-    text?: string,
-    data?: Record<string, any>
-}
-
-app.use('*', async (c, next) => {
-    // 设置 CORS 头
+// 跨域处理 ##############################################################################
+app.use('*', async (c: any, next: Next): Promise<any> => {
+    // 设置 CORS 头 =============================================================
     c.header('Access-Control-Allow-Origin', '*')
     c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
     c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
     c.header('Access-Control-Allow-Credentials', 'true')
-    // 处理预检请求
-    if (c.req.method === 'OPTIONS') {
-        return c.text('', 200)
-    }
+    // 处理预检请求 =============================================================
+    if (c.req.method === 'OPTIONS') return c.text('', 200)
     await next()
 })
 
 // 挂载管理 ##############################################################################
-app.use('/@mount/:action/:method/*', async (c: Context) => {
+app.use('/@mount/:action/:method/*', async (c: Context): Promise<any> => {
     const action: string = c.req.param('action');
     const method: string = c.req.param('method');
     const config: Record<string, any> = await getConfig(c, 'config');
@@ -109,14 +99,12 @@ app.use('/@mount/:action/:method/*', async (c: Context) => {
     }
 })
 
-
 // 用户管理 ##############################################################################
-app.use('/@users/:action/:method/:source?', async (c: Context) => {
+app.use('/@users/:action/:method/*', async (c: Context): Promise<any> => {
     const action: string = c.req.param('action');
     const method: string = c.req.param('method');
     const source: string = "/" + (c.req.param('source') || "");
     const config: Record<string, any> = await getConfig(c, 'config');
-
     // 权限检查 - 除了create、login操作外都需要登录 =======================================
     if (action !== 'create' && action !== 'login') {
         const authResult = await UsersManage.checkAuth(c);
@@ -124,7 +112,6 @@ app.use('/@users/:action/:method/:source?', async (c: Context) => {
             return c.json(authResult, 401);
         }
     }
-
     // console.log("@mount", action, method, config)
     // 创建对象 ==========================================================================
     let users: UsersManage = new UsersManage(c);
@@ -191,49 +178,44 @@ app.use('/@users/:action/:method/:source?', async (c: Context) => {
     }
 })
 
-
 // 分享管理 ##############################################################################
-app.use('/@share/:action/:method/:source?', async (c: Context) => {
-    const action: string = c.req.param('action');
-    const method: string = c.req.param('method');
-    const source: string = "/" + (c.req.param('source') || "");
-    const config: Record<string, any> = await getConfig(c, 'config');
+app.use('/@types/:action/:method/*', async (c: Context): Promise<any> => {
+    // const action: string = c.req.param('action');
+    // const method: string = c.req.param('method');
+    // const source: string = "/" + (c.req.param('source') || "");
+    // const config: Record<string, any> = await getConfig(c, 'config');
 
     // 创建对象 ==========================================================================
-    let users: UsersManage = new UsersManage(c);
-
+    // let users: UsersManage = new UsersManage(c);
     // 执行操作 ==========================================================================
-    switch (action) {
-        case "select": { // 查找分享 ===================================
-
-        }
-        case "create": { // 查找分享 ===================================
-
-        }
-        case "remove": { // 查找分享 ===================================
-
-        }
-        case "update": { // 查找分享 ===================================
-
-        }
-        default: { // 默认应输出错误 ===================================
-            return c.json({flag: false, text: 'Invalid Action'}, 400)
-        }
-    }
+    // switch (action) {
+    //     case "select": { // 查找分享 ===================================
+    //
+    //     }
+    //     case "create": { // 查找分享 ===================================
+    //
+    //     }
+    //     case "remove": { // 查找分享 ===================================
+    //
+    //     }
+    //     case "update": { // 查找分享 ===================================
+    //
+    //     }
+    //     default: { // 默认应输出错误 ===================================
+    //         return c.json({flag: false, text: 'Invalid Action'}, 400)
+    //     }
+    // }
+    return c.json({flag: false, text: 'Invalid Action'}, 400)
 })
 
-
 // 文件管理 ##############################################################################
-app.use('/@files/:action/:method/*', async (c: Context): Promise<Response> => {
+app.use('/@files/:action/:method/*', async (c: Context): Promise<any> => {
     const action: string = c.req.param('action');
     const method: string = c.req.param('method');
-
+    console.log("@action", action, method)
     // 权限检查 - 所有文件操作都需要登录 ===============================================
-    const authResult = await UsersManage.checkAuth(c);
-    if (!authResult.flag) {
-        return c.json(authResult, 401);
-    }
-
+    // const authResult = await UsersManage.checkAuth(c);
+    // if (!authResult.flag) return c.json(authResult, 401);
     const upload = await c.req.parseBody();
     // 创建对象 ==========================================================================
     const source: string = "/" + c.req.path.split('/').slice(4).join('/');
@@ -261,9 +243,8 @@ app.use('/@files/:action/:method/*', async (c: Context): Promise<Response> => {
     return await files.action(action, source, target, config, driver, upload);
 })
 
-
 // 页面访问 ##############################################################################
-app.use('*', async (c: Context): Promise<Response> => {
+app.use('*', async (c: Context): Promise<any>=> {
     // 权限检查 - 所有页面访问都需要登录 ===============================================
     const authResult = await UsersManage.checkAuth(c);
     if (!authResult.flag) {

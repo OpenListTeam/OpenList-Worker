@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { useApp } from './AppContext';
 import {
   Dialog,
   DialogTitle,
@@ -57,9 +58,10 @@ const FileUploadDialog: React.FC<FileUploadDialogProps> = ({
   currentPath,
   onUploadComplete,
 }) => {
+  const { state: appState } = useApp();
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  const [isUploadCompleted, setIsUploadCompleted] = useState(false);
+  const [hasSuccessfulUploads, setHasSuccessfulUploads] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
@@ -144,9 +146,12 @@ const FileUploadDialog: React.FC<FileUploadDialogProps> = ({
 
   const buildBackendPath = (filePath: string): string => {
     const pathname = window.location.pathname;
-    const username = 'testuser'; // 硬编码用户名
+    const username = appState.user?.username || 'testuser';
     
-    if (pathname.startsWith('/personal/')) {
+    // 检查是否为个人文件路径
+    const isPersonal = pathname.startsWith('/@pages/myfile');
+    
+    if (isPersonal) {
       return `/@home/${username}${filePath}`;
     } else {
       return filePath;

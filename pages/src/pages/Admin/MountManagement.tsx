@@ -23,7 +23,7 @@ import {
 } from '@mui/material';
 import { Add, Edit, Delete, Refresh, Replay } from '@mui/icons-material';
 import DataTable from '../../components/DataTable';
-import { Mount } from '../../types';
+import { MountConfig } from '../../types';
 import apiService from '../../posts/api';
 
 interface Driver {
@@ -42,11 +42,11 @@ interface DriverField {
 }
 
 const MountManagement: React.FC = () => {
-  const [mounts, setMounts] = useState<Mount[]>([]);
+  const [mounts, setMounts] = useState<MountConfig[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingMount, setEditingMount] = useState<Mount | null>(null);
+  const [editingMount, setEditingMount] = useState<MountConfig | null>(null);
   const [selectedDriver, setSelectedDriver] = useState<string>('');
   const [driverFields, setDriverFields] = useState<DriverField[]>([]);
   const [formData, setFormData] = useState<Record<string, any>>({});
@@ -193,7 +193,7 @@ const MountManagement: React.FC = () => {
     setDialogOpen(true);
   };
 
-  const handleEdit = async (mount: Mount) => {
+  const handleEdit = async (mount: MountConfig) => {
     setEditingMount(mount);
     
     // 解析现有配置
@@ -230,7 +230,7 @@ const MountManagement: React.FC = () => {
     setDialogOpen(true);
   };
 
-  const handleDelete = async (mount: Mount) => {
+  const handleDelete = async (mount: MountConfig) => {
     if (!confirm(`确定要删除挂载点 "${mount.mount_path}" 吗？`)) {
       return;
     }
@@ -306,7 +306,7 @@ const MountManagement: React.FC = () => {
   };
 
   // 单个挂载点重新加载
-  const handleReload = async (mount: Mount) => {
+  const handleReload = async (mount: MountConfig) => {
     try {
       setLoading(true);
       const result = await apiService.post(`/@mount/reload/path${mount.mount_path}`, {});

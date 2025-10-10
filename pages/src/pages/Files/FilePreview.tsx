@@ -46,6 +46,7 @@ import {
   isPersonalFile,
   buildBackendPath
 } from '../../utils/downloadUtils';
+import { useApp } from '../../components/AppContext';
 
 interface FilePreviewInfo {
   name: string;
@@ -61,6 +62,7 @@ interface FilePreviewInfo {
 const FilePreview: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { state: appState } = useApp();
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +84,7 @@ const FilePreview: React.FC = () => {
       const dirPath = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
       
       // 构建目录的后端路径
-      const backendDirPath = buildBackendPath(dirPath, location.pathname);
+      const backendDirPath = buildBackendPath(dirPath, location.pathname, appState.user?.username || 'testuser');
       const cleanBackendDirPath = backendDirPath === '/' ? '' : backendDirPath.replace(/\/$/, '');
       
       // 使用fileApi.getFileList()，这样会经过响应拦截器处理

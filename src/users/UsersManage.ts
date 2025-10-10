@@ -86,7 +86,7 @@ export class UsersManage {
         const db = new SavesManage(this.c);
         const result: DBResult = await db.save({
             main: "users",
-            keys: {"username": user.users_name},
+            keys: {"users_name": user.users_name},
             data: user,
         });
         return {

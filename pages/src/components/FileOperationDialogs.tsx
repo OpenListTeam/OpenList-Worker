@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useApp } from './AppContext';
 import {
   Dialog,
   DialogTitle,
@@ -68,6 +69,7 @@ export const PathSelectDialog: React.FC<PathSelectDialogProps> = ({
   currentPath,
   isPersonalFile,
 }) => {
+  const { state: appState } = useApp();
   const [selectedPath, setSelectedPath] = useState<string>('/');
   const [treeData, setTreeData] = useState<TreeNode[]>([]);
   const [expanded, setExpanded] = useState<string[]>(['root']);
@@ -76,7 +78,9 @@ export const PathSelectDialog: React.FC<PathSelectDialogProps> = ({
   // 构建后端路径
   const buildBackendPath = (path: string) => {
     if (isPersonalFile) {
-      return path === '/' ? '/personal' : `/personal${path}`;
+      const username = appState.user?.username || 'testuser';
+      const cleanPath = path.startsWith('/') ? path : `/${path}`;
+      return `/@home/${username}${cleanPath}`;
     } else {
       return path;
     }

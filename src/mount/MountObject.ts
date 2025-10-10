@@ -14,6 +14,6 @@ interface MountConfig {
 
 interface MountResult {
     flag: boolean;
-    text: string;
+    text?: string | undefined;
     data?: MountConfig[] | any;
 }

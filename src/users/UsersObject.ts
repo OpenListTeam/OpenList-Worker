@@ -12,8 +12,8 @@ interface UsersConfig {
 
 interface UsersResult {
     flag: boolean;
-    text: string;
-    code: number;
+    text?: string;
+    code?: number;
     data?: UsersConfig[];
     token?: string;  // 添加token字段用于登录返回
 }

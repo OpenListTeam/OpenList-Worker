@@ -1,5 +1,5 @@
 // 分享配置
-export interface Share {
+export interface ShareConfig {
   share_uuid: string;
   share_path: string;
   share_pass: string;
@@ -10,10 +10,10 @@ export interface Share {
 }
 
 // 挂载配置
-export interface Mount {
+export interface MountConfig {
   mount_path: string;
-  mount_type: string;
-  is_enabled: number;
+  mount_type?: string;
+  is_enabled?: number;
   drive_conf?: string;
   drive_save?: string;
   cache_time?: number;
@@ -24,39 +24,68 @@ export interface Mount {
   drive_tips?: string;
 }
 
-// 用户信息
+// 用户信息（用于前端显示）
 export interface User {
-  users_uuid: number;
-  users_name: string;
-  users_mail?: string;  // 添加邮箱字段
-  users_pass: string;
-  users_mask: string;
-  is_enabled: number;
+  users_uuid?: number;
+  users_name?: string;
+  users_mail?: string;
+  users_pass?: string;
+  users_mask?: string;
+  is_enabled?: string ; // 支持字符串和布尔值
   total_size?: number;
   total_used?: number;
   oauth_data?: string;
   mount_data?: string;
 }
 
-// 用户配置接口（与后端保持一致）
+// 用户配置接口（与后端API保持一致）
 export interface UsersConfig {
   users_name: string;
   users_mail?: string;
-  users_pass: string;
-  users_mask: string;
-  is_enabled: boolean;
-  total_size: number;
-  total_used: number;
-  oauth_data: string;
-  mount_data: string;
+  users_pass?: string;
+  users_mask?: string;
+  is_enabled?: string; // 支持字符串和布尔值
+  total_size?: number;
+  total_used?: number;
+  oauth_data?: string;
+  mount_data?: string;
 }
 
-// 用户操作结果接口
+// 用户操作结果接口（与后端API保持一致）
 export interface UsersResult {
   flag: boolean;
   text: string;
+  code?: number;
   data?: UsersConfig[];
   token?: string;
+}
+
+// 用户登录请求接口
+export interface LoginRequest {
+  users_name: string;
+  users_pass: string;
+}
+
+// 用户创建请求接口
+export interface CreateUserRequest {
+  users_name: string;
+  users_mail?: string;
+  users_pass: string;
+  is_enabled?: boolean;
+  total_size?: number;
+}
+
+// 用户更新请求接口
+export interface UpdateUserRequest {
+  users_name: string;
+  users_mail?: string;
+  users_pass?: string;
+  users_mask?: string;
+  is_enabled?: boolean;
+  total_size?: number;
+  total_used?: number;
+  oauth_data?: string;
+  mount_data?: string;
 }
 
 

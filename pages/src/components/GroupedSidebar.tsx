@@ -17,7 +17,8 @@ import {
   Button,
   Menu,
   MenuItem,
-  IconButton
+  IconButton,
+  Tooltip
 } from '@mui/material';
 import {
   // 文件管理图标
@@ -53,7 +54,8 @@ import {
   Login,
   PersonAdd,
   Logout,
-  MoreVert
+  MoreVert,
+  Email
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from './AppContext.tsx';
@@ -252,14 +254,26 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({
               >
                 {state.user.username}
               </Typography>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                noWrap
-                sx={{ lineHeight: 1.2 }}
-              >
-                {state.user.email}
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                <Tooltip title={state.user.email} placement="top">
+                  <IconButton size="small" sx={{ p: 0.25 }}>
+                    <Email fontSize="small" color="action" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="个人设置" placement="top">
+                  <IconButton 
+                    size="small" 
+                    sx={{ p: 0.25 }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleUserMenuClose();
+                      navigate('/@pages/account-settings');
+                    }}
+                  >
+                    <Settings fontSize="small" color="action" />
+                  </IconButton>
+                </Tooltip>
+              </Box>
             </Box>
             <IconButton size="small" sx={{ ml: 0.5 }}>
               <MoreVert fontSize="small" />

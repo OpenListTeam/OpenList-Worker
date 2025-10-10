@@ -189,9 +189,9 @@ export class MountManage {
         console.log("@loader", "driver_core原型方法:", Object.getOwnPropertyNames(Object.getPrototypeOf(driver_core)));
 
         // 查看一些常见属性
-        if (driver_core.router) console.log("@loader", "router:", driver_core.router);
-        if (driver_core.saving) console.log("@loader", "saving:", JSON.stringify(driver_core.saving, null, 2));
-        if (driver_core.change !== undefined) console.log("@loader", "change:", driver_core.change);
+        // if (driver_core.router) console.log("@loader", "router:", driver_core.router);
+        // if (driver_core.saving) console.log("@loader", "saving:", JSON.stringify(driver_core.saving, null, 2));
+        // if (driver_core.change !== undefined) console.log("@loader", "change:", driver_core.change);
 
         console.log("@loader", "Find driver successfully")
         // 加载挂载 ========================================================

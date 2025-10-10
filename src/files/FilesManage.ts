@@ -29,7 +29,7 @@ export class FilesManage {
         source = source?.replace(drive_load[0].router, '') || "/"
         console.log("@action", source, drive_load[0].router)
         target = target?.replace(drive_load[0].router, '') || "/"
-        console.log("@action after", action, source, target, drive_load.router)
+        console.log("@action after", action, source, target,  drive_load.downFile)
         // 执行操作 ==========================================================================
         switch (action) {
             case "list": { // 列出文件 =======================================================
@@ -58,35 +58,39 @@ export class FilesManage {
                 })
             }
             case "link": { // 获取链接 =======================================================
-                const file_links = await drive_load.downFile({path: source})
+                const file_links = await drive_load[0].downFile({path: source})
                 return this.c.json({flag: true, text: 'Success', data: file_links})
             }
             case "copy": { // 复制文件 =======================================================
                 console.log("@action", "copy", source, target)
-                const task_result = await drive_load.copyFile({path: source}, {path: target})
+                const task_result = await drive_load[0].copyFile({path: source}, {path: target})
                 return this.c.json({flag: true, text: 'Success', data: task_result})
             }
             case "move": { // 移动文件 =======================================================
                 console.log("@action", "moveFile", source, target)
-                const task_result = await drive_load.moveFile({path: source}, {path: target})
+                const task_result = await drive_load[0].moveFile({path: source}, {path: target})
                 return this.c.json({flag: true, text: 'Success', data: task_result})
             }
             case "create": { // 创建对象 =====================================================
                 if (!target) return this.c.json({flag: false, text: 'Invalid Target'}, 400)
-                const create_result = await drive_load.makeFile(
+                const create_result = await drive_load[0].makeFile(
                     {path: source},
                     target,
                     target.endsWith("/") ? FileType.F_DIR : FileType.F_ALL)
+                // 检查创建结果，如果失败则返回错误
+                if (create_result && !create_result.flag) {
+                    return this.c.json({flag: false, text: create_result.text}, 400)
+                }
                 return this.c.json({flag: true, text: 'Success', data: create_result})
             }
             case "remove": { // 删除对象 =====================================================
-                const task_result = await drive_load.killFile({path: source})
+                const task_result = await drive_load[0].killFile({path: source})
                 return this.c.json({flag: true, text: 'Success', data: task_result})
             }
             case "upload": { // 上传文件 =====================================================
                 if (!upload || !upload["files"])
                     return this.c.json({flag: false, text: 'Invalid Target'}, 400)
-                const upload_result = await drive_load.pushFile(
+                const upload_result = await drive_load[0].pushFile(
                     {path: source}, upload["files"].name, FileType.F_ALL, upload["files"])
                 return this.c.json({flag: true, text: 'Success', data: upload_result})
             }

@@ -270,6 +270,10 @@ export const fileApi = {
     // 创建文件或文件夹
     createFileOrFolder: (path: string, target: string) =>
         apiService.post(`/@files/create/path${path}?target=${encodeURIComponent(target)}`),
+
+    // 重命名文件或文件夹
+    renameFileNew: (filePath: string, newName: string) =>
+        apiService.post(`/@files/rename/path${filePath}?target=${encodeURIComponent(newName)}`),
 };
 
 // 用户相关API

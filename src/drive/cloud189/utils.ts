@@ -5,7 +5,7 @@ import {BasicClouds} from "../BasicClouds";
 import * as con from "./const";
 // 专用导入 =====================================================
 import crypto from "crypto";
-import {HttpRequest} from "../../share/HttpRequest";
+import {HttpRequest} from "../../types/HttpRequest";
 
 
 // 驱动器 ###########################################################
