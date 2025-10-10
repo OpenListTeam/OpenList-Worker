@@ -26,7 +26,6 @@ export interface MountConfig {
 
 // 用户信息（用于前端显示）
 export interface User {
-  users_uuid?: number;
   users_name?: string;
   users_mail?: string;
   users_pass?: string;

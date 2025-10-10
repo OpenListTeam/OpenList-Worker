@@ -189,8 +189,14 @@ const DynamicFileManager: React.FC = () => {
       
       console.log('获取文件列表:', 'Original path:', path, 'Backend path:', backendPath, 'Clean path:', cleanBackendPath);
       
+      // 获取当前用户名
+      const username = appState.user?.username;
+      
+      // 判断是否为个人文件
+      const isPersonal = isPersonalFile(location.pathname);
+      
       // 使用fileApi.getFileList()，这样会经过响应拦截器处理
-      const response = await fileApi.getFileList(cleanBackendPath || '/');
+      const response = await fileApi.getFileList(cleanBackendPath || '/', username, isPersonal);
       
       if (response && response.flag && response.data) {
         // 后端返回格式: { flag: true, text: "Success", data: { pageSize, filePath, fileList } }

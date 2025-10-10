@@ -205,7 +205,11 @@ export const apiService = new ApiService();
 // 文件管理相关API
 export const fileApi = {
     // 获取文件列表 - 使用新的后端API格式
-    getFileList: (filePath: string = '/') => {
+    getFileList: (filePath: string = '/', username?: string, isPersonalFile: boolean = false) => {
+        // 如果是个人文件且是根路径，则使用/@home/用户名作为默认路径
+        if (isPersonalFile && filePath === '/' && username) {
+            return apiService.get(`/@files/list/path/@home/${username}`);
+        }
         // 直接使用路径查询，不使用target参数
         return apiService.get(`/@files/list/path${filePath}`);
     },

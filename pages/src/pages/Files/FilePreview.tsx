@@ -87,8 +87,14 @@ const FilePreview: React.FC = () => {
       const backendDirPath = buildBackendPath(dirPath, location.pathname, appState.user?.username || 'testuser');
       const cleanBackendDirPath = backendDirPath === '/' ? '' : backendDirPath.replace(/\/$/, '');
       
+      // 获取当前用户名
+      const username = appState.user?.username;
+      
+      // 判断是否为个人文件
+      const isPersonal = isPersonalFile(location.pathname);
+      
       // 使用fileApi.getFileList()，这样会经过响应拦截器处理
-      const response = await fileApi.getFileList(cleanBackendDirPath || '/');
+      const response = await fileApi.getFileList(cleanBackendDirPath || '/', username, isPersonal);
       
       if (response && response.flag && response.data && response.data.fileList) {
         // 在文件列表中查找目标文件

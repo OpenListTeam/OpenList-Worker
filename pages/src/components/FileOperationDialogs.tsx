@@ -28,6 +28,7 @@ import {
   FolderOpen,
 } from '@mui/icons-material';
 import axios from 'axios';
+import { fileApi } from '../posts/api';
 
 interface PathSelectDialogProps {
   open: boolean;
@@ -70,7 +71,7 @@ export const PathSelectDialog: React.FC<PathSelectDialogProps> = ({
   isPersonalFile,
 }) => {
   const { state: appState } = useApp();
-  const [selectedPath, setSelectedPath] = useState<string>('/');
+  const [selectedPath, setSelectedPath] = useState<string>(currentPath);
   const [treeData, setTreeData] = useState<TreeNode[]>([]);
   const [expanded, setExpanded] = useState<string[]>(['root']);
   const [loading, setLoading] = useState<boolean>(false);
@@ -87,18 +88,15 @@ export const PathSelectDialog: React.FC<PathSelectDialogProps> = ({
       const backendPath = buildBackendPath(path);
       const cleanBackendPath = backendPath === '/' ? '' : backendPath.replace(/\/$/, '');
       
-      let apiUrl: string;
-      if (cleanBackendPath === '' || cleanBackendPath === '/') {
-        apiUrl = '/@files/list/path/';
-      } else {
-        const pathWithSlash = cleanBackendPath.startsWith('/') ? cleanBackendPath : `/${cleanBackendPath}`;
-        apiUrl = `/@files/list/path${pathWithSlash}/`;
-      }
-
-      const response = await axios.get(apiUrl);
-      if (response.data && response.data.flag && response.data.data && response.data.data.fileList) {
+      // 获取当前用户名
+      const username = appState.user?.username;
+      
+      // 使用fileApi.getFileList()，这样会经过响应拦截器处理
+      const response = await fileApi.getFileList(cleanBackendPath || '/', username, isPersonalFile);
+      
+      if (response && response.flag && response.data && response.data.fileList) {
         // 使用返回数据中的fileType字段进行过滤，fileType === 0 表示文件夹
-        const folderList = response.data.data.fileList.filter((item: any) => item.fileType === 0);
+        const folderList = response.data.fileList.filter((item: any) => item.fileType === 0);
         return folderList.map((item: any) => ({
           name: item.fileName,
           is_dir: true
