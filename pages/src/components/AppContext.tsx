@@ -199,24 +199,49 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     // 初始化用户状态
     useEffect(() => {
-        const savedUser = localStorage.getItem('user');
-        const savedToken = localStorage.getItem('token');
-        
-        if (savedUser && savedToken) {
-            try {
-                const user = JSON.parse(savedUser);
-                // 如果用户没有头像或头像为空，使用Gravatar生成
-                if (!user.avatar || user.avatar === '') {
-                    user.avatar = getUserAvatarUrl({ email: user.email || '' }, 80);
+        const initializeAuth = async () => {
+            const savedUser = localStorage.getItem('user');
+            const savedToken = localStorage.getItem('token');
+            
+            if (savedUser && savedToken) {
+                try {
+                    // 验证token有效性
+                    const response = await fetch('/@users/select/none', {
+                        headers: {
+                            'Authorization': `Bearer ${savedToken}`
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.flag) {
+                            // Token有效，恢复用户状态
+                            const user = JSON.parse(savedUser);
+                            // 如果用户没有头像或头像为空，使用Gravatar生成
+                            if (!user.avatar || user.avatar === '') {
+                                user.avatar = getUserAvatarUrl({ email: user.email || '' }, 80);
+                            }
+                            dispatch({ type: 'SET_USER', payload: user });
+                            dispatch({ type: 'SET_AUTHENTICATED', payload: true });
+                            return;
+                        }
+                    }
+                    
+                    // Token无效，清除本地存储
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('auth_token');
+                } catch (error) {
+                    console.error('Token验证失败:', error);
+                    // 验证失败，清除本地存储
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('auth_token');
                 }
-                dispatch({ type: 'SET_USER', payload: user });
-                dispatch({ type: 'SET_AUTHENTICATED', payload: true });
-            } catch (error) {
-                console.error('Failed to parse saved user:', error);
-                localStorage.removeItem('user');
-                localStorage.removeItem('token');
             }
-        }
+        };
+
+        initializeAuth();
     }, []);
 
     const contextValue: AppContextType = {

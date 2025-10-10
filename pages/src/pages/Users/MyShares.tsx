@@ -249,7 +249,12 @@ const MyShares: React.FC = () => {
   }
 
   return (
-    <Box>
+    <Box sx={{ p: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }} className="MuiBox-root css-1cacf56">
+        <Typography variant="h2">
+          我的分享
+        </Typography>
+      </Box>
       <ResponsiveDataTable
         title="我的分享"
         columns={columns}

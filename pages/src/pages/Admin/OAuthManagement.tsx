@@ -263,6 +263,19 @@ const OAuthManagement: React.FC = () => {
 
   return (
     <Box>
+      <Box 
+        className="MuiBox-root css-1cacf56" 
+        sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between', 
+          mb: 3 
+        }}
+      >
+        <Typography variant="h4" component="h2">
+          三方登录
+        </Typography>
+      </Box>
       <ResponsiveDataTable
         title="OAuth授权管理"
         columns={columns}

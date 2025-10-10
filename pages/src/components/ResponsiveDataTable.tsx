@@ -104,7 +104,7 @@ const ResponsiveDataTable: React.FC<ResponsiveDataTableProps> = ({
     if (!containerRef.current) return;
 
     const containerWidth = containerRef.current.offsetWidth;
-    const actionColumnWidth = 300; // 操作列的固定宽度改为300px
+    const actionColumnWidth = 245; // 操作列的固定宽度
     let availableWidth = containerWidth - 32; // 减去padding
 
     // 按优先级排序列
@@ -113,7 +113,7 @@ const ResponsiveDataTable: React.FC<ResponsiveDataTableProps> = ({
     
     // 首先为操作列预留空间（优先级4）
     let showActions = true;
-    if (availableWidth < actionColumnWidth + 200) { // 如果空间不足以显示操作列和文件名列
+    if (availableWidth < actionColumnWidth + 150) { // 如果空间不足以显示操作列和文件名列
       showActions = false;
     } else {
       availableWidth -= actionColumnWidth;
@@ -125,7 +125,7 @@ const ResponsiveDataTable: React.FC<ResponsiveDataTableProps> = ({
       // 优先级为0的列（如文件名）始终显示
       if (column.priority === 0) {
         newVisibleColumns.push(column);
-        availableWidth -= Math.max(columnWidth, 200); // 文件名列最小200px
+        availableWidth -= Math.max(columnWidth, 120); // 文件名列最小120px
       } else if (availableWidth >= columnWidth) {
         newVisibleColumns.push(column);
         availableWidth -= columnWidth;
@@ -219,9 +219,9 @@ const ResponsiveDataTable: React.FC<ResponsiveDataTableProps> = ({
   );
 
   return (
-    <Box ref={containerRef} sx={{ width: '100%', height: '100%' }}>
-      <TableContainer component={Paper} sx={{ height: '100%', borderRadius: '15px' }}>
-        <Table stickyHeader sx={{ minWidth: 400 }} aria-label="responsive data table">
+    <Box ref={containerRef} sx={{ width: '100%' }}>
+      <TableContainer component={Paper} sx={{ borderRadius: '15px', overflowX: 'auto' }}>
+        <Table stickyHeader sx={{ width: '100%', tableLayout: 'auto' }} aria-label="responsive data table">
           <TableHead>
             <TableRow>
               {visibleColumns.map((column) => (
@@ -229,8 +229,9 @@ const ResponsiveDataTable: React.FC<ResponsiveDataTableProps> = ({
                   key={column.id}
                   align={column.align}
                   style={{ 
-                    minWidth: column.priority === 0 ? Math.max(column.minWidth || 200, 200) : column.minWidth,
-                    width: column.priority === 0 ? 'auto' : column.minWidth
+                    minWidth: column.minWidth,
+                    width: column.id === 'name' ? 'auto' : column.minWidth,
+                    maxWidth: column.id === 'name' ? 'none' : column.minWidth
                   }}
                   sx={{ fontWeight: 'bold' }}
                 >
@@ -248,7 +249,7 @@ const ResponsiveDataTable: React.FC<ResponsiveDataTableProps> = ({
                 </TableCell>
               ))}
               {showActionColumn && (
-                <TableCell align="center" sx={{ fontWeight: 'bold', width: '150px', minWidth: '150px', maxWidth: '150px', padding: '4px' }}>
+                <TableCell align="center" sx={{ fontWeight: 'bold', width: '245px', minWidth: '245px', maxWidth: '245px', padding: '4px' }}>
                   操作
                 </TableCell>
               )}
@@ -277,10 +278,11 @@ const ResponsiveDataTable: React.FC<ResponsiveDataTableProps> = ({
                       key={column.id} 
                       align={column.align}
                       sx={{
-                        maxWidth: column.priority === 0 ? 'none' : column.minWidth,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap'
+                        maxWidth: column.id === 'name' ? 'none' : column.minWidth,
+                        overflow: column.id === 'name' ? 'visible' : 'hidden',
+                        textOverflow: column.id === 'name' ? 'unset' : 'ellipsis',
+                        whiteSpace: column.id === 'name' ? 'normal' : 'nowrap',
+                        wordBreak: column.id === 'name' ? 'break-word' : 'normal'
                       }}
                     >
                       {column.format ? column.format(value) : value}
@@ -288,7 +290,7 @@ const ResponsiveDataTable: React.FC<ResponsiveDataTableProps> = ({
                   );
                 })}
                 {showActionColumn && (
-                  <TableCell align="center" sx={{ width: '150px', minWidth: '150px', maxWidth: '150px', padding: '4px' }}>
+                  <TableCell align="center" sx={{ width: '245px', minWidth: '245px', maxWidth: '245px', padding: '4px' }}>
                     {renderActionButtons(row)}
                   </TableCell>
                 )}

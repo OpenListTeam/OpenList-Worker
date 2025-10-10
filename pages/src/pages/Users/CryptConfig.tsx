@@ -17,7 +17,8 @@ import {
   Switch,
   Snackbar,
   Alert,
-  Box
+  Box,
+  Typography
 } from '@mui/material';
 import apiService from '../../posts/api';
 
@@ -243,6 +244,19 @@ const CryptConfig: React.FC = () => {
 
   return (
     <Box>
+      <Box 
+        className="MuiBox-root css-1cacf56" 
+        sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between', 
+          mb: 3 
+        }}
+      >
+        <Typography variant="h4" component="h2">
+          加密配置
+        </Typography>
+      </Box>
       <ResponsiveDataTable
         title="加密配置"
         columns={columns}

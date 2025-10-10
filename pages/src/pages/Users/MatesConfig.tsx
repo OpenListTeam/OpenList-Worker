@@ -26,6 +26,7 @@ import { Add, Edit, Delete, Folder, Security } from '@mui/icons-material';
 import ResponsiveDataTable from '../../components/ResponsiveDataTable';
 import { Mates } from '../../types';
 import apiService from '../../posts/api';
+import { useSnackbar } from '../../hooks/useSnackbar';
 
 const MatesConfig: React.FC = () => {
   const [mates, setMates] = useState<Mates[]>([]);
@@ -248,6 +249,19 @@ const MatesConfig: React.FC = () => {
 
   return (
     <Box>
+      <Box 
+        className="MuiBox-root css-1cacf56" 
+        sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between', 
+          mb: 3 
+        }}
+      >
+        <Typography variant="h4" component="h2">
+          目录配置
+        </Typography>
+      </Box>
       <ResponsiveDataTable
         title="路径配置管理"
         columns={columns}

@@ -410,6 +410,12 @@ const DynamicFileManager: React.FC = () => {
     }
   };
 
+  // 处理批量离线下载（顶部按钮）
+  const handleBatchOfflineDownload = () => {
+    // 导航到离线下载管理页面
+    navigate('/offline-download');
+  };
+
   // 处理更多操作菜单
   const handleMoreMenuOpen = (event: React.MouseEvent<HTMLElement>, file: any) => {
     event.stopPropagation();
@@ -1018,7 +1024,7 @@ const DynamicFileManager: React.FC = () => {
     {
       id: 'name',
       label: '名称',
-      minWidth: 200,
+      width: 'auto',
       format: (value: string) => value,
       priority: 0, // 文件名列优先级最高，始终显示
       sortable: true,
@@ -1026,7 +1032,7 @@ const DynamicFileManager: React.FC = () => {
     {
       id: 'size',
       label: '大小',
-      minWidth: 120,
+      minWidth: 100,
       align: 'right' as const,
       format: (value: string) => value,
       priority: 2, // 大小列优先级：第二优先隐藏
@@ -1035,7 +1041,7 @@ const DynamicFileManager: React.FC = () => {
     {
       id: 'modified',
       label: '修改时间',
-      minWidth: 200,
+      minWidth: 150,
       format: (value: string) => value,
       priority: 1, // 修改时间优先级：第一优先隐藏
       sortable: true,
@@ -1143,6 +1149,11 @@ const DynamicFileManager: React.FC = () => {
                   <Upload />
                 </IconButton>
               </Tooltip>
+              <Tooltip title="离线下载">
+                <IconButton onClick={handleBatchOfflineDownload}>
+                  <CloudDownload />
+                </IconButton>
+              </Tooltip>
             </Box>
           </Box>
 
@@ -1152,7 +1163,7 @@ const DynamicFileManager: React.FC = () => {
               title="文件列表"
               columns={columns}
               data={filteredData}
-              actions={['download', 'offline', 'share', 'link', 'copy', 'move', 'archive', 'settings', 'delete']}
+              actions={['download', 'share', 'link', 'copy', 'move', 'archive', 'settings', 'delete']}
               onRowClick={handleRowClick}
               onRowDoubleClick={(row) => {
                 if (row.is_dir) {

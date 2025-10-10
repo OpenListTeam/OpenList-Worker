@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import DataTable from '../../components/DataTable';
 import { Task } from '../../types';
-import { Chip, Alert, CircularProgress, Box } from '@mui/material';
+import { Chip, Alert, CircularProgress, Box, Typography } from '@mui/material';
 import apiService from '../../posts/api';
 
 const TaskConfig: React.FC = () => {
@@ -131,14 +131,21 @@ const TaskConfig: React.FC = () => {
   }
 
   return (
-    <DataTable
-      title="任务配置"
-      columns={columns}
-      data={tasks}
-      onEdit={handleEdit}
-      onDelete={handleDelete}
-      actions={['edit', 'delete']}
-    />
+    <Box sx={{ p: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }} className="MuiBox-root css-1cacf56">
+        <Typography variant="h2">
+          任务管理
+        </Typography>
+      </Box>
+      <DataTable
+        title="任务配置"
+        columns={columns}
+        data={tasks}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        actions={['edit', 'delete']}
+      />
+    </Box>
   );
 };
 

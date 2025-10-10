@@ -143,7 +143,12 @@ const OfflineDownload: React.FC = () => {
   };
 
   return (
-    <Box>
+    <Box sx={{ p: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }} className="MuiBox-root css-1cacf56">
+        <Typography variant="h2">
+          离线下载
+        </Typography>
+      </Box>
       <DataTable
         title="离线下载"
         columns={columns}
