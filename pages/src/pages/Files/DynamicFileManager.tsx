@@ -290,8 +290,12 @@ const DynamicFileManager: React.FC = () => {
       console.log('- backendPath:', backendPath);
       console.log('- cleanBackendPath:', cleanBackendPath);
       
+      // 获取当前用户名和个人文件标识
+      const username = appState.user?.username;
+      const isPersonal = isPersonalFile(location.pathname);
+      
       // 使用fileApi.removeFile()，这样会经过响应拦截器处理
-      const response = await fileApi.removeFile(cleanBackendPath);
+      const response = await fileApi.removeFile(cleanBackendPath, username, isPersonal);
       
       if (response && response.flag) {
         showMessage('文件删除成功');
@@ -471,10 +475,15 @@ const DynamicFileManager: React.FC = () => {
       console.log('cleanTargetPath:', cleanTargetPath);
       
       console.log('发送请求...');
+      
+      // 获取当前用户名和个人文件标识
+      const username = appState.user?.username;
+      const isPersonal = isPersonalFile(location.pathname);
+      
       // 使用fileApi的新函数，这样会经过响应拦截器处理
       const response = operation === 'copy' 
-        ? await fileApi.copyFile(cleanSourcePath, cleanTargetPath)
-        : await fileApi.moveFileNew(cleanSourcePath, cleanTargetPath);
+        ? await fileApi.copyFile(cleanSourcePath, cleanTargetPath, username, isPersonal)
+        : await fileApi.moveFileNew(cleanSourcePath, cleanTargetPath, username, isPersonal);
       console.log('响应:', response);
       
       if (response && response.flag) {
@@ -558,8 +567,12 @@ const DynamicFileManager: React.FC = () => {
         console.log('- backendPath:', backendPath);
         console.log('- cleanBackendPath:', cleanBackendPath);
         
+        // 获取当前用户名和个人文件标识
+        const username = appState.user?.username;
+        const isPersonal = isPersonalFile(location.pathname);
+        
         // 使用新的重命名API
-        const response = await fileApi.renameFileNew(cleanBackendPath, name);
+        const response = await fileApi.renameFileNew(cleanBackendPath, name, username, isPersonal);
         
         if (response && response.flag) {
           showMessage('重命名成功');
@@ -581,8 +594,12 @@ const DynamicFileManager: React.FC = () => {
         console.log('- cleanBasePath:', cleanBasePath);
         console.log('- targetName:', targetName);
         
+        // 获取当前用户名和个人文件标识
+        const username = appState.user?.username;
+        const isPersonal = isPersonalFile(location.pathname);
+        
         // 使用fileApi.createFileOrFolder()
-        const response = await fileApi.createFileOrFolder(cleanBasePath, targetName);
+        const response = await fileApi.createFileOrFolder(cleanBasePath, targetName, username, isPersonal);
         
         if (response && response.flag) {
           showMessage(`${type === 'folder' ? '文件夹' : '文件'}创建成功`);

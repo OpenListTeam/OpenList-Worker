@@ -222,16 +222,27 @@ class ApiService {
 // 创建API服务实例
 export const apiService = new ApiService();
 
+// 路径处理辅助函数
+const buildFilePath = (filePath: string, username?: string, isPersonalFile: boolean = false): string => {
+    // 如果是个人文件，需要构建完整的/@home/用户名路径
+    if (isPersonalFile && username) {
+        // 如果是根路径，使用/@home/用户名
+        if (filePath === '/') {
+            return `/@home/${username}`;
+        }
+        // 如果是子路径，确保包含/@home/用户名前缀
+        return filePath.startsWith('/@home/') ? filePath : `/@home/${username}${filePath}`;
+    }
+    // 公共文件直接使用原路径
+    return filePath;
+};
+
 // 文件管理相关API
 export const fileApi = {
     // 获取文件列表 - 使用新的后端API格式
     getFileList: (filePath: string = '/', username?: string, isPersonalFile: boolean = false) => {
-        // 如果是个人文件且是根路径，则使用/@home/用户名作为默认路径
-        if (isPersonalFile && filePath === '/' && username) {
-            return apiService.get(`/@files/list/path/@home/${username}`);
-        }
-        // 直接使用路径查询，不使用target参数
-        return apiService.get(`/@files/list/path${filePath}`);
+        const fullPath = buildFilePath(filePath, username, isPersonalFile);
+        return apiService.get(`/@files/list/path${fullPath}`);
     },
 
     // 获取文件列表 - 旧版本兼容
@@ -280,24 +291,36 @@ export const fileApi = {
 
     // 新的后端API格式的操作函数
     // 删除文件或文件夹
-    removeFile: (filePath: string) =>
-        apiService.delete(`/@files/remove/path${filePath}`),
+    removeFile: (filePath: string, username?: string, isPersonalFile: boolean = false) => {
+        const fullPath = buildFilePath(filePath, username, isPersonalFile);
+        return apiService.delete(`/@files/remove/path${fullPath}`);
+    },
 
     // 移动文件或文件夹
-    moveFileNew: (sourcePath: string, targetPath: string) =>
-        apiService.post(`/@files/move/path${sourcePath}?target=${encodeURIComponent(targetPath)}`),
+    moveFileNew: (sourcePath: string, targetPath: string, username?: string, isPersonalFile: boolean = false) => {
+        const fullSourcePath = buildFilePath(sourcePath, username, isPersonalFile);
+        const fullTargetPath = buildFilePath(targetPath, username, isPersonalFile);
+        return apiService.post(`/@files/move/path${fullSourcePath}?target=${encodeURIComponent(fullTargetPath)}`);
+    },
 
     // 复制文件或文件夹
-    copyFile: (sourcePath: string, targetPath: string) =>
-        apiService.post(`/@files/copy/path${sourcePath}?target=${encodeURIComponent(targetPath)}`),
+    copyFile: (sourcePath: string, targetPath: string, username?: string, isPersonalFile: boolean = false) => {
+        const fullSourcePath = buildFilePath(sourcePath, username, isPersonalFile);
+        const fullTargetPath = buildFilePath(targetPath, username, isPersonalFile);
+        return apiService.post(`/@files/copy/path${fullSourcePath}?target=${encodeURIComponent(fullTargetPath)}`);
+    },
 
     // 创建文件或文件夹
-    createFileOrFolder: (path: string, target: string) =>
-        apiService.post(`/@files/create/path${path}?target=${encodeURIComponent(target)}`),
+    createFileOrFolder: (path: string, target: string, username?: string, isPersonalFile: boolean = false) => {
+        const fullPath = buildFilePath(path, username, isPersonalFile);
+        return apiService.post(`/@files/create/path${fullPath}?target=${encodeURIComponent(target)}`);
+    },
 
     // 重命名文件或文件夹
-    renameFileNew: (filePath: string, newName: string) =>
-        apiService.post(`/@files/rename/path${filePath}?target=${encodeURIComponent(newName)}`),
+    renameFileNew: (filePath: string, newName: string, username?: string, isPersonalFile: boolean = false) => {
+        const fullPath = buildFilePath(filePath, username, isPersonalFile);
+        return apiService.post(`/@files/rename/path${fullPath}?target=${encodeURIComponent(newName)}`);
+    },
 };
 
 // 用户相关API
