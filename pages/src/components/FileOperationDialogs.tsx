@@ -77,13 +77,8 @@ export const PathSelectDialog: React.FC<PathSelectDialogProps> = ({
 
   // 构建后端路径
   const buildBackendPath = (path: string) => {
-    if (isPersonalFile) {
-      const username = appState.user?.username || 'testuser';
-      const cleanPath = path.startsWith('/') ? path : `/${path}`;
-      return `/@home/${username}${cleanPath}`;
-    } else {
-      return path;
-    }
+    // 直接使用路径，不添加前缀
+    return path;
   };
 
   // 获取文件夹列表

@@ -57,13 +57,8 @@ export const isPersonalFile = (pathname: string): boolean => {
 
 // 构建后端API路径
 export const buildBackendPath = (filePath: string, pathname: string, username: string = 'testuser'): string => {
-  if (isPersonalFile(pathname)) {
-    // 个人文件需要添加 /@home/<username>/ 前缀
-    return `/@home/${username}${filePath}`;
-  } else {
-    // 公共文件直接使用路径
-    return filePath;
-  }
+  // 直接使用路径，不添加前缀
+  return filePath;
 };
 
 // 下载文件的参数接口

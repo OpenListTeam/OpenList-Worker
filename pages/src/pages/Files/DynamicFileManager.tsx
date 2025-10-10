@@ -158,17 +158,8 @@ const DynamicFileManager: React.FC = () => {
 
   // 构建后端API路径
   const buildBackendPath = (filePath: string, pathname: string): string => {
-    // 从用户上下文获取实际用户名
-    const username = appState.user?.username || 'testuser';
-    
-    if (isPersonalFile(pathname)) {
-      // 个人文件需要添加 /@home/<username>/ 前缀
-      const cleanPath = filePath.startsWith('/') ? filePath : `/${filePath}`;
-      return `/@home/${username}${cleanPath}`;
-    } else {
-      // 公共文件直接使用路径
-      return filePath;
-    }
+    // 直接使用路径，不添加前缀
+    return filePath;
   };
 
   // 清理路径，移除多余的斜杠并规范化路径
@@ -541,20 +532,17 @@ const DynamicFileManager: React.FC = () => {
         const basePath = buildBackendPath(currentPath, location.pathname);
         const cleanBasePath = cleanPath(basePath);
         
-        // 构建完整的目标路径
-        const fileName = type === 'folder' ? `${name}/` : name;
-        const fullTargetPath = cleanBasePath.endsWith('/') 
-          ? `${cleanBasePath}${fileName}` 
-          : `${cleanBasePath}/${fileName}`;
+        // target参数只包含文件/文件夹名称，不包含完整路径
+        const targetName = type === 'folder' ? `${name}/` : name;
         
         console.log('创建文件/文件夹调试信息:');
         console.log('- type:', type);
         console.log('- name:', name);
         console.log('- cleanBasePath:', cleanBasePath);
-        console.log('- fullTargetPath:', fullTargetPath);
+        console.log('- targetName:', targetName);
         
         // 使用fileApi.createFileOrFolder()
-        const response = await fileApi.createFileOrFolder(cleanBasePath, fullTargetPath);
+        const response = await fileApi.createFileOrFolder(cleanBasePath, targetName);
         
         if (response && response.flag) {
           showMessage(`${type === 'folder' ? '文件夹' : '文件'}创建成功`);

@@ -142,9 +142,10 @@ export class HostDriver extends BasicDriver {
                    data?: any | null): Promise<DriveResult | null> {
         console.log("@FSMake", file, name, type, data);
         if (file?.path) {
-            const parent: string = file.path.substring(
-                0, file?.path.lastIndexOf('/'));
-            file.uuid = await this.findUUID(parent);
+            // file.path 就是我们要在其中创建文件的目录路径
+            console.log("@FSMake Target Directory:", file.path);
+            file.uuid = await this.findUUID(file.path);
+            console.log("@FSMake Target Directory UUID:", file.uuid);
         }
         if (!file?.uuid || !name || !this.driver) return null;
         let mime: string = data?.type || 'application/octet-stream'

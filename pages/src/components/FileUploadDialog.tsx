@@ -145,17 +145,8 @@ const FileUploadDialog: React.FC<FileUploadDialogProps> = ({
   };
 
   const buildBackendPath = (filePath: string): string => {
-    const pathname = window.location.pathname;
-    const username = appState.user?.username || 'testuser';
-    
-    // 检查是否为个人文件路径
-    const isPersonal = pathname.startsWith('/@pages/myfile');
-    
-    if (isPersonal) {
-      return `/@home/${username}${filePath}`;
-    } else {
-      return filePath;
-    }
+    // 直接使用路径，不添加前缀
+    return filePath;
   };
 
   const cleanPath = (path: string): string => {
@@ -207,10 +198,11 @@ const FileUploadDialog: React.FC<FileUploadDialogProps> = ({
   };
 
   const createFolder = async (folderPath: string): Promise<void> => {
-    const targetPath = `${currentPath}/${folderPath}/`.replace(/\/+/g, '/');
-    const backendPath = buildBackendPath(targetPath);
+    const backendPath = buildBackendPath(currentPath);
     const cleanBackendPath = cleanPath(backendPath);
-    const apiUrl = `http://127.0.0.1:8787/@files/create/path${cleanBackendPath}?target=${encodeURIComponent(folderPath + '/')}`;
+    // target参数只包含文件夹名称，不包含完整路径
+    const targetName = folderPath + '/';
+    const apiUrl = `http://127.0.0.1:8787/@files/create/path${cleanBackendPath}?target=${encodeURIComponent(targetName)}`;
 
     try {
       const response = await fetch(apiUrl, {
