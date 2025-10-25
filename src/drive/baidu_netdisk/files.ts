@@ -23,7 +23,6 @@ import crypto from "crypto";
 // Baidu Netdisk file operations driver class
 export class HostDriver extends BasicDriver {
     // Specific members
-    private clouds!: HostClouds
     private uploadThread: number = 3
     private vipType: number = con.VIP_TYPE_NORMAL
 
@@ -40,29 +39,31 @@ export class HostDriver extends BasicDriver {
         saving: Record<string, any>,
     ) {
         super(c, router, config, saving);
-        this.clouds = new HostClouds(c, router, config as meta.BaiduNetdiskConfig, saving as meta.BaiduNetdiskSaving);
+        this.clouds = new HostClouds(c, router, config as meta.BaiduNetdiskConfig, saving as meta.BaiduNetdiskSaving) as any;
     }
 
     // Initialize driver configuration
     async initSelf(): Promise<DriveResult> {
-        const result = await this.clouds.initConfig();
+        const clouds = this.clouds as HostClouds;
+        const result = await clouds.initConfig();
         if (result.flag) {
-            this.saving = this.clouds.saving;
+            this.saving = clouds.saving;
             this.change = true;
-            this.vipType = this.clouds.getVipType();
-            this.uploadThread = this.clouds.getUploadThread();
+            this.vipType = clouds.getVipType();
+            this.uploadThread = clouds.getUploadThread();
         }
         return result;
     }
 
     // Load driver instance
     async loadSelf(): Promise<DriveResult> {
-        const result = await this.clouds.loadConfig();
+        const clouds = this.clouds as HostClouds;
+        const result = await clouds.loadConfig();
         if (result.flag) {
-            this.change = this.clouds.change;
-            this.saving = this.clouds.saving;
-            this.vipType = this.clouds.getVipType();
-            this.uploadThread = this.clouds.getUploadThread();
+            this.change = clouds.change;
+            this.saving = clouds.saving;
+            this.vipType = clouds.getVipType();
+            this.uploadThread = clouds.getUploadThread();
         }
         return result;
     }
@@ -94,6 +95,7 @@ export class HostDriver extends BasicDriver {
 
     // Get files from Baidu Netdisk API
     private async getFiles(dir: string): Promise<meta.BaiduFile[]> {
+        const clouds = this.clouds as HostClouds;
         const config = this.config as meta.BaiduNetdiskConfig;
         let start = 0;
         const limit = 200;
@@ -119,7 +121,7 @@ export class HostDriver extends BasicDriver {
             params.limit = limit.toString();
             start += limit;
 
-            const response = await this.clouds.get("/xpan/file", params) as meta.ListFilesResponse;
+            const response = await clouds.get("/xpan/file", params) as meta.ListFilesResponse;
             
             if (!response.list || response.list.length === 0) {
                 break;
@@ -173,6 +175,7 @@ export class HostDriver extends BasicDriver {
 
     // Official download method
     private async linkOfficial(file?: fso.FileFind): Promise<fso.FileLink[]> {
+        const clouds = this.clouds as HostClouds;
         const fsId = file?.uuid;
         const params = {
             method: "filemetas",
@@ -180,14 +183,14 @@ export class HostDriver extends BasicDriver {
             dlink: "1"
         };
 
-        const response = await this.clouds.get("/xpan/multimedia", params) as meta.DownloadLinkResponse;
+        const response = await clouds.get("/xpan/multimedia", params) as meta.DownloadLinkResponse;
         
         if (!response.list || response.list.length === 0) {
             return [{status: false, result: "No download link found"}];
         }
 
         const dlink = response.list[0].dlink;
-        const url = `${dlink}&access_token=${this.clouds.getAccessToken()}`;
+        const url = `${dlink}&access_token=${clouds.getAccessToken()}`;
 
         return [{
             status: true,
@@ -200,6 +203,7 @@ export class HostDriver extends BasicDriver {
 
     // Crack download method
     private async linkCrack(file?: fso.FileFind): Promise<fso.FileLink[]> {
+        const clouds = this.clouds as HostClouds;
         const path = file?.path;
         const params = {
             target: `["${path}"]`,
@@ -208,7 +212,7 @@ export class HostDriver extends BasicDriver {
             origin: "dlna"
         };
 
-        const response = await this.clouds.get("/api/filemetas", params) as meta.DownloadLinkCrackResponse;
+        const response = await clouds.get("/api/filemetas", params) as meta.DownloadLinkCrackResponse;
         
         if (!response.info || response.info.length === 0) {
             return [{status: false, result: "No download link found"}];
@@ -226,6 +230,7 @@ export class HostDriver extends BasicDriver {
 
     // Crack video download method
     private async linkCrackVideo(file?: fso.FileFind): Promise<fso.FileLink[]> {
+        const clouds = this.clouds as HostClouds;
         const path = file?.path;
         const fsId = file?.uuid;
         
@@ -242,7 +247,7 @@ export class HostDriver extends BasicDriver {
             origin: "dlna"
         };
 
-        const response = await this.clouds.get("/api/mediainfo", params);
+        const response = await clouds.get("/api/mediainfo", params);
         const dlink = response?.info?.dlink;
 
         if (!dlink) {
@@ -376,6 +381,7 @@ export class HostDriver extends BasicDriver {
 
     // Generic file management operation
     private async manage(opera: string, filelist: any): Promise<any> {
+        const clouds = this.clouds as HostClouds;
         const params = {
             method: "filemanager",
             opera: opera
@@ -387,7 +393,7 @@ export class HostDriver extends BasicDriver {
             ondup: "fail"
         };
 
-        return await this.clouds.postForm("/xpan/file", params, formData);
+        return await clouds.postForm("/xpan/file", params, formData);
     }
 
     /** =======================Create file or folder====================
@@ -459,7 +465,8 @@ export class HostDriver extends BasicDriver {
             formData.block_list = blockList;
         }
 
-        return await this.clouds.postForm("/xpan/file", params, formData);
+        const clouds = this.clouds as HostClouds;
+        return await clouds.postForm("/xpan/file", params, formData);
     }
 
     /** =======================Upload file==========================
