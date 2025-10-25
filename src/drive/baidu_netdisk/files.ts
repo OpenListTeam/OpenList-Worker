@@ -474,19 +474,296 @@ export class HostDriver extends BasicDriver {
      * @param   file - Target directory search parameters
      * @param   name - Upload file name
      * @param   type - File type
-     * @param   data - File data
+     * @param   data - File data (Buffer or ArrayBuffer)
      * @returns Promise<DriveResult> Upload result with new file ID
      * ===========================================================*/
     async pushFile(
         file?: fso.FileFind,
         name?: string | null,
         type?: fso.FileType,
-        data?: string | any | null
+        data?: any | null
     ): Promise<DriveResult> {
-        return {
-            flag: false,
-            text: "File upload not fully implemented yet - requires multipart upload logic"
-        };
+        try {
+            if (!name || !data) {
+                return {flag: false, text: "File name and data are required"};
+            }
+
+            const parentPath = file?.path || this.config.root_path || "/";
+            const filePath = parentPath.endsWith('/') 
+                ? `${parentPath}${name}` 
+                : `${parentPath}/${name}`;
+
+            // Convert data to Buffer if needed
+            let buffer: Buffer;
+            if (Buffer.isBuffer(data)) {
+                buffer = data;
+            } else if (data instanceof ArrayBuffer) {
+                buffer = Buffer.from(data);
+            } else if (typeof data === 'string') {
+                buffer = Buffer.from(data, 'utf-8');
+            } else {
+                return {flag: false, text: "Unsupported data type"};
+            }
+
+            // Try rapid upload first
+            const rapidResult = await this.putRapid(filePath, name, buffer);
+            if (rapidResult.flag) {
+                return rapidResult;
+            }
+
+            // Fall back to multipart upload
+            return await this.putMultipart(filePath, name, buffer);
+        } catch (error) {
+            return {
+                flag: false,
+                text: error instanceof Error ? error.message : String(error)
+            };
+        }
+    }
+
+    // Rapid upload (秒传)
+    private async putRapid(
+        path: string,
+        name: string,
+        buffer: Buffer
+    ): Promise<DriveResult> {
+        try {
+            const fileSize = buffer.length;
+            const contentMd5 = this.calculateMd5(buffer);
+            const blockList = JSON.stringify([contentMd5]);
+            const now = Math.floor(Date.now() / 1000);
+
+            const result = await this.create(path, fileSize, 0, "", blockList, now, now);
+            
+            if (result?.info?.fs_id) {
+                return {
+                    flag: true,
+                    text: result.info.fs_id.toString()
+                };
+            }
+
+            return {flag: false, text: "Rapid upload not available"};
+        } catch (error) {
+            // Rapid upload failed, will try normal upload
+            return {flag: false, text: "Rapid upload failed"};
+        }
+    }
+
+    // Multipart upload
+    private async putMultipart(
+        path: string,
+        name: string,
+        buffer: Buffer
+    ): Promise<DriveResult> {
+        const fileSize = buffer.length;
+        const sliceSize = this.getSliceSize(fileSize);
+        
+        // Calculate slice count
+        const count = Math.ceil(fileSize / sliceSize);
+        const lastBlockSize = fileSize % sliceSize || sliceSize;
+
+        // Calculate MD5 hashes
+        const blockList: string[] = [];
+        let offset = 0;
+        const fileMd5 = crypto.createHash('md5');
+        const sliceMd5First256k = crypto.createHash('md5');
+        let written256k = 0;
+        const SLICE_256K = 256 * con.KB;
+
+        // Calculate MD5 for each slice
+        for (let i = 0; i < count; i++) {
+            const sliceEnd = Math.min(offset + sliceSize, fileSize);
+            const slice = buffer.slice(offset, sliceEnd);
+            
+            // Update file MD5
+            fileMd5.update(slice);
+            
+            // Calculate slice MD5
+            const sliceMd5 = crypto.createHash('md5').update(slice).digest('hex');
+            blockList.push(sliceMd5);
+            
+            // Update first 256k MD5
+            if (written256k < SLICE_256K) {
+                const toWrite = Math.min(slice.length, SLICE_256K - written256k);
+                sliceMd5First256k.update(slice.slice(0, toWrite));
+                written256k += toWrite;
+            }
+            
+            offset = sliceEnd;
+        }
+
+        const contentMd5 = fileMd5.digest('hex');
+        const sliceMd5 = sliceMd5First256k.digest('hex');
+        const blockListStr = JSON.stringify(blockList);
+        const now = Math.floor(Date.now() / 1000);
+
+        // Step 1: Precreate
+        const precreateResp = await this.precreate(
+            path, 
+            fileSize, 
+            blockListStr, 
+            contentMd5, 
+            sliceMd5,
+            now,
+            now
+        );
+
+        if (!precreateResp) {
+            return {flag: false, text: "Precreate failed"};
+        }
+
+        // Check if rapid upload succeeded
+        if (precreateResp.return_type === 2 && precreateResp.info) {
+            return {
+                flag: true,
+                text: precreateResp.info.fs_id.toString()
+            };
+        }
+
+        // Step 2: Upload slices
+        if (!precreateResp.uploadid || !precreateResp.block_list) {
+            return {flag: false, text: "Invalid precreate response"};
+        }
+
+        const uploadTasks: Promise<void>[] = [];
+        const config = this.config as meta.BaiduNetdiskConfig;
+        const uploadApi = config.upload_api || con.DEFAULT_UPLOAD_API;
+
+        for (let i = 0; i < precreateResp.block_list.length; i++) {
+            const partseq = precreateResp.block_list[i];
+            const sliceOffset = partseq * sliceSize;
+            const sliceEnd = Math.min(sliceOffset + sliceSize, fileSize);
+            const slice = buffer.slice(sliceOffset, sliceEnd);
+
+            const task = this.uploadSlice(
+                uploadApi,
+                path,
+                precreateResp.uploadid,
+                partseq,
+                name,
+                slice
+            );
+            
+            uploadTasks.push(task);
+
+            // Limit concurrent uploads
+            if (uploadTasks.length >= this.uploadThread) {
+                await Promise.race(uploadTasks);
+                // Remove completed tasks
+                for (let j = uploadTasks.length - 1; j >= 0; j--) {
+                    if (await Promise.race([uploadTasks[j], Promise.resolve('pending')]) !== 'pending') {
+                        uploadTasks.splice(j, 1);
+                    }
+                }
+            }
+        }
+
+        // Wait for all uploads to complete
+        await Promise.all(uploadTasks);
+
+        // Step 3: Create file
+        const result = await this.create(
+            path, 
+            fileSize, 
+            0, 
+            precreateResp.uploadid, 
+            blockListStr,
+            now,
+            now
+        );
+
+        if (result?.info?.fs_id) {
+            return {
+                flag: true,
+                text: result.info.fs_id.toString()
+            };
+        }
+
+        return {flag: false, text: "File creation failed"};
+    }
+
+    // Precreate upload
+    private async precreate(
+        path: string,
+        size: number,
+        blockList: string,
+        contentMd5: string,
+        sliceMd5: string,
+        mtime: number,
+        ctime: number
+    ): Promise<meta.PrecreateResponse | null> {
+        try {
+            const clouds = this.clouds as HostClouds;
+            const params = {
+                method: "precreate"
+            };
+
+            const formData: Record<string, string> = {
+                path: path,
+                size: size.toString(),
+                isdir: "0",
+                autoinit: "1",
+                rtype: "3",
+                block_list: blockList,
+                "content-md5": contentMd5,
+                "slice-md5": sliceMd5,
+                local_mtime: mtime.toString(),
+                local_ctime: ctime.toString()
+            };
+
+            return await clouds.postForm("/xpan/file", params, formData);
+        } catch (error) {
+            console.error("Precreate error:", error);
+            return null;
+        }
+    }
+
+    // Upload single slice
+    private async uploadSlice(
+        uploadApi: string,
+        path: string,
+        uploadid: string,
+        partseq: number,
+        fileName: string,
+        slice: Buffer
+    ): Promise<void> {
+        const clouds = this.clouds as HostClouds;
+        const accessToken = clouds.getAccessToken();
+
+        const url = `${uploadApi}/rest/2.0/pcs/superfile2`;
+        const params = new URLSearchParams({
+            method: "upload",
+            access_token: accessToken,
+            type: "tmpfile",
+            path: path,
+            uploadid: uploadid,
+            partseq: partseq.toString()
+        });
+
+        // Create form data
+        const formData = new FormData();
+        const blob = new Blob([slice], {type: 'application/octet-stream'});
+        formData.append('file', blob, fileName);
+
+        const response = await fetch(`${url}?${params.toString()}`, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error(`Upload slice failed: ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        
+        if (result.errno !== undefined && result.errno !== 0) {
+            throw new Error(`Upload slice failed with errno: ${result.errno}`);
+        }
+    }
+
+    // Calculate MD5 hash
+    private calculateMd5(buffer: Buffer): string {
+        return crypto.createHash('md5').update(buffer).digest('hex');
     }
 
     // Convert Baidu file format to FileInfo format
