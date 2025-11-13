@@ -12,6 +12,7 @@ import {CookieJar} from "tough-cookie";
 import {wrapper} from "axios-cookiejar-support";
 import axios, {AxiosInstance} from "axios";
 import * as url from "url";
+import loginFn from "./cloudLoginUtils";
 
 /** ==========================================================================
  *                      天翼云盘认证和配置管理类
@@ -70,7 +71,9 @@ export class HostClouds extends BasicClouds {
                 if (this.config.username && this.config.password) {
                     if (!this.config.cookie || this.config.cookie == "") {
                         console.log("使用用户名密码获取cookie...");
-                        this.cookie = await this.loginWithCookie();
+                        // this.cookie = await this.loginWithCookie();
+                        this.cookie =  await loginFn(this.config.username,
+                            this.config.password);
                     }
                 }
                 // 覆盖当前用户设置的cookie ======================================
@@ -172,7 +175,7 @@ export class HostClouds extends BasicClouds {
         console.log(`Sign String: ${signStr}`);
         // 计算HMAC-SHA256签名 =================================================
         const signature: string = crypto.createHmac(
-            'sha256', sessionSecret)
+            'sha1', sessionSecret)
             .update(signStr).digest('hex');
         console.log(`Computed Signature: ${signature}`);
         console.log(`=== End Signature Calculation Debug ===`);
@@ -196,10 +199,22 @@ export class HostClouds extends BasicClouds {
         console.log("key:", key)
         console.log("key length:", key.length)
         console.log("origData:", origData)
-        const chipper = crypto.createCipheriv("aes-128-ecb", key, Buffer.alloc(0)).setAutoPadding(true)
-        const encrypt = chipper.update(Buffer.from(origData)).toString('hex') + chipper.final('hex')
-        const results = encrypt.toUpperCase()
-        console.log("encrypted (before uppercase):", encrypt)
+        
+        // 实现PKCS7填充，与Go版本保持一致
+        const data = Buffer.from(origData);
+        const blockSize = 16; // AES块大小为16字节
+        const padding = blockSize - (data.length % blockSize);
+        const paddingData = Buffer.concat([data, Buffer.alloc(padding, padding)]);
+        
+        // 创建加密器
+        const cipher = crypto.createCipheriv("aes-128-ecb", key, Buffer.alloc(0));
+        cipher.setAutoPadding(false); // 禁用自动填充，使用手动PKCS7填充
+        
+        // 加密数据
+        const encrypted = cipher.update(paddingData);
+        const final = cipher.final();
+        const results = Buffer.concat([encrypted, final]).toString('hex').toUpperCase();
+        
         console.log("encrypted (final):", results)
         console.log("=== End AES Debug ===")
         return results
@@ -207,10 +222,31 @@ export class HostClouds extends BasicClouds {
 
 
     /** ==========================================================================
+     *                    获取与Go版本一致的GMT时间格式
+     ========================================================================== */
+    private getHttpDateStr(): string {
+        // 模拟Go版本的http.TimeFormat: "Mon, 02 Jan 2006 15:04:05 GMT"
+        // 但注意：Go版本实际返回的是GMT，而JavaScript的toUTCString()返回的是GMT但格式略有不同
+        const date = new Date();
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        
+        const dayName = days[date.getUTCDay()];
+        const day = date.getUTCDate().toString().padStart(2, '0');
+        const monthName = months[date.getUTCMonth()];
+        const year = date.getUTCFullYear();
+        const hours = date.getUTCHours().toString().padStart(2, '0');
+        const minutes = date.getUTCMinutes().toString().padStart(2, '0');
+        const seconds = date.getUTCSeconds().toString().padStart(2, '0');
+        
+        return `${dayName}, ${day} ${monthName} ${year} ${hours}:${minutes}:${seconds} GMT`;
+    }
+
+    /** ==========================================================================
      *                             生成请求签名头
      ========================================================================== */
     signatureHeader(
-        url: string, method: string, params: string): Record<string, string> {
+        url: string, method: string, params: string, isFamily: boolean = false): Record<string, string> {
         // 如果存在cookie，则使用cookie认证
         if (this.cookie) {
             return {
@@ -218,23 +254,66 @@ export class HostClouds extends BasicClouds {
                 "Content-Type": "application/json"
             };
         }
-        const dateOfGmt = new Date().toUTCString();
-        const sessionKey = this.tokenParam.sessionKey;
-        const sessionSecret = this.tokenParam.sessionSecret;
+        
+        // 使用与Go版本完全一致的时间格式
+        const dateOfGmt = this.getHttpDateStr();
+        let sessionKey = this.tokenParam.sessionKey;
+        let sessionSecret = this.tokenParam.sessionSecret;
+        
+        // 处理family云的情况
+        if (isFamily) {
+            sessionKey = this.tokenParam.familySessionKey;
+            sessionSecret = this.tokenParam.familySessionSecret;
+        }
+        
         const requestID = crypto.randomUUID();
-        // 修复正则表达式语法错误
+        
+        // 检查必要的参数是否存在
+        if (!sessionKey || !sessionSecret) {
+            console.error("Session key or secret is missing:", {sessionKey, sessionSecret, isFamily});
+            throw new Error("Session认证信息不完整");
+        }
+        
+        // 使用与Go版本相同的正则表达式提取URL路径
         const urlMatch = url.match(/:\/\/[^\/]+((\/[^\/\s?#]+)*)/);
-        const requestURI = urlMatch ? urlMatch[1] : new URL(url).pathname;
-        // 构建签名数据
+        let requestURI = "";
+        if (urlMatch && urlMatch[1]) {
+            requestURI = urlMatch[1];
+        } else {
+            // fallback到URL pathname
+            try {
+                requestURI = new URL(url).pathname;
+            } catch (e) {
+                requestURI = url;
+            }
+        }
+        
+        // 构建签名数据 - 与Go版本保持完全一致
         let signData = `SessionKey=${sessionKey}&Operate=${method}&RequestURI=${requestURI}&Date=${dateOfGmt}`;
         if (params) {
             signData += `&params=${params}`;
         }
-        // 使用HMAC-SHA1签名
-        const signature = crypto.createHmac("sha1", sessionSecret.slice(0, 16))
+        
+        console.log("=== Signature Debug ===");
+        console.log("Method:", method);
+        console.log("URL:", url);
+        console.log("RequestURI:", requestURI);
+        console.log("Date:", dateOfGmt);
+        console.log("SessionKey:", sessionKey);
+        console.log("SessionSecret:", sessionSecret);
+        console.log("Params:", params);
+        console.log("SignData:", signData);
+        console.log("IsFamily:", isFamily);
+        
+        // 使用HMAC-SHA1签名，使用完整的sessionSecret（与Go版本保持一致）
+        const signature = crypto.createHmac("sha1", sessionSecret)
             .update(signData)
             .digest("hex")
             .toUpperCase();
+            
+        console.log("Signature:", signature);
+        console.log("=== End Signature Debug ===");
+        
         return {
             "Date": dateOfGmt,
             "SessionKey": sessionKey,
@@ -250,11 +329,24 @@ export class HostClouds extends BasicClouds {
     encryptParams(params: Record<string, string>): string {
         const sessionSecret = this.tokenParam.sessionSecret || "";
         if (!params || Object.keys(params).length === 0) return "";
-        // 按key排序并拼接
+        
+        console.log("=== EncryptParams Debug ===");
+        console.log("Input params:", params);
+        
+        // 按key排序并拼接，与Go版本保持一致
         const keys = Object.keys(params).sort();
         const paramStr = keys.map(k => `${k}=${params[k]}`).join("&");
+        
+        console.log("Param string:", paramStr);
+        console.log("SessionSecret (first 16):", sessionSecret.slice(0, 16));
+        
         // AES加密
-        return this.aesEncrypt(sessionSecret.slice(0, 16), paramStr);
+        const encrypted = this.aesEncrypt(sessionSecret.slice(0, 16), paramStr);
+        
+        console.log("Encrypted result:", encrypted);
+        console.log("=== End EncryptParams Debug ===");
+        
+        return encrypted;
     }
 
     /** ==========================================================================
@@ -275,16 +367,26 @@ export class HostClouds extends BasicClouds {
     async refreshSession(): Promise<DriveResult> {
         try {
             const url = `${con.API_URL}/getSessionForPC.action`;
-            const response = await HttpRequest("GET", url, undefined, {
-                "X-Request-ID": crypto.randomUUID()
-            }, {
+            
+            // 使用签名认证，而不是直接HttpRequest
+            const params = {
+                ...this.clientSuffix(),
+                appId: con.APP_ID,
+                accessToken: this.tokenParam.accessToken
+            };
+            
+            // 构建签名头
+            const signHeaders = this.signatureHeader(url, "GET", "");
+            const headers = {
+                ...signHeaders,
+                "Content-Type": "application/json"
+            };
+            
+            const response = await HttpRequest("GET", url, undefined, headers, {
                 finder: "json",
-                search: {
-                    ...this.clientSuffix(),
-                    appId: con.APP_ID,
-                    accessToken: this.tokenParam.accessToken
-                }
+                search: params
             });
+            
             if (response.sessionKey) {
                 this.tokenParam.sessionKey = response.sessionKey;
                 this.tokenParam.sessionSecret = response.sessionSecret;
@@ -313,24 +415,18 @@ export class HostClouds extends BasicClouds {
      ========================================================================== */
     async loginWithCookie(): Promise<string> {
         try {
-            const cookieJar: CookieJar = new CookieJar();
+            let cookieJar: CookieJar = new CookieJar();
             const _axios: AxiosInstance = wrapper(axios.create({jar: cookieJar, withCredentials: true}));
             // 1. 获取公钥
-            const encryptRes: any = await HttpRequest(
-                "POST",
-                "https://open.e.189.cn/api/logbox/config/encryptConf.do",
-                undefined, undefined, {finder: "json"}
-            );
+            const encryptRes: any = await _axios
+                .post("https://open.e.189.cn/api/logbox/config/encryptConf.do")
+                .then((res) => res.data);
             const encrypt = encryptRes.data;
             // 2. 获取登录参数
-            let responseUrl = await HttpRequest("GET",
-                "https://cloud.189.cn/api/portal/loginUrl.action" +
-                "?redirectURL=https://cloud.189.cn/web/redirect.html?returnURL=/main.action",
-                undefined, undefined, {finder: "urls"}
-            );
-            responseUrl = await HttpRequest("GET", responseUrl,
-                undefined, undefined, {finder: "urls"}
-            );
+            const responseUrl = await _axios
+                .get("https://cloud.189.cn/api/portal/loginUrl.action" +
+                    "?redirectURL=https://cloud.189.cn/web/redirect.html?returnURL=/main.action")
+                .then((res) => res.request.res.responseUrl);
             console.log("获取到的重定向URL:", responseUrl);
             if (!responseUrl) throw new Error("无法获取重定向URL");
             const {query} = url.parse(responseUrl, true);
@@ -401,22 +497,16 @@ export class HostClouds extends BasicClouds {
                             headers: this.mobileHeaders,
                             jar: cookieJar, // 使用 tough-cookie 的 CookieJar
                         })
-                        .then(async (r) => {
-                            try {
-                                // 获取所有cookies
-                                const cookies = await cookieJar.getCookies(res.toUrl)
-                                // 过滤cloud相关的cookie
-                                const cloudCookies = cookies.filter(cookie => 
-                                    cookie.domain && cookie.domain.includes("cloud")
-                                )
-                                // 构建cookie字符串
-                                const cookieStr = this.setCookies(cloudCookies)
-                                console.log("从登录响应提取到的Cookie:", cookieStr)
-                                return resolve(cookieStr)
-                            } catch (cookieError) {
-                                console.error("提取cookie失败:", cookieError)
-                                return reject(cookieError)
-                            }
+                        .then((r) => {
+                            const cookies: any[] = JSON.parse(JSON.stringify(cookieJar)).cookies.filter(
+                                (item: any) => {
+                                    return item.domain.includes("cloud")
+                                }
+                            )
+                            cookieJar = new CookieJar()
+                            const cookieStr = this.setCookies(cookies)
+                            console.log("从登录响应提取到的Cookie:", cookieStr)
+                            return resolve(cookieStr)
                         })
                         .catch((error) => {
                             console.error("跳转请求失败:", error)

@@ -540,18 +540,23 @@ export class HostDriver extends BasicDriver {
                     "Content-Type": isForm ? "application/x-www-form-urlencoded" : "application/json",
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
                 };
+                // Cookie模式下不使用加密参数或签名searchOptions
                 searchOptions = {
                     finder: "text"
                 };
             } else {
                 // 使用签名认证
-                const signHeaders = this.clouds.signatureHeader(url, method, params);
+                let encryptedParams = "";
+                if (params && Object.keys(params).length > 0) {
+                    encryptedParams = this.clouds.encryptParams(params);
+                }
+                const signHeaders = this.clouds.signatureHeader(url, method, encryptedParams);
                 headers = {
                     ...signHeaders,
                     "Content-Type": isForm ? "application/x-www-form-urlencoded" : "application/json"
                 };
                 if (method === 'GET') {
-                    const encryptedParams = this.clouds.encryptParams(params);
+                    // GET请求 - 将加密参数放在查询参数中
                     searchOptions = {
                         finder: "json",
                         search: {
@@ -560,8 +565,10 @@ export class HostDriver extends BasicDriver {
                         }
                     };
                 } else {
-                    // POST请求
-                    requestData = params;
+                    // POST请求 - 将加密参数放在请求体中
+                    if (encryptedParams) {
+                        requestData = { params: encryptedParams };
+                    }
                     searchOptions = {
                         finder: "json",
                         search: this.clouds.clientSuffix()
@@ -570,6 +577,47 @@ export class HostDriver extends BasicDriver {
             }
 
             const response = await HttpRequest(method, requestUrl, requestData, headers, searchOptions);
+            
+            // 检查响应中是否包含session相关错误（原始响应文本检查）
+            if (typeof response === 'string') {
+                if (response.includes('userSessionBO is null')) {
+                    console.log('检测到userSessionBO is null错误，尝试刷新session...');
+                    
+                    try {
+                        // 刷新session
+                        const refreshResult = await this.clouds.refreshSession();
+                        if (refreshResult.flag) {
+                            console.log('Session刷新成功，重试请求...');
+                            // 重试请求
+                            return await this.makeRequest<T>(apiPath, params, method, baseUrl, isForm, isRetry);
+                        } else {
+                            console.error('Session刷新失败:', refreshResult.text);
+                            throw new Error(`Session刷新失败: ${refreshResult.text}`);
+                        }
+                    } catch (refreshError) {
+                        console.error('Session刷新异常:', refreshError);
+                        throw new Error(`Session刷新异常: ${(refreshError as Error).message}`);
+                    }
+                } else if (response.includes('sessionsignature is not match')) {
+                    console.log('检测到sessionsignature is not match错误，尝试刷新session...');
+                    
+                    try {
+                        // 刷新session
+                        const refreshResult = await this.clouds.refreshSession();
+                        if (refreshResult.flag) {
+                            console.log('Session刷新成功，重试请求...');
+                            // 重试请求
+                            return await this.makeRequest<T>(apiPath, params, method, baseUrl, isForm, isRetry);
+                        } else {
+                            console.error('Session刷新失败:', refreshResult.text);
+                            throw new Error(`Session刷新失败: ${refreshResult.text}`);
+                        }
+                    } catch (refreshError) {
+                        console.error('Session刷新异常:', refreshError);
+                        throw new Error(`Session刷新异常: ${(refreshError as Error).message}`);
+                    }
+                }
+            }
             
             // 统一处理响应格式，将XML转换为JSON
             const result = this.convertResponseToJSON(response) as T;

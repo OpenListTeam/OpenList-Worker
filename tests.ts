@@ -79,8 +79,8 @@ const headers: Headers = {
     Host: "cloud.189.cn",
 }
 function setCookies(cookies:Cookie[]):string {
-  // console.log(' setCookies>>>>>:', cookies.map(cookie => `${cookie.key}=${cookie.value}`).join('; '));
-  return cookies.map((cookie) => `${cookie.key}=${cookie.value}`).join("; ");
+    // console.log(' setCookies>>>>>:', cookies.map(cookie => `${cookie.key}=${cookie.value}`).join('; '));
+    return cookies.map((cookie) => `${cookie.key}=${cookie.value}`).join("; ");
 }
 
 // 1.获取公钥
@@ -205,4 +205,7 @@ async function loginFn(username: string, password: string): Promise<string> {
     })
 }
 
-export default loginFn
+loginFn('1111','111').then(res=>{
+    console.log('coookies',res);
+
+})
