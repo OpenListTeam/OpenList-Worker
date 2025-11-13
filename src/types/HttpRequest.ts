@@ -1,5 +1,3 @@
-import { DOMParser, Node } from "@xmldom/xmldom";
-
 export interface Option {
     finder?: string;
     direct?: boolean;
@@ -88,47 +86,3 @@ export function xmlToRecord(xml: string): Record<string, any> {
     // 如果根节点是 <userSession>，直接返回其内容
     return parsed?.userSession ?? parsed;
 }
-
-// export function xmlToRecord(xmlString: string): Record<string, any> {
-//     const parser = new DOMParser();
-//     const xmlDoc = parser.parseFromString(xmlString, "text/xml");
-//
-//     function parseNode(node: Element): any {
-//         const obj: Record<string, any> = {};
-//
-//         // 处理属性（可选）
-//         if (node.attributes.length > 0) {
-//             obj["@attributes"] = {};
-//             for (const attr of node.attributes) {
-//                 obj["@attributes"][attr.name] = attr.value;
-//             }
-//         }
-//
-//         // 处理子节点
-//         for (const child of Array.from(node.childNodes)) {
-//             if (child.nodeType === Node.ELEMENT_NODE) {
-//                 const childName = (child as Element).tagName;
-//                 const childValue = parseNode(child as Element);
-//
-//                 if (obj[childName] !== undefined) {
-//                     if (!Array.isArray(obj[childName])) {
-//                         obj[childName] = [obj[childName]];
-//                     }
-//                     obj[childName].push(childValue);
-//                 } else {
-//                     obj[childName] = childValue;
-//                 }
-//             } else if (child.nodeType === Node.TEXT_NODE) {
-//                 const text = (child as Text).textContent?.trim();
-//                 if (text) {
-//                     return text; // 如果是纯文本节点，直接返回值
-//                 }
-//             }
-//         }
-//
-//         // 如果是空节点，返回空对象
-//         return Object.keys(obj).length > 0 ? obj : "";
-//     }
-//
-//     return parseNode(xmlDoc.documentElement);
-// }

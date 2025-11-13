@@ -384,7 +384,7 @@ const UserManagement: React.FC = () => {
         <DialogTitle>确认删除</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            确定要删除用户 "{selectedUser?.users_name}" 吗？此操作不可撤销。
+            确定要删除用户 "{selecteduser?.username}" 吗？此操作不可撤销。
           </DialogContentText>
         </DialogContent>
         <DialogActions>

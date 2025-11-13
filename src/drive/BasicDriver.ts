@@ -25,13 +25,13 @@ export class BasicDriver {
 
     constructor(
         c: Context, router: string,
-        public config: Record<string, any>,
-        public saving: Record<string, any>,
+        in_config: Record<string, any>,
+        in_saving: Record<string, any>,
     ) {
         this.c = c;
         this.router = router;
-        this.config = config;
-        this.saving = saving;
+        this.config = in_config;
+        this.saving = in_saving;
         this.clouds = new HostClouds(
             this.c, this.router,
             this.config,

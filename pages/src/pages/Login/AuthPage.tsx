@@ -137,8 +137,13 @@ const AuthPage: React.FC = () => {
     const handleLoginSubmit = async (event: React.FormEvent) => {
         event.preventDefault();
         
-        if (!loginForm.username || !loginForm.password) {
-            setError('请填写用户名和密码');
+        if (!loginForm.username) {
+            setError('请填写用户名');
+            return;
+        }
+
+        if (!loginForm.password) {
+            setError('请填写密码');
             return;
         }
 
@@ -476,6 +481,7 @@ const AuthPage: React.FC = () => {
                                 margin="normal"
                                 required
                                 autoComplete="current-password"
+                                helperText="如果账户未设置密码，默认密码为：admin"
                                 InputProps={{
                                     endAdornment: (
                                         <InputAdornment position="end">

@@ -65,54 +65,54 @@ export class MountManage {
                  fetch_full: boolean = false,
                  check_flag: boolean = false): Promise<any[]> {
         let all_mount: MountResult = await this.select();
-        let out_mount: MountConfig[] = [];
+        let out_mount: any[] = [];
         let max_check: string = '';
+
+        // 标准化路径：去掉末尾的/（但保留根路径/）
+        mount_path = mount_path === '/' ? '/' : mount_path.replace(/\/+$/, '');
+
         for (const now_mount of all_mount.data) {
-            console.log(mount_path, now_mount.mount_path)
-            // 检查启用状态 =========================================
             if (check_flag && !now_mount.is_enabled) continue;
-            // 检查最长前缀 =========================================
-            if (mount_path.startsWith(now_mount.mount_path)) {
-                if (now_mount.mount_path.length > max_check.length) {
-                    max_check = now_mount.mount_path;
-                    console.log("当前挂载", max_check)
-                }
+
+            // 标准化挂载点路径
+            now_mount.mount_path = now_mount.mount_path === '/' ? '/' : now_mount.mount_path.replace(/\/+$/, '');
+
+            // 检查最长前缀匹配
+            if (mount_path.startsWith(now_mount.mount_path) && now_mount.mount_path.length > max_check.length) {
+                max_check = now_mount.mount_path;
             }
-            // 检查嵌套挂载： 当前挂载路径是以访问路径开头的=========
-            if (now_mount.mount_path.startsWith(mount_path)
-                && now_mount.mount_path !== mount_path) {
-                if (now_mount.mount_path.substring(
-                    mount_path.length
-                ).replace(/^\/+|\/+$/g, '')) {
-                    console.log("嵌套挂载", now_mount.mount_path)
-                    let driver_item: any = sys.driver_list[
-                        now_mount.mount_type]
-                    out_mount.push(
-                        new driver_item(
-                            this.c,
-                            now_mount.mount_path.replace(/\/$/, ''),
-                            JSON.parse(now_mount.drive_conf || "{}"),
-                            JSON.parse(now_mount.drive_save || "{}")
-                        )
-                    );
+
+            // 检查嵌套挂载
+            if (now_mount.mount_path.startsWith(mount_path) && now_mount.mount_path !== mount_path) {
+                const sub_path = now_mount.mount_path.substring(mount_path.length).replace(/^\/+/, '');
+                if (sub_path) {
+                    let driver_item: any = sys.driver_list[now_mount.mount_type];
+                    out_mount.push(new driver_item(
+                        this.c,
+                        now_mount.mount_path,
+                        JSON.parse(now_mount.drive_conf || "{}"),
+                        JSON.parse(now_mount.drive_save || "{}")
+                    ));
                 }
             }
         }
-        // 处理主驱动 ==========================================================
-        if (max_check.length)
-            for (const now_mount of all_mount.data) {
-                if (now_mount.mount_path === max_check) {
-                    let driver_item: any = sys.driver_list[now_mount.mount_type]
-                    out_mount.unshift(
-                        new driver_item(
-                            this.c,
-                            now_mount.mount_path.replace(/\/$/, ''),
-                            JSON.parse(now_mount.drive_conf || "{}"),
-                            JSON.parse(now_mount.drive_save || "{}")
-                        )
-                    );
-                }
+
+        // 处理主驱动
+        if (max_check) {
+            const main_mount = all_mount.data.find(m => m.mount_path === max_check);
+            if (main_mount) {
+                let driver_item: any = sys.driver_list[main_mount.mount_type];
+                out_mount.unshift(new driver_item(
+                    this.c,
+                    max_check,
+                    JSON.parse(main_mount.drive_conf || "{}"),
+                    JSON.parse(main_mount.drive_save || "{}")
+                ));
             }
+        } else {
+            out_mount.unshift(null);
+        }
+
         return out_mount;
     }
 
@@ -162,6 +162,7 @@ export class MountManage {
         const driveResult: DriveResult = await driver[0].initSelf();
 
         // 无论成功还是失败，都要保存drive_save和drive_logs
+        console.log("@reload", config.drive_save)
         config.drive_save = JSON.stringify(driver[0].saving) || "{}";
         config.drive_logs = driveResult.text || "OK";
 
@@ -181,6 +182,12 @@ export class MountManage {
             config.mount_path, fetch_full, check_flag);
         if (!driver_list) return null
         const driver_core = driver_list[0];
+
+        // 如果driver_core为null（没有匹配的主挂载点），直接返回driver_list
+        if (driver_core === null || driver_core === undefined) {
+            console.log("@loader", "没有匹配的主挂载点，直接返回子挂载点列表")
+            return driver_list;
+        }
 
         // 查看driver_core的详细信息
         console.log("@loader", "driver_core类型:", typeof driver_core);

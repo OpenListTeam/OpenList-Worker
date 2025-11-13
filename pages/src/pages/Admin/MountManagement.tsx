@@ -35,10 +35,11 @@ interface Driver {
 interface DriverField {
   key: string;
   label: string;
-  type: 'text' | 'password' | 'textarea' | 'boolean';
+  type: 'text' | 'password' | 'textarea' | 'boolean' | 'select';
   required: boolean;
   placeholder?: string;
   defaultValue?: any;
+  options?: { value: string; label: string }[];
 }
 
 const MountManagement: React.FC = () => {
@@ -380,6 +381,23 @@ const MountManagement: React.FC = () => {
             label={field.label}
             sx={{ width: '100%', display: 'block' }}
           />
+        );
+      case 'select':
+        return (
+          <FormControl key={field.key} fullWidth required={field.required} sx={{ width: '100%' }}>
+            <InputLabel>{field.label}</InputLabel>
+            <Select
+              value={formData[field.key] || field.defaultValue || ''}
+              label={field.label}
+              onChange={(e) => setFormData(prev => ({ ...prev, [field.key]: e.target.value }))}
+            >
+              {field.options?.map((option: any) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         );
       case 'textarea':
         return (

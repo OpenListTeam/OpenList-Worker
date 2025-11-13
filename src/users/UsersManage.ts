@@ -144,13 +144,13 @@ export class UsersManage {
 
             const groupManage = new GroupManage(this.c);
             const groupResult = await groupManage.select(userData.group_name);
-            
+
             if (!groupResult.flag || !groupResult.data || groupResult.data.length === 0) {
                 return userData;
             }
 
             const groupData = groupResult.data[0] as GroupConfig;
-            const inheritedData = { ...userData };
+            const inheritedData = {...userData};
 
             // 如果用户没有设置权限掩码，则使用用户组的权限掩码
             if (!inheritedData.users_mask && groupData.group_mask) {
@@ -159,7 +159,7 @@ export class UsersManage {
 
             // 如果用户没有设置启用状态，则使用用户组的启用状态
             if (inheritedData.is_enabled === undefined && groupData.is_enabled !== undefined) {
-                inheritedData.is_enabled = groupData.is_enabled;
+                inheritedData.is_enabled = groupData.is_enabled === 1;
             }
 
             return inheritedData;
@@ -177,10 +177,10 @@ export class UsersManage {
     async log_in(loginData: UsersConfig): Promise<UsersResult> {
         try {
             // 验证输入数据
-            if (!loginData.users_name || !loginData.users_pass) {
+            if (!loginData.users_name) {
                 return {
                     flag: false,
-                    text: "用户名和密码不能为空"
+                    text: "用户名不能为空"
                 };
             }
 
@@ -192,7 +192,7 @@ export class UsersManage {
                 keys: {"users_name": loginData.users_name},
             });
 
-            if (userResult.data.length === 0) {
+            if (!userResult || !userResult.flag || !userResult.data || userResult.data.length === 0) {
                 return {
                     flag: false,
                     text: "用户名或密码错误"
@@ -209,8 +209,24 @@ export class UsersManage {
                 };
             }
 
-            // 使用bcrypt验证密码
-            const isPasswordValid = await bcrypt.compare(loginData.users_pass, userData.users_pass);
+            // 验证密码
+            if (!loginData.users_pass) {
+                return {
+                    flag: false,
+                    text: "密码不能为空"
+                };
+            }
+
+            // 验证密码逻辑
+            let isPasswordValid = false;
+
+            if (!userData.users_pass || userData.users_pass === "") {
+                // 数据库中没有设置密码，直接比较是否为默认密码"admin"
+                isPasswordValid = loginData.users_pass === "admin";
+            } else {
+                // 数据库中有密码，使用bcrypt验证
+                isPasswordValid = await bcrypt.compare(loginData.users_pass, userData.users_pass);
+            }
 
             if (!isPasswordValid) {
                 return {
@@ -334,11 +350,11 @@ export class UsersManage {
 
             // 使用BindsManage查找OAuth绑定
             const bindResult = await bindsManage.findByOAuthUserId(oauthUserInfo.oauth_name, oauthUserInfo.oauth_user_id);
-            
+
             let existingUser = null;
             if (bindResult.flag && bindResult.data && bindResult.data.length > 0) {
                 const bind = bindResult.data[0];
-                
+
                 // 检查绑定是否启用
                 if (bind.is_enabled !== 1) {
                     return {
@@ -581,7 +597,7 @@ export class UsersManage {
             }
 
             const bind = bindResult.data[0];
-            
+
             // 验证绑定是否属于当前用户
             if (bind.binds_user !== username) {
                 return {

@@ -99,7 +99,7 @@ const OAuthBinding: React.FC = () => {
       setProviders(providersResult.data || []);
 
       // 获取用户的OAuth绑定
-      if (state.user?.users_name) {
+      if (state.user?.username) {
         const userResult = await apiService.post(`/@users/select/name/${state.user.users_name}`, {});
         if (userResult.flag && userResult.data && userResult.data.length > 0) {
           const userData = userResult.data[0];
@@ -167,7 +167,7 @@ const OAuthBinding: React.FC = () => {
       setProcessing(true);
       setError('');
 
-      if (!state.user?.users_name) {
+      if (!state.user?.username) {
         setError('用户未登录');
         return;
       }

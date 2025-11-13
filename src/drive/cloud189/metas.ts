@@ -1,8 +1,7 @@
-
 interface CONFIG_INFO {
     username: string;
     password: string;
-    cookie?: string;
+    cookie?: string; // 添加cookie字段
 }
 
 interface APP_SESSION {
@@ -51,3 +50,4 @@ interface UPLOAD_RESULT {
     fileName: string;
     fileSize: number;
 }
+

@@ -52,13 +52,13 @@ const ConnectionConfig: React.FC = () => {
       setLoading(true);
       setError('');
       
-      if (!state.user?.users_name) {
+      if (!state.user?.username) {
         setError('用户未登录');
         return;
       }
 
       const result = await apiService.post('/@token/user/none', {
-        token_user: state.user.users_name
+        token_user: state.user.username
       });
       
       if (result.flag) {
@@ -187,7 +187,7 @@ const ConnectionConfig: React.FC = () => {
       return;
     }
 
-    if (!state.user?.users_name) {
+    if (!state.user?.username) {
       showSnackbar('用户未登录', 'error');
       return;
     }

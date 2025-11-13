@@ -58,12 +58,14 @@ const AccountSettings: React.FC = () => {
       setLoading(true);
       setError('');
       
-      if (!state.user?.users_name) {
+      if (!state.user?.username) {
         setError('用户未登录');
         return;
       }
 
-      const result = await apiService.post(`/@users/select/name/${state.user.users_name}`, {});
+
+
+      const result = await apiService.post(`/@users/select/name/${state.user.username}`, {});
       
       if (result.flag && result.data && result.data.length > 0) {
         const userData = result.data[0];
@@ -114,7 +116,7 @@ const AccountSettings: React.FC = () => {
       setSaving(true);
       setError('');
       
-      if (!state.user?.users_name) {
+      if (!state.user?.username) {
         setError('用户未登录');
         return;
       }
@@ -144,7 +146,7 @@ const AccountSettings: React.FC = () => {
       setSaving(true);
       setError('');
       
-      if (!state.user?.users_name) {
+      if (!state.user?.username) {
         setError('用户未登录');
         return;
       }
