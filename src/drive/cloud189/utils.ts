@@ -248,12 +248,12 @@ export class HostClouds extends BasicClouds {
     signatureHeader(
         url: string, method: string, params: string, isFamily: boolean = false): Record<string, string> {
         // 如果存在cookie，则使用cookie认证
-        if (this.cookie) {
-            return {
-                "Cookie": this.cookie,
-                "Content-Type": "application/json"
-            };
-        }
+        // if (this.cookie) {
+        //     return {
+        //         "Cookie": this.cookie,
+        //         "Content-Type": "application/json"
+        //     };
+        // }
         
         // 使用与Go版本完全一致的时间格式
         const dateOfGmt = this.getHttpDateStr();
@@ -306,7 +306,7 @@ export class HostClouds extends BasicClouds {
         console.log("IsFamily:", isFamily);
         
         // 使用HMAC-SHA1签名，使用完整的sessionSecret（与Go版本保持一致）
-        const signature = crypto.createHmac("sha1", sessionSecret)
+        const signature = crypto.createHmac("sha1", Buffer.from(sessionSecret, 'ascii'))
             .update(signData)
             .digest("hex")
             .toUpperCase();
