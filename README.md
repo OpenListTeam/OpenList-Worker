@@ -1,4 +1,3 @@
-```txt
 # OpenList - 云存储聚合管理系统
 
 OpenList 是一个基于 Cloudflare Workers 的现代化云存储聚合管理系统，支持多种云存储服务的统一管理、文件分享、加密存储等功能。
