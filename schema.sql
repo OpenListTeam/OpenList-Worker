@@ -12,8 +12,8 @@ CREATE TABLE mount -- 挂载路径
     proxy_mode INTEGER DEFAULT 0,                -- 代理模式
     proxy_data TEXT,                             -- 代理数据
     drive_logs TEXT,                             -- 驱动日志
-    drive_tips TEXT,                             -- 提示信息
-)
+    drive_tips TEXT                              -- 提示信息
+);
 
 CREATE TABLE users -- 用户信息
 (
@@ -27,9 +27,8 @@ CREATE TABLE users -- 用户信息
     total_size INTEGER,                          -- 分片大小
     total_used INTEGER,                          -- 使用大小
     oauth_data TEXT,                             -- 认证数据
-    mount_data TEXT                              -- 连接数据
-
-)
+    mount_data TEXT                               -- 连接数据
+);
 
 CREATE TABLE oauth -- 授权认证系统配置
 (
@@ -38,7 +37,7 @@ CREATE TABLE oauth -- 授权认证系统配置
     oauth_type TEXT                    NOT NULL, -- 授权类型
     oauth_data TEXT                    NOT NULL, -- 授权数据
     is_enabled INTEGER                 NOT NULL  -- 是否启用
-)
+);
 
 CREATE TABLE binds -- 授权认证用户绑定
 (
@@ -46,8 +45,8 @@ CREATE TABLE binds -- 授权认证用户绑定
     oauth_name TEXT    NOT NULL, -- 授权名称
     binds_user TEXT    NOT NULL, -- 授权名称
     binds_data TEXT    NOT NULL, -- 授权数据
-    is_enabled INTEGER NOT NULL  -- 是否启用
-)
+    is_enabled INTEGER NOT NULL   -- 是否启用
+);
 
 CREATE TABLE crypt -- 加密配置
 (
@@ -62,7 +61,7 @@ CREATE TABLE crypt -- 加密配置
     rands_pass INTEGER,                          -- 随机密码
     oauth_data TEXT,                             -- 认证数据
     write_name TEXT                              -- 后缀名称
-)
+);
 
 CREATE TABLE mates -- 元组配置
 (
@@ -78,7 +77,7 @@ CREATE TABLE mates -- 元组配置
     set_parted TEXT,                             -- 分片配置
     crypt_name TEXT,                             -- 加密配置
     cache_time INTEGER                           -- 缓存时间
-)
+);
 
 CREATE TABLE share -- 分享配置
 (
@@ -90,7 +89,7 @@ CREATE TABLE share -- 分享配置
     share_date INTEGER                 NOT NULL, -- 分享日期
     share_ends INTEGER                 NOT NULL, -- 有效期限
     is_enabled INTEGER                 NOT NULL  -- 是否启用
-)
+);
 
 CREATE TABLE token -- 连接配置
 (
@@ -102,7 +101,7 @@ CREATE TABLE token -- 连接配置
     token_info TEXT    NOT NULL, -- 登录信息
     is_enabled INTEGER NOT NULL  -- 是否启用
     -- 拓展信息 ===============================================
-)
+);
 
 CREATE TABLE tasks -- 任务配置
 (
@@ -113,7 +112,7 @@ CREATE TABLE tasks -- 任务配置
     tasks_info TEXT    NOT NULL, -- 任务信息
     tasks_flag INTEGER NOT NULL  -- 任务状态
     -- 拓展信息 ===============================================
-)
+);
 
 CREATE TABLE fetch -- 离线下载
 (
@@ -124,15 +123,15 @@ CREATE TABLE fetch -- 离线下载
     fetch_user TEXT    NOT NULL, -- 所属用户
     fetch_flag INTEGER NOT NULL  -- 任务状态
     -- 拓展信息 ===============================================
-)
+);
 
-CREATE TABLE group -- 用户分组
+CREATE TABLE `group` -- 用户分组 【用反引号转义保留关键字】
 (
     -- 核心信息 ===============================================
     group_name TEXT PRIMARY KEY UNIQUE NOT NULL, -- 分组名称
     group_mask TEXT                    NOT NULL, -- 分组掩码
     is_enabled INTEGER                 NOT NULL  -- 是否启用
-)
+);
 
 CREATE TABLE cache -- 缓存信息
 (
@@ -141,7 +140,7 @@ CREATE TABLE cache -- 缓存信息
     cache_info INTEGER,                          -- 缓存信息
     cache_time INTEGER                           -- 过期时间
     -- 拓展信息 ===============================================
-)
+);
 
 CREATE TABLE admin -- 全局设置
 (
