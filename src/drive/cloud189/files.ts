@@ -546,38 +546,28 @@ export class HostDriver extends BasicDriver {
                 };
             } else {
                 // 使用签名认证
-                let encryptedParams = "";
-                if (params && Object.keys(params).length > 0) {
+                let encryptedParams: string = "";
+                // POST 的x-www-form-urlencoded类型body将转为加密param放入search
+                if (method === 'POST' && params && Object.keys(params).length > 0) {
                     encryptedParams = this.clouds.encryptParams(params);
                 }
                 const signHeaders = this.clouds.signatureHeader(url, method, encryptedParams);
                 headers = {
                     ...signHeaders,
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Apple macOS 15_5) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/138.0.0.0",
                     "Content-Type": isForm ? "application/x-www-form-urlencoded" : "application/json"
                 };
-                if (method === 'GET') {
-                    // GET请求 - 将加密参数放在查询参数中
-                    searchOptions = {
-                        finder: "json",
-                        search: {
-                            ...this.clouds.clientSuffix(),
-                            params: encryptedParams
-                        }
-                    };
-                } else {
-                    // POST请求 - 将加密参数放在请求体中
-                    if (encryptedParams) {
-                        requestData = { params: encryptedParams };
+                searchOptions = {
+                    finder: "xml",
+                    search: {
+                        ...this.clouds.clientSuffix(),
+                        ...(method == "GET" ? params : { params: encryptedParams})
                     }
-                    searchOptions = {
-                        finder: "json",
-                        search: this.clouds.clientSuffix()
-                    };
-                }
+                };
             }
 
             const response = await HttpRequest(method, requestUrl, requestData, headers, searchOptions);
-            
+            console.log(response)
             // 检查响应中是否包含session相关错误（原始响应文本检查）
             if (typeof response === 'string') {
                 if (response.includes('userSessionBO is null')) {
