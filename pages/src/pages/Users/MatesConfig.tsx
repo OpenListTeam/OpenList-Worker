@@ -250,7 +250,6 @@ const MatesConfig: React.FC = () => {
   return (
     <Box sx={{ p: 3 }}>
       <Box 
-        className="MuiBox-root css-1cacf56" 
         sx={{ 
           display: 'flex', 
           alignItems: 'center', 
@@ -258,9 +257,14 @@ const MatesConfig: React.FC = () => {
           mb: 3 
         }}
       >
-        <Typography variant="h4" component="h2">
-          目录配置
-        </Typography>
+        <Box>
+          <Typography variant="h4" component="h2">
+            目录配置
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            配置目录权限、加密和缓存策略，优化文件访问体验
+          </Typography>
+        </Box>
       </Box>
       <ResponsiveDataTable
         title="路径配置管理"

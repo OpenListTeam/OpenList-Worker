@@ -230,13 +230,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     // Token无效，清除本地存储
                     localStorage.removeItem('user');
                     localStorage.removeItem('token');
-                    localStorage.removeItem('auth_token');
                 } catch (error) {
                     console.error('Token验证失败:', error);
                     // 验证失败，清除本地存储
                     localStorage.removeItem('user');
                     localStorage.removeItem('token');
-                    localStorage.removeItem('auth_token');
                 }
             }
         };

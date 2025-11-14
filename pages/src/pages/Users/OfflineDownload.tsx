@@ -263,8 +263,22 @@ const OfflineDownload: React.FC = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4">离线下载</Typography>
+      <Box 
+        sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between', 
+          mb: 3 
+        }}
+      >
+        <Box>
+          <Typography variant="h4" component="h2">
+            离线下载
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            创建和管理离线下载任务，支持多种下载协议
+          </Typography>
+        </Box>
         <Box sx={{ display: 'flex', gap: 2 }}>
           <ButtonGroup variant="outlined" size="small">
             <Button

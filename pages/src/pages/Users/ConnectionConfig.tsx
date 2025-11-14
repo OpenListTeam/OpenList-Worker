@@ -240,10 +240,22 @@ const ConnectionConfig: React.FC = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h4" component="h2">
-          连接配置
-        </Typography>
+      <Box 
+        sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between', 
+          mb: 3 
+        }}
+      >
+        <Box>
+          <Typography variant="h4" component="h2">
+            连接配置
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            配置和管理外部存储连接，支持WebDAV、FTP等协议
+          </Typography>
+        </Box>
         <Button
           variant="contained"
           startIcon={<Add />}

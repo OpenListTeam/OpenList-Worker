@@ -182,8 +182,11 @@ const AuthPage: React.FC = () => {
                 localStorage.setItem('user', JSON.stringify(user));
                 
                 login(user);
-                showNotification('登录成功！', 'success');
-                navigate('/@pages/');
+                showNotification('success', '登录成功！');
+                
+                // 如果有之前想要访问的页面，则跳转回去，否则跳转到首页
+                const from = (location.state as any)?.from?.pathname || '/@pages/';
+                navigate(from, { replace: true });
             } else {
                 setError(response.text || '登录失败');
             }
@@ -340,7 +343,7 @@ const AuthPage: React.FC = () => {
             const response: UsersResult = await userApi.register(registerData);
             
             if (response.flag) {
-                showNotification('注册成功！请登录', 'success');
+                showNotification('success', '注册成功！请登录');
                 setTabValue(0); // 切换到登录标签
                 
                 // 清空注册表单

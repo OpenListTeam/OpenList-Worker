@@ -17,17 +17,17 @@ export const useUsers = () => {
 
   // 获取认证token
   const getAuthToken = () => {
-    return localStorage.getItem('auth_token');
+    return localStorage.getItem('token');
   };
 
   // 设置认证token
   const setAuthToken = (token: string) => {
-    localStorage.setItem('auth_token', token);
+    localStorage.setItem('token', token);
   };
 
   // 清除认证token
   const clearAuthToken = () => {
-    localStorage.removeItem('auth_token');
+    localStorage.removeItem('token');
   };
 
   // 获取认证头

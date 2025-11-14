@@ -364,7 +364,7 @@ export const userApi = {
 // 系统管理相关API
 export const systemApi = {
     // 获取系统信息
-    getSystemInfo: () => apiService.get('/system/info'),
+    getSystemInfo: () => apiService.get('/@system/info/none'),
 
     // 获取系统设置
     getSettings: () => apiService.get('/system/settings'),

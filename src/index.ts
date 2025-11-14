@@ -22,6 +22,8 @@ import {TasksManage} from "./tasks/TasksManage";
 import {TasksResult, TasksConfig} from "./tasks/TasksObject";
 import {TokenManage} from "./token/TokenManage";
 import {TokenResult, TokenConfig} from "./token/TokenObject";
+import {SystemManage} from "./system/SystemManage";
+import {SystemResult, SystemConfig} from "./system/SystemObject";
 
 
 // 绑定数据 ###############################################################################
@@ -1104,6 +1106,32 @@ app.use('/@types/:action/:method/*', async (c: Context): Promise<any> => {
     //     }
     // }
     return c.json({flag: false, text: 'Invalid Action'}, 400)
+})
+
+// 系统信息 ##############################################################################
+app.use('/@system/:action/:method', async (c: Context): Promise<any> => {
+    const action: string = c.req.param('action');
+    const method: string = c.req.param('method');
+
+    // 权限检查 - 系统信息需要登录 ===============================================
+    const authResult = await UsersManage.checkAuth(c);
+    if (!authResult.flag) {
+        return c.json(authResult, 401);
+    }
+
+    // 创建对象 ==========================================================================
+    const system: SystemManage = new SystemManage(c);
+
+    // 执行操作 ==========================================================================
+    switch (action) {
+        case "info": { // 获取系统信息 ===================================
+            const result: SystemResult = await system.getSystemInfo();
+            return c.json(result, result.flag ? 200 : 400);
+        }
+        default: { // 默认应输出错误 ===================================
+            return c.json({flag: false, text: 'Invalid Action'}, 400);
+        }
+    }
 })
 
 // 文件管理 ##############################################################################

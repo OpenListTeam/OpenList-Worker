@@ -250,10 +250,22 @@ const MyShares: React.FC = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }} className="MuiBox-root css-1cacf56">
-        <Typography variant="h4">
-          我的分享
-        </Typography>
+      <Box 
+        sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between', 
+          mb: 3 
+        }}
+      >
+        <Box>
+          <Typography variant="h4" component="h2">
+            我的分享
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            管理和分享您的文件，设置分享权限和有效期
+          </Typography>
+        </Box>
       </Box>
       <ResponsiveDataTable
         title="我的分享"

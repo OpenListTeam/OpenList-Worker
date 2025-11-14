@@ -66,10 +66,7 @@ const OAuthCallback: React.FC = () => {
                     const response = await oauthService.bindAccount(code, state, bindProvider);
                     
                     if (response.flag) {
-                        showNotification({
-                            type: 'success',
-                            message: 'OAuth账户绑定成功！'
-                        });
+                        showNotification('success', 'OAuth账户绑定成功！');
                         
                         // 跳转回个人设置页面
                         setTimeout(() => {
@@ -90,10 +87,7 @@ const OAuthCallback: React.FC = () => {
                         // 登录用户
                         login(response.data);
                         
-                        showNotification({
-                            type: 'success',
-                            message: 'OAuth登录成功！'
-                        });
+                        showNotification('success', 'OAuth登录成功！');
                         
                         // 跳转到仪表板
                         setTimeout(() => {

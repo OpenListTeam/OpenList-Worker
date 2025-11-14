@@ -293,10 +293,22 @@ const TaskConfig: React.FC = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h2">
-          任务管理
-        </Typography>
+      <Box 
+        sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between', 
+          mb: 3 
+        }}
+      >
+        <Box>
+          <Typography variant="h4" component="h2">
+            任务管理
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            管理和监控系统中的各类任务执行状态
+          </Typography>
+        </Box>
         <ButtonGroup variant="contained" size="small">
           <Button
             startIcon={<PlayArrow />}

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Card,
@@ -10,6 +10,8 @@ import {
   ListItemText,
   ListItemIcon,
   Divider,
+  CircularProgress,
+  Alert,
 } from '@mui/material';
 import {
   Info,
@@ -20,17 +22,45 @@ import {
   Speed,
   Security,
 } from '@mui/icons-material';
+import { systemApi } from '../../posts/api';
+
+interface SystemInfo {
+  version?: string;
+  build?: string;
+  nodeVersion?: string;
+  platform?: string;
+  uptime?: string;
+  memory?: string;
+  cpuUsage?: string;
+}
 
 const AboutPlatform: React.FC = () => {
-  const systemInfo = {
-    version: '1.0.0',
-    build: '2025.09.24',
-    nodeVersion: 'v18.17.0',
-    platform: 'Linux x64',
-    uptime: '3天 12小时 45分钟',
-    memory: '512MB / 2GB',
-    storage: '15.2GB / 100GB',
-  };
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // 获取系统信息
+  useEffect(() => {
+    const fetchSystemInfo = async () => {
+      try {
+        setLoading(true);
+        const response = await systemApi.getSystemInfo();
+        
+        if (response.flag && response.data) {
+          setSystemInfo(response.data);
+        } else {
+          setError(response.text || '获取系统信息失败');
+        }
+      } catch (err: any) {
+        console.error('获取系统信息失败:', err);
+        setError(err.message || '获取系统信息失败');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSystemInfo();
+  }, []);
 
   const features = [
     '多驱动器支持 (OneDrive, Google Drive, 百度网盘等)',
@@ -65,29 +95,41 @@ const AboutPlatform: React.FC = () => {
               </Box>
               <Divider sx={{ mb: 2 }} />
               
-              <List dense>
-                <ListItem>
-                  <ListItemText primary="版本号" secondary={systemInfo.version} />
-                </ListItem>
-                <ListItem>
-                  <ListItemText primary="构建时间" secondary={systemInfo.build} />
-                </ListItem>
-                <ListItem>
-                  <ListItemText primary="Node.js版本" secondary={systemInfo.nodeVersion} />
-                </ListItem>
-                <ListItem>
-                  <ListItemText primary="运行平台" secondary={systemInfo.platform} />
-                </ListItem>
-                <ListItem>
-                  <ListItemText primary="运行时间" secondary={systemInfo.uptime} />
-                </ListItem>
-                <ListItem>
-                  <ListItemText primary="内存使用" secondary={systemInfo.memory} />
-                </ListItem>
-                <ListItem>
-                  <ListItemText primary="存储使用" secondary={systemInfo.storage} />
-                </ListItem>
-              </List>
+              {loading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress />
+                </Box>
+              ) : error ? (
+                <Alert severity="error">{error}</Alert>
+              ) : systemInfo ? (
+                <List dense>
+                  <ListItem>
+                    <ListItemText primary="版本号" secondary={systemInfo.version || '未知'} />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText primary="构建时间" secondary={systemInfo.build || '未知'} />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText primary="Node.js版本" secondary={systemInfo.nodeVersion || '未知'} />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText primary="运行平台" secondary={systemInfo.platform || '未知'} />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText primary="运行时间" secondary={systemInfo.uptime || '未知'} />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText primary="内存使用" secondary={systemInfo.memory || '未知'} />
+                  </ListItem>
+                  {systemInfo.cpuUsage && (
+                    <ListItem>
+                      <ListItemText primary="CPU信息" secondary={systemInfo.cpuUsage} />
+                    </ListItem>
+                  )}
+                </List>
+              ) : (
+                <Alert severity="info">暂无系统信息</Alert>
+              )}
             </CardContent>
           </Card>
         </Grid>

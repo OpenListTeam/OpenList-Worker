@@ -89,6 +89,12 @@ export class UsersManage {
      */
     async config(user: UsersConfig): Promise<UsersResult> {
         const db = new SavesManage(this.c);
+        
+        // 如果提供了密码，且密码不是bcrypt哈希值，则进行加密
+        if (user.users_pass && !user.users_pass.startsWith('$2a$') && !user.users_pass.startsWith('$2b$') && !user.users_pass.startsWith('$2y$')) {
+            user.users_pass = await bcrypt.hash(user.users_pass, 10);
+        }
+        
         const result: DBResult = await db.save({
             main: "users",
             keys: {"users_name": user.users_name},

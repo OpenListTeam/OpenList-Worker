@@ -443,9 +443,18 @@ const FilePreview: React.FC = () => {
                   {fileInfo.name}
                 </Typography>
                 <Box display="flex" gap={1}>
-                  <IconButton color="primary" size="small" title="下载" onClick={handleFileDownload}>
-                    <Download />
-                  </IconButton>
+                  <Tooltip title={fileInfo.is_dir ? "文件夹不支持下载" : "下载"}>
+                    <span>
+                      <IconButton 
+                        color="primary" 
+                        size="small" 
+                        onClick={handleFileDownload}
+                        disabled={fileInfo.is_dir}
+                      >
+                        <Download />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
                   <IconButton color="primary" size="small" title="分享">
                     <Share />
                   </IconButton>
