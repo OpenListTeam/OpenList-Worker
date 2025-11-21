@@ -183,14 +183,6 @@ export const config_list: Record<string, any> = {
         ]
     },
     alicloud: {
-        name: "百度网盘",
-        description: "百度网盘存储服务",
-        fields: [
-            { key: "refresh_token", label: "刷新令牌", type: "textarea", required: true, placeholder: "请输入百度网盘刷新令牌" },
-            { key: "root_folder_path", label: "根目录路径", type: "text", required: false, placeholder: "默认为根目录 /", defaultValue: "/" }
-        ]
-    },
-    alicloud: {
         name: "阿里云盘",
         description: "阿里云盘开放平台存储服务",
         fields: [
