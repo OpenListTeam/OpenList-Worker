@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "openlist-back-work",
+  "name": "openlist-work",
   "main": "src/index.ts",
   "compatibility_date": "2025-08-16",
   "compatibility_flags": [
@@ -18,6 +18,11 @@
     =================================================== */
 
 
+  },
+  // 静态资源配置 =====================================
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
   }
   // 临时注释掉KV和D1配置以便开发服务器能正常启动
   /*

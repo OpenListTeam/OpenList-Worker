@@ -192,7 +192,7 @@ export class HostDriver extends BasicDriver {
         }
     }
 
-    /** =======================复制文件或文件夹====================
+/** =======================复制文件或文件夹====================
      * 将指定的文件或文件夹复制到目标目录。
      * 支持通过路径或 UUID 定位源文件和目标目录。
      * @param   file - 源文件查找参数，可包含路径或 UUID
@@ -217,7 +217,13 @@ export class HostDriver extends BasicDriver {
                 return {taskType: fso.FSAction.COPYTO, taskFlag: fso.FSStatus.FILESYSTEM_ERR};
             }
 
-            // 目前仅personal_new和personal支持复制
+            // 检查是否支持复制操作
+            if (this.config.type === con.META_FAMILY || this.config.type === con.META_GROUP) {
+                console.warn(`复制操作不支持 ${this.config.type} 类型的云盘`);
+                return {taskType: fso.FSAction.COPYTO, taskFlag: fso.FSStatus.FILESYSTEM_ERR};
+            }
+
+            // 根据云盘类型调用不同的复制API
             if (this.config.type === con.META_PERSONAL_NEW) {
                 const data = {
                     fileIds: [file.uuid],
@@ -225,13 +231,25 @@ export class HostDriver extends BasicDriver {
                 };
                 await this.personalRequest("/file/batchCopy", data);
             } else if (this.config.type === con.META_PERSONAL) {
+                const fileInfo = await this.getFileInfo(file.uuid);
+                const isDir = fileInfo?.fileType === fso.FileType.F_DIR;
+                
+                let contentInfoList: string[] = [];
+                let catalogInfoList: string[] = [];
+                
+                if (isDir) {
+                    catalogInfoList = [file.uuid];
+                } else {
+                    contentInfoList = [file.uuid];
+                }
+                
                 const data = {
                     createBatchOprTaskReq: {
                         taskType: 3,
                         actionType: 309,
                         taskInfo: {
-                            contentInfoList: [file.uuid],
-                            catalogInfoList: [],
+                            contentInfoList: contentInfoList,
+                            catalogInfoList: catalogInfoList,
                             newCatalogID: dest.uuid
                         },
                         commonAccountInfo: {
@@ -242,6 +260,7 @@ export class HostDriver extends BasicDriver {
                 };
                 await this.clouds.request(con.API_BASE_URL + "/orchestration/personalCloud/batchOprTask/v1.0/createBatchOprTask", "POST", data);
             } else {
+                console.warn(`复制操作不支持 ${this.config.type} 类型的云盘`);
                 return {taskType: fso.FSAction.COPYTO, taskFlag: fso.FSStatus.FILESYSTEM_ERR};
             }
 
@@ -252,7 +271,7 @@ export class HostDriver extends BasicDriver {
         }
     }
 
-    /** =======================移动文件或文件夹====================
+/** =======================移动文件或文件夹====================
      * 将指定的文件或文件夹移动到目标目录。
      * 实现方式是先复制到目标位置，然后删除原文件。
      * @param   file - 源文件查找参数，可包含路径或 UUID
@@ -277,6 +296,14 @@ export class HostDriver extends BasicDriver {
                 return {taskType: fso.FSAction.MOVETO, taskFlag: fso.FSStatus.FILESYSTEM_ERR};
             }
 
+            // 确保路径信息完整（某些API需要）
+            if (!file.path) {
+                file.path = await this.getParentPath(file.uuid) + "/" + file.uuid;
+            }
+            if (!dest.path) {
+                dest.path = await this.getParentPath(dest.uuid);
+            }
+
             // 根据云盘类型调用不同的移动API
             if (this.config.type === con.META_PERSONAL_NEW) {
                 const data = {
@@ -284,14 +311,54 @@ export class HostDriver extends BasicDriver {
                     toParentFileId: dest.uuid
                 };
                 await this.personalRequest("/file/batchMove", data);
+            } else if (this.config.type === con.META_GROUP) {
+                const fileInfo = await this.getFileInfo(file.uuid);
+                const isDir = fileInfo?.fileType === fso.FileType.F_DIR;
+                
+                let contentList: string[] = [];
+                let catalogList: string[] = [];
+                
+                if (isDir) {
+                    catalogList = [file.uuid];
+                } else {
+                    contentList = [file.uuid];
+                }
+                
+                const data = {
+                    taskType: 3,
+                    srcType: 2,
+                    srcGroupID: this.config.cloud_id,
+                    destType: 2,
+                    destGroupID: this.config.cloud_id,
+                    destPath: dest.path,
+                    contentList: contentList,
+                    catalogList: catalogList,
+                    commonAccountInfo: {
+                        account: this.clouds.account,
+                        accountType: 1
+                    }
+                };
+                await this.clouds.request(con.API_BASE_URL + "/orchestration/group-rebuild/task/v1.0/createBatchOprTask", "POST", data);
             } else if (this.config.type === con.META_PERSONAL) {
+                const fileInfo = await this.getFileInfo(file.uuid);
+                const isDir = fileInfo?.fileType === fso.FileType.F_DIR;
+                
+                let contentInfoList: string[] = [];
+                let catalogInfoList: string[] = [];
+                
+                if (isDir) {
+                    catalogInfoList = [file.uuid];
+                } else {
+                    contentInfoList = [file.uuid];
+                }
+                
                 const data = {
                     createBatchOprTaskReq: {
                         taskType: 3,
                         actionType: "304",
                         taskInfo: {
-                            contentInfoList: [file.uuid],
-                            catalogInfoList: [],
+                            contentInfoList: contentInfoList,
+                            catalogInfoList: catalogInfoList,
                             newCatalogID: dest.uuid
                         },
                         commonAccountInfo: {
@@ -312,7 +379,7 @@ export class HostDriver extends BasicDriver {
         }
     }
 
-    /** =======================删除文件或文件夹====================
+/** =======================删除文件或文件夹====================
      * 永久删除指定的文件或文件夹。
      * 支持通过路径或 UUID 定位要删除的文件。
      * @param   file - 文件查找参数，可包含路径或 UUID
@@ -334,23 +401,86 @@ export class HostDriver extends BasicDriver {
             if (this.config.type === con.META_PERSONAL_NEW) {
                 const data = {fileIds: [file.uuid]};
                 await this.personalRequest("/recyclebin/batchTrash", data);
-            } else if (this.config.type === con.META_PERSONAL || this.config.type === con.META_FAMILY) {
+            } else if (this.config.type === con.META_GROUP) {
+                // MetaGroup 需要特殊处理，必须使用完整路径删除
+                const fileInfo = await this.getFileInfo(file.uuid);
+                const isDir = fileInfo?.fileType === fso.FileType.F_DIR;
+                
+                let contentList: string[] = [];
+                let catalogList: string[] = [];
+                
+                if (isDir) {
+                    // 文件夹使用路径
+                    catalogList = [file.path || file.uuid];
+                } else {
+                    // 文件使用完整路径：路径/UUID
+                    const fullPath = (file.path || "") + "/" + file.uuid;
+                    contentList = [fullPath];
+                }
+                
                 const data = {
-                    createBatchOprTaskReq: {
-                        taskType: 2,
-                        actionType: 201,
-                        taskInfo: {
-                            newCatalogID: "",
-                            contentInfoList: [file.uuid],
-                            catalogInfoList: []
-                        },
+                    taskType: 2,
+                    srcGroupID: this.config.cloud_id,
+                    contentList: contentList,
+                    catalogList: catalogList,
+                    commonAccountInfo: {
+                        account: this.clouds.account,
+                        accountType: 1
+                    }
+                };
+                await this.clouds.request(con.API_BASE_URL + "/orchestration/group-rebuild/task/v1.0/createBatchOprTask", "POST", data);
+            } else if (this.config.type === con.META_PERSONAL || this.config.type === con.META_FAMILY) {
+                const fileInfo = await this.getFileInfo(file.uuid);
+                const isDir = fileInfo?.fileType === fso.FileType.F_DIR;
+                
+                let contentInfoList: string[] = [];
+                let catalogInfoList: string[] = [];
+                
+                if (isDir) {
+                    catalogInfoList = [file.uuid];
+                } else {
+                    contentInfoList = [file.uuid];
+                }
+                
+                let data: any;
+                let pathname: string;
+                
+                if (this.config.type === con.META_FAMILY) {
+                    // 家庭云使用不同的API
+                    data = {
+                        catalogList: catalogInfoList,
+                        contentList: contentInfoList,
                         commonAccountInfo: {
                             account: this.clouds.account,
                             accountType: 1
+                        },
+                        sourceCloudID: this.config.cloud_id,
+                        sourceCatalogType: 1002,
+                        taskType: 2,
+                        path: file.path || ""
+                    };
+                    pathname = "/orchestration/familyCloud-rebuild/batchOprTask/v1.0/createBatchOprTask";
+                } else {
+                    // 个人云
+                    data = {
+                        createBatchOprTaskReq: {
+                            taskType: 2,
+                            actionType: 201,
+                            taskInfo: {
+                                newCatalogID: "",
+                                contentInfoList: contentInfoList,
+                                catalogInfoList: catalogInfoList
+                            },
+                            commonAccountInfo: {
+                                account: this.clouds.account,
+                                accountType: 1
+                            }
                         }
-                    }
-                };
-                await this.clouds.request(con.API_BASE_URL + "/orchestration/personalCloud/batchOprTask/v1.0/createBatchOprTask", "POST", data);
+                    };
+                    pathname = "/orchestration/personalCloud/batchOprTask/v1.0/createBatchOprTask";
+                }
+                
+                await this.clouds.request(con.API_BASE_URL + pathname, "POST", data);
             } else {
                 return {taskType: fso.FSAction.DELETE, taskFlag: fso.FSStatus.FILESYSTEM_ERR};
             }
@@ -359,6 +489,135 @@ export class HostDriver extends BasicDriver {
         } catch (error: any) {
             console.error("删除文件失败:", error);
             return {taskType: fso.FSAction.DELETE, taskFlag: fso.FSStatus.FILESYSTEM_ERR};
+        }
+    }
+
+    /** =======================重命名文件或文件夹====================
+     * 重命名指定的文件或文件夹。
+     * 支持通过路径或 UUID 定位要重命名的文件。
+     * @param   file - 文件查找参数，可包含路径或 UUID
+     * @param   newName - 新的文件名
+     * @returns Promise<fso.FileTask> 文件任务状态
+     * ===========================================================*/
+    async renameFile(file?: fso.FileFind, newName?: string): Promise<fso.FileTask> {
+        try {
+            if (file?.path && !file?.uuid) {
+                const uuid = await this.findUUID(file.path);
+                if (uuid) {
+                    file.uuid = uuid;
+                }
+            }
+            if (!file?.uuid || !newName) {
+                return {taskType: fso.FSAction.RENAME, taskFlag: fso.FSStatus.FILESYSTEM_ERR};
+            }
+
+            // 如果没有路径信息，需要先获取路径（某些API需要）
+            if (!file.path) {
+                const parentPath = await this.getParentPath(file.uuid);
+                file.path = parentPath + "/" + file.uuid;
+            }
+
+            // 根据云盘类型调用不同的重命名API
+            if (this.config.type === con.META_PERSONAL_NEW) {
+                const data = {
+                    fileId: file.uuid,
+                    name: newName,
+                    description: ""
+                };
+                await this.personalRequest("/file/update", data);
+            } else if (this.config.type === con.META_PERSONAL) {
+                let data: any;
+                let pathname: string;
+                
+                // 需要判断是文件还是文件夹，这里假设通过获取文件信息来判断
+                const fileInfo = await this.getFileInfo(file.uuid);
+                const isDir = fileInfo?.fileType === fso.FileType.F_DIR;
+                
+                if (isDir) {
+                    data = {
+                        catalogID: file.uuid,
+                        catalogName: newName,
+                        commonAccountInfo: {
+                            account: this.clouds.account,
+                            accountType: 1
+                        }
+                    };
+                    pathname = "/orchestration/personalCloud/catalog/v1.0/updateCatalogInfo";
+                } else {
+                    data = {
+                        contentID: file.uuid,
+                        contentName: newName,
+                        commonAccountInfo: {
+                            account: this.clouds.account,
+                            accountType: 1
+                        }
+                    };
+                    pathname = "/orchestration/personalCloud/content/v1.0/updateContentInfo";
+                }
+                await this.clouds.request(con.API_BASE_URL + pathname, "POST", data);
+            } else if (this.config.type === con.META_GROUP) {
+                let data: any;
+                let pathname: string;
+                
+                const fileInfo = await this.getFileInfo(file.uuid);
+                const isDir = fileInfo?.fileType === fso.FileType.F_DIR;
+                
+                if (isDir) {
+                    data = {
+                        groupID: this.config.cloud_id,
+                        modifyCatalogID: file.uuid,
+                        modifyCatalogName: newName,
+                        path: file.path,
+                        commonAccountInfo: {
+                            account: this.clouds.account,
+                            accountType: 1
+                        }
+                    };
+                    pathname = "/orchestration/group-rebuild/catalog/v1.0/modifyGroupCatalog";
+                } else {
+                    data = {
+                        groupID: this.config.cloud_id,
+                        contentID: file.uuid,
+                        contentName: newName,
+                        path: file.path,
+                        commonAccountInfo: {
+                            account: this.clouds.account,
+                            accountType: 1
+                        }
+                    };
+                    pathname = "/orchestration/group-rebuild/content/v1.0/modifyGroupContent";
+                }
+                await this.clouds.request(con.API_BASE_URL + pathname, "POST", data);
+            } else if (this.config.type === con.META_FAMILY) {
+                const fileInfo = await this.getFileInfo(file.uuid);
+                const isDir = fileInfo?.fileType === fso.FileType.F_DIR;
+                
+                // 家庭云不支持重命名文件夹
+                if (isDir) {
+                    return {taskType: fso.FSAction.RENAME, taskFlag: fso.FSStatus.FILESYSTEM_ERR};
+                }
+                
+                const data = {
+                    contentID: file.uuid,
+                    contentName: newName,
+                    commonAccountInfo: {
+                        account: this.clouds.account,
+                        accountType: 1
+                    },
+                    path: file.path,
+                    catalogType: 3,
+                    cloudID: this.config.cloud_id,
+                    cloudType: 1
+                };
+                await this.clouds.request(con.API_BASE_URL + "/orchestration/familyCloud-rebuild/photoContent/v1.0/modifyContentInfo", "POST", data);
+            } else {
+                return {taskType: fso.FSAction.RENAME, taskFlag: fso.FSStatus.FILESYSTEM_ERR};
+            }
+
+            return {taskType: fso.FSAction.RENAME, taskFlag: fso.FSStatus.PROCESSING_NOW};
+        } catch (error: any) {
+            console.error("重命名文件失败:", error);
+            return {taskType: fso.FSAction.RENAME, taskFlag: fso.FSStatus.FILESYSTEM_ERR};
         }
     }
 
@@ -736,25 +995,171 @@ export class HostDriver extends BasicDriver {
         return result.data?.downloadURL || "";
     }
 
-    /**
+/**
      * 上传文件
      */
     async uploadFile(parentId: string, name: string, data: any): Promise<DriveResult | null> {
         try {
+            const buffer = await data?.arrayBuffer();
+            const size = buffer.byteLength;
+
             if (this.config.type === con.META_PERSONAL_NEW) {
-                // 简化版上传，不支持秒传和分片
-                const buffer = await data?.arrayBuffer();
-                const reqData = {
-                    parentFileId: parentId,
-                    name: name,
-                    type: "file",
-                    size: buffer.byteLength,
-                    fileRenameMode: "auto_rename"
-                };
-                const result = await this.personalRequest("/file/create", reqData);
-                return {flag: true, text: result.data?.fileId || "success"};
+                return await this.uploadPersonalNew(parentId, name, buffer, size);
+            } else if (this.config.type === con.META_PERSONAL || this.config.type === con.META_FAMILY) {
+                return await this.uploadPersonalOrFamily(parentId, name, buffer, size);
             }
+
             return {flag: false, text: "暂不支持此云盘类型的上传"};
+        } catch (error: any) {
+            return {flag: false, text: error.message};
+        }
+    }
+
+    /**
+     * 个人云盘新版上传 - 支持分片上传和快传
+     */
+    private async uploadPersonalNew(parentId: string, name: string, buffer: ArrayBuffer, size: number): Promise<DriveResult | null> {
+        try {
+            // 计算文件完整hash
+            const fullHash = await this.calculateSHA256(buffer);
+            
+            // 计算分片大小
+            const partSize = this.getPartSize(size);
+            const partCount = Math.ceil(size / partSize);
+            
+            // 生成分片信息
+            const partInfos = [];
+            for (let i = 0; i < partCount; i++) {
+                const start = i * partSize;
+                const byteSize = Math.min(size - start, partSize);
+                partInfos.push({
+                    PartNumber: i + 1,
+                    PartSize: byteSize,
+                    ParallelHashCtx: {
+                        PartOffset: start
+                    }
+                });
+            }
+
+            // 取前100个分片信息
+            const firstPartInfos = partInfos.slice(0, 100);
+
+            // 创建上传任务
+            const data = {
+                contentHash: fullHash,
+                contentHashAlgorithm: "SHA256",
+                contentType: "application/octet-stream",
+                parallelUpload: false,
+                partInfos: firstPartInfos,
+                size: size,
+                parentFileId: parentId,
+                name: name,
+                type: "file",
+                fileRenameMode: "auto_rename"
+            };
+
+            const result = await this.personalRequest("/file/create", data);
+
+            // 检查文件是否已存在
+            if (result.data?.exist) {
+                return {flag: true, text: "文件已存在"};
+            }
+
+            // 检查是否支持快传
+            if (result.data?.partInfos && result.data.partInfos.length > 0) {
+                // 分片上传
+                await this.uploadPersonalParts(buffer, partInfos, result.data.partInfos, result.data.fileId, result.data.uploadId);
+                
+                // 完成上传
+                const completeData = {
+                    contentHash: fullHash,
+                    contentHashAlgorithm: "SHA256",
+                    fileId: result.data.fileId,
+                    uploadId: result.data.uploadId
+                };
+                await this.personalRequest("/file/complete", completeData);
+            }
+
+            // 处理冲突
+            if (result.data?.fileName && result.data.fileName !== name) {
+                console.log(`[139] 冲突检测: ${result.data.fileName} != ${name}`);
+                // 给服务器时间处理数据
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // 刷新文件列表并处理冲突
+                await this.handleUploadConflict(parentId, name, result.data.fileName);
+            }
+
+            return {flag: true, text: result.data?.fileId || "success"};
+        } catch (error: any) {
+            return {flag: false, text: error.message};
+        }
+    }
+
+    /**
+     * 个人云盘旧版和家庭云上传
+     */
+    private async uploadPersonalOrFamily(parentId: string, name: string, buffer: ArrayBuffer, size: number): Promise<DriveResult | null> {
+        try {
+            // 处理冲突 - 先删除同名文件
+            await this.handleUploadConflict(parentId, name);
+
+            const reportSize = this.config.report_real_size ? size : 0;
+            
+            let data: any;
+            let pathname: string;
+
+            if (this.config.type === con.META_FAMILY) {
+                data = {
+                    fileCount: 1,
+                    manualRename: 2,
+                    operation: 0,
+                    path: parentId + "/" + parentId,
+                    seqNo: this.randomString(32),
+                    totalSize: reportSize,
+                    uploadContentList: [{
+                        contentName: name,
+                        contentSize: reportSize
+                    }],
+                    catalogType: 3,
+                    cloudID: this.config.cloud_id,
+                    cloudType: 1,
+                    commonAccountInfo: {
+                        account: this.clouds.account,
+                        accountType: 1
+                    }
+                };
+                pathname = "/orchestration/familyCloud-rebuild/content/v1.0/getFileUploadURL";
+            } else {
+                data = {
+                    manualRename: 2,
+                    operation: 0,
+                    fileCount: 1,
+                    totalSize: reportSize,
+                    uploadContentList: [{
+                        contentName: name,
+                        contentSize: reportSize
+                    }],
+                    parentCatalogID: parentId,
+                    newCatalogName: "",
+                    commonAccountInfo: {
+                        account: this.clouds.account,
+                        accountType: 1
+                    }
+                };
+                pathname = "/orchestration/personalCloud/uploadAndDownload/v1.0/pcUploadFileRequest";
+            }
+
+            const result = await this.clouds.request(con.API_BASE_URL + pathname, "POST", data);
+
+            if (result.data?.result?.resultCode !== "0") {
+                return {flag: false, text: `获取上传地址失败: ${result.data?.result?.resultDesc}`};
+            }
+
+            // 分片上传
+            await this.uploadParts(buffer, result.data.uploadResult, size);
+
+            return {flag: true, text: "success"};
         } catch (error: any) {
             return {flag: false, text: error.message};
         }
@@ -798,7 +1203,7 @@ export class HostDriver extends BasicDriver {
         return await response.json();
     }
 
-    /**
+/**
      * 解析时间字符串
      */
     parseTime(timeStr: string): Date {
@@ -814,5 +1219,217 @@ export class HostDriver extends BasicDriver {
             return new Date(year, month, day, hour, minute, second);
         }
         return new Date(timeStr);
+    }
+
+    /**
+     * 获取文件信息
+     */
+    async getFileInfo(fileId: string): Promise<fso.FileInfo | null> {
+        try {
+            // 通过在各个目录中搜索来找到文件信息
+            // 这里实现一个简化版本，通过根目录搜索
+            const rootFiles = await this.listFile({uuid: this.rootFolderId});
+            const findInList = (files: fso.FileInfo[]): fso.FileInfo | null => {
+                for (const file of files) {
+                    if (file.fileUUID === fileId) {
+                        return file;
+                    }
+                }
+                return null;
+            };
+            
+            let fileInfo = findInList(rootFiles.fileList || []);
+            if (fileInfo) return fileInfo;
+
+            // 如果根目录没找到，可能需要在子目录中搜索（这里简化处理）
+            return null;
+        } catch (error) {
+            console.error("获取文件信息失败:", error);
+            return null;
+        }
+    }
+
+/**
+     * 获取父级路径
+     */
+    async getParentPath(fileId: string): Promise<string> {
+        try {
+            // 简化实现：假设根目录路径
+            // 在实际应用中，可能需要通过API获取完整的路径信息
+            return this.rootFolderId;
+        } catch (error) {
+            console.error("获取父级路径失败:", error);
+            return this.rootFolderId;
+        }
+    }
+
+    /**
+     * 计算SHA256哈希值
+     */
+    private async calculateSHA256(buffer: ArrayBuffer): Promise<string> {
+        const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    /**
+     * 计算分片大小
+     */
+    private getPartSize(size: number): number {
+        if (this.config.custom_upload_part_size) {
+            return this.config.custom_upload_part_size;
+        }
+        // 网盘对于分片数量存在上限
+        if (size > 30 * 1024 * 1024 * 1024) { // 30GB
+            return 512 * 1024 * 1024; // 512MB
+        }
+        return 100 * 1024 * 1024; // 100MB
+    }
+
+    /**
+     * 个人云盘新版分片上传
+     */
+    private async uploadPersonalParts(buffer: ArrayBuffer, partInfos: any[], uploadPartInfos: any[], fileId: string, uploadId: string): Promise<void> {
+        // 排序上传分片信息
+        uploadPartInfos.sort((a: any, b: any) => a.partNumber - b.partNumber);
+
+        for (const uploadPartInfo of uploadPartInfos) {
+            const index = uploadPartInfo.partNumber - 1;
+            if (index < 0 || index >= partInfos.length) {
+                throw new Error(`无效的分片号: ${uploadPartInfo.partNumber}`);
+            }
+
+            const partInfo = partInfos[index];
+            const start = partInfo.ParallelHashCtx.PartOffset;
+            const partSize = partInfo.PartSize;
+            const partBuffer = buffer.slice(start, start + partSize);
+
+            console.log(`[139] 上传分片 ${index + 1}/${partInfos.length}`);
+
+            const response = await fetch(uploadPartInfo.uploadUrl, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/octet-stream',
+                    'Content-Length': partSize.toString(),
+                    'Origin': 'https://yun.139.com',
+                    'Referer': 'https://yun.139.com/'
+                },
+                body: partBuffer
+            });
+
+            if (!response.ok) {
+                const body = await response.text();
+                throw new Error(`分片上传失败: ${response.status}, ${body}`);
+            }
+        }
+
+        // 如果还有剩余分片，分批获取上传地址并上传
+        for (let i = 100; i < partInfos.length; i += 100) {
+            const end = Math.min(i + 100, partInfos.length);
+            const batchPartInfos = partInfos.slice(i, end);
+
+            const moreData = {
+                fileId: fileId,
+                uploadId: uploadId,
+                partInfos: batchPartInfos,
+                commonAccountInfo: {
+                    account: this.clouds.account,
+                    accountType: 1
+                }
+            };
+
+            const moreResult = await this.personalRequest("/file/getUploadUrl", moreData);
+            if (moreResult.data?.partInfos) {
+                await this.uploadPersonalParts(buffer, batchPartInfos, moreResult.data.partInfos, fileId, uploadId);
+            }
+        }
+    }
+
+    /**
+     * 处理上传冲突
+     */
+    private async handleUploadConflict(parentId: string, originalName: string, newFileName?: string): Promise<void> {
+        try {
+            const files = await this.listFile({uuid: parentId});
+            if (!files.fileList) return;
+
+            // 删除旧文件
+            for (const file of files.fileList) {
+                if (file.fileName === originalName) {
+                    console.log(`[139] 冲突处理: 删除旧文件 ${file.fileName}`);
+                    const randomSuffix = Math.random().toString(36).substring(2, 6);
+                    await this.renameFile({uuid: file.fileUUID}, originalName + randomSuffix);
+                    await this.killFile({uuid: file.fileUUID});
+                    break;
+                }
+            }
+
+            // 重命名新文件（如果有冲突）
+            if (newFileName && newFileName !== originalName) {
+                for (const file of files.fileList) {
+                    if (file.fileName === newFileName) {
+                        console.log(`[139] 冲突处理: 重命名新文件 ${file.fileName} => ${originalName}`);
+                        await this.renameFile({uuid: file.fileUUID}, originalName);
+                        break;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("处理上传冲突失败:", error);
+        }
+    }
+
+    /**
+     * 旧版分片上传
+     */
+    private async uploadParts(buffer: ArrayBuffer, uploadResult: any, totalSize: number): Promise<void> {
+        const partSize = this.getPartSize(totalSize);
+        const partCount = Math.ceil(totalSize / partSize);
+
+        for (let i = 0; i < partCount; i++) {
+            const start = i * partSize;
+            const byteSize = Math.min(totalSize - start, partSize);
+            const partBuffer = buffer.slice(start, start + byteSize);
+
+            const formData = new FormData();
+            formData.append('file', new Blob([partBuffer]));
+
+            const response = await fetch(uploadResult.redirectionURL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'text/plain;name=' + encodeURIComponent('upload'),
+                    'contentSize': totalSize.toString(),
+                    'range': `bytes=${start}-${start + byteSize - 1}`,
+                    'uploadtaskID': uploadResult.uploadTaskID,
+                    'rangeType': '0'
+                },
+                body: partBuffer
+            });
+
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(`分片上传失败: ${response.status}, ${text}`);
+            }
+
+            // 解析XML响应
+            const responseText = await response.text();
+            if (responseText.includes('<resultCode>0</resultCode>')) {
+                // 上传成功
+            } else {
+                throw new Error(`分片上传响应错误: ${responseText}`);
+            }
+        }
+    }
+
+    /**
+     * 生成随机字符串
+     */
+    private randomString(length: number): string {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        let result = '';
+        for (let i = 0; i < length; i++) {
+            result += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return result;
     }
 }

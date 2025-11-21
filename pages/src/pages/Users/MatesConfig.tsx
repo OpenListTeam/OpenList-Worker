@@ -26,7 +26,6 @@ import { Add, Edit, Delete, Folder, Security } from '@mui/icons-material';
 import ResponsiveDataTable from '../../components/ResponsiveDataTable';
 import { Mates } from '../../types';
 import apiService from '../../posts/api';
-import { useSnackbar } from '../../hooks/useSnackbar';
 
 const MatesConfig: React.FC = () => {
   const [mates, setMates] = useState<Mates[]>([]);

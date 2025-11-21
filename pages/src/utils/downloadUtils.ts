@@ -94,13 +94,13 @@ export const downloadFile = async ({
     let downloadApiUrl: string;
     if (cleanBackendPath === '' || cleanBackendPath === '/') {
       // 根路径情况
-      downloadApiUrl = `http://127.0.0.1:8787/@files/link/path/${fileInfo.name}`;
+      downloadApiUrl = `/@files/link/path/${fileInfo.name}`;
     } else {
       // 子路径情况，确保有正确的斜杠分隔，避免双斜杠
       const normalizedPath = cleanBackendPath.startsWith('/') ? cleanBackendPath : `/${cleanBackendPath}`;
       // 移除路径中的双斜杠
       const cleanPath = normalizedPath.replace(/\/+/g, '/');
-      downloadApiUrl = `http://127.0.0.1:8787/@files/link/path${cleanPath}/${fileInfo.name}`;
+      downloadApiUrl = `/@files/link/path${cleanPath}/${fileInfo.name}`;
     }
     
     console.log('下载API URL:', downloadApiUrl);

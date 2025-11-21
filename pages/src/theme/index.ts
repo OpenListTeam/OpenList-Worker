@@ -54,14 +54,6 @@ export const lightTheme = createTheme({
         },
       },
     },
-    MuiCard: {
-      styleOverrides: {
-        root: {
-          border: 'none',
-          boxShadow: 'none',
-        },
-      },
-    },
     MuiCardContent: {
       styleOverrides: {
         root: {
@@ -118,6 +110,14 @@ export const darkTheme = createTheme({
       styleOverrides: {
         root: {
           borderRadius: '15px',
+        },
+      },
+    },
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          border: 'none',
+          boxShadow: 'none',
         },
       },
     },

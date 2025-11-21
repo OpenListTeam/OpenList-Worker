@@ -145,7 +145,7 @@ export class MountManage {
     async reload(config: MountConfig | string): Promise<MountResult> {
         if (typeof config === "string") config = {mount_path: config}
         const driver: any[] = await this.filter(config.mount_path);
-        console.log("@reload", config)
+        console.log("@reload before init", config)
         if (!driver) {
             const errorMessage = "Mount Path Not Found";
             // 更新日志信息
@@ -162,7 +162,7 @@ export class MountManage {
         const driveResult: DriveResult = await driver[0].initSelf();
 
         // 无论成功还是失败，都要保存drive_save和drive_logs
-        console.log("@reload", config.drive_save)
+        console.log("@reload after init", config.drive_save)
         config.drive_save = JSON.stringify(driver[0].saving) || "{}";
         config.drive_logs = driveResult.text || "OK";
 

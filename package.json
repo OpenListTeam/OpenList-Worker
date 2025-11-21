@@ -3,7 +3,9 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy --minify",
+    "dev:pages": "cd pages && npm run dev",
+    "build:pages": "cd pages && npm run build",
+    "deploy": "npm run build:pages && wrangler deploy --minify",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "test": "ts-node  tests.ts"
   },

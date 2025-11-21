@@ -160,11 +160,10 @@ wrangler d1 execute openlist-db --file=./schema.sql
 npm run dev
 
 # 在另一个终端启动前端开发服务器
-cd pages
-npm run dev
+npm run dev:pages
 ```
 
-访问 `http://localhost:5173` 查看前端界面。
+访问 `http://localhost:8086` 查看前端界面。
 
 ### 生产部署
 
@@ -190,17 +189,14 @@ wrangler d1 execute openlist-prod-db --file=./schema.sql
 3. **更新配置**
 将生成的 KV ID 和 D1 ID 更新到 `wrangler.jsonc` 中。
 
-4. **构建前端**
-```bash
-cd pages
-npm run build
-cd ..
-```
-
-5. **部署后端**
+4. **一键部署（前端+后端）**
 ```bash
 npm run deploy
 ```
+
+该命令会自动完成以下操作：
+- 构建前端项目到 `public` 目录
+- 部署后端和前端到 Cloudflare Workers
 
 部署成功后，Cloudflare 会提供一个 Workers 域名，例如：
 `https://openlist-back-work.your-subdomain.workers.dev`

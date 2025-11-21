@@ -162,7 +162,7 @@ const FileUploadDialog: React.FC<FileUploadDialogProps> = ({
     
     const backendPath = buildBackendPath(targetPath);
     const cleanBackendPath = cleanPath(backendPath);
-    const apiUrl = `http://127.0.0.1:8787/@files/upload/path${cleanBackendPath}`;
+    const apiUrl = `/@files/upload/path${cleanBackendPath}`;
 
     const formData = new FormData();
     formData.append('files', item.file);
@@ -202,7 +202,7 @@ const FileUploadDialog: React.FC<FileUploadDialogProps> = ({
     const cleanBackendPath = cleanPath(backendPath);
     // target参数只包含文件夹名称，不包含完整路径
     const targetName = folderPath + '/';
-    const apiUrl = `http://127.0.0.1:8787/@files/create/path${cleanBackendPath}?target=${encodeURIComponent(targetName)}`;
+    const apiUrl = `/@files/create/path${cleanBackendPath}?target=${encodeURIComponent(targetName)}`;
 
     try {
       const response = await fetch(apiUrl, {
