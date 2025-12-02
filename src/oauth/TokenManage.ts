@@ -42,7 +42,7 @@ export interface OauthUserInfo {
     raw_data: string;
 }
 
-export class OauthTokenManage {
+export class TokenManage {
     private c: Context;
     private d: SavesManage;
     private JWT_SECRET: string;

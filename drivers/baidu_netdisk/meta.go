@@ -11,7 +11,7 @@ type Addition struct {
 	OrderDirection        string `json:"order_direction" type:"select" options:"asc,desc" default:"asc"`
 	DownloadAPI           string `json:"download_api" type:"select" options:"official,crack,crack_video" default:"official"`
 	UseOnlineAPI          bool   `json:"use_online_api" default:"true"`
-	APIAddress            string `json:"api_url_address" default:"https://api.oplist.org/baiduyun/renewapi"`
+	APIAddress            string `json:"api_url_address" default:"https://api.oplist.org.cn/baiduyun/renewapi"`
 	ClientID              string `json:"client_id"`
 	ClientSecret          string `json:"client_secret"`
 	CustomCrackUA         string `json:"custom_crack_ua" required:"true" default:"netdisk"`

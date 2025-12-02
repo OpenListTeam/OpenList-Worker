@@ -63,7 +63,8 @@ export enum FSAction {
     DELETE = 1,         // 删除文件
     UPLOAD = 2,         // 上传文件
     MOVETO = 3,         // 移动文件
-    COPYTO = 4          // 复制文件
+    COPYTO = 4,         // 复制文件
+    RENAME = 5          // 命名文件
 }
 
 // FS状态码 ############################

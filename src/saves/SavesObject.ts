@@ -10,3 +10,10 @@ export interface DBResult {
     text: string;
     data?: DBSelect[] | any[] | any;
 }
+
+export interface D1Filter {
+    [key: string]: {      // 索引签名，允许额外未知 key
+        value: unknown;
+        op?: string;
+    };
+}

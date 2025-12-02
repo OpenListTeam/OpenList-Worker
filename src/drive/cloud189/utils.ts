@@ -72,7 +72,7 @@ export class HostClouds extends BasicClouds {
                     if (!this.config.cookie || this.config.cookie == "") {
                         console.log("使用用户名密码获取cookie...");
                         // this.cookie = await this.loginWithCookie();
-                        this.cookie =  await loginFn(this.config.username,
+                        this.cookie = await loginFn(this.config.username,
                             this.config.password);
                     }
                 }
@@ -100,6 +100,8 @@ export class HostClouds extends BasicClouds {
      *                             读取配置项
      ========================================================================== */
     async readConfig(): Promise<DriveResult> {
+        this.tokenParam = this.saving?.token || {};
+        this.loginParam = this.saving?.login || {};
         // 如果配置中提供了cookie，则使用cookie登录
         if (this.saving.cookie)
             this.config.cookie = this.saving.cookie;
@@ -117,6 +119,7 @@ export class HostClouds extends BasicClouds {
             this.loginParam = this.saving.login;
             this.tokenParam = this.saving.token;
         }
+
         return {flag: true, text: "OK"}
     }
 
@@ -131,7 +134,7 @@ export class HostClouds extends BasicClouds {
                 ...signHeaders,
                 "Content-Type": "application/json"
             }, {
-                finder: "json",
+                finder: "text",
                 search: this.clientSuffix()
             });
             return response && !response.errorCode;
@@ -195,28 +198,28 @@ export class HostClouds extends BasicClouds {
      *                           AES ECB模式加密参数
      ========================================================================== */
     aesEncrypt(key: string, origData: string | Uint8Array): string {
-        console.log("=== AES Encrypt Debug ===")
-        console.log("key:", key)
-        console.log("key length:", key.length)
-        console.log("origData:", origData)
-        
+        // console.log("=== AES Encrypt Debug ===")
+        // console.log("key:", key)
+        // console.log("key length:", key.length)
+        // console.log("origData:", origData)
+
         // 实现PKCS7填充，与Go版本保持一致
         const data = Buffer.from(origData);
         const blockSize = 16; // AES块大小为16字节
         const padding = blockSize - (data.length % blockSize);
         const paddingData = Buffer.concat([data, Buffer.alloc(padding, padding)]);
-        
+
         // 创建加密器
         const cipher = crypto.createCipheriv("aes-128-ecb", key, Buffer.alloc(0));
         cipher.setAutoPadding(false); // 禁用自动填充，使用手动PKCS7填充
-        
+
         // 加密数据
         const encrypted = cipher.update(paddingData);
         const final = cipher.final();
         const results = Buffer.concat([encrypted, final]).toString('hex').toUpperCase();
-        
-        console.log("encrypted (final):", results)
-        console.log("=== End AES Debug ===")
+
+        // console.log("encrypted (final):", results)
+        // console.log("=== End AES Debug ===")
         return results
     }
 
@@ -230,7 +233,7 @@ export class HostClouds extends BasicClouds {
         const date = new Date();
         const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        
+
         const dayName = days[date.getUTCDay()];
         const day = date.getUTCDate().toString().padStart(2, '0');
         const monthName = months[date.getUTCMonth()];
@@ -238,7 +241,7 @@ export class HostClouds extends BasicClouds {
         const hours = date.getUTCHours().toString().padStart(2, '0');
         const minutes = date.getUTCMinutes().toString().padStart(2, '0');
         const seconds = date.getUTCSeconds().toString().padStart(2, '0');
-        
+
         return `${dayName}, ${day} ${monthName} ${year} ${hours}:${minutes}:${seconds} GMT`;
     }
 
@@ -247,33 +250,28 @@ export class HostClouds extends BasicClouds {
      ========================================================================== */
     signatureHeader(
         url: string, method: string, params: string, isFamily: boolean = false): Record<string, string> {
-        // 如果存在cookie，则使用cookie认证
-        // if (this.cookie) {
-        //     return {
-        //         "Cookie": this.cookie,
-        //         "Content-Type": "application/json"
-        //     };
-        // }
-        
+
         // 使用与Go版本完全一致的时间格式
         const dateOfGmt = this.getHttpDateStr();
         let sessionKey = this.tokenParam.sessionKey;
         let sessionSecret = this.tokenParam.sessionSecret;
-        
+
         // 处理family云的情况
         if (isFamily) {
             sessionKey = this.tokenParam.familySessionKey;
             sessionSecret = this.tokenParam.familySessionSecret;
         }
-        
+
         const requestID = crypto.randomUUID();
-        
+
         // 检查必要的参数是否存在
         if (!sessionKey || !sessionSecret) {
             console.error("Session key or secret is missing:", {sessionKey, sessionSecret, isFamily});
+            console.log("this.saving", this.saving)
+            console.log("this.tokenParam", this.tokenParam)
             throw new Error("Session认证信息不完整");
         }
-        
+
         // 使用与Go版本相同的正则表达式提取URL路径
         const urlMatch = url.match(/:\/\/[^\/]+((\/[^\/\s?#]+)*)/);
         let requestURI = "";
@@ -287,33 +285,33 @@ export class HostClouds extends BasicClouds {
                 requestURI = url;
             }
         }
-        
+
         // 构建签名数据 - 与Go版本保持完全一致
         let signData = `SessionKey=${sessionKey}&Operate=${method}&RequestURI=${requestURI}&Date=${dateOfGmt}`;
         if (params) {
             signData += `&params=${params}`;
         }
-        
-        console.log("=== Signature Debug ===");
-        console.log("Method:", method);
-        console.log("URL:", url);
-        console.log("RequestURI:", requestURI);
-        console.log("Date:", dateOfGmt);
-        console.log("SessionKey:", sessionKey);
-        console.log("SessionSecret:", sessionSecret);
-        console.log("Params:", params);
-        console.log("SignData:", signData);
-        console.log("IsFamily:", isFamily);
-        
+
+        // console.log("=== Signature Debug ===");
+        // console.log("Method:", method);
+        // console.log("URL:", url);
+        // console.log("RequestURI:", requestURI);
+        // console.log("Date:", dateOfGmt);
+        // console.log("SessionKey:", sessionKey);
+        // console.log("SessionSecret:", sessionSecret);
+        // console.log("Params:", params);
+        // console.log("SignData:", signData);
+        // console.log("IsFamily:", isFamily);
+
         // 使用HMAC-SHA1签名，使用完整的sessionSecret（与Go版本保持一致）
         const signature = crypto.createHmac("sha1", Buffer.from(sessionSecret, 'ascii'))
             .update(signData)
             .digest("hex")
             .toUpperCase();
-            
-        console.log("Signature:", signature);
-        console.log("=== End Signature Debug ===");
-        
+
+        // console.log("Signature:", signature);
+        // console.log("=== End Signature Debug ===");
+
         return {
             "Date": dateOfGmt,
             "SessionKey": sessionKey,
@@ -329,23 +327,23 @@ export class HostClouds extends BasicClouds {
     encryptParams(params: Record<string, string>): string {
         const sessionSecret = this.tokenParam.sessionSecret || "";
         if (!params || Object.keys(params).length === 0) return "";
-        
+
         console.log("=== EncryptParams Debug ===");
         console.log("Input params:", params);
-        
+
         // 按key排序并拼接，与Go版本保持一致
         const keys = Object.keys(params).sort();
         const paramStr = keys.map(k => `${k}=${params[k]}`).join("&");
-        
+
         console.log("Param string:", paramStr);
         console.log("SessionSecret (first 16):", sessionSecret.slice(0, 16));
-        
+
         // AES加密
         const encrypted = this.aesEncrypt(sessionSecret.slice(0, 16), paramStr);
-        
+
         console.log("Encrypted result:", encrypted);
         console.log("=== End EncryptParams Debug ===");
-        
+
         return encrypted;
     }
 
@@ -367,26 +365,26 @@ export class HostClouds extends BasicClouds {
     async refreshSession(): Promise<DriveResult> {
         try {
             const url = `${con.API_URL}/getSessionForPC.action`;
-            
+
             // 使用签名认证，而不是直接HttpRequest
             const params = {
                 ...this.clientSuffix(),
                 appId: con.APP_ID,
                 accessToken: this.tokenParam.accessToken
             };
-            
+
             // 构建签名头
             const signHeaders = this.signatureHeader(url, "GET", "");
             const headers = {
                 ...signHeaders,
                 "Content-Type": "application/json"
             };
-            
+
             const response = await HttpRequest("GET", url, undefined, headers, {
                 finder: "json",
                 search: params
             });
-            
+
             if (response.sessionKey) {
                 this.tokenParam.sessionKey = response.sessionKey;
                 this.tokenParam.sessionSecret = response.sessionSecret;
@@ -406,122 +404,122 @@ export class HostClouds extends BasicClouds {
     /** ==========================================================================
      *                            设置Cookie字符串
      ========================================================================== */
-    private setCookies(cookies: any[]): string {
-        return cookies.map(cookie => `${cookie.key}=${cookie.value}`).join('; ')
-    }
+    // private setCookies(cookies: any[]): string {
+    //     return cookies.map(cookie => `${cookie.key}=${cookie.value}`).join('; ')
+    // }
 
     /** ==========================================================================
      *                    使用用户名密码进行移动端登录获取Cookie
      ========================================================================== */
-    async loginWithCookie(): Promise<string> {
-        try {
-            let cookieJar: CookieJar = new CookieJar();
-            const _axios: AxiosInstance = wrapper(axios.create({jar: cookieJar, withCredentials: true}));
-            // 1. 获取公钥
-            const encryptRes: any = await _axios
-                .post("https://open.e.189.cn/api/logbox/config/encryptConf.do")
-                .then((res) => res.data);
-            const encrypt = encryptRes.data;
-            // 2. 获取登录参数
-            const responseUrl = await _axios
-                .get("https://cloud.189.cn/api/portal/loginUrl.action" +
-                    "?redirectURL=https://cloud.189.cn/web/redirect.html?returnURL=/main.action")
-                .then((res) => res.request.res.responseUrl);
-            console.log("获取到的重定向URL:", responseUrl);
-            if (!responseUrl) throw new Error("无法获取重定向URL");
-            const {query} = url.parse(responseUrl, true);
-            const queryParam = query as any;
-            // 确保必要的参数存在
-            queryParam.appId = queryParam.appId || "cloud";
-            queryParam.lt = queryParam.lt || "";
-            queryParam.reqId = queryParam.reqId || "";
-            queryParam.REQID = queryParam.reqId;
-            console.log("解析的查询参数:", queryParam);
-            // 3. 获取应用配置
-            const formData = new URLSearchParams();
-            formData.append("version", "2.0");
-            formData.append("appKey", queryParam.appId);
-
-            const appConfRes = await _axios
-                .post("https://open.e.189.cn/api/logbox/oauth2/appConf.do", formData, {
-                    headers: {
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:74.0) Gecko/20100101 Firefox/76.0",
-                        Referer: "https://open.e.189.cn/",
-                        lt: query.lt,
-                        REQID: query.reqId,
-                    },
-                })
-                .then((res) => res.data.data);
-            console.log("应用配置响应:", appConfRes);
-            const appConf = appConfRes;
-            if (!appConf) {
-                throw new Error("获取应用配置失败: appConf为空");
-            }
-            console.log("应用配置获取成功:", appConf);
-            // 4. 构建登录表单
-            const keyData = `-----BEGIN PUBLIC KEY-----\n${encrypt.pubKey}\n-----END PUBLIC KEY-----`;
-            const RsaJsencrypt = new NodeRSA(keyData, "public", {
-                encryptionScheme: "pkcs1",
-            });
-            const usernameEncrypt = Buffer.from(RsaJsencrypt.encrypt(this.config.username).toString("base64"), "base64").toString("hex");
-            const passwordEncrypt = Buffer.from(RsaJsencrypt.encrypt(this.config.password).toString("base64"), "base64").toString("hex");
-            const loginData = {
-                appKey: "cloud", version: "2.0", accountType: "01", mailSuffix: "@189.cn",
-                validateCode: "", captchaToken: "", dynamicCheck: "FALSE", clientType: "1",
-                cb_SaveName: "3", isOauth2: "false", returnUrl: appConf.returnUrl, paramId: appConf.paramId,
-                userName: `${encrypt.pre}${usernameEncrypt}`, password: `${encrypt.pre}${passwordEncrypt}`,
-            };
-            // 5. 执行登录
-            return new Promise(async (resolve, reject) => {
-                // 3.获取登录地址
-                const res: any = await _axios
-                    .post(
-                        "https://open.e.189.cn/api/logbox/oauth2/loginSubmit.do",
-                        loginData, // 表单数据
-                        {
-                            headers: {
-                                "User-Agent":
-                                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:74.0) Gecko/20100101 Firefox/76.0",
-                                Referer: "https://open.e.189.cn/",
-                                REQID: queryParam.reqId,
-                                lt: queryParam.lt,
-                                "Content-Type": "application/x-www-form-urlencoded",
-                            },
-                        }
-                    )
-                    .then((response) => response.data)
-
-                if (res.result === 0) {
-                    return _axios
-                        .get(res.toUrl, {
-                            headers: this.mobileHeaders,
-                            jar: cookieJar, // 使用 tough-cookie 的 CookieJar
-                        })
-                        .then((r) => {
-                            const cookies: any[] = JSON.parse(JSON.stringify(cookieJar)).cookies.filter(
-                                (item: any) => {
-                                    return item.domain.includes("cloud")
-                                }
-                            )
-                            cookieJar = new CookieJar()
-                            const cookieStr = this.setCookies(cookies)
-                            console.log("从登录响应提取到的Cookie:", cookieStr)
-                            return resolve(cookieStr)
-                        })
-                        .catch((error) => {
-                            console.error("跳转请求失败:", error)
-                            return reject(error)
-                        })
-                } else {
-                    console.log("登录失败1", res)
-                    return reject(res)
-                }
-            })
-        } catch (error) {
-            console.error("移动端登录失败:", error);
-            throw error;
-        }
-    }
+    // async loginWithCookie(): Promise<string> {
+    //     try {
+    //         let cookieJar: CookieJar = new CookieJar();
+    //         const _axios: AxiosInstance = wrapper(axios.create({jar: cookieJar, withCredentials: true}));
+    //         // 1. 获取公钥
+    //         const encryptRes: any = await _axios
+    //             .post("https://open.e.189.cn/api/logbox/config/encryptConf.do")
+    //             .then((res) => res.data);
+    //         const encrypt = encryptRes.data;
+    //         // 2. 获取登录参数
+    //         const responseUrl = await _axios
+    //             .get("https://cloud.189.cn/api/portal/loginUrl.action" +
+    //                 "?redirectURL=https://cloud.189.cn/web/redirect.html?returnURL=/main.action")
+    //             .then((res) => res.request.res.responseUrl);
+    //         console.log("获取到的重定向URL:", responseUrl);
+    //         if (!responseUrl) throw new Error("无法获取重定向URL");
+    //         const {query} = url.parse(responseUrl, true);
+    //         const queryParam = query as any;
+    //         // 确保必要的参数存在
+    //         queryParam.appId = queryParam.appId || "cloud";
+    //         queryParam.lt = queryParam.lt || "";
+    //         queryParam.reqId = queryParam.reqId || "";
+    //         queryParam.REQID = queryParam.reqId;
+    //         console.log("解析的查询参数:", queryParam);
+    //         // 3. 获取应用配置
+    //         const formData = new URLSearchParams();
+    //         formData.append("version", "2.0");
+    //         formData.append("appKey", queryParam.appId);
+    //
+    //         const appConfRes = await _axios
+    //             .post("https://open.e.189.cn/api/logbox/oauth2/appConf.do", formData, {
+    //                 headers: {
+    //                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:74.0) Gecko/20100101 Firefox/76.0",
+    //                     Referer: "https://open.e.189.cn/",
+    //                     lt: query.lt,
+    //                     REQID: query.reqId,
+    //                 },
+    //             })
+    //             .then((res) => res.data.data);
+    //         console.log("应用配置响应:", appConfRes);
+    //         const appConf = appConfRes;
+    //         if (!appConf) {
+    //             throw new Error("获取应用配置失败: appConf为空");
+    //         }
+    //         console.log("应用配置获取成功:", appConf);
+    //         // 4. 构建登录表单
+    //         const keyData = `-----BEGIN PUBLIC KEY-----\n${encrypt.pubKey}\n-----END PUBLIC KEY-----`;
+    //         const RsaJsencrypt = new NodeRSA(keyData, "public", {
+    //             encryptionScheme: "pkcs1",
+    //         });
+    //         const usernameEncrypt = Buffer.from(RsaJsencrypt.encrypt(this.config.username).toString("base64"), "base64").toString("hex");
+    //         const passwordEncrypt = Buffer.from(RsaJsencrypt.encrypt(this.config.password).toString("base64"), "base64").toString("hex");
+    //         const loginData = {
+    //             appKey: "cloud", version: "2.0", accountType: "01", mailSuffix: "@189.cn",
+    //             validateCode: "", captchaToken: "", dynamicCheck: "FALSE", clientType: "1",
+    //             cb_SaveName: "3", isOauth2: "false", returnUrl: appConf.returnUrl, paramId: appConf.paramId,
+    //             userName: `${encrypt.pre}${usernameEncrypt}`, password: `${encrypt.pre}${passwordEncrypt}`,
+    //         };
+    //         // 5. 执行登录
+    //         return new Promise(async (resolve, reject) => {
+    //             // 3.获取登录地址
+    //             const res: any = await _axios
+    //                 .post(
+    //                     "https://open.e.189.cn/api/logbox/oauth2/loginSubmit.do",
+    //                     loginData, // 表单数据
+    //                     {
+    //                         headers: {
+    //                             "User-Agent":
+    //                                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:74.0) Gecko/20100101 Firefox/76.0",
+    //                             Referer: "https://open.e.189.cn/",
+    //                             REQID: queryParam.reqId,
+    //                             lt: queryParam.lt,
+    //                             "Content-Type": "application/x-www-form-urlencoded",
+    //                         },
+    //                     }
+    //                 )
+    //                 .then((response) => response.data)
+    //
+    //             if (res.result === 0) {
+    //                 return _axios
+    //                     .get(res.toUrl, {
+    //                         headers: this.mobileHeaders,
+    //                         jar: cookieJar, // 使用 tough-cookie 的 CookieJar
+    //                     })
+    //                     .then((r) => {
+    //                         const cookies: any[] = JSON.parse(JSON.stringify(cookieJar)).cookies.filter(
+    //                             (item: any) => {
+    //                                 return item.domain.includes("cloud")
+    //                             }
+    //                         )
+    //                         cookieJar = new CookieJar()
+    //                         const cookieStr = this.setCookies(cookies)
+    //                         console.log("从登录响应提取到的Cookie:", cookieStr)
+    //                         return resolve(cookieStr)
+    //                     })
+    //                     .catch((error) => {
+    //                         console.error("跳转请求失败:", error)
+    //                         return reject(error)
+    //                     })
+    //             } else {
+    //                 console.log("登录失败1", res)
+    //                 return reject(res)
+    //             }
+    //         })
+    //     } catch (error) {
+    //         console.error("移动端登录失败:", error);
+    //         throw error;
+    //     }
+    // }
 
     /** ==========================================================================
      *                    使用会话密钥进行登录获取Token

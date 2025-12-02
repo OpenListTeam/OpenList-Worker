@@ -153,7 +153,7 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({
       ]
     },
     {
-      id: 'system-settings',
+      id: 'setup-settings',
       title: '系统设置',
       icon: <Settings />,
       defaultExpanded: false,

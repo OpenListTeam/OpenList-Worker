@@ -36,10 +36,11 @@ export class BasicClouds {
         let saving: DBSelect[] = result.data
         if (saving.length > 0) {
             const select: DBSelect = saving[0];
-            const info: SAVING_INFO | undefined = select.data
+            const info: any = select.data
             if (!info) return null
-            this.config = info.config;
-            this.saving = info.saving;
+            // 数据库字段名是 drive_conf 和 drive_save，存储为 JSON 字符串
+            this.config = JSON.parse(info.drive_conf || "{}");
+            this.saving = JSON.parse(info.drive_save || "{}");
         }
         console.log(this.config, this.saving);
         return this.config
@@ -52,8 +53,8 @@ export class BasicClouds {
                 main: "mount",
                 keys: {"mount_path": this.router},
                 data: {
-                    config: this.config,
-                    saving: this.saving
+                    drive_conf: this.config,
+                    drive_save: this.saving
                 }
             }
         )

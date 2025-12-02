@@ -44,9 +44,9 @@ export async function HttpRequest(Method: string = "GET",
         // 执行请求 =====================================================================
         const default_inf = {'Content-Type': 'application/x-www-form-urlencoded'}
         const header_data: Record<string, any> | any = Header ? Header : default_inf
-        console.log("=== HttpRequest Headers Debug ===")
-        console.log("Headers being sent:", header_data)
-        console.log("=== End Headers Debug ===")
+        // console.log("=== HttpRequest Headers Debug ===")
+        // console.log("Headers being sent:", header_data)
+        // console.log("=== End Headers Debug ===")
         if (Option.direct) return {url: Method == "GET" ? search_data.href : WebUrl}
         const result_data: Response = await fetch(
             search_data.href, {

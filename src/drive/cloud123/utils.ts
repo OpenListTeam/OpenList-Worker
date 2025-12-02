@@ -99,13 +99,26 @@ export class HostClouds extends BasicClouds {
 	 */
 	async initConfig(): Promise<DriveResult> {
 		console.log("[123云盘] 开始初始化配置");
+		console.log("[123云盘] 配置信息:", {
+			has_client_id: !!this.config.client_id,
+			has_client_secret: !!this.config.client_secret,
+			has_refresh_token: !!this.config.refresh_token,
+			has_access_token: !!this.config.access_token,
+		});
 
 		try {
 			// 刷新AccessToken
+			console.log("[123云盘] 开始刷新AccessToken");
 			await this.flushAccessToken();
+			console.log("[123云盘] AccessToken刷新成功");
 
 			// 验证Token
+			console.log("[123云盘] 开始获取用户信息");
 			const userInfo = await this.getUserInfo();
+			console.log("[123云盘] 用户信息获取成功:", {
+				has_data: !!userInfo?.data,
+				uid: userInfo?.data?.uid,
+			});
 			if (!userInfo || !userInfo.data) {
 				return {
 					flag: false,
@@ -124,7 +137,11 @@ export class HostClouds extends BasicClouds {
 				text: "Initialized successfully",
 			};
 		} catch (error: any) {
-			console.error("[123云盘] 初始化失败:", error.message);
+			console.error("[123云盘] 初始化失败:", {
+				message: error.message,
+				stack: error.stack,
+				error: error,
+			});
 			return {
 				flag: false,
 				text: error.message || "Failed to initialize config",
@@ -161,71 +178,120 @@ export class HostClouds extends BasicClouds {
 	async flushAccessToken(): Promise<void> {
 		// 如果有ClientID和RefreshToken，使用RefreshToken刷新
 		if (this.config.client_id && this.config.refresh_token) {
-			const limiter = this.qpsLimiters.get("REFRESH_TOKEN");
-			if (limiter) await limiter.acquire();
+			try {
+				const limiter = this.qpsLimiters.get("REFRESH_TOKEN");
+				if (limiter) await limiter.acquire();
 
-			const url = `${con.API_BASE_URL}${con.API_PATHS.REFRESH_TOKEN}`;
-			const params = new URLSearchParams({
-				client_id: this.config.client_id,
-				grant_type: "refresh_token",
-				refresh_token: this.config.refresh_token,
-			});
+				const url = `${con.API_BASE_URL}${con.API_PATHS.REFRESH_TOKEN}`;
+				const params = new URLSearchParams({
+					client_id: this.config.client_id,
+					grant_type: "refresh_token",
+					refresh_token: this.config.refresh_token,
+				});
 
-			if (this.config.client_secret) {
-				params.append("client_secret", this.config.client_secret);
+				if (this.config.client_secret) {
+					params.append("client_secret", this.config.client_secret);
+				}
+
+				console.log("[123云盘] 使用RefreshToken刷新AccessToken", {
+					url,
+					has_client_secret: !!this.config.client_secret,
+				});
+				const response = await fetch(`${url}?${params.toString()}`, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						platform: "open_platform",
+					},
+				});
+
+				if (!response.ok) {
+					const errorText = await response.text();
+					console.error("[123云盘] RefreshToken请求失败:", {
+						status: response.status,
+						statusText: response.statusText,
+						responseBody: errorText,
+					});
+					
+					// 如果是401错误且有ClientSecret，尝试使用ClientSecret获取新Token
+					if (response.status === 401 && this.config.client_secret) {
+						console.log("[123云盘] RefreshToken已失效，尝试使用ClientSecret获取新Token");
+						// 清除无效的refresh_token
+						this.saving.refresh_token = undefined;
+						this.change = true;
+						// fallback到ClientSecret方式
+						return await this.getAccessTokenByClientSecret();
+					}
+					
+					throw new Error(`HTTP error! status: ${response.status}`);
+				}
+
+				const data: RefreshTokenResponse = await response.json();
+				this.saving.access_token = data.access_token;
+				this.saving.refresh_token = data.refresh_token;
+				this.change = true;
+				return;
+			} catch (error) {
+				// 如果RefreshToken方式失败且有ClientSecret，尝试使用ClientSecret
+				if (this.config.client_secret) {
+					console.log("[123云盘] RefreshToken刷新异常，尝试使用ClientSecret获取新Token");
+					this.saving.refresh_token = undefined;
+					this.change = true;
+					return await this.getAccessTokenByClientSecret();
+				}
+				throw error;
 			}
-
-			const response = await fetch(`${url}?${params.toString()}`, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					platform: "open_platform",
-				},
-			});
-
-			if (!response.ok) {
-				throw new Error(`HTTP error! status: ${response.status}`);
-			}
-
-			const data: RefreshTokenResponse = await response.json();
-			this.saving.access_token = data.access_token;
-			this.saving.refresh_token = data.refresh_token;
-			this.change = true;
 		}
 		// 如果有ClientID和ClientSecret，使用ClientSecret获取AccessToken
 		else if (this.config.client_id && this.config.client_secret) {
-			const limiter = this.qpsLimiters.get("ACCESS_TOKEN");
-			if (limiter) await limiter.acquire();
-
-			const url = `${con.API_BASE_URL}${con.API_PATHS.ACCESS_TOKEN}`;
-			const response = await fetch(url, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					platform: "open_platform",
-				},
-				body: JSON.stringify({
-					clientID: this.config.client_id,
-					clientSecret: this.config.client_secret,
-				}),
-			});
-
-			if (!response.ok) {
-				throw new Error(`HTTP error! status: ${response.status}`);
-			}
-
-			const data: AccessTokenResponse = await response.json();
-			if (data.code !== 0) {
-				throw new Error(data.message || "Failed to get access token");
-			}
-
-			this.saving.access_token = data.data.accessToken;
-			this.change = true;
+			return await this.getAccessTokenByClientSecret();
 		}
 		// 如果直接提供了AccessToken
 		else if (this.config.access_token) {
 			this.saving.access_token = this.config.access_token;
 		}
+	}
+
+	// 使用ClientSecret获取AccessToken的独立方法
+	private async getAccessTokenByClientSecret(): Promise<void> {
+		if (!this.config.client_id || !this.config.client_secret) {
+			throw new Error("Missing client_id or client_secret");
+		}
+		
+		const limiter = this.qpsLimiters.get("ACCESS_TOKEN");
+		if (limiter) await limiter.acquire();
+
+		const url = `${con.API_BASE_URL}${con.API_PATHS.ACCESS_TOKEN}`;
+		console.log("[123云盘] 使用ClientSecret获取AccessToken", { url });
+		const response = await fetch(url, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				platform: "open_platform",
+			},
+			body: JSON.stringify({
+				clientID: this.config.client_id,
+				clientSecret: this.config.client_secret,
+			}),
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			console.error("[123云盘] ClientSecret请求失败:", {
+				status: response.status,
+				statusText: response.statusText,
+				responseBody: errorText,
+			});
+			throw new Error(`HTTP error! status: ${response.status}`);
+		}
+
+		const data: AccessTokenResponse = await response.json();
+		if (data.code !== 0) {
+			throw new Error(data.message || "Failed to get access token");
+		}
+
+		this.saving.access_token = data.data.accessToken;
+		this.change = true;
 	}
 
 	//====== API请求 ======

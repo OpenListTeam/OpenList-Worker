@@ -2,7 +2,7 @@
 import {Context} from "hono";
 import {DriveResult} from "../DriveObject";
 import {BasicClouds} from "../BasicClouds";
-import * as con from "./const";
+
 // 专用导入 =====================================================
 import {google} from 'googleapis';
 import {JSONClient} from "google-auth-library/build/src/auth/googleauth";

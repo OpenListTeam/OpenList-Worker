@@ -87,6 +87,14 @@ export class HostClouds extends BasicClouds {
 	 */
 	async initConfig(): Promise<DriveResult> {
 		console.log("[BaiduYun] 开始初始化配置");
+		console.log("[BaiduYun] 配置信息:", {
+			use_online_api: this.config.use_online_api,
+			has_api_address: !!this.config.api_address,
+			api_address: this.config.api_address,
+			has_refresh_token: !!this.config.refresh_token,
+			has_client_id: !!this.config.client_id,
+			has_client_secret: !!this.config.client_secret
+		});
 		
 		try {
 			// 刷新Token
@@ -103,13 +111,37 @@ export class HostClouds extends BasicClouds {
 				flag: !!this.saving.access_token,
 				text: "Token refreshed successfully",
 			};
-		} catch (error: any) {
-			console.error("[BaiduYun] 初始化失败:", error.message);
-			return {
-				flag: false,
-				text: error.message || "Failed to initialize config",
-			};
+} catch (error: any) {
+		console.error("[BaiduYun] 初始化失败:", error.message);
+		
+		// 根据错误类型提供建议
+		let errorMessage = error.message || "Failed to initialize config";
+		let suggestions: string[] = [];
+		
+		if (errorMessage.includes("在线API服务器错误") || errorMessage.includes("500")) {
+			suggestions.push("在线API服务器暂时不可用，请稍后重试");
+			suggestions.push("如果问题持续存在，可以尝试使用本地客户端模式");
+			suggestions.push("配置 client_id 和 client_secret，并设置 use_online_api: false");
+		} else if (errorMessage.includes("缺少刷新令牌")) {
+			suggestions.push("请检查 refresh_token 配置是否正确");
+			suggestions.push("可能需要重新进行OAuth认证获取新的刷新令牌");
+		} else if (errorMessage.includes("最大重试次数")) {
+			suggestions.push("网络连接可能不稳定，请检查网络连接");
+			suggestions.push("稍后重试或使用本地客户端模式");
 		}
+		
+		if (suggestions.length > 0) {
+			console.log("[BaiduYun] 解决建议:");
+			suggestions.forEach((suggestion, index) => {
+				console.log(`[BaiduYun] ${index + 1}. ${suggestion}`);
+			});
+		}
+		
+return {
+			flag: false,
+			text: errorMessage,
+		};
+	}
 	}
 
 	/**
@@ -128,24 +160,30 @@ export class HostClouds extends BasicClouds {
 	 * 刷新访问令牌
 	 * 支持在线API和本地客户端两种方式
 	 */
-	async refreshToken(): Promise<void> {
+async refreshToken(): Promise<void> {
 		let lastError: Error | null = null;
 		
-		// 重试3次
-		for (let i = 0; i < 3; i++) {
+		// 重试5次，使用更长的间隔
+		for (let i = 0; i < 5; i++) {
 			try {
+				console.log(`[BaiduYun] 尝试刷新Token (第${i + 1}次)`);
 				await this._refreshToken();
+				console.log(`[BaiduYun] Token刷新成功 (第${i + 1}次尝试)`);
 				return;
 			} catch (error: any) {
 				lastError = error;
-				// 等待后重试
-				if (i < 2) {
-					await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+				console.error(`[BaiduYun] Token刷新失败 (第${i + 1}次):`, error.message);
+				// 使用更长的指数退避重试
+				if (i < 4) {
+					const waitTime = Math.min(2000 * Math.pow(1.5, i), 15000);
+					console.log(`[BaiduYun] 等待${Math.round(waitTime)}ms后重试...`);
+					await new Promise(resolve => setTimeout(resolve, waitTime));
 				}
 			}
 		}
 		
-		throw lastError || new Error("Failed to refresh token after 3 attempts");
+		console.error("[BaiduYun] Token刷新失败，已达到最大重试次数(5次)");
+		throw lastError || new Error("Failed to refresh token after 5 attempts");
 	}
 
 	/**
@@ -169,36 +207,72 @@ export class HostClouds extends BasicClouds {
 	 */
 	private async _refreshTokenOnline(): Promise<void> {
 		const url = new URL(this.config.api_address);
-		url.searchParams.set("refresh_ui", this.config.refresh_token);
-		url.searchParams.set("server_use", "true");
+		url.searchParams.set("client_uid", "");  // 暂时设为空，如果需要可以从配置中获取
+		url.searchParams.set("client_key", "");  // 暂时设为空，如果需要可以从配置中获取
+		url.searchParams.set("secret_key", "");  // 暂时设为空，如果需要可以从配置中获取
 		url.searchParams.set("driver_txt", "baiduyun_go");
+		url.searchParams.set("server_use", "true");
+		url.searchParams.set("refresh_ui", this.config.refresh_token);
 		
 		console.log("[BaiduYun] 使用在线API刷新Token");
+		console.log("[BaiduYun] refresh_token值:", this.config.refresh_token ? `${this.config.refresh_token.substring(0, 10)}... (长度: ${this.config.refresh_token.length})` : "空值");
+		console.log("[BaiduYun] 请求URL:", url.toString());
 
 		const response = await fetch(url.toString(), {
 			method: "GET",
-			headers: {
-				"User-Agent": "Mozilla/5.0 (Macintosh; Apple macOS 15_5) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/138.0.0.0 Openlist/425.6.30",
-			},
 		});
 
-		if (!response.ok) {
-			throw new Error(`HTTP error! status: ${response.status}`);
+		console.log("[BaiduYun] 响应状态:", response.status, response.statusText);
+console.log("[BaiduYun] 响应头:", response.headers);
+
+		// 读取响应内容
+		const responseText = await response.text();
+		console.log("[BaiduYun] 响应内容:", responseText);
+
+		// 尝试解析JSON
+		let data: OnlineAPIResponse;
+		try {
+			data = JSON.parse(responseText);
+		} catch (error: any) {
+			console.error("[BaiduYun] JSON解析失败:", error.message);
+			// 如果响应不是200且无法解析JSON，抛出HTTP错误
+			if (!response.ok) {
+				throw new Error(`HTTP error! status: ${response.status}, response: ${responseText}`);
+			}
+			throw new Error(`Failed to parse response: ${error.message}`);
 		}
 
-		const data: OnlineAPIResponse = await response.json();
+		console.log("[BaiduYun] 解析后的数据:", {
+			has_refresh_token: !!data.refresh_token,
+			has_access_token: !!data.access_token,
+			text: data.text
+		});
+
+		// 检查响应状态和数据
+		if (!response.ok) {
+			// 服务器返回错误，但有text字段说明
+			if (data.text) {
+				throw new Error(`在线API错误 (${response.status}): ${data.text}`);
+			}
+			// 如果响应内容为空对象或没有有用信息
+			if (Object.keys(data).length === 0 || (!data.refresh_token && !data.access_token && !data.text)) {
+				throw new Error(`在线API服务器错误 (${response.status}): 服务器返回空响应，可能是服务暂时不可用，请稍后重试`);
+			}
+			throw new Error(`HTTP error! status: ${response.status}, response: ${responseText}`);
+		}
 
 		if (!data.refresh_token || !data.access_token) {
 			if (data.text) {
-				throw new Error(`Failed to refresh token: ${data.text}`);
+				throw new Error(`Token刷新失败: ${data.text}`);
 			}
-			throw new Error("Empty token returned from online API");
+			throw new Error("在线API返回了空的Token");
 		}
 
 		this.saving.access_token = data.access_token;
 		this.config.refresh_token = data.refresh_token;
 		this.saving.refresh_token = data.refresh_token;
 		this.change = true;
+		console.log("[BaiduYun] Token更新成功");
 	}
 
 	/**
@@ -206,6 +280,7 @@ export class HostClouds extends BasicClouds {
 	 */
 	private async _refreshTokenLocal(): Promise<void> {
 		if (!this.config.client_id || !this.config.client_secret) {
+			console.error("[BaiduYun] ClientID或ClientSecret为空");
 			throw new Error("Empty ClientID or ClientSecret");
 		}
 
@@ -217,15 +292,25 @@ export class HostClouds extends BasicClouds {
 		url.searchParams.set("client_id", this.config.client_id);
 		url.searchParams.set("client_secret", this.config.client_secret);
 
+		console.log("[BaiduYun] 请求URL:", con.BAIDU_OAUTH_URL);
+
 		const response = await fetch(url.toString(), {
 			method: "GET",
 		});
 
+		console.log("[BaiduYun] 响应状态:", response.status, response.statusText);
+
 		const data: TokenResponse | TokenErrorResponse = await response.json();
 
 		if ("error" in data) {
+			console.error("[BaiduYun] API返回错误:", data.error, data.error_description);
 			throw new Error(data.error_description || data.error);
 		}
+
+		console.log("[BaiduYun] Token响应:", {
+			has_refresh_token: !!data.refresh_token,
+			has_access_token: !!data.access_token
+		});
 
 		if (!data.refresh_token || !data.access_token) {
 			throw new Error("Empty token returned");
@@ -234,6 +319,7 @@ export class HostClouds extends BasicClouds {
 		this.saving.access_token = data.access_token;
 		this.config.refresh_token = data.refresh_token;
 		this.saving.refresh_token = data.refresh_token;
+		console.log("[BaiduYun] Token更新成功");
 	}
 
 	//====== API请求 ======

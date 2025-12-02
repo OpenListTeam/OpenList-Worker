@@ -1,0 +1,144 @@
+// Prisma Schema for OpenList-TSWorker
+// 支持多种数据库适配器：MariaDB, PostgreSQL, MSSQL
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma/client"
+}
+
+datasource db {
+  provider = "sqlite" // 默认使用 SQLite，运行时通过适配器切换
+}
+
+// 挂载路径
+model mount {
+  mount_path String  @id @unique
+  mount_type String
+  is_enabled Int
+  drive_conf String?
+  drive_save String?
+  cache_time Int?    @default(0)
+  index_list Int?    @default(0)
+  proxy_mode Int?    @default(0)
+  proxy_data String?
+  drive_logs String?
+  drive_tips String?
+}
+
+// 用户信息
+model users {
+  users_name String  @id @unique
+  users_mail String
+  users_pass String
+  users_mask String
+  is_enabled Int
+  total_size Int?
+  total_used Int?
+  oauth_data String?
+  mount_data String?
+}
+
+// 授权认证系统配置
+model oauth {
+  oauth_name String @id @unique
+  oauth_type String
+  oauth_data String
+  is_enabled Int
+}
+
+// 授权认证用户绑定
+model binds {
+  oauth_uuid String @id @unique
+  oauth_name String
+  binds_user String
+  binds_data String
+  is_enabled Int
+}
+
+// 加密配置
+model crypt {
+  crypt_name String  @id @unique
+  crypt_pass String
+  crypt_type Int
+  crypt_mode Int
+  is_enabled Int
+  crypt_self Int?
+  rands_pass Int?
+  oauth_data String?
+  write_name String?
+}
+
+// 元组配置
+model mates {
+  mates_name String  @id @unique
+  mates_mask Int
+  mates_user Int
+  is_enabled Int
+  dir_hidden Int?
+  dir_shared Int?
+  set_zipped String?
+  set_parted String?
+  crypt_name String?
+  cache_time Int?
+}
+
+// 分享配置
+model share {
+  share_uuid String @id @unique
+  share_path String
+  share_pass String
+  share_user String
+  share_date Int
+  share_ends Int
+  is_enabled Int
+}
+
+// 连接配置
+model token {
+  token_uuid String @id @unique
+  token_path String
+  token_user String
+  token_type String
+  token_info String
+  is_enabled Int
+}
+
+// 任务配置
+model tasks {
+  tasks_uuid String @id @unique
+  tasks_type String
+  tasks_user String
+  tasks_info String
+  tasks_flag Int
+}
+
+// 离线下载
+model fetch {
+  fetch_uuid String @id @unique
+  fetch_from String
+  fetch_dest String
+  fetch_user String
+  fetch_flag Int
+}
+
+// 用户分组
+model group {
+  group_name String @id @unique
+  group_mask String
+  is_enabled Int
+
+  @@map("group")
+}
+
+// 缓存信息
+model cache {
+  cache_path String @id @unique
+  cache_info Int?
+  cache_time Int?
+}
+
+// 全局设置
+model admin {
+  admin_keys String @id @unique
+  admin_data String
+}

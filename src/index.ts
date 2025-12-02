@@ -17,13 +17,14 @@ import {ShareManage} from "./share/ShareManage";
 import {ShareConfig} from "./share/ShareObject";
 import {OauthManage} from "./oauth/OauthManage";
 import {OauthConfig} from "./oauth/OauthObject";
-import {OauthTokenManage} from "./oauth/OauthTokenManage";
+import {TokenManage} from "./oauth/TokenManage";
 import {TasksManage} from "./tasks/TasksManage";
 import {TasksResult, TasksConfig} from "./tasks/TasksObject";
 import {TokenManage} from "./token/TokenManage";
 import {TokenResult, TokenConfig} from "./token/TokenObject";
-import {SystemManage} from "./system/SystemManage";
-import {SystemResult, SystemConfig} from "./system/SystemObject";
+import {SystemManage} from "./setup/SystemManage";
+import {SystemResult, SystemConfig} from "./setup/SystemObject";
+
 
 
 // 绑定数据 ###############################################################################
@@ -628,7 +629,7 @@ app.use('/@oauth-token/:action/:method/*', async (c: Context): Promise<any> => {
     const config: Record<string, any> = await getConfig(c, 'config');
     
     // 创建对象 ==========================================================================
-    let oauthToken: OauthTokenManage = new OauthTokenManage(c);
+    let oauthToken: TokenManage = new TokenManage(c);
     
     // 检查方法 ==========================================================================
     switch (method) {
@@ -1109,7 +1110,7 @@ app.use('/@types/:action/:method/*', async (c: Context): Promise<any> => {
 })
 
 // 系统信息 ##############################################################################
-app.use('/@system/:action/:method', async (c: Context): Promise<any> => {
+app.use('/@setup/:action/:method', async (c: Context): Promise<any> => {
     const action: string = c.req.param('action');
     const method: string = c.req.param('method');
 

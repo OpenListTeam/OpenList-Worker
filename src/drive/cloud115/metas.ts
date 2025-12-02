@@ -8,7 +8,8 @@
 //====== 115云盘配置信息接口 ======
 export interface CONFIG_INFO {
 	// 认证配置
-	cookie: string;              // Cookie字符串（包含UID、CID、SEID、KID）
+	access_token: string;        // 访问令牌
+	refresh_token: string;       // 刷新令牌
 	
 	// 基础配置
 	root_folder_id: string;      // 根文件夹ID，默认为"0"
@@ -23,7 +24,8 @@ export interface CONFIG_INFO {
 
 //====== 115云盘保存信息接口 ======
 export interface SAVING_INFO {
-	cookie?: string;             // Cookie字符串
+	access_token?: string;       // 访问令牌
+	refresh_token?: string;      // 刷新令牌
 	user_id?: string;            // 用户ID
 	user_name?: string;          // 用户名
 }

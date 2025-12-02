@@ -99,7 +99,7 @@ export class MountManage {
 
         // 处理主驱动
         if (max_check) {
-            const main_mount = all_mount.data.find(m => m.mount_path === max_check);
+            const main_mount = all_mount.data.find((m: { mount_path: string; }) => m.mount_path === max_check);
             if (main_mount) {
                 let driver_item: any = sys.driver_list[main_mount.mount_type];
                 out_mount.unshift(new driver_item(
@@ -144,6 +144,7 @@ export class MountManage {
 
     async reload(config: MountConfig | string): Promise<MountResult> {
         if (typeof config === "string") config = {mount_path: config}
+        console.log("@mount reload path", config)
         const driver: any[] = await this.filter(config.mount_path);
         console.log("@reload before init", config)
         if (!driver) {
@@ -207,6 +208,7 @@ export class MountManage {
         console.log("@loader", "driver_core.change:", driver_core.change);
         if (!result.flag) return null;
         console.log("@loader", "Load driver successfully")
+        console.log("driver_core.change", driver_core.change)
         if (driver_core.change) {
             // 重新从数据库内读取 ==========================================
             config = await this.select(driver_core.router);

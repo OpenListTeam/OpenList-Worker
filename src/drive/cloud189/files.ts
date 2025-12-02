@@ -628,10 +628,11 @@ export class HostDriver extends BasicDriver {
                     
                     try {
                         // 重新登录获取cookie
-                        const newCookie = await this.clouds.loginWithCookie();
-                        this.clouds.cookie = newCookie;
+                        // const newCookie = await this.clouds.loginWithCookie();
+                        // this.clouds.cookie = newCookie;
+                        await this.initSelf();
                         // 覆盖当前用户设置的cookie
-                        this.clouds.in_config.cookie = newCookie;
+                        this.clouds.in_config.cookie = this.clouds.cookie;
                         console.log('重新登录成功，重试请求...');
                         
                         // 重试请求

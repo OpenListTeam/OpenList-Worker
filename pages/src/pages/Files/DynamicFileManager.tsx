@@ -892,12 +892,12 @@ const DynamicFileManager: React.FC = () => {
       let compareValue = 0;
       switch (sortBy) {
         case 'name':
-          compareValue = a.name.localeCompare(b.name, 'zh-CN', { numeric: true });
+          compareValue = (a.name || '').localeCompare(b.name || '', 'zh-CN', { numeric: true });
           break;
         case 'size':
           // 目录大小都为0，文件按实际大小排序
           if (a.is_dir && b.is_dir) {
-            compareValue = a.name.localeCompare(b.name, 'zh-CN', { numeric: true });
+            compareValue = (a.name || '').localeCompare(b.name || '', 'zh-CN', { numeric: true });
           } else {
             compareValue = a.fileSize - b.fileSize;
           }
@@ -906,7 +906,7 @@ const DynamicFileManager: React.FC = () => {
           compareValue = new Date(a.timeModify).getTime() - new Date(b.timeModify).getTime();
           break;
         default:
-          compareValue = a.name.localeCompare(b.name, 'zh-CN', { numeric: true });
+          compareValue = (a.name || '').localeCompare(b.name || '', 'zh-CN', { numeric: true });
       }
 
       return sortOrder === 'asc' ? compareValue : -compareValue;
