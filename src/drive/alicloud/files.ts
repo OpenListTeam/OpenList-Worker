@@ -28,6 +28,7 @@ import {
 } from "./metas";
 import crypto from "crypto";
 
+
 //====== 阿里云盘文件操作驱动器类 ======
 /**
  * 阿里云盘文件操作驱动器类
@@ -156,13 +157,16 @@ export class HostDriver extends BasicDriver {
 	 */
 	private fileToObj(file: AliCloudFile): fso.FileInfo {
 		return {
-			name: file.name || file.file_name || "",
-			uuid: file.file_id,
-			size: file.size || 0,
-			type: file.type === con.FILE_TYPES.FOLDER ? "folder" : "file",
-			time: new Date(file.updated_at).getTime(),
-			thumb: file.thumbnail || "",
-			hash: file.content_hash || "",
+			filePath: "",
+			fileName: file.name || file.file_name || "",
+			fileSize: file.size || 0,
+			fileType: file.type === con.FILE_TYPES.FOLDER ? 0 : 1,
+			fileUUID: file.file_id,
+			thumbnails: file.thumbnail || "",
+			timeModify: new Date(file.updated_at),
+			fileHash: {
+				sha1: file.content_hash || "",
+			},
 		};
 	}
 
@@ -204,9 +208,9 @@ export class HostDriver extends BasicDriver {
 
 	//====== 文件下载 ======
 	/**
-	 * 获取文件下载链接
+	 * 获取文件下载流
 	 */
-	async downFile(file: fso.FileFind): Promise<fso.DownInfo> {
+	async downFile(file: fso.FileFind): Promise<fso.FileLink[]> {
 		try {
 			// 解析路径获取文件ID
 			if (file.path) {
@@ -214,7 +218,7 @@ export class HostDriver extends BasicDriver {
 			}
 
 			if (!file.uuid) {
-				throw new Error("文件ID不能为空");
+				return [{ status: false, result: "文件ID不能为空" }];
 			}
 
 			// 获取下载链接
@@ -237,20 +241,65 @@ export class HostDriver extends BasicDriver {
 			}
 
 			if (!url) {
-				throw new Error("获取下载链接失败");
+				return [{ status: false, result: "获取下载链接失败" }];
 			}
 
-			return {
-				flag: true,
-				text: "获取下载链接成功",
-				down: url,
-			};
+// 返回下载流，由后端代理下载
+			return [
+				{
+					status: true,
+					stream: async (response: any) => {
+						try {
+							console.log("[AliCloud] 开始代理下载:", url);
+							
+							// 发起下载请求
+							const downloadResponse = await fetch(url, {
+								method: "GET",
+								headers: {
+									"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+									"Referer": "https://www.aliyundrive.com/"
+								}
+							});
+
+							if (!downloadResponse.ok) {
+								throw new Error(`下载请求失败: ${downloadResponse.status} ${downloadResponse.statusText}`);
+							}
+
+							// 设置响应头
+							response.status = downloadResponse.status;
+							
+							// 复制重要的响应头
+							const contentType = downloadResponse.headers.get("Content-Type");
+							const contentLength = downloadResponse.headers.get("Content-Length");
+							const contentDisposition = downloadResponse.headers.get("Content-Disposition");
+							
+							if (contentType) response.header("Content-Type", contentType);
+							if (contentLength) response.header("Content-Length", contentLength);
+							if (contentDisposition) {
+								response.header("Content-Disposition", contentDisposition);
+							} else {
+								// 如果没有Content-Disposition，根据文件名设置一个
+								const fileName = file.path?.split('/').pop() || 'download';
+								response.header("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
+							}
+							
+							// 直接返回ReadableStream，让Hono框架处理流传输
+							if (downloadResponse.body) {
+								console.log("[AliCloud] 返回流式响应");
+								return downloadResponse.body;
+							} else {
+								throw new Error("下载响应体为空");
+							}
+						} catch (error: any) {
+							console.error("[AliCloud] 代理下载失败:", error.message);
+							throw error;
+						}
+					}
+				}
+			];
 		} catch (error: any) {
 			console.error("[AliCloud] 获取下载链接失败:", error.message);
-			return {
-				flag: false,
-				text: error.message || "获取下载链接失败",
-			};
+			return [{ status: false, result: error.message || "获取下载链接失败" }];
 		}
 	}
 

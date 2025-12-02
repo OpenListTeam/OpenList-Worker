@@ -9,7 +9,7 @@
  * =======================================================*/
 
 //====== 百度网盘API端点 ======
-export const BAIDU_API_BASE = "https://pan.baidu.com/rest/2.0";
+export const BAIDU_API_BASE = "https://pan.baidu.com/rest/2.0/";
 export const BAIDU_PCS_BASE = "https://d.pcs.baidu.com";
 export const BAIDU_OAUTH_URL = "https://openapi.baidu.com/oauth/2.0/token";
 

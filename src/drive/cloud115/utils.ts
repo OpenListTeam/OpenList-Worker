@@ -21,6 +21,7 @@ interface ResponseError {
 	error?: string;
 	errno?: number;
 	errtype?: string;
+	data?: any;
 }
 
 //====== 115云盘工具类 ======
@@ -29,6 +30,8 @@ export class HostClouds extends BasicClouds {
 	declare public config: CONFIG_INFO;
 	declare public saving: SAVING_INFO;
 	private lastRequestTime: number = 0;
+	private consecutiveErrors: number = 0; // 连续错误计数
+	private lastErrorTime: number = 0; // 上次错误时间
 
 	/**
 	 * 构造函数
@@ -152,22 +155,58 @@ export class HostClouds extends BasicClouds {
 	/**
 	 * 等待限流
 	 * 根据配置的限流速率控制请求频率
+/**
+	 * 智能限流控制
+	 * 包含基础限流和错误退避策略
 	 */
 	private async waitLimit(): Promise<void> {
-		if (!this.config.limit_rate || this.config.limit_rate <= 0) {
-			return;
+		// 基础限流控制
+		if (this.config.limit_rate && this.config.limit_rate > 0) {
+			const now = Date.now();
+			const minInterval = 1000 / this.config.limit_rate; // 毫秒
+			const elapsed = now - this.lastRequestTime;
+
+			if (elapsed < minInterval) {
+				const waitTime = minInterval - elapsed;
+				await new Promise(resolve => setTimeout(resolve, waitTime));
+			}
+
+			this.lastRequestTime = Date.now();
 		}
 
-		const now = Date.now();
-		const minInterval = 1000 / this.config.limit_rate; // 毫秒
-		const elapsed = now - this.lastRequestTime;
-
-		if (elapsed < minInterval) {
-			const waitTime = minInterval - elapsed;
-			await new Promise(resolve => setTimeout(resolve, waitTime));
+		// 错误退避策略
+		if (this.consecutiveErrors > 0) {
+			const now = Date.now();
+			const timeSinceLastError = now - this.lastErrorTime;
+			
+			// 指数退避：错误次数越多，等待时间越长
+			const backoffTime = Math.min(1000 * Math.pow(2, this.consecutiveErrors - 1), 30000); // 最大30秒
+			
+			if (timeSinceLastError < backoffTime) {
+				const waitTime = backoffTime - timeSinceLastError;
+				console.log(`[115云盘] 错误退避等待: ${waitTime}ms (连续错误: ${this.consecutiveErrors})`);
+				await new Promise(resolve => setTimeout(resolve, waitTime));
+			}
 		}
+	}
 
-		this.lastRequestTime = Date.now();
+	/**
+	 * 记录API错误，用于退避策略
+	 */
+	private recordError(): void {
+		this.consecutiveErrors++;
+		this.lastErrorTime = Date.now();
+		console.log(`[115云盘] 记录API错误，连续错误次数: ${this.consecutiveErrors}`);
+	}
+
+	/**
+	 * 记录API成功，重置错误计数
+	 */
+	private recordSuccess(): void {
+		if (this.consecutiveErrors > 0) {
+			console.log(`[115云盘] API调用成功，重置错误计数 (之前: ${this.consecutiveErrors})`);
+			this.consecutiveErrors = 0;
+		}
 	}
 
 	//====== API请求 ======
@@ -186,27 +225,27 @@ export class HostClouds extends BasicClouds {
 		await this.waitLimit();
 
 const accessToken = this.config.access_token || this.saving.access_token || "";
+		const refreshToken = this.config.refresh_token || this.saving.refresh_token || "";
+		
 		const requestHeaders: Record<string, string> = {
 			"User-Agent": "Mozilla/5.0 115disk/42.0.0.2",
+			"Accept": "application/json",
 			...headers,
 		};
 
-		// 115 API支持两种认证方式：
-		// 1. Bearer token (用于Open API)
-		// 2. Cookie (用于传统API)
+		// 115 Open API使用Bearer Token认证
 		if (accessToken) {
-			// 首先尝试Bearer token认证
 			requestHeaders["Authorization"] = `Bearer ${accessToken}`;
-			
-			// 对于proapi.115.com域名，也尝试设置Cookie格式
-			if (url.includes("proapi.115.com")) {
-				requestHeaders["Cookie"] = `115_token=${accessToken}`;
-				// 也设置session相关的cookie
-				const sessionToken = this.config.refresh_token || this.saving.refresh_token || "";
-				if (sessionToken) {
-					requestHeaders["Cookie"] += `;115_refresh=${sessionToken}`;
-				}
+		}
+		
+		// 对于传统API接口，使用Cookie认证
+		if (url.includes("/app/") && accessToken) {
+			const cookies = [];
+			cookies.push(`115_token=${accessToken}`);
+			if (refreshToken) {
+				cookies.push(`115_refresh=${refreshToken}`);
 			}
+			requestHeaders["Cookie"] = cookies.join("; ");
 		}
 
 		const options: RequestInit = {
@@ -288,18 +327,59 @@ const accessToken = this.config.access_token || this.saving.access_token || "";
 				error: data.error,
 				errno: data.errno,
 				errtype: data.errtype,
+				has_data: !!data.data,
+				// 打印完整的响应数据以便调试
+				full_response: data,
 			});
 			
 			// 检查业务错误
 			if (data.state === false) {
+				// 记录错误
+				this.recordError();
+				
+				let errorMessage = "Request failed";
+				
+				// 根据errno提供更具体的错误信息
+				if (data.errno) {
+					switch (data.errno) {
+						case 99:
+							errorMessage = "请重新登录 - Token已失效或无效";
+							break;
+						case 1001:
+							errorMessage = "参数错误 - 请求参数不正确";
+							break;
+						case 1002:
+							errorMessage = "权限不足 - 没有访问权限";
+							break;
+						case 1003:
+							errorMessage = "接口不存在 - API路径错误";
+							break;
+						case 1004:
+							errorMessage = "请求过于频繁 - 请稍后重试";
+							break;
+						case 406:
+							errorMessage = "已达到当前访问上限，请购买更高级别VIP或稍后重试";
+							break;
+						default:
+							errorMessage = data.error || `API错误(errno: ${data.errno})`;
+					}
+				} else if (data.error) {
+					errorMessage = data.error;
+				} else if (data.errtype) {
+					errorMessage = data.errtype;
+				}
+				
 				console.error("[115云盘] 业务错误:", {
 					error: data.error,
 					errno: data.errno,
 					errtype: data.errtype,
+					message: errorMessage,
 				});
-				throw new Error(data.error || data.errtype || "Request failed");
+				throw new Error(errorMessage);
 			}
-			
+
+			// 记录成功
+			this.recordSuccess();
 			return data;
 		}
 
@@ -323,73 +403,406 @@ const accessToken = this.config.access_token || this.saving.access_token || "";
 			}
 		}
 
-		return textResponse;
+return textResponse;
+	}
+
+	/**
+	 * 使用完整URL进行API请求（不通过getApiUrl拼接）
+	 */
+	async requestFullUrl(
+		fullUrl: string,
+		method: string = "GET",
+		body?: any,
+		headers?: Record<string, string>,
+		isFormData: boolean = false
+	): Promise<any> {
+		// 限流控制
+		await this.waitLimit();
+
+		const accessToken = this.config.access_token || this.saving.access_token || "";
+		const refreshToken = this.config.refresh_token || this.saving.refresh_token || "";
+		
+		const requestHeaders: Record<string, string> = {
+			"User-Agent": "Mozilla/5.0 115disk/42.0.0.2",
+			"Accept": "application/json",
+			...headers,
+		};
+
+		// 115 Open API使用Bearer Token认证
+		if (accessToken) {
+			requestHeaders["Authorization"] = `Bearer ${accessToken}`;
+		}
+		
+		// 对于传统API接口，使用Cookie认证
+		if (fullUrl.includes("/app/") && accessToken) {
+			const cookies = [];
+			cookies.push(`115_token=${accessToken}`);
+			if (refreshToken) {
+				cookies.push(`115_refresh=${refreshToken}`);
+			}
+			requestHeaders["Cookie"] = cookies.join("; ");
+		}
+
+		const options: RequestInit = {
+			method,
+			headers: requestHeaders,
+		};
+
+		let finalUrl = fullUrl;
+
+		if (body) {
+			if (isFormData || body instanceof FormData || body instanceof ReadableStream) {
+				options.body = body;
+			} else if (typeof body === "object") {
+				// 对于GET请求，将参数添加到URL
+				if (method === "GET") {
+					const params = new URLSearchParams();
+					for (const [key, value] of Object.entries(body)) {
+						if (value !== undefined && value !== null) {
+							params.append(key, String(value));
+						}
+					}
+					const separator = fullUrl.includes("?") ? "&" : "?";
+					finalUrl = `${fullUrl}${separator}${params.toString()}`;
+				} else {
+					// POST请求使用表单格式
+					const formData = new URLSearchParams();
+					for (const [key, value] of Object.entries(body)) {
+						if (value !== undefined && value !== null) {
+							formData.append(key, String(value));
+						}
+					}
+					options.body = formData.toString();
+					requestHeaders["Content-Type"] = "application/x-www-form-urlencoded";
+				}
+			} else {
+				options.body = body;
+			}
+		}
+
+		console.log("[115云盘] 完整URL API请求:", {
+			method,
+			url: finalUrl,
+			has_authorization: !!requestHeaders.Authorization,
+			authorization_length: requestHeaders.Authorization?.length || 0,
+		});
+
+		let response: Response;
+		try {
+			response = await fetch(finalUrl, options);
+			console.log("[115云盘] 完整URL API响应:", {
+				status: response.status,
+				statusText: response.statusText,
+				ok: response.ok,
+				contentType: response.headers.get("content-type"),
+			});
+		} catch (error: any) {
+			console.error("[115云盘] 网络请求失败:", error.message);
+			throw new Error(`Network error: ${error.message}`);
+		}
+
+		// 处理错误响应
+		if (!response.ok) {
+			const errorText = await response.text();
+			console.error("[115云盘] HTTP错误响应:", {
+				status: response.status,
+				statusText: response.statusText,
+				body: errorText.substring(0, 500),
+			});
+			throw new Error(`HTTP error! status: ${response.status}`);
+		}
+
+// 返回响应数据
+		const contentType = response.headers.get("content-type");
+		if (contentType && contentType.includes("application/json")) {
+			const data: ResponseError = await response.json();
+			console.log("[115云盘] 完整URL API响应数据:", {
+				state: data.state,
+				has_error: !!data.error,
+				error: data.error,
+				errno: data.errno,
+				errtype: data.errtype,
+				has_data: !!data.data,
+			});
+			
+			// 检查业务错误
+			if (data.state === false) {
+				// 记录错误
+				this.recordError();
+				
+				let errorMessage = "Request failed";
+				
+				if (data.errno) {
+					switch (data.errno) {
+						case 99:
+							errorMessage = "请重新登录 - Token已失效或无效";
+							break;
+						case 1001:
+							errorMessage = "参数错误 - 请求参数不正确";
+							break;
+						case 1002:
+							errorMessage = "权限不足 - 没有访问权限";
+							break;
+						case 1003:
+							errorMessage = "接口不存在 - API路径错误";
+							break;
+						case 1004:
+							errorMessage = "请求过于频繁 - 请稍后重试";
+							break;
+						case 406:
+							errorMessage = "已达到当前访问上限，请购买更高级别VIP或稍后重试";
+							break;
+						default:
+							errorMessage = data.error || `API错误(errno: ${data.errno})`;
+					}
+				} else if (data.error) {
+					errorMessage = data.error;
+				} else if (data.errtype) {
+					errorMessage = data.errtype;
+				}
+				
+				console.error("[115云盘] 完整URL业务错误:", {
+					error: data.error,
+					errno: data.errno,
+					errtype: data.errtype,
+					message: errorMessage,
+				});
+				throw new Error(errorMessage);
+			}
+
+			// 记录成功
+			this.recordSuccess();
+			return data;
+		} else {
+			// 处理非JSON响应
+			const textResponse = await response.text();
+			console.log("[115云盘] 完整URL非JSON响应内容:", {
+				contentType,
+				responseLength: textResponse.length,
+				responsePreview: textResponse.substring(0, 200),
+			});
+
+			// 检查是否是HTML错误页面
+			if (contentType && contentType.includes("text/html")) {
+				if (textResponse.includes("登录") || textResponse.includes("login")) {
+					console.error("[115云盘] 完整URL HTML响应显示需要登录");
+					throw new Error("认证失败 - 需要重新登录");
+				}
+				if (textResponse.includes("404") || textResponse.includes("Not Found")) {
+					console.error("[115云盘] 完整URL HTML响应显示接口不存在");
+					throw new Error("接口路径错误 - 404 Not Found");
+				}
+			}
+
+			return textResponse;
+		}
 	}
 
 //====== 用户信息 ======
+/**
+	 * 调试方法：测试API调用并返回完整响应
+	 */
+	private async debugApiCall(url: string, method: string = "GET", params?: Record<string, string>): Promise<any> {
+		console.log(`[115云盘调试] 测试API调用: ${method} ${url}`);
+		
+		const accessToken = this.config.access_token || this.saving.access_token || "";
+		const refreshToken = this.config.refresh_token || this.saving.refresh_token || "";
+		
+		console.log(`[115云盘调试] Token信息:`, {
+			has_access_token: !!accessToken,
+			access_token_length: accessToken.length,
+			access_token_preview: accessToken.substring(0, 20) + "...",
+			has_refresh_token: !!refreshToken,
+			refresh_token_length: refreshToken.length,
+			refresh_token_preview: refreshToken.substring(0, 20) + "...",
+		});
+		
+// 测试多种认证方式 - 基于Alist项目的成功配置
+		const authMethods = [
+			{
+				name: "115 App Bearer Token (Alist配置)",
+				headers: {
+					"User-Agent": "115disk/27.0.5.7",
+					"Accept": "application/json",
+					"Authorization": `Bearer ${accessToken}`,
+				}
+			},
+			{
+				name: "115 App Cookie Auth",
+				headers: {
+					"User-Agent": "115disk/27.0.5.7",
+					"Accept": "application/json",
+					"Cookie": `access_token=${accessToken}`,
+				}
+			},
+			{
+				name: "115 App Query Token",
+				headers: {
+					"User-Agent": "115disk/27.0.5.7",
+					"Accept": "application/json",
+				},
+				addToQuery: `access_token=${accessToken}`
+			},
+{
+				name: "Original Bearer Token",
+				headers: {
+					"User-Agent": "Mozilla/5.0 115disk/42.0.0.2",
+					"Accept": "application/json",
+					"Authorization": `Bearer ${accessToken}`,
+				}
+			},
+			{
+				name: "URL Encoded Bearer Token",
+				headers: {
+					"User-Agent": "115disk/27.0.5.7",
+					"Accept": "application/json",
+					"Authorization": `Bearer ${encodeURIComponent(accessToken)}`,
+				}
+			},
+		];
+
+		let finalUrl = url;
+		if (params && method === "GET") {
+			const queryString = new URLSearchParams(params).toString();
+			finalUrl += `?${queryString}`;
+		}
+
+// 逐一测试每种认证方式
+		for (const authMethod of authMethods) {
+			console.log(`\n[115云盘调试] ========== 测试 ${authMethod.name} ==========`);
+console.log(`[115云盘调试] 请求头:`, {
+				has_authorization: !!authMethod.headers["Authorization"],
+				auth_length: authMethod.headers["Authorization"]?.length || 0,
+				has_cookie: !!authMethod.headers["Cookie"],
+				cookie_length: authMethod.headers["Cookie"]?.length || 0,
+				user_agent: authMethod.headers["User-Agent"],
+				accept: authMethod.headers["Accept"],
+				addToQuery: authMethod.addToQuery || "无",
+			});
+
+			// 构建最终的URL（可能需要添加查询参数）
+			let testUrl = finalUrl;
+			if (authMethod.addToQuery) {
+				const separator = testUrl.includes('?') ? '&' : '?';
+				testUrl += `${separator}${authMethod.addToQuery}`;
+			}
+
+try {
+				const response = await fetch(testUrl, {
+					method,
+					headers: authMethod.headers as Record<string, string>,
+				});
+
+				console.log(`[115云盘调试] 响应状态:`, {
+					status: response.status,
+					statusText: response.statusText,
+					ok: response.ok,
+					contentType: response.headers.get("content-type"),
+				});
+
+				const contentType = response.headers.get("content-type") || "";
+				if (contentType.includes("application/json")) {
+					const data = await response.json();
+					console.log(`[115云盘调试] ${authMethod.name} JSON响应:`, JSON.stringify(data, null, 2));
+					
+					// 如果返回成功，直接返回结果
+					if (data.state !== false) {
+						console.log(`[115云盘调试] ${authMethod.name} 认证成功！`);
+						return data;
+					}
+				} else {
+					const text = await response.text();
+					console.log(`[115云盘调试] ${authMethod.name} 非JSON响应:`, text.substring(0, 500));
+				}
+			} catch (error: any) {
+				console.error(`[115云盘调试] ${authMethod.name} 请求失败:`, error.message);
+			}
+		}
+
+		// 如果所有认证方式都失败，抛出错误
+		throw new Error("所有认证方式都失败");
+	}
+
 	/**
 	 * 获取用户信息
-	 * 用于验证Token和获取空间信息
-	 * 注意：115 API的uploadinfo接口使用proapi域名，文件列表使用webapi域名
+	 * 基于Go SDK的验证逻辑，使用115 Open API
 	 */
 	async getUserInfo(): Promise<Cloud115UserInfoResponse> {
 		try {
-			// 尝试调用uploadinfo接口获取用户信息（使用proapi域名）
-			const uploadInfoUrl = `${con.PRO_API_BASE_URL}${con.PRO_API_PATHS.UPLOADINFO}`;
-			console.log("[115云盘] 正在获取用户信息，URL:", uploadInfoUrl);
-			const uploadInfo = await this.request(uploadInfoUrl, "GET");
+			// 首先调试UserInfo接口
+			const userInfoUrl = `${con.API_BASE_URL}${con.API_PATHS.USER_INFO}`;
+			console.log("[115云盘] ========== 调试UserInfo接口 ==========");
 			
-			// 如果uploadinfo接口返回了user_id，则使用它
-			if (uploadInfo && uploadInfo.user_id) {
-				console.log("[115云盘] 用户信息获取完成（通过uploadinfo）");
-				return {
-					state: true,
-					data: {
-						user_id: uploadInfo.user_id.toString(),
-						user_name: uploadInfo.user_name || "115用户",
-					},
-				};
+			try {
+				const userInfoResult = await this.debugApiCall(userInfoUrl, "GET");
+				
+				// 检查UserInfo接口响应
+				if (userInfoResult && userInfoResult.state !== false) {
+					console.log("[115云盘] UserInfo接口调用成功");
+					
+					// 如果返回了用户数据
+					if (userInfoResult.data) {
+						return {
+							state: true,
+							data: {
+								user_id: userInfoResult.data.user_id?.toString() || "verified",
+								user_name: userInfoResult.data.user_name || userInfoResult.data.name || "115用户",
+							},
+						};
+					}
+					
+					// 如果state为true但没有data，至少说明token有效
+					return {
+						state: true,
+						data: {
+							user_id: "verified",
+							user_name: "115用户",
+						},
+					};
+				}
+				
+				console.log("[115云盘] UserInfo接口返回state=false");
+			} catch (userInfoError: any) {
+				console.log("[115云盘] UserInfo接口失败:", userInfoError.message);
 			}
+			
+			// 调试文件列表接口
+			console.log("[115云盘] ========== 调试文件列表接口 ==========");
+			const filesUrl = `${con.API_BASE_URL}${con.API_PATHS.FILES_LIST}`;
+			
+			try {
+				const filesResult = await this.debugApiCall(filesUrl, "GET", {
+					cid: "0",
+					limit: "1",
+					offset: "0",
+					asc: "true",
+					o: "file_name",
+					show_dir: "true",
+				});
+				
+				// 如果文件列表接口成功，说明token有效
+				if (filesResult && filesResult.state !== false) {
+					console.log("[115云盘] 文件列表接口验证成功");
+					return {
+						state: true,
+						data: {
+							user_id: "verified",
+							user_name: "115用户",
+						},
+					};
+				}
+			} catch (filesError: any) {
+				console.log("[115云盘] 文件列表接口失败:", filesError.message);
+			}
+			
+			// 所有验证方式都失败
+			console.error("[115云盘] Token验证失败 - 所有API端点均返回错误");
+			throw new Error("Token验证失败 - 请检查access_token和refresh_token是否正确且未过期");
+			
 		} catch (error) {
-			console.log("[115云盘] uploadinfo接口不可用，尝试使用文件列表接口验证token");
+			console.error("[115云盘] getUserInfo执行失败:", error);
+			throw error;
 		}
-		
-		// 如果uploadinfo不可用，通过调用文件列表接口来验证token（使用webapi域名）
-		const filesUrl = `${con.API_BASE_URL}${con.API_PATHS.FILES_LIST}`;
-		console.log("[115云盘] 正在验证Token，URL:", filesUrl);
-		
-		let filesResult;
-		try {
-			filesResult = await this.request(filesUrl, "GET", {
-				cid: this.config.root_folder_id || "0",
-				limit: "1", // 只获取1条记录，减少数据传输
-			});
-		} catch (error) {
-			console.error("[115云盘] 文件列表接口调用失败:", error);
-			throw new Error("Token验证失败 - API调用异常");
-		}
-		
-		// 检查响应结果
-		if (typeof filesResult === 'string') {
-			// 如果返回字符串，可能是HTML页面，说明token无效或接口错误
-			console.error("[115云盘] 返回HTML响应，可能token无效");
-			throw new Error("Token验证失败 - 返回HTML页面");
-		}
-		
-		// 如果能成功调用文件列表接口并得到JSON响应，说明token有效
-		if (filesResult && (filesResult.state !== false || filesResult.data !== undefined)) {
-			console.log("[115云盘] Token验证成功（通过文件列表接口）");
-			return {
-				state: true,
-				data: {
-					user_id: "verified",
-					user_name: "115用户",
-				},
-			};
-		}
-		
-		console.error("[115云盘] 文件列表接口返回无效数据:", filesResult);
-		throw new Error("Token验证失败 - 无效响应数据");
 	}
 
 	//====== 工具方法 ======

@@ -30,7 +30,7 @@ export interface SAVING_INFO {
 	user_name?: string;          // 用户名
 }
 
-//====== 115云盘文件信息接口 ======
+//====== 115云盘文件信息接口（期望格式） ======
 export interface Cloud115File {
 	fid: string;                 // 文件ID
 	cid?: string;                // 父目录ID
@@ -47,12 +47,28 @@ export interface Cloud115File {
 	thumb?: string;              // 缩略图
 }
 
+//====== 115云盘API实际返回的文件信息接口 ======
+export interface Cloud115APIFile {
+	Fid: string;                 // 文件ID
+	Fn: string;                  // 文件名
+	Fc: string;                  // 文件类别（0=文件夹）
+	FS: number;                  // 文件大小
+	Sha1?: string;               // SHA1哈希
+	Pc?: string;                 // PickCode
+	Thumbnail?: string;          // 缩略图
+	UpPt?: number;               // 上传时间戳
+	Upt?: number;                // 更新时间戳
+	Pid?: string;                // 父目录ID
+}
+
 //====== 115云盘文件列表响应 ======
 export interface Cloud115FileListResponse {
 	state: boolean;
+	flag?: boolean;              // 新API格式中的状态标识
 	error?: string;
+	text?: string;               // 新API格式中的消息
 	count?: number;
-	data?: Cloud115File[];
+	data?: Cloud115File[] | Cloud115APIFile[] | any[];  // 支持两种格式
 	offset?: number;
 	page_size?: number;
 }

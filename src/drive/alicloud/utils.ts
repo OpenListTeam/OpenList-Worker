@@ -219,7 +219,7 @@ export class HostClouds extends BasicClouds {
 			if (!this.limiter) {
 				this.limiter = limiterManager.getLimiterForUser(this.saving.user_id || "");
 			}
-			await this.refreshToken();
+			// await this.refreshToken();
 		} else if (this.saving.user_id && !this.limiter) {
 			// 创建用户专属限流器
 			this.limiter = limiterManager.getLimiterForUser(this.saving.user_id);

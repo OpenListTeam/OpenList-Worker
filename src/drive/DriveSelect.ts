@@ -185,6 +185,7 @@ export const config_list: Record<string, any> = {
     alicloud: {
         name: "阿里云盘",
         description: "阿里云盘开放平台存储服务",
+        proxy_only: true, // 强制使用代理模式
         fields: [
             { key: "drive_type", label: "驱动类型", type: "select", required: true, options: [
                     { value: "default", label: "默认" },

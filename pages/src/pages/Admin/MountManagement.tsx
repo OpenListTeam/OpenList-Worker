@@ -30,6 +30,7 @@ interface Driver {
   key: string;
   name: string;
   description: string;
+  proxy_only?: boolean; // 是否强制使用代理模式
 }
 
 interface DriverField {
@@ -123,10 +124,20 @@ const MountManagement: React.FC = () => {
     loadDrivers();
   }, []);
 
-  // 监听驱动选择变化，自动加载配置字段（仅在新增模式下）
+// 监听驱动选择变化，自动加载配置字段（仅在新增模式下）
   useEffect(() => {
     if (selectedDriver && drivers.length > 0 && !editingMount) {
       loadDriverFields(selectedDriver);
+      
+      // 如果驱动强制使用代理模式，自动设置proxy_mode为1
+      const driver = drivers.find(d => d.key === selectedDriver);
+      if (driver?.proxy_only) {
+        setFormData(prev => ({ 
+          ...prev, 
+          proxy_mode: 1,
+          proxy_data: prev.proxy_data || 'http://localhost:8080' // 设置默认代理地址
+        }));
+      }
     }
   }, [selectedDriver, drivers, editingMount]);
 
@@ -551,7 +562,7 @@ const MountManagement: React.FC = () => {
               />
             </Grid>
 
-            {/* 第二行：缓存时间(20%) 序号(20%) 代理模式(30%) 启用(30%) */}
+{/* 第二行：缓存时间(20%) 序号(20%) 代理模式(30%) 启用(30%) */}
             <Grid item sx={{ width: '15%' }}>
               <TextField
                 fullWidth
@@ -582,10 +593,16 @@ const MountManagement: React.FC = () => {
                   value={formData.proxy_mode || 0}
                   label="代理模式"
                   onChange={(e) => setFormData(prev => ({ ...prev, proxy_mode: e.target.value }))}
+                  disabled={drivers.find(d => d.key === selectedDriver)?.proxy_only}
                 >
                   <MenuItem value={0}>直连</MenuItem>
                   <MenuItem value={1}>代理</MenuItem>
                 </Select>
+                {drivers.find(d => d.key === selectedDriver)?.proxy_only && (
+                  <Typography variant="caption" color="warning.main" sx={{ mt: 1, display: 'block' }}>
+                    该驱动仅支持代理模式
+                  </Typography>
+                )}
               </FormControl>
             </Grid>
 

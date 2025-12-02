@@ -8,29 +8,29 @@
  * =======================================================*/
 
 //====== 115云盘API端点 ======
-// 根据AList实现，文件操作使用webapi.115.com，下载等特殊操作使用proapi.115.com
-export const API_BASE_URL = "https://webapi.115.com";
+// 根据115-sdk-go实现，Open API使用proapi.115.com/open/前缀
+export const API_BASE_URL = "https://proapi.115.com/open";
 export const PRO_API_BASE_URL = "https://proapi.115.com";
 export const PASSPORT_BASE_URL = "https://passportapi.115.com";
 export const UPLOAD_BASE_URL = "https://uplb.115.com";
 
-//====== API路径 ======
-// 文件操作使用webapi.115.com，下载等特殊操作使用proapi.115.com
+//====== API路径 (Open API) ======
+// 115 Open API使用统一的proapi.115.com/open/前缀
 export const API_PATHS = {
 	// 认证相关
-	USER_INFO: "/user/info", // webapi用户信息
+	USER_INFO: "/user/info", // proapi open用户信息
 	
-	// 文件操作 (webapi.115.com)
-	FILES_LIST: "/files",
-	FILE_INFO: "/files/file",
-	FOLDER_INFO: "/files/getid",
+	// 文件操作 (proapi.115.com/open) - 修复：添加/open前缀
+	FILES_LIST: "/open/ufile/files", // 115 Open API文件列表
+	FILE_INFO: "/open/ufile/file",
+	FOLDER_INFO: "/open/ufile/getid",
 	
-	// 文件管理 (webapi.115.com)
-	MKDIR: "/files/add",
-	MOVE: "/files/move",
-	COPY: "/files/copy",
-	DELETE: "/rb/delete",
-	RENAME: "/files/edit",
+	// 文件管理 (proapi.115.com/open) - 修复：添加/open前缀
+	MKDIR: "/open/ufile/add",
+	MOVE: "/open/ufile/move",
+	COPY: "/open/ufile/copy",
+	DELETE: "/open/ufile/delete",
+	RENAME: "/open/ufile/edit",
 	
 	// 下载 (proapi.115.com)
 	DOWNLOAD: "/app/chrome/downurl",
@@ -40,9 +40,9 @@ export const API_PATHS = {
 	UPLOAD_TOKEN: "/files/upload_token",
 };
 
-//====== PRO API路径 (proapi.115.com) ======
+//====== PRO API路径 (传统API) ======
 export const PRO_API_PATHS = {
-	UPLOADINFO: "/app/uploadinfo", // 获取用户信息（user_id和userkey）
+	UPLOADINFO: "/app/uploadinfo", // 传统API获取用户信息（user_id和userkey）
 	DOWNLOAD: "/app/chrome/downurl",
 };
 

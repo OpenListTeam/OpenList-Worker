@@ -105,120 +105,224 @@ export const downloadFile = async ({
     
     console.log('下载API URL:', downloadApiUrl);
     
-    const response = await axios.get(downloadApiUrl);
+    // 使用fetch获取响应，支持流式下载
+    const response = await fetch(downloadApiUrl);
     
-    if (response.data && response.data.flag && response.data.data && response.data.data.length > 0) {
-      const downloadData = response.data.data[0];
-      const directUrl = downloadData.direct;
-      const headers = downloadData.header || {};
+    // 检查响应类型
+    const contentType = response.headers.get('content-type');
+    
+    if (contentType && contentType.includes('application/json')) {
+      // JSON响应，按原来的方式处理
+      const responseData = await response.json();
       
-      if (directUrl) {
-        // 检查header字段是否不为空
-        const hasHeaders = headers && Object.keys(headers).length > 0;
+      if (responseData && responseData.flag && responseData.data && responseData.data.length > 0) {
+        const downloadData = responseData.data[0];
+        const directUrl = downloadData.direct;
+        const headers = downloadData.header || {};
         
-        if (hasHeaders) {
-          // 如果有header，使用fetch下载并保存到本地，显示进度条
-          const downloadId = `download_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        if (directUrl) {
+          // 检查header字段是否不为空
+          const hasHeaders = headers && Object.keys(headers).length > 0;
           
-          try {
-            console.log('使用fetch下载，携带headers:', headers);
+          if (hasHeaders) {
+            // 如果有header，使用fetch下载并保存到本地，显示进度条
+            const downloadId = `download_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             
-            // 开始下载，显示进度条，获取AbortController
-            const abortController = downloadManager.startDownload(downloadId, fileInfo.name);
-            
-            const fetchResponse = await fetch(directUrl, {
-              method: 'GET',
-              headers: headers,
-              signal: abortController.signal
-            });
-            
-            if (!fetchResponse.ok) {
-              throw new Error(`下载失败: ${fetchResponse.status} ${fetchResponse.statusText}`);
-            }
-            
-            // 获取文件总大小
-            const contentLength = fetchResponse.headers.get('content-length');
-            const totalSize = contentLength ? parseInt(contentLength, 10) : 0;
-            
-            if (!fetchResponse.body) {
-              throw new Error('响应体为空');
-            }
-            
-            // 创建可读流来跟踪下载进度
-            const reader = fetchResponse.body.getReader();
-            const chunks: Uint8Array[] = [];
-            let receivedLength = 0;
-            
-            while (true) {
-              const { done, value } = await reader.read();
+            try {
+              console.log('使用fetch下载，携带headers:', headers);
               
-              if (done) break;
+              // 开始下载，显示进度条，获取AbortController
+              const abortController = downloadManager.startDownload(downloadId, fileInfo.name);
               
-              chunks.push(value);
-              receivedLength += value.length;
+              const fetchResponse = await fetch(directUrl, {
+                method: 'GET',
+                headers: headers,
+                signal: abortController.signal
+              });
               
-              // 更新进度条（仅当知道总大小时）
-              if (totalSize > 0) {
-                const progress = Math.round((receivedLength / totalSize) * 100);
-                downloadManager.updateProgress(downloadId, progress);
+              if (!fetchResponse.ok) {
+                throw new Error(`下载失败: ${fetchResponse.status} ${fetchResponse.statusText}`);
+              }
+              
+              // 获取文件总大小
+              const contentLength = fetchResponse.headers.get('content-length');
+              const totalSize = contentLength ? parseInt(contentLength, 10) : 0;
+              
+              if (!fetchResponse.body) {
+                throw new Error('响应体为空');
+              }
+              
+              // 创建可读流来跟踪下载进度
+              const reader = fetchResponse.body.getReader();
+              const chunks: Uint8Array[] = [];
+              let receivedLength = 0;
+              
+              while (true) {
+                const { done, value } = await reader.read();
+                
+                if (done) break;
+                
+                chunks.push(value);
+                receivedLength += value.length;
+                
+                // 更新进度条（仅当知道总大小时）
+                if (totalSize > 0) {
+                  const progress = Math.round((receivedLength / totalSize) * 100);
+                  downloadManager.updateProgress(downloadId, progress);
+                } else {
+                  // 如果不知道总大小，显示一个动态进度
+                  const progress = Math.min(90, (receivedLength / (1024 * 1024)) * 10); // 假设每MB增加10%
+                  downloadManager.updateProgress(downloadId, progress);
+                }
+              }
+              
+              // 合并所有数据块
+              const allChunks = new Uint8Array(receivedLength);
+              let position = 0;
+              for (const chunk of chunks) {
+                allChunks.set(chunk, position);
+                position += chunk.length;
+              }
+              
+              // 创建blob并下载
+              const blob = new Blob([allChunks]);
+              
+              // 创建下载链接并触发下载
+              const downloadUrl = window.URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = downloadUrl;
+              link.download = fileInfo.name;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              
+              // 清理URL对象
+              window.URL.revokeObjectURL(downloadUrl);
+              
+              // 完成下载
+              downloadManager.completeDownload(downloadId);
+              
+              console.log('文件下载成功');
+              onSuccess?.();
+            } catch (fetchError) {
+              console.error('Fetch下载失败:', fetchError);
+              
+              // 检查是否是用户取消的错误
+              if ((fetchError as Error).name === 'AbortError') {
+                console.log('下载已被用户取消');
+                // 不需要调用failDownload，因为downloadManager.cancelDownload已经处理了状态
               } else {
-                // 如果不知道总大小，显示一个动态进度
-                const progress = Math.min(90, (receivedLength / (1024 * 1024)) * 10); // 假设每MB增加10%
-                downloadManager.updateProgress(downloadId, progress);
+                downloadManager.failDownload(downloadId, '下载文件失败: ' + (fetchError as Error).message);
+                onError?.('下载文件失败: ' + (fetchError as Error).message);
               }
             }
-            
-            // 合并所有数据块
-            const allChunks = new Uint8Array(receivedLength);
-            let position = 0;
-            for (const chunk of chunks) {
-              allChunks.set(chunk, position);
-              position += chunk.length;
-            }
-            
-            // 创建blob并下载
-            const blob = new Blob([allChunks]);
-            
-            // 创建下载链接并触发下载
-            const downloadUrl = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = downloadUrl;
-            link.download = fileInfo.name;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            // 清理URL对象
-            window.URL.revokeObjectURL(downloadUrl);
-            
-            // 完成下载
-            downloadManager.completeDownload(downloadId);
-            
-            console.log('文件下载成功');
+          } else {
+            // 如果没有header，按原来的方式跳转
+            console.log('没有header，使用原方式下载');
+            window.open(directUrl, '_blank');
             onSuccess?.();
-          } catch (fetchError) {
-            console.error('Fetch下载失败:', fetchError);
-            
-            // 检查是否是用户取消的错误
-            if ((fetchError as Error).name === 'AbortError') {
-              console.log('下载已被用户取消');
-              // 不需要调用failDownload，因为downloadManager.cancelDownload已经处理了状态
-            } else {
-              downloadManager.failDownload(downloadId, '下载文件失败: ' + (fetchError as Error).message);
-              onError?.('下载文件失败: ' + (fetchError as Error).message);
-            }
           }
         } else {
-          // 如果没有header，按原来的方式跳转
-          console.log('没有header，使用原方式下载');
-          window.open(directUrl, '_blank');
-          onSuccess?.();
+          onError?.('获取下载链接失败');
         }
       } else {
         onError?.('获取下载链接失败');
       }
     } else {
-      onError?.('获取下载链接失败');
+      // 流式响应，直接处理
+      if (!response.ok) {
+        throw new Error(`下载失败: ${response.status} ${response.statusText}`);
+      }
+      
+      console.log('收到流式响应，直接下载');
+      
+      // 从Content-Disposition头中获取文件名
+      const contentDisposition = response.headers.get('content-disposition');
+      let fileName = fileInfo.name;
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (filenameMatch && filenameMatch[1]) {
+          fileName = filenameMatch[1].replace(/['"]/g, '');
+        }
+      }
+      
+      const downloadId = `download_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      try {
+        // 开始下载，显示进度条
+        const abortController = downloadManager.startDownload(downloadId, fileName);
+        
+        if (!response.body) {
+          throw new Error('响应体为空');
+        }
+        
+        // 获取文件总大小
+        const contentLength = response.headers.get('content-length');
+        const totalSize = contentLength ? parseInt(contentLength, 10) : 0;
+        
+        // 创建可读流来跟踪下载进度
+        const reader = response.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let receivedLength = 0;
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) break;
+          
+          chunks.push(value);
+          receivedLength += value.length;
+          
+          // 更新进度条（仅当知道总大小时）
+          if (totalSize > 0) {
+            const progress = Math.round((receivedLength / totalSize) * 100);
+            downloadManager.updateProgress(downloadId, progress);
+          } else {
+            // 如果不知道总大小，显示一个动态进度
+            const progress = Math.min(90, (receivedLength / (1024 * 1024)) * 10); // 假设每MB增加10%
+            downloadManager.updateProgress(downloadId, progress);
+          }
+        }
+        
+        // 合并所有数据块
+        const allChunks = new Uint8Array(receivedLength);
+        let position = 0;
+        for (const chunk of chunks) {
+          allChunks.set(chunk, position);
+          position += chunk.length;
+        }
+        
+        // 创建blob并下载
+        const blob = new Blob([allChunks]);
+        
+        // 创建下载链接并触发下载
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // 清理URL对象
+        window.URL.revokeObjectURL(downloadUrl);
+        
+        // 完成下载
+        downloadManager.completeDownload(downloadId);
+        
+        console.log('流式文件下载成功');
+        onSuccess?.();
+      } catch (streamError) {
+        console.error('流式下载失败:', streamError);
+        
+        // 检查是否是用户取消的错误
+        if ((streamError as Error).name === 'AbortError') {
+          console.log('下载已被用户取消');
+        } else {
+          downloadManager.failDownload(downloadId, '流式下载失败: ' + (streamError as Error).message);
+          onError?.('流式下载失败: ' + (streamError as Error).message);
+        }
+      }
     }
   } catch (err) {
     console.error('下载文件错误:', err);

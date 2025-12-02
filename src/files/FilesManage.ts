@@ -41,16 +41,21 @@ export class FilesManage {
         }
         // 执行操作 ==========================================================================
         switch (action) {
-            case "list": { // 列出文件 =======================================================
+case "list": { // 列出文件 =======================================================
                 let file_list: any[] = [];
 
                 // 获取当前目录的文件列表 ====================================================
+                let realFileCount = 0;
                 if (has_main_mount) {
                     const path_info = await drive_load[0].listFile({path: source})
-                    file_list = path_info?.fileList || []
+                    if (path_info && path_info.fileList) {
+                        file_list = file_list.concat(path_info.fileList);
+                        realFileCount = path_info.pageSize || path_info.fileList.length;
+                    }
                 }
 
                 // 获取所有子目录挂载点 ======================================================
+                let subMountCount = 0;
                 for (let i = 1; i < drive_load.length; i++) {
                     const sub_driver = drive_load[i];
                     let relative_path: string;
@@ -71,26 +76,62 @@ export class FilesManage {
 
                     console.log("@action sub_driver:", sub_driver.router, "=>", relative_path)
                     file_list.push({
-                        filePath: source || "",
+                        filePath: source || "/",
                         fileName: relative_path,
                         fileSize: 0, fileType: 0,
                         fileUUID: "", fileHash: {},
                         timeModify: new Date(),
                         timeCreate: new Date()
                     });
+                    subMountCount++;
                 }
+
+                // 修复：正确的文件数量应该是实际文件数 + 子挂载数
+                const totalFileCount = realFileCount + subMountCount;
+                
                 return this.c.json({
                     flag: true, text: 'Success', data: {
-                        pageSize: file_list.length,
+                        pageSize: totalFileCount,
                         filePath: source || "/",
                         fileList: file_list
                     }
                 })
             }
-            case "link": { // 获取链接 =======================================================
+case "link": { // 获取链接 =======================================================
                 const file_links = await drive_load[0].downFile({path: source})
-                return this.c.json({flag: true, text: 'Success', data: file_links})
-            }
+                
+				// 检查是否有流式下载
+				if (file_links && file_links.length > 0 && file_links[0].stream) {
+					try {
+						console.log('开始流式下载处理');
+						
+						// 调用stream函数获取ReadableStream
+						const streamResult = await file_links[0].stream(this.c);
+						
+						// 如果返回的是ReadableStream，直接流式响应
+						if (streamResult instanceof ReadableStream) {
+							console.log('返回ReadableStream响应');
+							// 将Headers转换为普通对象
+							const headersObj: Record<string, string> = {};
+							if (this.c.res.headers) {
+								this.c.res.headers.forEach((value: string, key: string) => {
+									headersObj[key] = value;
+								});
+							}
+							return this.c.body(streamResult, 200, headersObj);
+						}
+						
+						// 如果没有返回流，返回默认响应
+						return this.c.json({flag: false, text: '流式下载未返回有效流'}, 500);
+					} catch (error: any) {
+						console.error('Stream download error:', error);
+						return this.c.json({flag: false, text: error.message || '流式下载失败'}, 500);
+					}
+				} else {
+					// 常规链接响应
+					return this.c.json({flag: true, text: 'Success', data: file_links})
+				}
+			}
             case "copy": { // 复制文件 =======================================================
                 console.log("@action", "copy", source, target)
                 const task_result = await drive_load[0].copyFile({path: source}, {path: target})
