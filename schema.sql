@@ -148,6 +148,6 @@ CREATE TABLE cache -- 缓存信息
 CREATE TABLE admin -- 全局设置
 (
     admin_keys TEXT PRIMARY KEY UNIQUE NOT NULL, -- 设置路径
-    admin_data TEXT                    NOT NULL, -- 设置数据
+    admin_data TEXT                    NOT NULL  -- 设置数据
     -- 拓展信息 ===============================================
 );
