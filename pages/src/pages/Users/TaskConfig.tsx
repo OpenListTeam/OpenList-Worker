@@ -1,21 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Typography, 
-  CircularProgress, 
-  Alert,
-  Button,
-  ButtonGroup,
-  Snackbar,
-  Chip
-} from '@mui/material';
-import { 
-  PlayArrow, 
-  Pause, 
-  Stop, 
-  Delete,
-  SelectAll
-} from '@mui/icons-material';
+import { Typography, Spin, Alert, Button, Space, Tag, message } from 'antd';
+import {
+  CaretRightOutlined,
+  PauseOutlined,
+  StopOutlined,
+  DeleteOutlined,
+} from '@ant-design/icons';
 import DataTable from '../../components/DataTable';
 import { Task } from '../../types';
 import apiService from '../../posts/api';
@@ -24,18 +14,13 @@ const TaskConfig: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [snackbar, setSnackbar] = useState({ 
-    open: false, 
-    message: '', 
-    severity: 'success' as 'success' | 'error' 
-  });
 
   // 获取任务列表
   const fetchTasks = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await apiService.request('/@tasks/select/none/', 'POST', {});
+      const response = await apiService.request('/@tasks/select/none', 'POST', {});
       if (response.flag) {
         setTasks(response.data || []);
       } else {
@@ -54,12 +39,12 @@ const TaskConfig: React.FC = () => {
   }, []);
 
   // 显示消息提示
-  const showSnackbar = (message: string, severity: 'success' | 'error' = 'success') => {
-    setSnackbar({ open: true, message, severity });
-  };
-
-  const handleCloseSnackbar = () => {
-    setSnackbar({ ...snackbar, open: false });
+  const showSnackbar = (msg: string, severity: 'success' | 'error' = 'success') => {
+    if (severity === 'success') {
+      message.success(msg);
+    } else {
+      message.error(msg);
+    }
   };
 
   // 批量开始所有任务
@@ -74,7 +59,7 @@ const TaskConfig: React.FC = () => {
       let successCount = 0;
       for (const task of pendingTasks) {
         try {
-          const response = await apiService.request('/@tasks/status/none/', 'POST', {
+          const response = await apiService.request('/@tasks/status/none', 'POST', {
             tasks_uuid: task.tasks_uuid,
             tasks_flag: 1 // 设置为运行状态
           });
@@ -106,7 +91,7 @@ const TaskConfig: React.FC = () => {
       let successCount = 0;
       for (const task of runningTasks) {
         try {
-          const response = await apiService.request('/@tasks/status/none/', 'POST', {
+          const response = await apiService.request('/@tasks/status/none', 'POST', {
             tasks_uuid: task.tasks_uuid,
             tasks_flag: 2 // 设置为暂停状态
           });
@@ -138,7 +123,7 @@ const TaskConfig: React.FC = () => {
       let successCount = 0;
       for (const task of activeTasks) {
         try {
-          const response = await apiService.request('/@tasks/status/none/', 'POST', {
+          const response = await apiService.request('/@tasks/status/none', 'POST', {
             tasks_uuid: task.tasks_uuid,
             tasks_flag: 0 // 设置为停止状态
           });
@@ -174,7 +159,7 @@ const TaskConfig: React.FC = () => {
       let successCount = 0;
       for (const task of completedTasks) {
         try {
-          const response = await apiService.request('/@tasks/remove/none/', 'POST', {
+          const response = await apiService.request('/@tasks/remove/none', 'POST', {
             tasks_uuid: task.tasks_uuid
           });
           if (response.flag) {
@@ -240,12 +225,16 @@ const TaskConfig: React.FC = () => {
       minWidth: 100,
       format: (value: number) => {
         const status = getStatusText(value);
+        const colorMap: Record<string, string> = {
+          default: 'default',
+          primary: 'processing',
+          success: 'success',
+          error: 'error',
+        };
         return (
-          <Chip
-            label={status.text}
-            size="small"
-            color={status.color}
-          />
+          <Tag color={colorMap[status.color] || 'default'}>
+            {status.text}
+          </Tag>
         );
       }
     },
@@ -258,7 +247,7 @@ const TaskConfig: React.FC = () => {
 
   const handleDelete = async (task: Task) => {
     try {
-      const response = await apiService.request('/@tasks/remove/none/', 'POST', {
+      const response = await apiService.request('/@tasks/remove/none', 'POST', {
         tasks_uuid: task.tasks_uuid
       });
       if (response.flag) {
@@ -275,72 +264,72 @@ const TaskConfig: React.FC = () => {
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-        <CircularProgress />
-      </Box>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
+        <Spin size="large" />
+      </div>
     );
   }
 
   if (error) {
     return (
-      <Box p={2}>
-        <Alert severity="error" onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      </Box>
+      <div style={{ padding: 16 }}>
+        <Alert message={error} type="error" closable onClose={() => setError(null)} />
+      </div>
     );
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box 
-        sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between', 
-          mb: 3 
+    <div style={{ padding: 24 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 24,
         }}
       >
-        <Box>
-          <Typography variant="h4" component="h2">
+        <div>
+          <Typography.Title level={4} style={{ margin: 0 }}>
             任务管理
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          </Typography.Title>
+          <Typography.Text type="secondary" style={{ marginTop: 4 }}>
             管理和监控系统中的各类任务执行状态
-          </Typography>
-        </Box>
-        <ButtonGroup variant="contained" size="small">
+          </Typography.Text>
+        </div>
+        <Space>
           <Button
-            startIcon={<PlayArrow />}
+            type="primary"
+            icon={<CaretRightOutlined />}
             onClick={handleStartAllTasks}
-            color="success"
+            style={{ backgroundColor: '#52c41a', borderColor: '#52c41a' }}
           >
             开始所有
           </Button>
           <Button
-            startIcon={<Pause />}
+            type="primary"
+            icon={<PauseOutlined />}
             onClick={handlePauseAllTasks}
-            color="warning"
+            style={{ backgroundColor: '#faad14', borderColor: '#faad14' }}
           >
             暂停所有
           </Button>
           <Button
-            startIcon={<Stop />}
+            type="primary"
+            danger
+            icon={<StopOutlined />}
             onClick={handleStopAllTasks}
-            color="error"
           >
             停止所有
           </Button>
           <Button
-            startIcon={<Delete />}
+            danger
+            icon={<DeleteOutlined />}
             onClick={handleDeleteCompletedTasks}
-            color="error"
-            variant="outlined"
           >
             清理已完成
           </Button>
-        </ButtonGroup>
-      </Box>
+        </Space>
+      </div>
       <DataTable
         title="任务配置"
         columns={columns}
@@ -349,18 +338,7 @@ const TaskConfig: React.FC = () => {
         onDelete={handleDelete}
         actions={['edit', 'delete']}
       />
-
-      {/* 消息提示 */}
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={handleCloseSnackbar}
-      >
-        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity}>
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-    </Box>
+    </div>
   );
 };
 

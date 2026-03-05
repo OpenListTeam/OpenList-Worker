@@ -1,34 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Table, Button, Typography, Space, Tooltip } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  IconButton,
-  Box,
-  useTheme,
-  useMediaQuery,
-  TableSortLabel,
-  Typography,
-  Button,
-} from '@mui/material';
-import { 
-  Edit, 
-  Delete, 
-  Share, 
-  Download, 
-  Visibility, 
-  FileCopy, 
-  DriveFileMove,
-  Archive,
-  Settings,
-  Link,
-  CloudDownload,
-  Add
-} from '@mui/icons-material';
+  EditOutlined,
+  DeleteOutlined,
+  ShareAltOutlined,
+  DownloadOutlined,
+  EyeOutlined,
+  CopyOutlined,
+  DragOutlined,
+  FileZipOutlined,
+  SettingOutlined,
+  LinkOutlined,
+  CloudDownloadOutlined,
+  PlusOutlined,
+} from '@ant-design/icons';
 
 interface Column {
   id: string;
@@ -87,256 +73,137 @@ const ResponsiveDataTable: React.FC<ResponsiveDataTableProps> = ({
   sortOrder,
   onSort,
 }) => {
-  const [visibleColumns, setVisibleColumns] = useState<Column[]>(columns);
-  const [showActionColumn, setShowActionColumn] = useState<boolean>(true);
   const containerRef = useRef<HTMLDivElement>(null);
-  const theme = useTheme();
 
-  // 处理排序
-  const handleSort = (columnId: string) => {
-    if (!onSort) return;
-    
-    let newOrder: 'asc' | 'desc' = 'asc';
-    if (sortBy === columnId && sortOrder === 'asc') {
-      newOrder = 'desc';
-    }
-    
-    onSort(columnId, newOrder);
+  // 操作按钮映射
+  const actionButtonMap: Record<string, { icon: React.ReactNode; handler?: (row: any) => void; tooltip: string }> = {
+    view: { icon: <EyeOutlined />, handler: onView, tooltip: '查看' },
+    download: { icon: <DownloadOutlined />, handler: onDownload, tooltip: '下载' },
+    offline: { icon: <CloudDownloadOutlined />, handler: onOffline, tooltip: '离线下载' },
+    link: { icon: <LinkOutlined />, handler: onLink, tooltip: '链接' },
+    copy: { icon: <CopyOutlined />, handler: onCopy, tooltip: '复制' },
+    move: { icon: <DragOutlined />, handler: onMove, tooltip: '移动' },
+    archive: { icon: <FileZipOutlined />, handler: onArchive, tooltip: '归档' },
+    settings: { icon: <SettingOutlined />, handler: onSettings, tooltip: '设置' },
+    edit: { icon: <EditOutlined />, handler: onEdit, tooltip: '编辑' },
+    share: { icon: <ShareAltOutlined />, handler: onShare, tooltip: '分享' },
+    delete: { icon: <DeleteOutlined />, handler: onDelete, tooltip: '删除' },
   };
 
-  // 计算可见列
-  const calculateVisibleColumns = () => {
-    if (!containerRef.current) return;
+  // 构建 Antd Table 列配置
+  const buildAntdColumns = (): ColumnsType<any> => {
+    const antdColumns: ColumnsType<any> = columns.map((col) => ({
+      title: col.label,
+      dataIndex: col.id,
+      key: col.id,
+      align: col.align || 'left',
+      width: col.id === 'name' ? undefined : col.minWidth,
+      ellipsis: col.id !== 'name',
+      sorter: col.sortable && onSort ? true : undefined,
+      sortOrder: sortBy === col.id ? (sortOrder === 'asc' ? 'ascend' : 'descend') : undefined,
+      render: col.format ? (_: any, record: any) => col.format!(record[col.id]) : undefined,
+    }));
 
-    const containerWidth = containerRef.current.offsetWidth;
-    const actionColumnWidth = 245; // 操作列的固定宽度
-    let availableWidth = containerWidth - 32; // 减去padding
-
-    // 按优先级排序列
-    const sortedColumns = [...columns].sort((a, b) => (a.priority || 999) - (b.priority || 999));
-    const newVisibleColumns: Column[] = [];
-    
-    // 首先为操作列预留空间（优先级4）
-    let showActions = true;
-    if (availableWidth < actionColumnWidth + 150) { // 如果空间不足以显示操作列和文件名列
-      showActions = false;
-    } else {
-      availableWidth -= actionColumnWidth;
+    // 添加操作列
+    const filteredActions = actions.filter((a) => a !== 'add');
+    if (filteredActions.length > 0) {
+      antdColumns.push({
+        title: '操作',
+        key: 'actions',
+        align: 'center',
+        width: 245,
+        fixed: 'right',
+        render: (_: any, record: any) => (
+          <Space size={2} wrap style={{ justifyContent: 'center' }}>
+            {filteredActions.map((actionKey) => {
+              const actionConfig = actionButtonMap[actionKey];
+              if (!actionConfig) return null;
+              return (
+                <Tooltip title={actionConfig.tooltip} key={actionKey}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={actionConfig.icon}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      actionConfig.handler?.(record);
+                    }}
+                    style={{ padding: '2px 4px', minWidth: 'auto' }}
+                  />
+                </Tooltip>
+              );
+            })}
+          </Space>
+        ),
+      });
     }
-    
-    for (const column of sortedColumns) {
-      const columnWidth = column.minWidth || 100;
-      
-      // 优先级为0的列（如文件名）始终显示
-      if (column.priority === 0) {
-        newVisibleColumns.push(column);
-        availableWidth -= Math.max(columnWidth, 120); // 文件名列最小120px
-      } else if (availableWidth >= columnWidth) {
-        newVisibleColumns.push(column);
-        availableWidth -= columnWidth;
-      }
-    }
 
-    // 按原始顺序重新排列
-    const orderedVisibleColumns = columns.filter(col => 
-      newVisibleColumns.some(visCol => visCol.id === col.id)
-    );
-
-    setVisibleColumns(orderedVisibleColumns);
-    setShowActionColumn(showActions);
+    return antdColumns;
   };
 
-  // 监听容器大小变化
-  useEffect(() => {
-    calculateVisibleColumns();
-
-    const resizeObserver = new ResizeObserver(() => {
-      calculateVisibleColumns();
-    });
-
-    if (containerRef.current) {
-      resizeObserver.observe(containerRef.current);
+  // 处理排序变更
+  const handleTableChange = (pagination: any, filters: any, sorter: any) => {
+    if (onSort && sorter.columnKey) {
+      const newOrder = sorter.order === 'ascend' ? 'asc' : 'desc';
+      onSort(sorter.columnKey, newOrder);
     }
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [columns]);
-
-  const renderActionButtons = (row: any) => (
-    <Box sx={{ display: 'flex', gap: 0.25, flexWrap: 'wrap', justifyContent: 'center' }}>
-      {actions.includes('view') && (
-        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onView?.(row); }}>
-          <Visibility sx={{ fontSize: '16px' }} />
-        </IconButton>
-      )}
-      {actions.includes('download') && (
-        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onDownload?.(row); }}>
-          <Download sx={{ fontSize: '16px' }} />
-        </IconButton>
-      )}
-      {actions.includes('offline') && (
-        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onOffline?.(row); }}>
-          <CloudDownload sx={{ fontSize: '16px' }} />
-        </IconButton>
-      )}
-      {actions.includes('link') && (
-        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onLink?.(row); }}>
-          <Link sx={{ fontSize: '16px' }} />
-        </IconButton>
-      )}
-      {actions.includes('copy') && (
-        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onCopy?.(row); }}>
-          <FileCopy sx={{ fontSize: '16px' }} />
-        </IconButton>
-      )}
-      {actions.includes('move') && (
-        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onMove?.(row); }}>
-          <DriveFileMove sx={{ fontSize: '16px' }} />
-        </IconButton>
-      )}
-      {actions.includes('archive') && (
-        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onArchive?.(row); }}>
-          <Archive sx={{ fontSize: '16px' }} />
-        </IconButton>
-      )}
-      {actions.includes('settings') && (
-        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onSettings?.(row); }}>
-          <Settings sx={{ fontSize: '16px' }} />
-        </IconButton>
-      )}
-      {actions.includes('edit') && (
-        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onEdit?.(row); }}>
-          <Edit sx={{ fontSize: '16px' }} />
-        </IconButton>
-      )}
-      {actions.includes('share') && (
-        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onShare?.(row); }}>
-          <Share sx={{ fontSize: '16px' }} />
-        </IconButton>
-      )}
-      {actions.includes('delete') && (
-        <IconButton size="small" sx={{ padding: '2px' }} onClick={(e) => { e.stopPropagation(); onDelete?.(row); }}>
-          <Delete sx={{ fontSize: '16px' }} />
-        </IconButton>
-      )}
-    </Box>
-  );
+  };
 
   return (
-    <Box ref={containerRef} sx={{ width: '100%' }}>
+    <div ref={containerRef} style={{ width: '100%' }}>
       {/* 标题栏和添加按钮 */}
       {(title || (actions?.includes('add') && onAdd)) && (
-        <Box 
-          sx={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'space-between', 
-            mb: 2,
-            p: 2,
-            backgroundColor: 'background.paper',
-            borderRadius: '15px 15px 0 0',
-            borderBottom: '1px solid',
-            borderColor: 'divider'
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 0,
+            padding: '12px 16px',
+            borderRadius: '12px 12px 0 0',
+            borderBottom: '1px solid var(--ant-color-border, #f0f0f0)',
+            background: 'var(--ant-color-bg-container, #fff)',
           }}
         >
           {title && (
-            <Typography variant="h6" component="h3" sx={{ fontWeight: 'bold' }}>
+            <Typography.Title level={5} style={{ margin: 0, fontWeight: 'bold' }}>
               {title}
-            </Typography>
+            </Typography.Title>
           )}
           {actions?.includes('add') && onAdd && (
             <Button
-              variant="contained"
-              startIcon={<Add />}
+              type="primary"
+              icon={<PlusOutlined />}
               onClick={onAdd}
-              sx={{ borderRadius: '10px' }}
+              style={{ borderRadius: 10 }}
             >
               添加
             </Button>
           )}
-        </Box>
+        </div>
       )}
-      <TableContainer component={Paper} sx={{ borderRadius: title || (actions?.includes('add') && onAdd) ? '0 0 15px 15px' : '15px', overflowX: 'auto' }}>
-        <Table stickyHeader sx={{ width: '100%', tableLayout: 'auto' }} aria-label="responsive data table">
-          <TableHead>
-            <TableRow>
-              {visibleColumns.map((column) => (
-                <TableCell
-                  key={column.id}
-                  align={column.align}
-                  style={{ 
-                    minWidth: column.minWidth,
-                    width: column.id === 'name' ? 'auto' : column.minWidth,
-                    maxWidth: column.id === 'name' ? 'none' : column.minWidth
-                  }}
-                  sx={{ fontWeight: 'bold' }}
-                >
-                  {column.sortable && onSort ? (
-                    <TableSortLabel
-                      active={sortBy === column.id}
-                      direction={sortBy === column.id ? sortOrder : 'asc'}
-                      onClick={() => handleSort(column.id)}
-                    >
-                      {column.label}
-                    </TableSortLabel>
-                  ) : (
-                    column.label
-                  )}
-                </TableCell>
-              ))}
-              {showActionColumn && (
-                <TableCell align="center" sx={{ fontWeight: 'bold', width: '245px', minWidth: '245px', maxWidth: '245px', padding: '4px' }}>
-                  操作
-                </TableCell>
-              )}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {(Array.isArray(data) ? data : []).map((row, index) => (
-              <TableRow 
-                hover 
-                role="checkbox" 
-                tabIndex={-1} 
-                key={index}
-                onClick={() => onRowClick?.(row)}
-                onDoubleClick={() => onRowDoubleClick?.(row)}
-                sx={{ 
-                  cursor: onRowClick || onRowDoubleClick ? 'pointer' : 'default',
-                  '&:hover': {
-                    backgroundColor: onRowClick || onRowDoubleClick ? 'rgba(0, 0, 0, 0.04)' : 'inherit'
-                  }
-                }}
-              >
-                {visibleColumns.map((column) => {
-                  const value = row[column.id];
-                  return (
-                    <TableCell 
-                      key={column.id} 
-                      align={column.align}
-                      sx={{
-                        maxWidth: column.id === 'name' ? 'none' : column.minWidth,
-                        overflow: column.id === 'name' ? 'visible' : 'hidden',
-                        textOverflow: column.id === 'name' ? 'unset' : 'ellipsis',
-                        whiteSpace: column.id === 'name' ? 'normal' : 'nowrap',
-                        wordBreak: column.id === 'name' ? 'break-word' : 'normal'
-                      }}
-                    >
-                      {column.format ? column.format(value) : value}
-                    </TableCell>
-                  );
-                })}
-                {showActionColumn && (
-                  <TableCell align="center" sx={{ width: '245px', minWidth: '245px', maxWidth: '245px', padding: '4px' }}>
-                    {renderActionButtons(row)}
-                  </TableCell>
-                )}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    </Box>
+
+      <Table
+        columns={buildAntdColumns()}
+        dataSource={Array.isArray(data) ? data : []}
+        rowKey={(_, index) => String(index)}
+        pagination={false}
+        scroll={{ x: 'max-content' }}
+        onChange={handleTableChange}
+        onRow={(record) => ({
+          onClick: () => onRowClick?.(record),
+          onDoubleClick: () => onRowDoubleClick?.(record),
+          style: {
+            cursor: onRowClick || onRowDoubleClick ? 'pointer' : 'default',
+          },
+        })}
+        style={{
+          borderRadius: title || (actions?.includes('add') && onAdd) ? '0 0 12px 12px' : 12,
+          overflow: 'hidden',
+        }}
+        size="middle"
+      />
+    </div>
   );
 };
 

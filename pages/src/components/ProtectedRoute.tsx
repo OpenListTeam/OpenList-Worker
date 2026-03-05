@@ -15,9 +15,12 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     const location = useLocation();
     const { isAuthenticated } = state;
 
+    console.log('🛡️ ProtectedRoute 检查:', { isAuthenticated, path: location.pathname });
+
     useEffect(() => {
         // 如果用户未登录，显示提示消息
         if (!isAuthenticated) {
+            console.log('🛡️ ProtectedRoute: 未登录，重定向到登录页');
             showNotification('warning', '请先登录后再访问该页面');
         }
     }, [isAuthenticated, showNotification]);

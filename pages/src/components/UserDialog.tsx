@@ -1,21 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Button,
-  FormControlLabel,
+  Modal,
+  Input,
   Switch,
-  Box,
   Alert,
-  InputAdornment,
-  IconButton,
   Typography,
-  Divider
-} from '@mui/material';
-import { Visibility, VisibilityOff } from '@mui/icons-material';
+  Divider,
+  Form,
+  Space,
+} from 'antd';
+import { EyeOutlined, EyeInvisibleOutlined } from '@ant-design/icons';
 import { UsersConfig, CreateUserRequest, UpdateUserRequest } from '../types';
 
 interface UserDialogProps {
@@ -159,134 +153,137 @@ const UserDialog: React.FC<UserDialogProps> = ({
   };
 
   return (
-    <Dialog 
-      open={open} 
-      onClose={onClose} 
-      maxWidth="sm" 
-      fullWidth
-      PaperProps={{
-        sx: { minHeight: '400px' }
-      }}
+    <Modal
+      open={open}
+      onCancel={onClose}
+      onOk={handleSubmit}
+      title={mode === 'create' ? '创建用户' : '编辑用户'}
+      width={520}
+      okText={loading ? '处理中...' : (mode === 'create' ? '创建' : '保存')}
+      cancelText="取消"
+      confirmLoading={loading}
+      okButtonProps={{ disabled: loading }}
+      cancelButtonProps={{ disabled: loading }}
     >
-      <DialogTitle>
-        {mode === 'create' ? '创建用户' : '编辑用户'}
-      </DialogTitle>
-      
-      <DialogContent>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-          <TextField
-            label="用户名"
+      <Space direction="vertical" size="middle" style={{ width: '100%', marginTop: 8 }}>
+        <div>
+          <Typography.Text style={{ marginBottom: 4, display: 'block' }}>
+            用户名 <span style={{ color: '#ff4d4f' }}>*</span>
+          </Typography.Text>
+          <Input
+            placeholder="请输入用户名"
             value={formData.users_name}
             onChange={(e) => handleInputChange('users_name', e.target.value)}
-            error={!!errors.users_name}
-            helperText={errors.users_name}
-            disabled={mode === 'edit'} // 编辑时用户名不可修改
-            required
-            fullWidth
+            status={errors.users_name ? 'error' : undefined}
+            disabled={mode === 'edit'}
           />
+          {errors.users_name && (
+            <Typography.Text type="danger" style={{ fontSize: 12 }}>{errors.users_name}</Typography.Text>
+          )}
+        </div>
 
-          <TextField
-            label="邮箱"
+        <div>
+          <Typography.Text style={{ marginBottom: 4, display: 'block' }}>邮箱</Typography.Text>
+          <Input
+            placeholder="请输入邮箱"
             type="email"
             value={formData.users_mail}
             onChange={(e) => handleInputChange('users_mail', e.target.value)}
-            error={!!errors.users_mail}
-            helperText={errors.users_mail}
-            fullWidth
+            status={errors.users_mail ? 'error' : undefined}
           />
+          {errors.users_mail && (
+            <Typography.Text type="danger" style={{ fontSize: 12 }}>{errors.users_mail}</Typography.Text>
+          )}
+        </div>
 
-          <TextField
-            label={mode === 'create' ? '密码' : '新密码（留空表示不修改）'}
+        <div>
+          <Typography.Text style={{ marginBottom: 4, display: 'block' }}>
+            {mode === 'create' ? '密码' : '新密码（留空表示不修改）'}
+            {mode === 'create' && <span style={{ color: '#ff4d4f' }}> *</span>}
+          </Typography.Text>
+          <Input
+            placeholder={mode === 'create' ? '请输入密码' : '留空表示不修改密码'}
             type={showPassword ? 'text' : 'password'}
             value={formData.users_pass}
             onChange={(e) => handleInputChange('users_pass', e.target.value)}
-            error={!!errors.users_pass}
-            helperText={errors.users_pass}
-            required={mode === 'create'}
-            fullWidth
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton
-                    onClick={() => setShowPassword(!showPassword)}
-                    edge="end"
-                  >
-                    {showPassword ? <VisibilityOff /> : <Visibility />}
-                  </IconButton>
-                </InputAdornment>
-              )
-            }}
+            status={errors.users_pass ? 'error' : undefined}
+            suffix={
+              <span
+                onClick={() => setShowPassword(!showPassword)}
+                style={{ cursor: 'pointer', color: 'rgba(0,0,0,0.45)' }}
+              >
+                {showPassword ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+              </span>
+            }
           />
+          {errors.users_pass && (
+            <Typography.Text type="danger" style={{ fontSize: 12 }}>{errors.users_pass}</Typography.Text>
+          )}
+        </div>
 
-          <TextField
-            label="存储空间"
+        <div>
+          <Typography.Text style={{ marginBottom: 4, display: 'block' }}>
+            存储空间 <span style={{ color: '#ff4d4f' }}>*</span>
+          </Typography.Text>
+          <Input
+            placeholder="支持格式：1GB, 1024MB, 等"
             value={formatStorageSize(formData.total_size || 0)}
             onChange={(e) => {
               const bytes = parseStorageInput(e.target.value);
               handleInputChange('total_size', bytes);
             }}
-            error={!!errors.total_size}
-            helperText={errors.total_size || '支持格式：1GB, 1024MB, 等'}
-            required
-            fullWidth
+            status={errors.total_size ? 'error' : undefined}
           />
+          {errors.total_size ? (
+            <Typography.Text type="danger" style={{ fontSize: 12 }}>{errors.total_size}</Typography.Text>
+          ) : (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>支持格式：1GB, 1024MB, 等</Typography.Text>
+          )}
+        </div>
 
-          {mode === 'edit' && (
-            <>
-              <Divider />
-              <Typography variant="subtitle2" color="text.secondary">
-                高级设置
-              </Typography>
-              
-              <TextField
-                label="用户权限标识"
+        {mode === 'edit' && (
+          <>
+            <Divider style={{ margin: '4px 0' }} />
+            <Typography.Text type="secondary" strong>高级设置</Typography.Text>
+            
+            <div>
+              <Typography.Text style={{ marginBottom: 4, display: 'block' }}>用户权限标识</Typography.Text>
+              <Input
+                placeholder="用于权限控制的标识符"
                 value={(formData as UpdateUserRequest).users_mask || ''}
                 onChange={(e) => handleInputChange('users_mask', e.target.value)}
-                helperText="用于权限控制的标识符"
-                fullWidth
               />
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>用于权限控制的标识符</Typography.Text>
+            </div>
 
-              <TextField
-                label="已用空间"
+            <div>
+              <Typography.Text style={{ marginBottom: 4, display: 'block' }}>已用空间</Typography.Text>
+              <Input
                 value={formatStorageSize((formData as UpdateUserRequest).total_used || 0)}
                 disabled
-                fullWidth
-                helperText="只读字段，由系统自动计算"
               />
-            </>
-          )}
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>只读字段，由系统自动计算</Typography.Text>
+            </div>
+          </>
+        )}
 
-          <FormControlLabel
-            control={
-              <Switch
-                checked={formData.is_enabled}
-                onChange={(e) => handleInputChange('is_enabled', e.target.checked)}
-              />
-            }
-            label="启用用户"
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Switch
+            checked={formData.is_enabled}
+            onChange={(checked) => handleInputChange('is_enabled', checked)}
           />
+          <Typography.Text>启用用户</Typography.Text>
+        </div>
 
-          {Object.keys(errors).length > 0 && (
-            <Alert severity="error">
-              请修正表单中的错误后重试
-            </Alert>
-          )}
-        </Box>
-      </DialogContent>
-
-      <DialogActions>
-        <Button onClick={onClose} disabled={loading}>
-          取消
-        </Button>
-        <Button 
-          onClick={handleSubmit} 
-          variant="contained" 
-          disabled={loading}
-        >
-          {loading ? '处理中...' : (mode === 'create' ? '创建' : '保存')}
-        </Button>
-      </DialogActions>
-    </Dialog>
+        {Object.keys(errors).length > 0 && (
+          <Alert
+            type="error"
+            message="请修正表单中的错误后重试"
+            showIcon
+          />
+        )}
+      </Space>
+    </Modal>
   );
 };
 

@@ -134,13 +134,36 @@ case "link": { // 获取链接 =================================================
 			}
             case "copy": { // 复制文件 =======================================================
                 console.log("@action", "copy", source, target)
-                const task_result = await drive_load[0].copyFile({path: source}, {path: target})
+                // target 是目标目录，拼接源文件名构成完整目标路径
+                const copyFileName = source?.includes('/')
+                    ? source.substring(source.lastIndexOf('/') + 1)
+                    : source || ''
+                const copyDestPath = target === '/' ? `/${copyFileName}` : `${target}/${copyFileName}`
+                console.log("@action copy dest:", copyDestPath)
+                const task_result = await drive_load[0].copyFile({path: source}, {path: copyDestPath})
                 return this.c.json({flag: true, text: 'Success', data: task_result})
             }
             case "move": { // 移动文件 =======================================================
                 console.log("@action", "moveFile", source, target)
-                const task_result = await drive_load[0].moveFile({path: source}, {path: target})
+                // target 是目标目录，拼接源文件名构成完整目标路径
+                const moveFileName = source?.includes('/')
+                    ? source.substring(source.lastIndexOf('/') + 1)
+                    : source || ''
+                const moveDestPath = target === '/' ? `/${moveFileName}` : `${target}/${moveFileName}`
+                console.log("@action move dest:", moveDestPath)
+                const task_result = await drive_load[0].moveFile({path: source}, {path: moveDestPath})
                 return this.c.json({flag: true, text: 'Success', data: task_result})
+            }
+            case "rename": { // 重命名文件 ===================================================
+                if (!target) return this.c.json({flag: false, text: 'Invalid Target'}, 400)
+                // target 为新名称（不含路径），拼接父目录构成完整目标路径
+                const parentDir = source?.includes('/')
+                    ? source.substring(0, source.lastIndexOf('/')) || '/'
+                    : '/'
+                const destPath = parentDir === '/' ? `/${target}` : `${parentDir}/${target}`
+                console.log("@action", "renameFile", source, "=>", destPath)
+                const rename_result = await drive_load[0].moveFile({path: source}, {path: destPath})
+                return this.c.json({flag: true, text: 'Success', data: rename_result})
             }
             case "create": { // 创建对象 =====================================================
                 if (!target) return this.c.json({flag: false, text: 'Invalid Target'}, 400)

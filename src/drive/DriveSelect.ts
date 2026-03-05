@@ -4,9 +4,24 @@ import * as cloud115 from "./cloud115/files"
 import * as cloud123 from "./cloud123/files"
 import * as goodrive from "./goodrive/files"
 import * as onedrive from "./onedrive/files"
-import * as baiduyun from "./baiduyun/files"
+import * as baiduyun from "./baidu_netdisk/files"
 import * as alicloud from "./alicloud/files"
 import * as webdavfs from "./webdavfs/files"
+// ========= 新增驱动 =========
+import * as cloudreve4 from "./cdrevev4/files"
+import * as neteasemusic from "./neteases/files"
+import * as openlist from "./openlist/files"
+import * as pikpak from "./pikpakv1/files"
+import * as quarkopen from "./quarkpan/files"
+import * as s3drive from "./s3_drive/files"
+import * as seafile from "./seafiles/files"
+import * as sftpdrive from "./sftppath/files"
+import * as terabox from "./teraboxs/files"
+import * as teldrive from "./teldrive/files"
+import * as thunderx from "./thunderx/files"
+import * as weiyun from "./weicloud/files"
+import * as wopan from "./wopanyun/files"
+import * as yandexdisk from "./yandexv1/files"
 
 // 表单值类型定义，支持所有驱动配置字段
 type FormValues = Record<string, any>;
@@ -21,6 +36,21 @@ export const driver_list: Record<string, any> = {
     baiduyun: baiduyun.HostDriver,
     alicloud: alicloud.HostDriver,
     webdavfs: webdavfs.HostDriver,
+    // ========= 新增驱动 =========
+    cloudreve4: cloudreve4.HostDriver,
+    neteasemusic: neteasemusic.HostDriver,
+    openlist: openlist.HostDriver,
+    pikpak: pikpak.HostDriver,
+    quarkopen: quarkopen.HostDriver,
+    s3drive: s3drive.HostDriver,
+    seafile: seafile.HostDriver,
+    sftpdrive: sftpdrive.HostDriver,
+    terabox: terabox.HostDriver,
+    teldrive: teldrive.HostDriver,
+    thunderx: thunderx.HostDriver,
+    weiyun: weiyun.HostDriver,
+    wopan: wopan.HostDriver,
+    yandexdisk: yandexdisk.HostDriver,
 };
 
 // 驱动配置信息映射
@@ -238,7 +268,164 @@ export const config_list: Record<string, any> = {
             { key: "root_path", label: "根目录路径", type: "text", required: false, placeholder: "默认为 /", defaultValue: "/" },
             { key: "tls_insecure_skip_verify", label: "跳过TLS证书验证", type: "boolean", required: false, defaultValue: false, help: "不安全，仅用于自签名证书" }
         ]
-    }
+    },
+    // ========= 新增驱动配置 =========
+    cloudreve4: {
+        name: "Cloudreve V4",
+        description: "Cloudreve V4网盘系统",
+        fields: [
+            { key: "address", label: "服务器地址", type: "text", required: true, placeholder: "请输入Cloudreve地址，如https://cloud.example.com" },
+            { key: "username", label: "用户名", type: "text", required: false, placeholder: "请输入用户名" },
+            { key: "password", label: "密码", type: "password", required: false, placeholder: "请输入密码" },
+            { key: "access_token", label: "访问令牌", type: "textarea", required: false, placeholder: "可选：直接提供令牌" },
+            { key: "custom_ua", label: "自定义UA", type: "text", required: false },
+            { key: "enable_thumb", label: "启用缩略图", type: "boolean", required: false, defaultValue: true }
+        ]
+    },
+    neteasemusic: {
+        name: "网易云音乐",
+        description: "网易云音乐云盘",
+        fields: [
+            { key: "cookie", label: "Cookie", type: "textarea", required: true, placeholder: "请输入网易云音乐Cookie（需包含MUSIC_U和__csrf）" },
+            { key: "song_limit", label: "歌曲数量限制", type: "text", required: false, placeholder: "默认200", defaultValue: "200" }
+        ]
+    },
+    openlist: {
+        name: "OpenList",
+        description: "OpenList/AList网盘聚合服务",
+        fields: [
+            { key: "url", label: "服务器地址", type: "text", required: true, placeholder: "请输入OpenList/AList地址" },
+            { key: "username", label: "用户名", type: "text", required: false },
+            { key: "password", label: "密码", type: "password", required: false },
+            { key: "token", label: "Token", type: "textarea", required: false, placeholder: "可选：直接提供Token" },
+            { key: "root_path", label: "根目录", type: "text", required: false, placeholder: "默认/", defaultValue: "/" },
+            { key: "meta_password", label: "目录密码", type: "password", required: false }
+        ]
+    },
+    pikpak: {
+        name: "PikPak",
+        description: "PikPak网盘",
+        fields: [
+            { key: "username", label: "用户名/邮箱", type: "text", required: true, placeholder: "请输入PikPak用户名" },
+            { key: "password", label: "密码", type: "password", required: true, placeholder: "请输入密码" },
+            { key: "refresh_token", label: "刷新令牌", type: "textarea", required: false },
+            { key: "root_folder_id", label: "根文件夹ID", type: "text", required: false, placeholder: "默认为空（根目录）" },
+            { key: "disable_media_link", label: "禁用媒体链接", type: "boolean", required: false, defaultValue: false }
+        ]
+    },
+    quarkopen: {
+        name: "夸克网盘(开放平台)",
+        description: "夸克网盘开放平台API",
+        fields: [
+            { key: "access_token", label: "访问令牌", type: "textarea", required: false },
+            { key: "refresh_token", label: "刷新令牌", type: "textarea", required: false },
+            { key: "app_id", label: "应用ID", type: "text", required: false },
+            { key: "use_online_api", label: "使用在线API", type: "boolean", required: false, defaultValue: false },
+            { key: "api_url_address", label: "在线API地址", type: "text", required: false },
+            { key: "root_folder_id", label: "根文件夹ID", type: "text", required: false, placeholder: "默认为0", defaultValue: "0" },
+            { key: "order_by", label: "排序方式", type: "select", required: false, options: [{ value: "none", label: "默认" }, { value: "file_name", label: "文件名" }, { value: "file_size", label: "文件大小" }], defaultValue: "none" }
+        ]
+    },
+    s3drive: {
+        name: "S3",
+        description: "Amazon S3及兼容存储（MinIO、腾讯COS、阿里OSS等）",
+        fields: [
+            { key: "bucket", label: "存储桶", type: "text", required: true, placeholder: "请输入存储桶名称" },
+            { key: "endpoint", label: "端点URL", type: "text", required: true, placeholder: "如：https://s3.amazonaws.com" },
+            { key: "region", label: "区域", type: "text", required: false, placeholder: "默认us-east-1", defaultValue: "us-east-1" },
+            { key: "access_key_id", label: "Access Key ID", type: "text", required: true },
+            { key: "secret_access_key", label: "Secret Access Key", type: "password", required: true },
+            { key: "session_token", label: "Session Token", type: "textarea", required: false },
+            { key: "root_path", label: "根路径", type: "text", required: false },
+            { key: "force_path_style", label: "强制路径样式", type: "boolean", required: false, defaultValue: false, help: "某些S3兼容服务需要开启" },
+            { key: "custom_host", label: "自定义域名", type: "text", required: false },
+            { key: "sign_url_expire", label: "签名URL过期时间(秒)", type: "text", required: false, placeholder: "默认900", defaultValue: "900" }
+        ]
+    },
+    seafile: {
+        name: "Seafile",
+        description: "Seafile私有云盘",
+        fields: [
+            { key: "address", label: "服务器地址", type: "text", required: true, placeholder: "请输入Seafile地址" },
+            { key: "username", label: "用户名", type: "text", required: false },
+            { key: "password", label: "密码", type: "password", required: false },
+            { key: "token", label: "API Token", type: "textarea", required: false, placeholder: "可选：直接提供Token" },
+            { key: "repo_id", label: "资料库ID", type: "text", required: true, placeholder: "请输入资料库UUID" },
+            { key: "root_path", label: "根目录", type: "text", required: false, placeholder: "默认/", defaultValue: "/" }
+        ]
+    },
+    sftpdrive: {
+        name: "SFTP",
+        description: "SFTP/SSH文件传输协议",
+        fields: [
+            { key: "address", label: "服务器地址", type: "text", required: true, placeholder: "请输入SFTP服务器地址" },
+            { key: "port", label: "端口", type: "text", required: false, placeholder: "默认22", defaultValue: "22" },
+            { key: "username", label: "用户名", type: "text", required: true },
+            { key: "password", label: "密码", type: "password", required: false },
+            { key: "private_key", label: "私钥", type: "textarea", required: false, placeholder: "可选：SSH私钥内容" },
+            { key: "passphrase", label: "私钥密码", type: "password", required: false },
+            { key: "root_path", label: "根目录", type: "text", required: false, placeholder: "默认/", defaultValue: "/" }
+        ]
+    },
+    terabox: {
+        name: "TeraBox",
+        description: "TeraBox网盘（百度国际版）",
+        fields: [
+            { key: "cookie", label: "Cookie", type: "textarea", required: true, placeholder: "请输入TeraBox Cookie" },
+            { key: "root_path", label: "根目录", type: "text", required: false, placeholder: "默认/", defaultValue: "/" },
+            { key: "order_by", label: "排序方式", type: "select", required: false, options: [{ value: "name", label: "文件名" }, { value: "time", label: "修改时间" }, { value: "size", label: "文件大小" }], defaultValue: "name" }
+        ]
+    },
+    teldrive: {
+        name: "TelDrive",
+        description: "Telegram Drive云存储",
+        fields: [
+            { key: "url", label: "TelDrive地址", type: "text", required: true, placeholder: "请输入TelDrive服务地址" },
+            { key: "access_token", label: "访问令牌", type: "textarea", required: true },
+            { key: "root_path", label: "根目录", type: "text", required: false, placeholder: "默认/", defaultValue: "/" }
+        ]
+    },
+    thunderx: {
+        name: "迅雷网盘",
+        description: "迅雷网盘/迅雷云盘",
+        fields: [
+            { key: "username", label: "用户名", type: "text", required: false, placeholder: "请输入迅雷用户名" },
+            { key: "password", label: "密码", type: "password", required: false },
+            { key: "refresh_token", label: "刷新令牌", type: "textarea", required: false },
+            { key: "root_folder_id", label: "根文件夹ID", type: "text", required: false, placeholder: "默认为空（根目录）" }
+        ]
+    },
+    weiyun: {
+        name: "微云",
+        description: "腾讯微云网盘",
+        fields: [
+            { key: "cookie", label: "Cookie", type: "textarea", required: true, placeholder: "请输入微云Cookie" },
+            { key: "root_folder_key", label: "根文件夹Key", type: "text", required: false, placeholder: "默认为空（根目录）" }
+        ]
+    },
+    wopan: {
+        name: "联通沃盘",
+        description: "中国联通沃盘云存储",
+        fields: [
+            { key: "refresh_token", label: "刷新令牌", type: "textarea", required: false },
+            { key: "access_token", label: "访问令牌", type: "textarea", required: false },
+            { key: "root_folder_id", label: "根文件夹ID", type: "text", required: false, placeholder: "默认0", defaultValue: "0" },
+            { key: "family_id", label: "家庭ID", type: "text", required: false },
+            { key: "wopan_type", label: "类型", type: "select", required: false, options: [{ value: "personal", label: "个人" }, { value: "family", label: "家庭" }], defaultValue: "personal" }
+        ]
+    },
+    yandexdisk: {
+        name: "Yandex Disk",
+        description: "Yandex磁盘云存储",
+        fields: [
+            { key: "access_token", label: "访问令牌", type: "textarea", required: false },
+            { key: "refresh_token", label: "刷新令牌", type: "textarea", required: false },
+            { key: "client_id", label: "客户端ID", type: "text", required: false },
+            { key: "client_secret", label: "客户端密钥", type: "password", required: false },
+            { key: "root_path", label: "根目录", type: "text", required: false, placeholder: "默认/", defaultValue: "/" },
+            { key: "order_by", label: "排序方式", type: "select", required: false, options: [{ value: "name", label: "名称" }, { value: "size", label: "大小" }, { value: "modified", label: "修改时间" }], defaultValue: "name" }
+        ]
+    },
 };
 
 // 获取所有可用的驱动类型

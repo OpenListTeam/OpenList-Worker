@@ -1,0 +1,291 @@
+/**
+ * 全局样式 — 支持浅色/深色/透明三种模式
+ */
+
+/* Google Fonts 引入 */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap');
+
+/* CSS Reset & 基础变量 */
+:root {
+  --sidebar-width: 260px;
+  --sidebar-collapsed-width: 72px;
+  --header-height: 56px;
+  --border-radius: 10px;
+  --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 全局 Reset */
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: 'Space Grotesk', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow: hidden;
+  height: 100vh;
+  transition: background var(--transition-normal), color var(--transition-normal);
+}
+
+#root {
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ═══════════ 浅色模式 ═══════════ */
+body.theme-light {
+  background: #F5F7FA;
+  color: #1F2937;
+}
+
+/* ═══════════ 深色模式 ═══════════ */
+body.theme-dark {
+  background: #111318;
+  color: #E5E7EB;
+}
+
+/* ═══════════ 透明模式（玻璃态） ═══════════ */
+body.theme-transparent {
+  background:
+    linear-gradient(135deg, rgba(17, 24, 39, 0.95) 0%, rgba(30, 41, 59, 0.9) 50%, rgba(17, 24, 39, 0.95) 100%),
+    radial-gradient(ellipse at 20% 50%, rgba(59, 130, 246, 0.15), transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.1), transparent 50%),
+    radial-gradient(ellipse at 50% 100%, rgba(16, 185, 129, 0.08), transparent 50%);
+  background-attachment: fixed;
+  color: #E5E7EB;
+}
+
+body.theme-transparent::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ═══════════ 滚动条美化 ═══════════ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.3);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.5);
+}
+
+/* ═══════════ Antd 侧边栏菜单优化 ═══════════ */
+.ant-layout-sider {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128, 128, 128, 0.2) transparent;
+}
+
+.ant-layout-sider .ant-menu-item {
+  margin-block: 2px !important;
+  height: 38px !important;
+  line-height: 38px !important;
+}
+
+.ant-layout-sider .ant-menu-submenu-title {
+  margin-block: 2px !important;
+  height: 38px !important;
+  line-height: 38px !important;
+}
+
+/* ═══════════ 玻璃态卡片效果 ═══════════ */
+body.theme-transparent .ant-card {
+  background: rgba(31, 34, 41, 0.6) !important;
+  backdrop-filter: blur(12px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+body.theme-transparent .ant-table {
+  background: rgba(31, 34, 41, 0.5) !important;
+}
+
+body.theme-transparent .ant-modal-content {
+  background: rgba(31, 34, 41, 0.85) !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+body.theme-transparent .ant-drawer-content {
+  background: rgba(26, 29, 35, 0.9) !important;
+  backdrop-filter: blur(20px) saturate(180%);
+}
+
+/* ═══════════ 动画效果 ═══════════ */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.4s ease-out;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* ═══════════ 响应式工具 ═══════════ */
+@media (max-width: 768px) {
+  .hide-on-mobile {
+    display: none !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .show-on-mobile-only {
+    display: none !important;
+  }
+}
+
+/* ═══════════ 选区颜色 ═══════════ */
+::selection {
+  background: rgba(59, 130, 246, 0.3);
+  color: inherit;
+}
+
+/* ═══════════ 透明模式增强 — 输入框/选择器 ═══════════ */
+body.theme-transparent .ant-input,
+body.theme-transparent .ant-input-affix-wrapper,
+body.theme-transparent .ant-select-selector,
+body.theme-transparent .ant-input-number {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+body.theme-transparent .ant-input:focus,
+body.theme-transparent .ant-input-affix-wrapper:focus,
+body.theme-transparent .ant-input-affix-wrapper-focused {
+  border-color: rgba(59, 130, 246, 0.4) !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1) !important;
+}
+
+body.theme-transparent .ant-btn-default {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+body.theme-transparent .ant-tabs-tab {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+body.theme-transparent .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #93C5FD !important;
+}
+
+/* ═══════════ 透明模式 — Drawer 玻璃态 ═══════════ */
+body.theme-transparent .ant-drawer-content-wrapper .ant-drawer-body {
+  background: transparent !important;
+}
+
+body.theme-transparent .ant-popover-inner {
+  background: rgba(31, 34, 41, 0.9) !important;
+  backdrop-filter: blur(16px);
+}
+
+body.theme-transparent .ant-dropdown-menu {
+  background: rgba(31, 34, 41, 0.9) !important;
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+/* ═══════════ 页面进入动画（逐项） ═══════════ */
+.animate-stagger > *:nth-child(1) { animation: fadeInUp 0.4s 0.05s ease-out both; }
+.animate-stagger > *:nth-child(2) { animation: fadeInUp 0.4s 0.10s ease-out both; }
+.animate-stagger > *:nth-child(3) { animation: fadeInUp 0.4s 0.15s ease-out both; }
+.animate-stagger > *:nth-child(4) { animation: fadeInUp 0.4s 0.20s ease-out both; }
+.animate-stagger > *:nth-child(5) { animation: fadeInUp 0.4s 0.25s ease-out both; }
+
+/* ═══════════ 卡片悬停效果 ═══════════ */
+.card-hover-lift {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card-hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+}
+
+body.theme-dark .card-hover-lift:hover,
+body.theme-transparent .card-hover-lift:hover {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+}
+
+/* ═══════════ 响应式断点增强 ═══════════ */
+@media (max-width: 576px) {
+  .ant-card {
+    border-radius: 8px !important;
+  }
+  
+  .ant-table-wrapper {
+    overflow-x: auto;
+  }
+}
+
+@media (min-width: 1200px) and (max-width: 1599px) {
+  /* 中大屏优化 */
+  .ant-layout-content {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+}
+
+@media (min-width: 1600px) {
+  /* 超宽屏优化 */
+  .ant-layout-content {
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+}
+
+/* ═══════════ 骨架屏加载效果 ═══════════ */
+.skeleton-loading {
+  background: linear-gradient(90deg, rgba(128,128,128,0.1) 25%, rgba(128,128,128,0.2) 37%, rgba(128,128,128,0.1) 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+
+/* ═══════════ 减少动效模式 ═══════════ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -36,7 +36,9 @@ export class UsersManage {
         try {
             // 基本验证 ==============================================================================================
             if (!userData.users_name || userData.users_name.length < 5) return {flag: false, text: "用户至少5个字符"};
-            if (!userData.users_pass || userData.users_pass.length < 6) return {flag: false, text: "登录至少6个字符"};
+            // 如果密码为空，则默认密码为admin
+            if (!userData.users_pass) userData.users_pass = "admin";
+            if (userData.users_pass.length < 6) return {flag: false, text: "登录至少6个字符"};
             // 验证邮箱 ==============================================================================================
             if (userData.users_mail) if (!reg.test(userData.users_mail)) return {flag: false, text: "邮箱格式不正确"};
             // 检查用户是否已经存在 ==================================================================================

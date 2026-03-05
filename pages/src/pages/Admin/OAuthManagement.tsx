@@ -1,33 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Typography, 
-  CircularProgress, 
-  Alert, 
-  Snackbar,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
+import {
+  Typography,
+  Spin,
+  Alert,
+  Modal,
   Button,
-  TextField,
-  FormControlLabel,
+  Input,
   Switch,
-  MenuItem,
   Select,
-  FormControl,
-  InputLabel
-} from '@mui/material';
+  Tag,
+  Form,
+  message,
+} from 'antd';
 import ResponsiveDataTable from '../../components/ResponsiveDataTable';
 import { OAuth } from '../../types';
-import { Chip } from '@mui/material';
 import apiService from '../../posts/api';
 
 const OAuthManagement: React.FC = () => {
   const [oauths, setOauths] = useState<OAuth[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
   const [editDialog, setEditDialog] = useState({ open: false, oauth: null as OAuth | null });
   const [createDialog, setCreateDialog] = useState({ open: false });
   const [formData, setFormData] = useState<Partial<OAuth>>({
@@ -41,7 +33,7 @@ const OAuthManagement: React.FC = () => {
   const fetchOauths = async () => {
     try {
       setLoading(true);
-      const result = await apiService.request('/@oauth/select/none/', 'POST', {});
+      const result = await apiService.request('/@oauth/select/none', 'POST', {});
       
       if (result.flag) {
         setOauths(result.data || []);
@@ -62,8 +54,12 @@ const OAuthManagement: React.FC = () => {
   }, []);
 
   // 显示消息
-  const showMessage = (message: string, severity: 'success' | 'error' = 'success') => {
-    setSnackbar({ open: true, message, severity });
+  const showMessage = (msg: string, severity: 'success' | 'error' = 'success') => {
+    if (severity === 'success') {
+      message.success(msg);
+    } else {
+      message.error(msg);
+    }
   };
 
   const getTypeText = (type: string) => {
@@ -108,13 +104,13 @@ const OAuthManagement: React.FC = () => {
       label: '状态', 
       minWidth: 80,
       format: (value: number, row: OAuth) => (
-        <Chip
-          label={value === 1 ? '启用' : '禁用'}
-          size="small"
+        <Tag
           color={value === 1 ? 'success' : 'default'}
           onClick={() => handleToggleStatus(row)}
           style={{ cursor: 'pointer' }}
-        />
+        >
+          {value === 1 ? '启用' : '禁用'}
+        </Tag>
       )
     },
   ];
@@ -123,7 +119,7 @@ const OAuthManagement: React.FC = () => {
   const handleToggleStatus = async (oauth: OAuth) => {
     try {
       const newStatus = oauth.is_enabled === 1 ? 0 : 1;
-      const result = await apiService.request('/@oauth/status/name/', 'POST', {
+      const result = await apiService.request('/@oauth/status/none', 'POST', {
         oauth_name: oauth.oauth_name,
         is_enabled: newStatus
       });
@@ -169,7 +165,7 @@ const OAuthManagement: React.FC = () => {
     }
 
     try {
-      const result = await apiService.request('/@oauth/remove/name/', 'POST', {
+      const result = await apiService.request('/@oauth/remove/none', 'POST', {
         oauth_name: oauth.oauth_name
       });
 
@@ -196,7 +192,7 @@ const OAuthManagement: React.FC = () => {
       // 验证oauth_data是否为有效JSON
       JSON.parse(formData.oauth_data!);
       
-      const result = await apiService.request('/@oauth/create/none/', 'POST', formData);
+      const result = await apiService.request('/@oauth/create/none', 'POST', formData);
 
       if (result.flag) {
         showMessage('OAuth配置创建成功');
@@ -226,7 +222,7 @@ const OAuthManagement: React.FC = () => {
       // 验证oauth_data是否为有效JSON
       JSON.parse(formData.oauth_data!);
       
-      const result = await apiService.request('/@oauth/config/name/', 'POST', formData);
+      const result = await apiService.request('/@oauth/config/none', 'POST', formData);
 
       if (result.flag) {
         showMessage('OAuth配置更新成功');
@@ -247,34 +243,85 @@ const OAuthManagement: React.FC = () => {
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-        <CircularProgress />
-      </Box>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
+        <Spin size="large" />
+      </div>
     );
   }
 
   if (error) {
     return (
-      <Box p={3}>
-        <Alert severity="error">{error}</Alert>
-      </Box>
+      <div style={{ padding: 24 }}>
+        <Alert type="error" message={error} showIcon />
+      </div>
     );
   }
 
-  return (
-    <Box sx={{ p: 3 }}>
-      <Box 
-        sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between', 
-          mb: 3 
-        }}
+  // OAuth类型选项
+  const oauthTypeOptions = [
+    { value: 'google', label: 'Google' },
+    { value: 'github', label: 'GitHub' },
+    { value: 'microsoft', label: 'Microsoft' },
+    { value: 'facebook', label: 'Facebook' },
+    { value: 'twitter', label: 'Twitter' },
+    { value: 'wechat', label: '微信' },
+    { value: 'qq', label: 'QQ' },
+    { value: 'weibo', label: '微博' },
+    { value: 'dingtalk', label: '钉钉' },
+    { value: 'feishu', label: '飞书' },
+  ];
+
+  // 渲染表单内容（创建和编辑共用）
+  const renderFormContent = (isEdit: boolean) => (
+    <Form layout="vertical" style={{ marginTop: 8 }}>
+      <Form.Item label="授权名称" required help={isEdit ? '授权名称不可修改' : '唯一标识符，如：google_oauth'}>
+        <Input
+          value={formData.oauth_name || ''}
+          onChange={(e) => setFormData({ ...formData, oauth_name: e.target.value })}
+          disabled={isEdit}
+          placeholder="请输入授权名称"
+        />
+      </Form.Item>
+
+      <Form.Item label="授权类型" required>
+        <Select
+          value={formData.oauth_type || undefined}
+          onChange={(value) => setFormData({ ...formData, oauth_type: value })}
+          placeholder="请选择授权类型"
+          options={oauthTypeOptions}
+        />
+      </Form.Item>
+
+      <Form.Item
+        label="授权数据"
+        required
+        help='JSON格式，如：{"client_id": "your_client_id", "client_secret": "your_client_secret"}'
       >
-        <Typography variant="h4" component="h2">
+        <Input.TextArea
+          value={formData.oauth_data || ''}
+          onChange={(e) => setFormData({ ...formData, oauth_data: e.target.value })}
+          rows={4}
+          placeholder="请输入JSON格式的授权数据"
+        />
+      </Form.Item>
+
+      <Form.Item label="启用配置">
+        <Switch
+          checked={formData.is_enabled === 1}
+          onChange={(checked) => setFormData({ ...formData, is_enabled: checked ? 1 : 0 })}
+        />
+      </Form.Item>
+    </Form>
+  );
+
+  return (
+    <div style={{ padding: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <Typography.Title level={3} style={{ margin: 0 }}>
           三方登录
-        </Typography>
-      </Box>
+        </Typography.Title>
+      </div>
+
       <ResponsiveDataTable
         title="OAuth授权管理"
         columns={columns}
@@ -286,145 +333,33 @@ const OAuthManagement: React.FC = () => {
       />
 
       {/* 创建OAuth配置对话框 */}
-      <Dialog open={createDialog.open} onClose={() => setCreateDialog({ open: false })} maxWidth="md" fullWidth>
-        <DialogTitle>创建OAuth配置</DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <TextField
-              label="授权名称"
-              value={formData.oauth_name || ''}
-              onChange={(e) => setFormData({ ...formData, oauth_name: e.target.value })}
-              fullWidth
-              required
-              helperText="唯一标识符，如：google_oauth"
-            />
-            
-            <FormControl fullWidth required>
-              <InputLabel>授权类型</InputLabel>
-              <Select
-                value={formData.oauth_type || ''}
-                onChange={(e) => setFormData({ ...formData, oauth_type: e.target.value })}
-                label="授权类型"
-              >
-                <MenuItem value="google">Google</MenuItem>
-                <MenuItem value="github">GitHub</MenuItem>
-                <MenuItem value="microsoft">Microsoft</MenuItem>
-                <MenuItem value="facebook">Facebook</MenuItem>
-                <MenuItem value="twitter">Twitter</MenuItem>
-                <MenuItem value="wechat">微信</MenuItem>
-                <MenuItem value="qq">QQ</MenuItem>
-                <MenuItem value="weibo">微博</MenuItem>
-                <MenuItem value="dingtalk">钉钉</MenuItem>
-                <MenuItem value="feishu">飞书</MenuItem>
-              </Select>
-            </FormControl>
-
-            <TextField
-              label="授权数据"
-              value={formData.oauth_data || ''}
-              onChange={(e) => setFormData({ ...formData, oauth_data: e.target.value })}
-              fullWidth
-              multiline
-              rows={4}
-              required
-              helperText='JSON格式，如：{"client_id": "your_client_id", "client_secret": "your_client_secret"}'
-            />
-
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={formData.is_enabled === 1}
-                  onChange={(e) => setFormData({ ...formData, is_enabled: e.target.checked ? 1 : 0 })}
-                />
-              }
-              label="启用配置"
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateDialog({ open: false })}>取消</Button>
-          <Button onClick={handleSaveCreate} variant="contained">创建</Button>
-        </DialogActions>
-      </Dialog>
+      <Modal
+        title="创建OAuth配置"
+        open={createDialog.open}
+        onCancel={() => setCreateDialog({ open: false })}
+        onOk={handleSaveCreate}
+        okText="创建"
+        cancelText="取消"
+        width={720}
+        destroyOnClose
+      >
+        {renderFormContent(false)}
+      </Modal>
 
       {/* 编辑OAuth配置对话框 */}
-      <Dialog open={editDialog.open} onClose={() => setEditDialog({ open: false, oauth: null })} maxWidth="md" fullWidth>
-        <DialogTitle>编辑OAuth配置</DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <TextField
-              label="授权名称"
-              value={formData.oauth_name || ''}
-              onChange={(e) => setFormData({ ...formData, oauth_name: e.target.value })}
-              fullWidth
-              required
-              disabled
-              helperText="授权名称不可修改"
-            />
-            
-            <FormControl fullWidth required>
-              <InputLabel>授权类型</InputLabel>
-              <Select
-                value={formData.oauth_type || ''}
-                onChange={(e) => setFormData({ ...formData, oauth_type: e.target.value })}
-                label="授权类型"
-              >
-                <MenuItem value="google">Google</MenuItem>
-                <MenuItem value="github">GitHub</MenuItem>
-                <MenuItem value="microsoft">Microsoft</MenuItem>
-                <MenuItem value="facebook">Facebook</MenuItem>
-                <MenuItem value="twitter">Twitter</MenuItem>
-                <MenuItem value="wechat">微信</MenuItem>
-                <MenuItem value="qq">QQ</MenuItem>
-                <MenuItem value="weibo">微博</MenuItem>
-                <MenuItem value="dingtalk">钉钉</MenuItem>
-                <MenuItem value="feishu">飞书</MenuItem>
-              </Select>
-            </FormControl>
-
-            <TextField
-              label="授权数据"
-              value={formData.oauth_data || ''}
-              onChange={(e) => setFormData({ ...formData, oauth_data: e.target.value })}
-              fullWidth
-              multiline
-              rows={4}
-              required
-              helperText='JSON格式，如：{"client_id": "your_client_id", "client_secret": "your_client_secret"}'
-            />
-
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={formData.is_enabled === 1}
-                  onChange={(e) => setFormData({ ...formData, is_enabled: e.target.checked ? 1 : 0 })}
-                />
-              }
-              label="启用配置"
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditDialog({ open: false, oauth: null })}>取消</Button>
-          <Button onClick={handleSaveEdit} variant="contained">保存</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* 消息提示 */}
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
+      <Modal
+        title="编辑OAuth配置"
+        open={editDialog.open}
+        onCancel={() => setEditDialog({ open: false, oauth: null })}
+        onOk={handleSaveEdit}
+        okText="保存"
+        cancelText="取消"
+        width={720}
+        destroyOnClose
       >
-        <Alert 
-          onClose={() => setSnackbar({ ...snackbar, open: false })} 
-          severity={snackbar.severity}
-          sx={{ width: '100%' }}
-        >
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-    </Box>
+        {renderFormContent(true)}
+      </Modal>
+    </div>
   );
 };
 

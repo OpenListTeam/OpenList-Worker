@@ -1,29 +1,16 @@
 import React, { useState, useEffect } from 'react';
+import { Typography, Progress, Button, Alert, Tag, Badge, Divider } from 'antd';
 import {
-  Box,
-  Paper,
-  Typography,
-  LinearProgress,
-  IconButton,
-  Collapse,
-  Alert,
-  Fade,
-  Stack,
-  Chip,
-  Divider,
-  Badge
-} from '@mui/material';
-import {
-  Close as CloseIcon,
-  Download as DownloadIcon,
-  CheckCircle as CheckCircleIcon,
-  Error as ErrorIcon,
-  CloudDownload as CloudDownloadIcon,
-  Queue as QueueIcon,
-  ClearAll as ClearAllIcon,
-  ExpandLess as ExpandLessIcon,
-  ExpandMore as ExpandMoreIcon
-} from '@mui/icons-material';
+  CloseOutlined,
+  DownloadOutlined,
+  CheckCircleFilled,
+  CloseCircleFilled,
+  CloudDownloadOutlined,
+  UnorderedListOutlined,
+  ClearOutlined,
+  UpOutlined,
+  DownOutlined,
+} from '@ant-design/icons';
 
 export interface DownloadProgressInfo {
   id: string;
@@ -94,13 +81,13 @@ const DownloadProgress: React.FC<DownloadProgressProps> = ({ downloads, onRemove
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'downloading':
-        return <CloudDownloadIcon color="primary" />;
+        return <CloudDownloadOutlined style={{ color: '#1677ff', fontSize: 18 }} />;
       case 'completed':
-        return <CheckCircleIcon color="success" />;
+        return <CheckCircleFilled style={{ color: '#52c41a', fontSize: 18 }} />;
       case 'error':
-        return <ErrorIcon color="error" />;
+        return <CloseCircleFilled style={{ color: '#ff4d4f', fontSize: 18 }} />;
       default:
-        return <DownloadIcon />;
+        return <DownloadOutlined style={{ fontSize: 18 }} />;
     }
   };
 
@@ -119,10 +106,10 @@ const DownloadProgress: React.FC<DownloadProgressProps> = ({ downloads, onRemove
     }
   };
 
-  const getStatusColor = (status: string): 'default' | 'primary' | 'success' | 'error' => {
+  const getStatusColor = (status: string): string => {
     switch (status) {
       case 'downloading':
-        return 'primary';
+        return 'processing';
       case 'completed':
         return 'success';
       case 'error':
@@ -139,8 +126,8 @@ const DownloadProgress: React.FC<DownloadProgressProps> = ({ downloads, onRemove
   }
 
   return (
-    <Box
-      sx={{
+    <div
+      style={{
         position: 'fixed',
         bottom: 16,
         left: 16,
@@ -149,207 +136,184 @@ const DownloadProgress: React.FC<DownloadProgressProps> = ({ downloads, onRemove
         minWidth: 320,
       }}
     >
-      <Paper
-        elevation={8}
-        sx={{
-          borderRadius: 3,
-          backgroundColor: 'background.paper',
-          border: '1px solid',
-          borderColor: 'divider',
+      <div
+        style={{
+          borderRadius: 12,
+          backgroundColor: 'var(--ant-color-bg-elevated, #fff)',
+          border: '1px solid var(--ant-color-border, #d9d9d9)',
           overflow: 'hidden',
+          boxShadow: '0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12), 0 9px 28px 8px rgba(0, 0, 0, 0.05)',
         }}
       >
         {/* 队列头部 */}
-        <Box
-          sx={{
-            p: 2,
-            backgroundColor: 'primary.main',
-            color: 'primary.contrastText',
+        <div
+          style={{
+            padding: '12px 16px',
+            background: 'var(--ant-color-primary, #1677ff)',
+            color: '#fff',
             cursor: 'pointer',
           }}
           onClick={toggleExpanded}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Badge badgeContent={queueStats.total} color="secondary">
-                <QueueIcon />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Badge count={queueStats.total} size="small" color="orange">
+                <UnorderedListOutlined style={{ fontSize: 18, color: '#fff' }} />
               </Badge>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+              <Typography.Text strong style={{ color: '#fff', fontSize: 14 }}>
                 下载队列
-              </Typography>
-            </Box>
-            
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              </Typography.Text>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               {/* 统计信息 */}
-              <Box sx={{ display: 'flex', gap: 0.5 }}>
+              <div style={{ display: 'flex', gap: 4 }}>
                 {queueStats.downloading > 0 && (
-                  <Chip
-                    label={`${queueStats.downloading} 进行中`}
-                    size="small"
-                    sx={{
+                  <Tag
+                    style={{
                       backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                      color: 'inherit',
-                      fontSize: '0.7rem',
-                      height: 20,
+                      color: '#fff',
+                      border: 'none',
+                      fontSize: 11,
+                      lineHeight: '18px',
+                      padding: '0 6px',
+                      marginInlineEnd: 0,
                     }}
-                  />
+                  >
+                    {queueStats.downloading} 进行中
+                  </Tag>
                 )}
                 {queueStats.completed > 0 && (
-                  <Chip
-                    label={`${queueStats.completed} 完成`}
-                    size="small"
-                    sx={{
+                  <Tag
+                    style={{
                       backgroundColor: 'rgba(76, 175, 80, 0.3)',
-                      color: 'inherit',
-                      fontSize: '0.7rem',
-                      height: 20,
+                      color: '#fff',
+                      border: 'none',
+                      fontSize: 11,
+                      lineHeight: '18px',
+                      padding: '0 6px',
+                      marginInlineEnd: 0,
                     }}
-                  />
+                  >
+                    {queueStats.completed} 完成
+                  </Tag>
                 )}
                 {queueStats.failed > 0 && (
-                  <Chip
-                    label={`${queueStats.failed} 失败`}
-                    size="small"
-                    sx={{
+                  <Tag
+                    style={{
                       backgroundColor: 'rgba(244, 67, 54, 0.3)',
-                      color: 'inherit',
-                      fontSize: '0.7rem',
-                      height: 20,
+                      color: '#fff',
+                      border: 'none',
+                      fontSize: 11,
+                      lineHeight: '18px',
+                      padding: '0 6px',
+                      marginInlineEnd: 0,
                     }}
-                  />
+                  >
+                    {queueStats.failed} 失败
+                  </Tag>
                 )}
-              </Box>
-              
+              </div>
+
               {/* 清除所有按钮 */}
               {onClearAll && queueStats.total > 0 && (
-                <IconButton
+                <Button
+                  type="text"
                   size="small"
+                  icon={<ClearOutlined />}
                   onClick={(e) => {
                     e.stopPropagation();
                     handleClearAll();
                   }}
-                  sx={{
-                    color: 'inherit',
-                    '&:hover': {
-                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                    }
-                  }}
+                  style={{ color: '#fff' }}
                   title="清除所有"
-                >
-                  <ClearAllIcon fontSize="small" />
-                </IconButton>
+                />
               )}
-              
+
               {/* 展开/折叠按钮 */}
-              <IconButton
+              <Button
+                type="text"
                 size="small"
-                sx={{
-                  color: 'inherit',
-                  '&:hover': {
-                    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                  }
-                }}
-              >
-                {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-              </IconButton>
-            </Box>
-          </Box>
-        </Box>
+                icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
+                style={{ color: '#fff' }}
+              />
+            </div>
+          </div>
+        </div>
 
         {/* 队列内容 */}
-        <Collapse in={isExpanded}>
-          <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
+        {isExpanded && (
+          <div style={{ maxHeight: 400, overflow: 'auto' }}>
             {visibleDownloads.map((download, index) => (
-              <Box key={download.id}>
-                <Fade in={true} timeout={300}>
-                  <Box sx={{ p: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-                      <Box sx={{ mt: 0.5 }}>
-                        {getStatusIcon(download.status)}
-                      </Box>
-                      
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            fontWeight: 500,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            mb: 0.5
-                          }}
-                          title={download.fileName}
-                        >
-                          {download.fileName}
-                        </Typography>
-                        
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                          <Chip
-                            label={getStatusText(download.status)}
-                            size="small"
-                            color={getStatusColor(download.status)}
-                            variant="outlined"
-                          />
-                          {download.status === 'downloading' && (
-                            <Typography variant="caption" color="text.secondary">
-                              {download.progress}%
-                            </Typography>
-                          )}
-                        </Box>
-                        
-                        {download.status === 'downloading' && (
-                          <LinearProgress
-                            variant="determinate"
-                            value={download.progress}
-                            sx={{
-                              height: 6,
-                              borderRadius: 3,
-                              backgroundColor: 'action.hover',
-                              '& .MuiLinearProgress-bar': {
-                                borderRadius: 3,
-                              }
-                            }}
-                          />
-                        )}
-                        
-                        <Collapse in={!!download.errorMessage}>
-                          {download.errorMessage && (
-                            <Alert
-                              severity="error"
-                              sx={{ mt: 1, py: 0.5 }}
-                              variant="outlined"
-                            >
-                              <Typography variant="caption">
-                                {download.errorMessage}
-                              </Typography>
-                            </Alert>
-                          )}
-                        </Collapse>
-                      </Box>
-                      
-                      <IconButton
-                        size="small"
-                        onClick={() => handleRemove(download.id)}
-                        sx={{
-                          color: 'text.secondary',
-                          '&:hover': {
-                            color: 'text.primary',
-                            backgroundColor: 'action.hover',
-                          }
-                        }}
+              <div key={download.id}>
+                <div style={{ padding: '12px 16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                    <div style={{ marginTop: 2 }}>
+                      {getStatusIcon(download.status)}
+                    </div>
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <Typography.Text
+                        strong
+                        ellipsis
+                        title={download.fileName}
+                        style={{ display: 'block', marginBottom: 4, fontSize: 13 }}
                       >
-                        <CloseIcon fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  </Box>
-                </Fade>
-                {index < visibleDownloads.length - 1 && <Divider />}
-              </Box>
+                        {download.fileName}
+                      </Typography.Text>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                        <Tag color={getStatusColor(download.status)} style={{ marginInlineEnd: 0 }}>
+                          {getStatusText(download.status)}
+                        </Tag>
+                        {download.status === 'downloading' && (
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                            {download.progress}%
+                          </Typography.Text>
+                        )}
+                      </div>
+
+                      {download.status === 'downloading' && (
+                        <Progress
+                          percent={download.progress}
+                          size="small"
+                          showInfo={false}
+                          strokeLinecap="round"
+                          style={{ marginBottom: 0 }}
+                        />
+                      )}
+
+                      {download.errorMessage && (
+                        <Alert
+                          type="error"
+                          message={
+                            <Typography.Text style={{ fontSize: 12 }}>
+                              {download.errorMessage}
+                            </Typography.Text>
+                          }
+                          style={{ marginTop: 8, padding: '4px 12px' }}
+                          showIcon={false}
+                          banner
+                        />
+                      )}
+                    </div>
+
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<CloseOutlined style={{ fontSize: 12 }} />}
+                      onClick={() => handleRemove(download.id)}
+                      style={{ color: 'var(--ant-color-text-secondary)' }}
+                    />
+                  </div>
+                </div>
+                {index < visibleDownloads.length - 1 && <Divider style={{ margin: 0 }} />}
+              </div>
             ))}
-          </Box>
-        </Collapse>
-      </Paper>
-    </Box>
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 

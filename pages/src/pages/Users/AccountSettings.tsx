@@ -1,61 +1,52 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Box,
   Card,
-  CardContent,
   Typography,
-  TextField,
+  Input,
   Button,
-  Grid,
   Avatar,
   Divider,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemButton,
-  CircularProgress,
+  Menu,
+  Spin,
   Alert,
-  Snackbar,
-  Collapse,
-} from '@mui/material';
+  message,
+  Row,
+  Col,
+  Form,
+  Progress,
+} from 'antd';
 import {
-  AccountCircle,
-  Security,
-  Notifications,
-  Storage,
-  Language,
-  ColorLens,
-  ExpandLess,
-  ExpandMore,
-  ChevronLeft,
-  ChevronRight,
-} from '@mui/icons-material';
-import { useApp } from '../../components/AppContext';
+  UserOutlined,
+  LockOutlined,
+  BellOutlined,
+  DatabaseOutlined,
+  GlobalOutlined,
+  BgColorsOutlined,
+  LeftOutlined,
+  RightOutlined,
+  SaveOutlined,
+} from '@ant-design/icons';
 import apiService from '../../posts/api';
+import { useAuthStore } from '../../store';
 import OAuthBinding from '../../components/OAuthBinding';
 
+const { Title, Text } = Typography;
+
 const AccountSettings: React.FC = () => {
-  const { state } = useApp();
+  const user = useAuthStore(state => state.user);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>('');
-  const [success, setSuccess] = useState<string>('');
   const [activeSection, setActiveSection] = useState<string>('profile');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [menuOpen, setMenuOpen] = useState<{ [key: string]: boolean }>({
-    profile: true,
-    security: true,
-    notifications: false,
-    storage: false,
-    language: false,
-    theme: false,
-  });
-  
+
   const [userInfo, setUserInfo] = useState({
     username: '',
     email: '',
     storageUsed: '0 B',
     storageTotal: '1 GB',
+    storageUsedBytes: 0,
+    storageTotalBytes: 1,
     language: '简体中文',
     theme: '浅色模式',
   });
@@ -71,23 +62,25 @@ const AccountSettings: React.FC = () => {
     try {
       setLoading(true);
       setError('');
-      
-      if (!state.user?.username) {
+
+      if (!user?.users_name) {
         setError('用户未登录');
         return;
       }
 
+      const result = await apiService.post(`/@users/select/name/${user.users_name}`, {});
 
-
-      const result = await apiService.post(`/@users/select/name/${state.user.username}`, {});
-      
       if (result.flag && result.data && result.data.length > 0) {
         const userData = result.data[0];
+        const usedBytes = userData.total_used || 0;
+        const totalBytes = userData.total_size || 1024 * 1024 * 1024;
         setUserInfo({
           username: userData.users_name,
           email: userData.users_mail || '',
-          storageUsed: formatBytes(userData.total_used || 0),
-          storageTotal: formatBytes(userData.total_size || 1024 * 1024 * 1024),
+          storageUsed: formatBytes(usedBytes),
+          storageTotal: formatBytes(totalBytes),
+          storageUsedBytes: usedBytes,
+          storageTotalBytes: totalBytes,
           language: '简体中文',
           theme: '浅色模式',
         });
@@ -118,30 +111,29 @@ const AccountSettings: React.FC = () => {
 
   useEffect(() => {
     loadUserInfo();
-  }, [state.user]);
+  }, [user]);
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSaveProfile = async () => {
     try {
       setSaving(true);
       setError('');
-      
-      if (!state.user?.username) {
+
+      if (!user?.users_name) {
         setError('用户未登录');
         return;
       }
 
       const result = await apiService.post('/@users/config/none', {
-        users_name: state.user.username,
+        users_name: user.users_name,
         users_mail: formData.users_mail,
       });
-      
+
       if (result.flag) {
-        setSuccess('个人信息更新成功');
-        // 重新加载用户信息
+        message.success('个人信息更新成功');
         await loadUserInfo();
       } else {
         setError(result.text || '更新个人信息失败');
@@ -158,13 +150,12 @@ const AccountSettings: React.FC = () => {
     try {
       setSaving(true);
       setError('');
-      
-      if (!state.user?.username) {
+
+      if (!user?.users_name) {
         setError('用户未登录');
         return;
       }
 
-      // 验证密码
       if (!formData.newPassword || formData.newPassword.length < 6) {
         setError('新密码至少需要6个字符');
         return;
@@ -174,21 +165,14 @@ const AccountSettings: React.FC = () => {
         return;
       }
 
-      // 确保username存在
-      if (!state.user?.username) {
-        setError('用户信息不完整，请重新登录');
-        return;
-      }
-
-      // 更新密码
       const result = await apiService.post('/@users/config/none', {
-        users_name: state.user.username,
+        users_name: user.users_name,
         users_pass: formData.newPassword,
       });
-      
+
       if (result.flag) {
-        setSuccess('密码修改成功');
-        setFormData(prev => ({
+        message.success('密码修改成功');
+        setFormData((prev) => ({
           ...prev,
           newPassword: '',
           confirmPassword: '',
@@ -204,210 +188,246 @@ const AccountSettings: React.FC = () => {
     }
   };
 
-  const handleMenuClick = (key: string) => {
-    setMenuOpen(prev => ({ ...prev, [key]: !prev[key] }));
-    setActiveSection(key);
-  };
-
   const menuItems = [
-    { key: 'profile', icon: AccountCircle, text: '个人信息' },
-    { key: 'security', icon: Security, text: '安全设置' },
-    { key: 'notifications', icon: Notifications, text: '通知设置' },
-    { key: 'storage', icon: Storage, text: '存储管理' },
-    { key: 'language', icon: Language, text: '语言设置' },
-    { key: 'theme', icon: ColorLens, text: '主题设置' },
+    { key: 'profile', icon: <UserOutlined />, label: '个人信息' },
+    { key: 'security', icon: <LockOutlined />, label: '安全设置' },
+    { key: 'notifications', icon: <BellOutlined />, label: '通知设置' },
+    { key: 'storage', icon: <DatabaseOutlined />, label: '存储管理' },
+    { key: 'language', icon: <GlobalOutlined />, label: '语言设置' },
+    { key: 'theme', icon: <BgColorsOutlined />, label: '主题设置' },
   ];
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px' }}>
-        <CircularProgress />
-      </Box>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 400 }}>
+        <Spin size="large" />
+      </div>
     );
   }
 
-  return (
-    <Box sx={{ width: '100%', height: '100%', p: 0, overflow: 'hidden' }}>
-      {error && (
-        <Alert severity="error" sx={{ m: 2 }}>
-          {error}
-        </Alert>
-      )}
-      
-      <Snackbar
-        open={!!success}
-        autoHideDuration={3000}
-        onClose={() => setSuccess('')}
-        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
-      >
-        <Alert severity="success" onClose={() => setSuccess('')}>
-          {success}
-        </Alert>
-      </Snackbar>
+  const storagePercent =
+    userInfo.storageTotalBytes > 0
+      ? Math.round((userInfo.storageUsedBytes / userInfo.storageTotalBytes) * 100)
+      : 0;
 
-      <Grid container spacing={0} sx={{ width: '100%', height: '100%', m: 0 }}>
-        {!sidebarCollapsed && (
-          <Grid item xs={0} md={3} sx={{ display: { xs: 'none', md: 'block' }, height: '100%', p: 2, borderRight: '1px solid', borderColor: 'divider' }}>
-            <Card sx={{ borderRadius: '15px' }}>
-              <CardContent sx={{ textAlign: 'center' }}>
-                <Avatar sx={{ width: 80, height: 80, mx: 'auto', mb: 2 }}>
-                  {userInfo.username.charAt(0).toUpperCase()}
-                </Avatar>
-                <Typography variant="h6">{userInfo.username}</Typography>
-                <Typography color="text.secondary">{userInfo.email}</Typography>
-                <Typography variant="body2" sx={{ mt: 1 }}>
-                  存储空间: {userInfo.storageUsed} / {userInfo.storageTotal}
-                </Typography>
-              </CardContent>
-            </Card>
+  // 渲染内容区域
+  const renderContent = () => {
+    switch (activeSection) {
+      case 'profile':
+        return (
+          <Card style={{ borderRadius: 15 }}>
+            <Title level={5}>个人信息</Title>
+            <Divider />
+            <Form layout="vertical">
+              <Row gutter={24}>
+                <Col xs={24} lg={12}>
+                  <Form.Item label="用户名" help="用户名不可修改">
+                    <Input value={userInfo.username} disabled />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} lg={12}>
+                  <Form.Item label="邮箱地址">
+                    <Input
+                      type="email"
+                      value={formData.users_mail}
+                      onChange={(e) => handleInputChange('users_mail', e.target.value)}
+                      disabled={saving}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col xs={24}>
+                  <Button
+                    type="primary"
+                    icon={<SaveOutlined />}
+                    onClick={handleSaveProfile}
+                    loading={saving}
+                    style={{ borderRadius: 8 }}
+                  >
+                    保存修改
+                  </Button>
+                </Col>
+              </Row>
+            </Form>
+          </Card>
+        );
 
-            <Card sx={{ borderRadius: '15px', mt: 2 }}>
-              <List>
-                {menuItems.map((item) => (
-                  <ListItem key={item.key} disablePadding>
-                    <ListItemButton 
-                      onClick={() => handleMenuClick(item.key)}
-                      selected={activeSection === item.key}
-                    >
-                      <item.icon sx={{ mr: 2 }} />
-                      <ListItemText primary={item.text} />
-                      {menuOpen[item.key] ? <ExpandLess /> : <ExpandMore />}
-                    </ListItemButton>
-                  </ListItem>
-                ))}
-              </List>
-            </Card>
-          </Grid>
-        )}
-
-        <Grid item xs={12} md={sidebarCollapsed ? 12 : 9} sx={{ height: '100%', overflow: 'auto', p: 2 }}>
-          <Box sx={{ position: 'relative', width: '100%' }}>
-            <Button
-              variant="outlined"
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              sx={{
-                position: 'fixed',
-                top: 80,
-                left: sidebarCollapsed ? 10 : 'calc(25% - 20px)',
-                minWidth: '40px',
-                width: '40px',
-                height: '40px',
-                borderRadius: '50%',
-                p: 0,
-                zIndex: 1000,
-                bgcolor: 'background.paper',
-                boxShadow: 2,
-                transition: 'left 0.3s ease',
-                display: { xs: 'none', md: 'flex' },
-                alignItems: 'center',
-                justifyContent: 'center',
-                '&:hover': {
-                  bgcolor: 'action.hover',
-                },
-              }}
-            >
-              {sidebarCollapsed ? <ChevronRight /> : <ChevronLeft />}
-            </Button>
-          <Collapse in={menuOpen['profile']} timeout="auto" unmountOnExit>
-            <Card sx={{ borderRadius: '15px', mb: 3 }}>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  个人信息
-                </Typography>
-                <Divider sx={{ mb: 3 }} />
-                
-                <Box sx={{ width: '100%' }}>
-                  <Grid container spacing={3}>
-                    <Grid item xs={12} lg={6}>
-                      <TextField
-                        fullWidth
-                        label="用户名"
-                        value={userInfo.username}
-                        disabled
-                        helperText="用户名不可修改"
-                      />
-                    </Grid>
-                    <Grid item xs={12} lg={6}>
-                      <TextField
-                        fullWidth
-                        label="邮箱地址"
-                        type="email"
-                        value={formData.users_mail}
-                        onChange={(e) => handleInputChange('users_mail', e.target.value)}
-                        disabled={saving}
-                      />
-                    </Grid>
-                    <Grid item xs={12}>
-                      <Button 
-                        variant="contained" 
-                        onClick={handleSaveProfile}
-                        disabled={saving}
-                      >
-                        {saving ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
-                        保存修改
-                      </Button>
-                    </Grid>
-                  </Grid>
-                </Box>
-              </CardContent>
-            </Card>
-          </Collapse>
-
-          <Collapse in={menuOpen['security']} timeout="auto" unmountOnExit>
-            <Card sx={{ borderRadius: '15px', mb: 3 }}>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  修改密码
-                </Typography>
-                <Divider sx={{ mb: 3 }} />
-                
-                <Box sx={{ width: '100%' }}>
-                  <Grid container spacing={3}>
-                    <Grid item xs={12} lg={6}>
-                      <TextField
-                        fullWidth
-                        type="password"
-                        label="新密码"
+      case 'security':
+        return (
+          <>
+            <Card style={{ borderRadius: 15, marginBottom: 16 }}>
+              <Title level={5}>修改密码</Title>
+              <Divider />
+              <Form layout="vertical">
+                <Row gutter={24}>
+                  <Col xs={24} lg={12}>
+                    <Form.Item label="新密码" help="密码至少需要6个字符">
+                      <Input.Password
                         value={formData.newPassword}
                         onChange={(e) => handleInputChange('newPassword', e.target.value)}
                         disabled={saving}
-                        helperText="密码至少需要6个字符"
                       />
-                    </Grid>
-                    <Grid item xs={12} lg={6}>
-                      <TextField
-                        fullWidth
-                        type="password"
-                        label="确认密码"
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} lg={12}>
+                    <Form.Item label="确认密码" help="请再次输入新密码">
+                      <Input.Password
                         value={formData.confirmPassword}
                         onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
                         disabled={saving}
-                        helperText="请再次输入新密码"
                       />
-                    </Grid>
-                    <Grid item xs={12}>
-                      <Button 
-                        variant="contained" 
-                        onClick={handleChangePassword}
-                        disabled={saving}
-                      >
-                        {saving ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
-                        修改密码
-                      </Button>
-                    </Grid>
-                  </Grid>
-                </Box>
-              </CardContent>
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24}>
+                    <Button
+                      type="primary"
+                      icon={<LockOutlined />}
+                      onClick={handleChangePassword}
+                      loading={saving}
+                      style={{ borderRadius: 8 }}
+                    >
+                      修改密码
+                    </Button>
+                  </Col>
+                </Row>
+              </Form>
             </Card>
-          </Collapse>
-
-          <Collapse in={menuOpen['security']} timeout="auto" unmountOnExit>
             <OAuthBinding />
-          </Collapse>
-          </Box>
-        </Grid>
-      </Grid>
-    </Box>
+          </>
+        );
+
+      case 'storage':
+        return (
+          <Card style={{ borderRadius: 15 }}>
+            <Title level={5}>存储管理</Title>
+            <Divider />
+            <div style={{ maxWidth: 400 }}>
+              <Text>已使用 {userInfo.storageUsed} / {userInfo.storageTotal}</Text>
+              <Progress percent={storagePercent} status="active" style={{ marginTop: 8 }} />
+            </div>
+          </Card>
+        );
+
+      case 'notifications':
+        return (
+          <Card style={{ borderRadius: 15 }}>
+            <Title level={5}>通知设置</Title>
+            <Divider />
+            <Text type="secondary">通知设置功能开发中...</Text>
+          </Card>
+        );
+
+      case 'language':
+        return (
+          <Card style={{ borderRadius: 15 }}>
+            <Title level={5}>语言设置</Title>
+            <Divider />
+            <Text>当前语言：{userInfo.language}</Text>
+          </Card>
+        );
+
+      case 'theme':
+        return (
+          <Card style={{ borderRadius: 15 }}>
+            <Title level={5}>主题设置</Title>
+            <Divider />
+            <Text>当前主题：{userInfo.theme}</Text>
+          </Card>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div style={{ width: '100%', height: '100%', padding: 0, overflow: 'hidden' }}>
+      {error && (
+        <Alert
+          message={error}
+          type="error"
+          showIcon
+          closable
+          onClose={() => setError('')}
+          style={{ margin: 16 }}
+        />
+      )}
+
+      <Row style={{ width: '100%', height: '100%', margin: 0 }} wrap={false}>
+        {/* 侧边栏 */}
+        {!sidebarCollapsed && (
+          <Col
+            flex="280px"
+            style={{
+              height: '100%',
+              padding: 16,
+              borderRight: '1px solid var(--ant-color-border, #f0f0f0)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+              overflowY: 'auto',
+            }}
+          >
+            {/* 用户头像卡片 */}
+            <Card style={{ borderRadius: 15, textAlign: 'center' }}>
+              <Avatar size={80} icon={<UserOutlined />} style={{ marginBottom: 12 }}>
+                {userInfo.username.charAt(0).toUpperCase()}
+              </Avatar>
+              <Title level={5} style={{ margin: '8px 0 4px' }}>
+                {userInfo.username}
+              </Title>
+              <Text type="secondary">{userInfo.email}</Text>
+              <div style={{ marginTop: 8 }}>
+                <Text style={{ fontSize: 12 }}>
+                  存储空间: {userInfo.storageUsed} / {userInfo.storageTotal}
+                </Text>
+                <Progress percent={storagePercent} size="small" style={{ marginTop: 4 }} />
+              </div>
+            </Card>
+
+            {/* 导航菜单 */}
+            <Card style={{ borderRadius: 15, padding: 0 }} bodyStyle={{ padding: 8 }}>
+              <Menu
+                mode="inline"
+                selectedKeys={[activeSection]}
+                onClick={({ key }) => setActiveSection(key)}
+                items={menuItems}
+                style={{ border: 'none' }}
+              />
+            </Card>
+          </Col>
+        )}
+
+        {/* 内容区域 */}
+        <Col
+          flex="1"
+          style={{
+            height: '100%',
+            overflow: 'auto',
+            padding: 16,
+            position: 'relative',
+          }}
+        >
+          {/* 折叠/展开按钮 */}
+          <Button
+            shape="circle"
+            size="small"
+            icon={sidebarCollapsed ? <RightOutlined /> : <LeftOutlined />}
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            style={{
+              position: 'absolute',
+              top: 16,
+              left: sidebarCollapsed ? 16 : -4,
+              zIndex: 10,
+              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            }}
+          />
+
+          <div style={{ paddingLeft: sidebarCollapsed ? 48 : 16 }}>
+            {renderContent()}
+          </div>
+        </Col>
+      </Row>
+    </div>
   );
 };
 

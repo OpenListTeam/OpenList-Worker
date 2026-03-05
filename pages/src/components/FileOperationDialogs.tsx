@@ -1,34 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { useApp } from './AppContext';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useAuthStore } from '../store';
+import { Modal, Input, Typography, Spin, Tree } from 'antd';
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  TextField,
-  Box,
-  Typography,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  ListItemButton,
-  Breadcrumbs,
-  Link,
-  CircularProgress,
-  Collapse,
-} from '@mui/material';
-import {
-  Folder,
-  Home,
-  NavigateNext,
-  ExpandMore,
-  ChevronRight,
-  FolderOpen,
-} from '@mui/icons-material';
+  FolderOutlined,
+  HomeOutlined,
+  FolderOpenOutlined,
+} from '@ant-design/icons';
 import axios from 'axios';
 import { fileApi } from '../posts/api';
+import type { DataNode } from 'antd/es/tree';
 
 interface PathSelectDialogProps {
   open: boolean;
@@ -70,15 +50,13 @@ export const PathSelectDialog: React.FC<PathSelectDialogProps> = ({
   currentPath,
   isPersonalFile,
 }) => {
-  const { state: appState } = useApp();
+  const authUser = useAuthStore(state => state.user);
   const [selectedPath, setSelectedPath] = useState<string>(currentPath);
   const [treeData, setTreeData] = useState<TreeNode[]>([]);
-  const [expanded, setExpanded] = useState<string[]>(['root']);
   const [loading, setLoading] = useState<boolean>(false);
 
   // 构建后端路径
   const buildBackendPath = (path: string) => {
-    // 直接使用路径，不添加前缀
     return path;
   };
 
@@ -88,14 +66,11 @@ export const PathSelectDialog: React.FC<PathSelectDialogProps> = ({
       const backendPath = buildBackendPath(path);
       const cleanBackendPath = backendPath === '/' ? '' : backendPath.replace(/\/$/, '');
       
-      // 获取当前用户名
-      const username = appState.user?.username;
+      const username = authUser?.users_name;
       
-      // 使用fileApi.getFileList()，这样会经过响应拦截器处理
       const response = await fileApi.getFileList(cleanBackendPath || '/', username, isPersonalFile);
       
       if (response && response.flag && response.data && response.data.fileList) {
-        // 使用返回数据中的fileType字段进行过滤，fileType === 0 表示文件夹
         const folderList = response.data.fileList.filter((item: any) => item.fileType === 0);
         return folderList.map((item: any) => ({
           name: item.fileName,
@@ -170,126 +145,106 @@ export const PathSelectDialog: React.FC<PathSelectDialogProps> = ({
   useEffect(() => {
     if (open) {
       setSelectedPath('/');
-      setExpanded(['root']);
       initializeTree();
     }
   }, [open]);
 
-  const handleToggle = (nodeId: string) => {
-    const isExpanded = expanded.includes(nodeId);
-    
-    // 查找节点的函数
-    const findNode = (nodes: TreeNode[]): TreeNode | null => {
-      for (const node of nodes) {
-        if (node.id === nodeId) return node;
-        if (node.children) {
-          const found = findNode(node.children);
-          if (found) return found;
-        }
-      }
-      return null;
-    };
+  // 将 TreeNode 转为 Antd Tree 的 DataNode
+  const convertToAntdTreeData = (nodes: TreeNode[]): DataNode[] => {
+    return nodes.map(node => ({
+      key: node.id,
+      title: node.name,
+      icon: node.id === 'root' ? <HomeOutlined /> : <FolderOutlined />,
+      children: node.children && node.children.length > 0
+        ? convertToAntdTreeData(node.children)
+        : [],
+      isLeaf: node.loaded && (!node.children || node.children.length === 0),
+    }));
+  };
 
-    const node = findNode(treeData);
-    
-    if (isExpanded) {
-      // 如果已展开，则折叠
-      setExpanded(expanded.filter(id => id !== nodeId));
-    } else {
-      // 如果未展开，则展开
-      setExpanded([...expanded, nodeId]);
-      
-      // 检查是否需要加载子节点数据
-      if (node && !node.loaded) {
-        loadChildren(nodeId, node.path);
+  const antdTreeData = useMemo(() => convertToAntdTreeData(treeData), [treeData]);
+
+  // 查找节点
+  const findNode = (nodes: TreeNode[], nodeId: string): TreeNode | null => {
+    for (const node of nodes) {
+      if (node.id === nodeId) return node;
+      if (node.children) {
+        const found = findNode(node.children, nodeId);
+        if (found) return found;
       }
     }
+    return null;
   };
 
-  const handleSelect = (nodeId: string, nodePath: string) => {
-    setSelectedPath(nodePath);
-  };
-
-  const renderTreeNode = (node: TreeNode, level: number = 0): React.ReactNode => {
-    const isExpanded = expanded.includes(node.id);
-    const isSelected = selectedPath === node.path;
-    
-    return (
-      <React.Fragment key={node.id}>
-        <ListItem 
-          disablePadding
-          sx={{ 
-            pl: level * 2,
-            bgcolor: isSelected ? 'action.selected' : 'transparent'
-          }}
-        >
-          <ListItemButton
-            onClick={() => handleSelect(node.id, node.path)}
-            sx={{ py: 0.5 }}
-          >
-            <ListItemIcon 
-              sx={{ minWidth: 32, cursor: 'pointer' }}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleToggle(node.id);
-              }}
-            >
-              {node.id !== 'root' || (node.children && node.children.length > 0) ? (
-                isExpanded ? <ExpandMore /> : <ChevronRight />
-              ) : <ChevronRight />}
-            </ListItemIcon>
-            <ListItemIcon sx={{ minWidth: 32 }}>
-              {node.id === 'root' ? <Home /> : <Folder />}
-            </ListItemIcon>
-            <ListItemText 
-              primary={node.name}
-              primaryTypographyProps={{ variant: 'body2' }}
-            />
-          </ListItemButton>
-        </ListItem>
-        {node.children && (
-          <Collapse in={isExpanded} timeout="auto" unmountOnExit>
-            <List component="div" disablePadding>
-              {node.children.map(child => renderTreeNode(child, level + 1))}
-            </List>
-          </Collapse>
-        )}
-      </React.Fragment>
-    );
+  // 异步加载子节点
+  const onLoadData = (treeNode: any): Promise<void> => {
+    const { key } = treeNode;
+    const node = findNode(treeData, key as string);
+    if (node && node.loaded) {
+      return Promise.resolve();
+    }
+    return loadChildren(key as string, node?.path || '/').then(() => {});
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>{title}</DialogTitle>
-      <DialogContent>
-        <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-          当前选择路径: {selectedPath}
-        </Typography>
+    <Modal
+      open={open}
+      onCancel={onClose}
+      onOk={() => {
+        console.log('PathSelectDialog 确认按钮被点击');
+        console.log('selectedPath:', selectedPath);
+        console.log('调用 onConfirm...');
+        onConfirm(selectedPath);
+      }}
+      title={title}
+      width={640}
+      okText="确认"
+      cancelText="取消"
+    >
+      <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+        当前选择路径: {selectedPath}
+      </Typography.Text>
 
-        <Box sx={{ height: 400, overflow: 'auto', border: '1px solid #e0e0e0', borderRadius: 1 }}>
-          {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-              <CircularProgress />
-            </Box>
-          ) : (
-            <List>
-              {treeData.map(node => renderTreeNode(node))}
-            </List>
-          )}
-        </Box>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>取消</Button>
-        <Button onClick={() => {
-          console.log('PathSelectDialog 确认按钮被点击');
-          console.log('selectedPath:', selectedPath);
-          console.log('调用 onConfirm...');
-          onConfirm(selectedPath);
-        }} variant="contained">
-          确认
-        </Button>
-      </DialogActions>
-    </Dialog>
+      <div style={{ height: 400, overflow: 'auto', border: '1px solid #e0e0e0', borderRadius: 4, padding: 8 }}>
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+            <Spin />
+          </div>
+        ) : (
+          <Tree
+            showIcon
+            defaultExpandedKeys={['root']}
+            treeData={antdTreeData}
+            loadData={onLoadData}
+            onSelect={(selectedKeys, info) => {
+              if (selectedKeys.length > 0) {
+                const nodeId = selectedKeys[0] as string;
+                const node = findNode(treeData, nodeId);
+                if (node) {
+                  setSelectedPath(node.path);
+                }
+              }
+            }}
+            selectedKeys={[
+              // 反向查找当前selectedPath对应的nodeId
+              (() => {
+                const find = (nodes: TreeNode[]): string => {
+                  for (const n of nodes) {
+                    if (n.path === selectedPath) return n.id;
+                    if (n.children) {
+                      const r = find(n.children);
+                      if (r) return r;
+                    }
+                  }
+                  return '';
+                };
+                return find(treeData);
+              })()
+            ].filter(Boolean)}
+          />
+        )}
+      </div>
+    </Modal>
   );
 };
 
@@ -318,30 +273,24 @@ export const NameInputDialog: React.FC<NameInputDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{title}</DialogTitle>
-      <DialogContent>
-        <TextField
-          autoFocus
-          margin="dense"
-          label={placeholder}
-          fullWidth
-          variant="outlined"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyPress={(e) => {
-            if (e.key === 'Enter') {
-              handleConfirm();
-            }
-          }}
-        />
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>取消</Button>
-        <Button onClick={handleConfirm} variant="contained" disabled={!name.trim()}>
-          确认
-        </Button>
-      </DialogActions>
-    </Dialog>
+    <Modal
+      open={open}
+      onCancel={onClose}
+      onOk={handleConfirm}
+      title={title}
+      width={480}
+      okText="确认"
+      cancelText="取消"
+      okButtonProps={{ disabled: !name.trim() }}
+    >
+      <Input
+        autoFocus
+        placeholder={placeholder}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onPressEnter={handleConfirm}
+        style={{ marginTop: 8 }}
+      />
+    </Modal>
   );
 };

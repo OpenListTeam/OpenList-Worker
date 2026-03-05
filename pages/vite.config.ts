@@ -9,7 +9,8 @@ export default defineConfig({
     emptyOutDir: true
   },
   server: {
-    port: 8086,
+    host: '127.0.0.1',
+    port: 1089,
     proxy: {
       '/@mount': {
         target: 'http://localhost:8787',

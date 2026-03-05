@@ -1,7 +1,7 @@
 {
-  "name": "pages",
+  "name": "openlist-frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,16 +11,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@emotion/react": "^11.14.0",
-    "@emotion/styled": "^11.14.1",
-    "@mui/icons-material": "^7.3.2",
-    "@mui/material": "^7.3.2",
-    "@types/react-router-dom": "^5.3.3",
+    "@ant-design/icons": "^6.1.0",
+    "antd": "^6.3.1",
     "axios": "^1.12.2",
     "crypto-js": "^4.2.0",
+    "dayjs": "^1.11.13",
+    "i18next": "^24.2.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "react-router-dom": "^7.9.1"
+    "react-i18next": "^15.4.1",
+    "react-router-dom": "^7.9.1",
+    "zustand": "^5.0.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
@@ -32,6 +33,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
+    "less": "^4.2.2",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.39.1",
     "vite": "^7.1.2"

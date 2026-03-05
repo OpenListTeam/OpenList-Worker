@@ -143,7 +143,7 @@ export class SavesManage {
         }
         if (!this.db) return {flag: false, text: "D1 is undefined"}
         let now_result: DBResult = await this.find(data);
-        if (now_result.data.length > 0) {
+        if (now_result.data && now_result.data.length > 0) {
             const find_keys: D1Filter = await this.d1_keys(data);
             if (this.cc instanceof PrismaTools) {
                 return await this.cc.updateDB(this.db as PrismaClient, data.main,

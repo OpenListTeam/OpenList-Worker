@@ -6,6 +6,10 @@ export async function getConfig(c: Context, name: string): Promise<Record<string
         try {
             const body: any = await c.req.json()
             if (!body) return {}
+            // 兼容两种格式：直接发送数据 或 包裹在指定字段中（如 { config: { ... } }）
+            if (body[name] && typeof body[name] === 'object') {
+                return body[name]
+            }
             return body
         } catch {
             return {}

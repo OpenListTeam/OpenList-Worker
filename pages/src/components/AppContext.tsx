@@ -203,17 +203,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             const savedUser = localStorage.getItem('user');
             const savedToken = localStorage.getItem('token');
             
+            console.log('🔑 initializeAuth 开始:', { hasUser: !!savedUser, hasToken: !!savedToken });
+            
             if (savedUser && savedToken) {
                 try {
-                    // 验证token有效性
-                    const response = await fetch('/@users/select/none', {
+                    // 验证token有效性（使用 /api 前缀经过 Vite 代理）
+                    const response = await fetch('/api/@users/select/none', {
                         headers: {
                             'Authorization': `Bearer ${savedToken}`
                         }
                     });
                     
+                    console.log('🔑 token验证响应:', response.status, response.ok);
+                    
                     if (response.ok) {
                         const result = await response.json();
+                        console.log('🔑 token验证结果:', result.flag);
                         if (result.flag) {
                             // Token有效，恢复用户状态
                             const user = JSON.parse(savedUser);
@@ -227,11 +232,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                         }
                     }
                     
+                    console.log('🔑 token验证失败，清除本地存储');
                     // Token无效，清除本地存储
                     localStorage.removeItem('user');
                     localStorage.removeItem('token');
                 } catch (error) {
-                    console.error('Token验证失败:', error);
+                    console.error('🔑 Token验证异常:', error);
                     // 验证失败，清除本地存储
                     localStorage.removeItem('user');
                     localStorage.removeItem('token');

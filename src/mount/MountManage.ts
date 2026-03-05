@@ -30,7 +30,7 @@ export class MountManage {
             keys: mount_path ? {mount_path: mount_path} : {},
         });
         let result_data: MountConfig[] = []
-        if (result.data.length > 0) {
+        if (result.data && result.data.length > 0) {
             for (const item of result.data) {
                 result_data.push(item as MountConfig)
             }
@@ -129,7 +129,7 @@ export class MountManage {
             main: "mount",
             keys: {"mount_path": config.mount_path},
         });
-        if (old_mount.data.length > 0)
+        if (old_mount.data && old_mount.data.length > 0)
             return {
                 flag: false,
                 text: "Mount Path Already Exists",

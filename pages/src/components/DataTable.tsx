@@ -1,28 +1,16 @@
 import React from 'react';
+import { Table, Tag, Button, Space, Tooltip } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Chip,
-  IconButton,
-  Box,
-  Typography,
-  Button,
-} from '@mui/material';
-import { 
-  Edit, 
-  Delete, 
-  Share, 
-  Download, 
-  Visibility, 
-  FileCopy, 
-  DriveFileMove,
-  Replay
-} from '@mui/icons-material';
+  EditOutlined,
+  DeleteOutlined,
+  ShareAltOutlined,
+  DownloadOutlined,
+  EyeOutlined,
+  CopyOutlined,
+  DragOutlined,
+  ReloadOutlined,
+} from '@ant-design/icons';
 
 interface Column {
   id: string;
@@ -67,118 +55,96 @@ const DataTable: React.FC<DataTableProps> = ({
   onRowDoubleClick,
   actions = ['edit', 'delete'],
 }) => {
-  const renderStatusChip = (status: number) => (
-    <Chip
-      label={status === 1 ? '启用' : '禁用'}
-      size="small"
-      color={status === 1 ? 'success' : 'default'}
-    />
+  const renderStatusTag = (status: number) => (
+    <Tag color={status === 1 ? 'success' : 'default'}>
+      {status === 1 ? '启用' : '禁用'}
+    </Tag>
   );
 
-  const renderActionButtons = (row: any) => (
-    <Box sx={{ display: 'flex', gap: 0.5 }}>
+  const renderActionButtons = (_: any, row: any) => (
+    <Space size={4}>
       {actions.includes('view') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onView?.(row); }} disabled={loading}>
-          <Visibility fontSize="small" />
-        </IconButton>
+        <Tooltip title="查看">
+          <Button type="text" size="small" icon={<EyeOutlined />} onClick={(e) => { e.stopPropagation(); onView?.(row); }} disabled={loading} />
+        </Tooltip>
       )}
       {actions.includes('download') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onDownload?.(row); }} disabled={loading}>
-          <Download fontSize="small" />
-        </IconButton>
+        <Tooltip title="下载">
+          <Button type="text" size="small" icon={<DownloadOutlined />} onClick={(e) => { e.stopPropagation(); onDownload?.(row); }} disabled={loading} />
+        </Tooltip>
       )}
       {actions.includes('copy') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onCopy?.(row); }} disabled={loading}>
-          <FileCopy fontSize="small" />
-        </IconButton>
+        <Tooltip title="复制">
+          <Button type="text" size="small" icon={<CopyOutlined />} onClick={(e) => { e.stopPropagation(); onCopy?.(row); }} disabled={loading} />
+        </Tooltip>
       )}
       {actions.includes('move') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onMove?.(row); }} disabled={loading}>
-          <DriveFileMove fontSize="small" />
-        </IconButton>
+        <Tooltip title="移动">
+          <Button type="text" size="small" icon={<DragOutlined />} onClick={(e) => { e.stopPropagation(); onMove?.(row); }} disabled={loading} />
+        </Tooltip>
       )}
       {actions.includes('reload') && (
-        <IconButton 
-          size="small" 
-          onClick={(e) => { e.stopPropagation(); onReload?.(row); }} 
-          disabled={loading}
-          title="重新加载"
-        >
-          <Replay fontSize="small" />
-        </IconButton>
+        <Tooltip title="重新加载">
+          <Button type="text" size="small" icon={<ReloadOutlined />} onClick={(e) => { e.stopPropagation(); onReload?.(row); }} disabled={loading} />
+        </Tooltip>
       )}
       {actions.includes('edit') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onEdit?.(row); }} disabled={loading}>
-          <Edit fontSize="small" />
-        </IconButton>
+        <Tooltip title="编辑">
+          <Button type="text" size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); onEdit?.(row); }} disabled={loading} />
+        </Tooltip>
       )}
       {actions.includes('delete') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onDelete?.(row); }} disabled={loading}>
-          <Delete fontSize="small" />
-        </IconButton>
+        <Tooltip title="删除">
+          <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={(e) => { e.stopPropagation(); onDelete?.(row); }} disabled={loading} />
+        </Tooltip>
       )}
       {actions.includes('share') && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onShare?.(row); }} disabled={loading}>
-          <Share fontSize="small" />
-        </IconButton>
+        <Tooltip title="分享">
+          <Button type="text" size="small" icon={<ShareAltOutlined />} onClick={(e) => { e.stopPropagation(); onShare?.(row); }} disabled={loading} />
+        </Tooltip>
       )}
-    </Box>
+    </Space>
   );
 
+  // 将 Column 接口转换为 Antd ColumnsType
+  const antdColumns: ColumnsType<any> = [
+    ...columns.map((col) => ({
+      title: col.label,
+      dataIndex: col.id,
+      key: col.id,
+      align: col.align as any,
+      width: col.minWidth,
+      render: col.format ? (_: any, record: any) => col.format!(record[col.id]) : undefined,
+    })),
+    {
+      title: '操作',
+      key: '_actions',
+      align: 'center' as const,
+      render: renderActionButtons,
+    },
+  ];
+
   return (
-    <Box sx={{ width: '100%', height: '100%' }}>
-      <TableContainer component={Paper} sx={{ height: '100%', borderRadius: '15px' }}>
-        <Table stickyHeader sx={{ minWidth: 500 }} aria-label="data table">
-          <TableHead>
-            <TableRow>
-              {columns.map((column) => (
-                <TableCell
-                  key={column.id}
-                  align={column.align}
-                  style={{ minWidth: column.minWidth }}
-                  sx={{ fontWeight: 'bold' }}
-                >
-                  {column.label}
-                </TableCell>
-              ))}
-              <TableCell align="center" sx={{ fontWeight: 'bold' }}>
-                操作
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {data.map((row, index) => (
-              <TableRow 
-                hover 
-                role="checkbox" 
-                tabIndex={-1} 
-                key={index}
-                onClick={() => onRowClick?.(row)}
-                onDoubleClick={() => onRowDoubleClick?.(row)}
-                sx={{ 
-                  cursor: onRowClick || onRowDoubleClick ? 'pointer' : 'default',
-                  '&:hover': {
-                    backgroundColor: onRowClick || onRowDoubleClick ? 'rgba(0, 0, 0, 0.04)' : 'inherit'
-                  }
-                }}
-              >
-                {columns.map((column) => {
-                  const value = row[column.id];
-                  return (
-                    <TableCell key={column.id} align={column.align}>
-                      {column.format ? column.format(value) : value}
-                    </TableCell>
-                  );
-                })}
-                <TableCell align="center">
-                  {renderActionButtons(row)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    </Box>
+    <div style={{ width: '100%', height: '100%' }}>
+      <Table
+        columns={antdColumns}
+        dataSource={data}
+        loading={loading}
+        rowKey={(_, index) => String(index)}
+        sticky
+        size="middle"
+        pagination={false}
+        scroll={{ x: 500 }}
+        style={{ borderRadius: 15, overflow: 'hidden' }}
+        onRow={(record) => ({
+          onClick: () => onRowClick?.(record),
+          onDoubleClick: () => onRowDoubleClick?.(record),
+          style: {
+            cursor: onRowClick || onRowDoubleClick ? 'pointer' : 'default',
+          },
+        })}
+      />
+    </div>
   );
 };
 

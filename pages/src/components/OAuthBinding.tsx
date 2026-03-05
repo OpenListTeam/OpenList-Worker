@@ -1,32 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Box,
   Card,
-  CardContent,
   Typography,
   Button,
   List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
-  Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
+  Tag,
+  Modal,
   Alert,
-  CircularProgress,
+  Spin,
   Divider,
-} from '@mui/material';
+  Space,
+} from 'antd';
 import {
-  Delete as DeleteIcon,
-  Add as AddIcon,
-  Google as GoogleIcon,
-  GitHub as GitHubIcon,
-  Microsoft as MicrosoftIcon,
-  Link as LinkIcon,
-} from '@mui/icons-material';
+  DeleteOutlined,
+  PlusOutlined,
+  GoogleOutlined,
+  GithubOutlined,
+  WindowsOutlined,
+  LinkOutlined,
+  LoadingOutlined,
+} from '@ant-design/icons';
 import { useApp } from './AppContext';
 import apiService from '../posts/api';
 
@@ -59,13 +52,13 @@ const OAuthBinding: React.FC = () => {
   const getOAuthIcon = (type: string) => {
     switch (type.toLowerCase()) {
       case 'google':
-        return <GoogleIcon />;
+        return <GoogleOutlined />;
       case 'github':
-        return <GitHubIcon />;
+        return <GithubOutlined />;
       case 'microsoft':
-        return <MicrosoftIcon />;
+        return <WindowsOutlined />;
       default:
-        return <LinkIcon />;
+        return <LinkOutlined />;
     }
   };
 
@@ -200,169 +193,130 @@ const OAuthBinding: React.FC = () => {
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px' }}>
-        <CircularProgress />
-      </Box>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 200 }}>
+        <Spin size="large" />
+      </div>
     );
   }
 
   return (
-    <Card sx={{ borderRadius: '15px' }}>
-      <CardContent>
-        <Typography variant="h6" gutterBottom>
-          第三方账户绑定
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          绑定第三方账户后，您可以使用这些账户快速登录
-        </Typography>
-        <Divider sx={{ mb: 2 }} />
+    <Card style={{ borderRadius: 15 }}>
+      <Typography.Title level={5} style={{ marginBottom: 4 }}>
+        第三方账户绑定
+      </Typography.Title>
+      <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+        绑定第三方账户后，您可以使用这些账户快速登录
+      </Typography.Text>
+      <Divider style={{ marginBottom: 16 }} />
 
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        )}
+      {error && (
+        <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />
+      )}
 
-        {success && (
-          <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>
-            {success}
-          </Alert>
-        )}
+      {success && (
+        <Alert type="success" message={success} style={{ marginBottom: 16 }} showIcon closable onClose={() => setSuccess('')} />
+      )}
 
-        {providers.length === 0 ? (
-          <Alert severity="info">
-            暂无可用的OAuth提供商，请联系管理员配置
-          </Alert>
-        ) : (
-          <List>
-            {providers.map((provider) => {
-              const bound = isProviderBound(provider.oauth_name);
-              const binding = bindings.find(b => b.oauth_name === provider.oauth_name);
-              
-              return (
-                <ListItem key={provider.oauth_name} divider>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mr: 2 }}>
-                    {getOAuthIcon(provider.oauth_type)}
-                  </Box>
-                  <ListItemText
-                    primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="body1">
-                          {provider.oauth_name}
-                        </Typography>
-                        {bound && (
-                          <Chip
-                            label="已绑定"
-                            size="small"
-                            color="success"
-                            variant="outlined"
-                          />
-                        )}
-                      </Box>
-                    }
-                    secondary={
-                      bound && binding
-                        ? `绑定账户: ${binding.name || binding.email || binding.oauth_user_id}`
-                        : `${provider.oauth_type} 第三方登录`
-                    }
-                  />
-                  <ListItemSecondaryAction>
-                    {bound ? (
-                      <IconButton
-                        edge="end"
-                        color="error"
-                        onClick={() => setUnbindDialog({ open: true, binding: binding! })}
-                        disabled={processing}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    ) : (
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        startIcon={<AddIcon />}
-                        onClick={() => setBindDialog({ open: true, provider })}
-                        disabled={processing}
-                        sx={{
-                          borderColor: getOAuthColor(provider.oauth_type),
-                          color: getOAuthColor(provider.oauth_type),
-                          '&:hover': {
-                            borderColor: getOAuthColor(provider.oauth_type),
-                            backgroundColor: `${getOAuthColor(provider.oauth_type)}10`,
-                          }
-                        }}
-                      >
-                        绑定
-                      </Button>
-                    )}
-                  </ListItemSecondaryAction>
-                </ListItem>
-              );
-            })}
-          </List>
-        )}
+      {providers.length === 0 ? (
+        <Alert type="info" message="暂无可用的OAuth提供商，请联系管理员配置" showIcon />
+      ) : (
+        <List
+          dataSource={providers}
+          renderItem={(provider) => {
+            const bound = isProviderBound(provider.oauth_name);
+            const binding = bindings.find(b => b.oauth_name === provider.oauth_name);
 
-        {/* 绑定确认对话框 */}
-        <Dialog
-          open={bindDialog.open}
-          onClose={() => !processing && setBindDialog({ open: false, provider: null })}
-        >
-          <DialogTitle>绑定OAuth账户</DialogTitle>
-          <DialogContent>
-            <Typography>
-              确定要绑定 {bindDialog.provider?.oauth_name} 账户吗？
-              您将被重定向到 {bindDialog.provider?.oauth_type} 进行授权。
-            </Typography>
-          </DialogContent>
-          <DialogActions>
-            <Button 
-              onClick={() => setBindDialog({ open: false, provider: null })}
-              disabled={processing}
-            >
-              取消
-            </Button>
-            <Button
-              onClick={() => bindDialog.provider && handleBind(bindDialog.provider)}
-              variant="contained"
-              disabled={processing}
-            >
-              {processing ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
-              确定绑定
-            </Button>
-          </DialogActions>
-        </Dialog>
+            return (
+              <List.Item
+                actions={[
+                  bound ? (
+                    <Button
+                      key="unbind"
+                      type="text"
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={() => setUnbindDialog({ open: true, binding: binding! })}
+                      disabled={processing}
+                    />
+                  ) : (
+                    <Button
+                      key="bind"
+                      type="default"
+                      size="small"
+                      icon={<PlusOutlined />}
+                      onClick={() => setBindDialog({ open: true, provider })}
+                      disabled={processing}
+                      style={{
+                        borderColor: getOAuthColor(provider.oauth_type),
+                        color: getOAuthColor(provider.oauth_type),
+                      }}
+                    >
+                      绑定
+                    </Button>
+                  )
+                ]}
+              >
+                <List.Item.Meta
+                  avatar={
+                    <span style={{ fontSize: 20, color: getOAuthColor(provider.oauth_type) }}>
+                      {getOAuthIcon(provider.oauth_type)}
+                    </span>
+                  }
+                  title={
+                    <Space>
+                      <span>{provider.oauth_name}</span>
+                      {bound && (
+                        <Tag color="success" variant="borderless">已绑定</Tag>
+                      )}
+                    </Space>
+                  }
+                  description={
+                    bound && binding
+                      ? `绑定账户: ${binding.name || binding.email || binding.oauth_user_id}`
+                      : `${provider.oauth_type} 第三方登录`
+                  }
+                />
+              </List.Item>
+            );
+          }}
+        />
+      )}
 
-        {/* 解绑确认对话框 */}
-        <Dialog
-          open={unbindDialog.open}
-          onClose={() => !processing && setUnbindDialog({ open: false, binding: null })}
-        >
-          <DialogTitle>解绑OAuth账户</DialogTitle>
-          <DialogContent>
-            <Typography>
-              确定要解绑 {unbindDialog.binding?.oauth_name} 账户吗？
-              解绑后您将无法使用该账户登录。
-            </Typography>
-          </DialogContent>
-          <DialogActions>
-            <Button 
-              onClick={() => setUnbindDialog({ open: false, binding: null })}
-              disabled={processing}
-            >
-              取消
-            </Button>
-            <Button
-              onClick={() => unbindDialog.binding && handleUnbind(unbindDialog.binding)}
-              variant="contained"
-              color="error"
-              disabled={processing}
-            >
-              {processing ? <CircularProgress size={20} sx={{ mr: 1 }} /> : null}
-              确定解绑
-            </Button>
-          </DialogActions>
-        </Dialog>
-      </CardContent>
+      {/* 绑定确认对话框 */}
+      <Modal
+        open={bindDialog.open}
+        title="绑定OAuth账户"
+        onCancel={() => !processing && setBindDialog({ open: false, provider: null })}
+        onOk={() => bindDialog.provider && handleBind(bindDialog.provider)}
+        okText={processing ? '绑定中...' : '确定绑定'}
+        cancelText="取消"
+        confirmLoading={processing}
+        okButtonProps={{ disabled: processing }}
+        cancelButtonProps={{ disabled: processing }}
+      >
+        <Typography.Text>
+          确定要绑定 {bindDialog.provider?.oauth_name} 账户吗？
+          您将被重定向到 {bindDialog.provider?.oauth_type} 进行授权。
+        </Typography.Text>
+      </Modal>
+
+      {/* 解绑确认对话框 */}
+      <Modal
+        open={unbindDialog.open}
+        title="解绑OAuth账户"
+        onCancel={() => !processing && setUnbindDialog({ open: false, binding: null })}
+        onOk={() => unbindDialog.binding && handleUnbind(unbindDialog.binding)}
+        okText={processing ? '解绑中...' : '确定解绑'}
+        cancelText="取消"
+        confirmLoading={processing}
+        okButtonProps={{ danger: true, disabled: processing }}
+        cancelButtonProps={{ disabled: processing }}
+      >
+        <Typography.Text>
+          确定要解绑 {unbindDialog.binding?.oauth_name} 账户吗？
+          解绑后您将无法使用该账户登录。
+        </Typography.Text>
+      </Modal>
     </Card>
   );
 };

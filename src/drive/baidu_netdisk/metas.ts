@@ -1,141 +1,147 @@
-// Baidu Netdisk driver configuration interface
+// 百度网盘 配置与响应接口定义
+
+//====== 百度网盘配置信息接口 ======
 export interface BaiduNetdiskConfig {
-    // Root path configuration
-    root_path: string
+    // 基础配置
+    root_path: string;
 
-    // Authentication
-    client_id?: string
-    client_secret?: string
-    refresh_token: string
+    // 认证配置
+    client_id?: string;
+    client_secret?: string;
+    refresh_token: string;
 
-    // Download options
-    download_api: "official" | "crack" | "crack_video"
-    custom_crack_ua?: string
+    // 下载配置
+    download_api: "official" | "crack" | "crack_video";
+    custom_crack_ua?: string;
 
-    // Upload options
-    upload_thread: string
-    upload_api: string
-    custom_upload_part_size: number
-    low_bandwith_upload_mode: boolean
+    // 上传配置
+    upload_thread: string;
+    upload_api: string;
+    custom_upload_part_size: number;
+    low_bandwith_upload_mode: boolean;
 
-    // API options
-    use_online_api: boolean
-    api_url_address: string
+    // API配置
+    use_online_api: boolean;
+    api_address: string;
 
-    // File listing options
-    order_by: "name" | "time" | "size"
-    order_direction: "asc" | "desc"
-    only_list_video_file: boolean
+    // 排序配置
+    order_by: "name" | "time" | "size";
+    order_direction: "asc" | "desc";
+    only_list_video_file: boolean;
 }
 
-// Baidu Netdisk saved data interface
+//====== 百度网盘保存信息接口 ======
 export interface BaiduNetdiskSaving {
-    access_token?: string
-    refresh_token?: string
-    vip_type?: number
+    access_token?: string;
+    refresh_token?: string;
+    vip_type?: number;
 }
 
-// Token response from Baidu API
+//====== Token响应 ======
 export interface TokenResponse {
-    access_token: string
-    refresh_token: string
-    expires_in?: number
+    access_token: string;
+    refresh_token: string;
+    expires_in?: number;
 }
 
-// Token error response
+//====== Token错误响应 ======
 export interface TokenErrorResponse {
-    error: string
-    error_description: string
+    error: string;
+    error_description: string;
 }
 
-// Online API response
+//====== 在线API响应 ======
 export interface OnlineAPIResponse {
-    refresh_token: string
-    access_token: string
-    text?: string
+    refresh_token: string;
+    access_token: string;
+    text?: string;
 }
 
-// User info response
+//====== 用户信息响应 ======
 export interface UserInfoResponse {
-    errno: number
-    vip_type: number
+    errno: number;
+    vip_type: number;
 }
 
-// File item from Baidu API
+//====== 百度API通用响应 ======
+export interface BaiduAPIResponse {
+    errno: number;
+    request_id?: number;
+    [key: string]: any;
+}
+
+//====== 百度文件信息 ======
 export interface BaiduFile {
-    fs_id: number
-    path: string
-    server_filename: string
-    size: number
-    isdir: number
-    category: number
-    md5?: string
-    
-    // Timestamps
-    server_ctime: number
-    server_mtime: number
-    local_ctime?: number
-    local_mtime?: number
-    ctime?: number
-    mtime?: number
-    
-    // Thumbnail
+    fs_id: number;
+    path: string;
+    server_filename: string;
+    size: number;
+    isdir: number;
+    category: number;
+    md5?: string;
+
+    // 时间戳
+    server_ctime: number;
+    server_mtime: number;
+    local_ctime?: number;
+    local_mtime?: number;
+    ctime?: number;
+    mtime?: number;
+
+    // 缩略图
     thumbs?: {
-        url3?: string
-    }
+        url3?: string;
+    };
 }
 
-// List files response
-export interface ListFilesResponse {
-    errno: number
-    list: BaiduFile[]
-    guid_info?: string
-    request_id?: number
+//====== 文件列表响应 ======
+export interface BaiduFileListResponse extends BaiduAPIResponse {
+    list: BaiduFile[];
 }
 
-// Download link response
+//====== 下载链接响应（官方） ======
 export interface DownloadLinkResponse {
-    errno: number
+    errno: number;
     list: Array<{
-        dlink: string
-    }>
-    request_id?: string
+        dlink: string;
+    }>;
+    request_id?: string;
 }
 
-// Download link response (crack method)
+//====== 下载链接响应（破解） ======
 export interface DownloadLinkCrackResponse {
-    errno: number
+    errno: number;
     info: Array<{
-        dlink: string
-    }>
-    request_id?: number
+        dlink: string;
+    }>;
+    request_id?: number;
 }
 
-// Precreate upload response
+//====== 预创建上传响应 ======
 export interface PrecreateResponse {
-    errno: number
-    return_type: number
-    request_id: number
-    
-    // return_type=1: need upload
-    path?: string
-    uploadid?: string
-    block_list?: number[]
-    
-    // return_type=2: rapid upload success
-    info?: BaiduFile
+    errno: number;
+    return_type: number;
+    request_id: number;
+
+    // return_type=1: 需要上传
+    path?: string;
+    uploadid?: string;
+    block_list?: number[];
+
+    // return_type=2: 秒传成功
+    info?: BaiduFile;
 }
 
-// Manage operation response
+//====== 文件管理操作响应 ======
 export interface ManageResponse {
-    errno: number
-    request_id?: number
+    errno: number;
+    request_id?: number;
 }
 
-// Quota response
+//====== 存储空间响应 ======
 export interface QuotaResponse {
-    errno: number
-    total: number
-    used: number
-    request_id?: number
+    errno: number;
+    total: number;
+    used: number;
+    request_id?: number;
 }

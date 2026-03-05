@@ -1,27 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Box,
   Card,
-  CardContent,
   Typography,
-  Grid,
   List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
   Divider,
-  CircularProgress,
+  Spin,
   Alert,
-} from '@mui/material';
+  Row,
+  Col,
+  Space,
+} from 'antd';
 import {
-  Info,
-  Code,
-  Update,
-  People,
-  Storage,
-  Speed,
-  Security,
-} from '@mui/icons-material';
+  InfoCircleOutlined,
+  CodeOutlined,
+  ThunderboltOutlined,
+  TeamOutlined,
+  DatabaseOutlined,
+} from '@ant-design/icons';
 import { systemApi } from '../../posts/api';
 
 interface SystemInfo {
@@ -74,140 +69,134 @@ const AboutPlatform: React.FC = () => {
   ];
 
   const technologies = [
-    { name: '前端', tech: 'React 18 + TypeScript + Material-UI' },
+    { name: '前端', tech: 'React 18 + TypeScript + Ant Design' },
     { name: '后端', tech: 'Node.js + Express + TypeScript' },
     { name: '数据库', tech: 'SQLite' },
     { name: '构建工具', tech: 'Vite' },
     { name: '部署', tech: 'Docker + Nginx' },
   ];
 
+  // 系统信息列表数据
+  const systemInfoItems = systemInfo
+    ? [
+        { label: '版本号', value: systemInfo.version || '未知' },
+        { label: '构建时间', value: systemInfo.build || '未知' },
+        { label: 'Node.js版本', value: systemInfo.nodeVersion || '未知' },
+        { label: '运行平台', value: systemInfo.platform || '未知' },
+        { label: '运行时间', value: systemInfo.uptime || '未知' },
+        { label: '内存使用', value: systemInfo.memory || '未知' },
+        ...(systemInfo.cpuUsage ? [{ label: 'CPU信息', value: systemInfo.cpuUsage }] : []),
+      ]
+    : [];
+
   return (
-    <Box sx={{ width: '100%', height: '100%', p: 3 }}>
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
-          <Card sx={{ borderRadius: '15px' }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <Info color="primary" sx={{ mr: 1 }} />
-                <Typography variant="h6">
-                  系统信息
-                </Typography>
-              </Box>
-              <Divider sx={{ mb: 2 }} />
-              
-              {loading ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                  <CircularProgress />
-                </Box>
-              ) : error ? (
-                <Alert severity="error">{error}</Alert>
-              ) : systemInfo ? (
-                <List dense>
-                  <ListItem>
-                    <ListItemText primary="版本号" secondary={systemInfo.version || '未知'} />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="构建时间" secondary={systemInfo.build || '未知'} />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Node.js版本" secondary={systemInfo.nodeVersion || '未知'} />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="运行平台" secondary={systemInfo.platform || '未知'} />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="运行时间" secondary={systemInfo.uptime || '未知'} />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="内存使用" secondary={systemInfo.memory || '未知'} />
-                  </ListItem>
-                  {systemInfo.cpuUsage && (
-                    <ListItem>
-                      <ListItemText primary="CPU信息" secondary={systemInfo.cpuUsage} />
-                    </ListItem>
-                  )}
-                </List>
-              ) : (
-                <Alert severity="info">暂无系统信息</Alert>
+    <div style={{ width: '100%', height: '100%', padding: 24 }}>
+      <Row gutter={[24, 24]}>
+        {/* 系统信息 */}
+        <Col xs={24} md={12}>
+          <Card
+            title={
+              <Space>
+                <InfoCircleOutlined style={{ color: 'var(--ant-color-primary)' }} />
+                <span>系统信息</span>
+              </Space>
+            }
+            style={{ borderRadius: 12 }}
+          >
+            {loading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '32px 0' }}>
+                <Spin />
+              </div>
+            ) : error ? (
+              <Alert message={error} type="error" showIcon />
+            ) : systemInfo ? (
+              <List
+                size="small"
+                dataSource={systemInfoItems}
+                renderItem={(item) => (
+                  <List.Item>
+                    <List.Item.Meta title={item.label} description={item.value} />
+                  </List.Item>
+                )}
+              />
+            ) : (
+              <Alert message="暂无系统信息" type="info" showIcon />
+            )}
+          </Card>
+        </Col>
+
+        {/* 技术栈 */}
+        <Col xs={24} md={12}>
+          <Card
+            title={
+              <Space>
+                <CodeOutlined style={{ color: 'var(--ant-color-primary)' }} />
+                <span>技术栈</span>
+              </Space>
+            }
+            style={{ borderRadius: 12 }}
+          >
+            <List
+              size="small"
+              dataSource={technologies}
+              renderItem={(tech) => (
+                <List.Item>
+                  <List.Item.Meta title={tech.name} description={tech.tech} />
+                </List.Item>
               )}
-            </CardContent>
+            />
           </Card>
-        </Grid>
+        </Col>
 
-        <Grid item xs={12} md={6}>
-          <Card sx={{ borderRadius: '15px' }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <Code color="primary" sx={{ mr: 1 }} />
-                <Typography variant="h6">
-                  技术栈
-                </Typography>
-              </Box>
-              <Divider sx={{ mb: 2 }} />
-              
-              <List dense>
-                {technologies.map((tech, index) => (
-                  <ListItem key={index}>
-                    <ListItemText primary={tech.name} secondary={tech.tech} />
-                  </ListItem>
-                ))}
-              </List>
-            </CardContent>
+        {/* 主要功能 */}
+        <Col xs={24}>
+          <Card
+            title={
+              <Space>
+                <ThunderboltOutlined style={{ color: 'var(--ant-color-primary)' }} />
+                <span>主要功能</span>
+              </Space>
+            }
+            style={{ borderRadius: 12 }}
+          >
+            <Row gutter={[16, 12]}>
+              {features.map((feature, index) => (
+                <Col xs={24} md={12} key={index}>
+                  <Space align="center">
+                    <DatabaseOutlined style={{ color: 'var(--ant-color-text-secondary)', fontSize: 14 }} />
+                    <Typography.Text>{feature}</Typography.Text>
+                  </Space>
+                </Col>
+              ))}
+            </Row>
           </Card>
-        </Grid>
+        </Col>
 
-        <Grid item xs={12}>
-          <Card sx={{ borderRadius: '15px' }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <Speed color="primary" sx={{ mr: 1 }} />
-                <Typography variant="h6">
-                  主要功能
-                </Typography>
-              </Box>
-              <Divider sx={{ mb: 2 }} />
-              
-              <Grid container spacing={2}>
-                {features.map((feature, index) => (
-                  <Grid item xs={12} md={6} key={index}>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <ListItemIcon sx={{ minWidth: 32 }}>
-                        <Storage fontSize="small" color="action" />
-                      </ListItemIcon>
-                      <Typography variant="body2">{feature}</Typography>
-                    </Box>
-                  </Grid>
-                ))}
-              </Grid>
-            </CardContent>
+        {/* 开发团队 */}
+        <Col xs={24}>
+          <Card
+            title={
+              <Space>
+                <TeamOutlined style={{ color: 'var(--ant-color-primary)' }} />
+                <span>开发团队</span>
+              </Space>
+            }
+            style={{ borderRadius: 12 }}
+          >
+            <Typography.Paragraph>
+              OpenList 是一个开源的云存储管理项目，旨在为用户提供一个统一、安全、易用的多云存储管理平台。
+            </Typography.Paragraph>
+            <Typography.Text type="secondary">
+              项目地址: https://github.com/OpenListTeam/OpenList
+            </Typography.Text>
+            <br />
+            <Typography.Text type="secondary">
+              文档地址: https://docs.oplist.org
+            </Typography.Text>
           </Card>
-        </Grid>
-
-        <Grid item xs={12}>
-          <Card sx={{ borderRadius: '15px' }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <People color="primary" sx={{ mr: 1 }} />
-                <Typography variant="h6">
-                  开发团队
-                </Typography>
-              </Box>
-              <Divider sx={{ mb: 2 }} />
-              
-              <Typography variant="body1" gutterBottom>
-                OpenList 是一个开源的云存储管理项目，旨在为用户提供一个统一、安全、易用的多云存储管理平台。
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                项目地址: https://github.com/OpenListTeam/OpenList
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                文档地址: https://docs.oplist.org
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-    </Box>
+        </Col>
+      </Row>
+    </div>
   );
 };
 

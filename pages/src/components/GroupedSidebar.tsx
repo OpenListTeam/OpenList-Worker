@@ -1,66 +1,47 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
-  Box,
   Drawer,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  Divider,
-  Typography,
-  LinearProgress,
-  Collapse,
-  ListItemButton,
-  Switch,
-  FormControlLabel,
+  Menu,
   Avatar,
   Button,
-  Menu,
-  MenuItem,
-  IconButton,
-  Tooltip
-} from '@mui/material';
+  Switch,
+  Typography,
+  Progress,
+  Dropdown,
+  Tooltip,
+  Divider,
+  Space,
+} from 'antd';
 import {
-  // 文件管理图标
-  Folder,
-  InsertDriveFile,
-  Share,
-  // 目录管理图标
-  FolderSpecial,
-  Security,
-  // 任务管理图标
-  Assignment,
-  CloudDownload,
-  // 个人设置图标
-  Cloud,
-  AccountCircle,
-  // 系统管理图标
-  AdminPanelSettings,
-  Group,
-  VpnKey,
-  Settings,
-  Palette,
-  Visibility,
-  Language,
-  Backup,
-  Info,
-  Storage,
-  // 展开收起图标
-  ExpandLess,
-  ExpandMore,
-  DarkMode,
-  LightMode,
-  // 用户相关图标
-  Login,
-  PersonAdd,
-  Logout,
-  MoreVert,
-  Email
-} from '@mui/icons-material';
+  FolderOutlined,
+  FileOutlined,
+  ShareAltOutlined,
+  FolderOpenOutlined,
+  SafetyCertificateOutlined,
+  ScheduleOutlined,
+  CloudDownloadOutlined,
+  CloudOutlined,
+  UserOutlined,
+  TeamOutlined,
+  KeyOutlined,
+  SettingOutlined,
+  GlobalOutlined,
+  InfoCircleOutlined,
+  DatabaseOutlined,
+  MoonOutlined,
+  SunOutlined,
+  LoginOutlined,
+  UserAddOutlined,
+  LogoutOutlined,
+  MoreOutlined,
+  MailOutlined,
+  CrownOutlined,
+} from '@ant-design/icons';
+import type { MenuProps } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useApp } from './AppContext.tsx';
+import { useAuthStore } from '../store';
 
-interface MenuItem {
+interface SidebarMenuItem {
   id: string;
   title: string;
   icon: React.ReactNode;
@@ -71,7 +52,7 @@ interface MenuGroup {
   id: string;
   title: string;
   icon: React.ReactNode;
-  items: MenuItem[];
+  items: SidebarMenuItem[];
   defaultExpanded?: boolean;
 }
 
@@ -83,122 +64,105 @@ interface GroupedSidebarProps {
   isMobile: boolean;
 }
 
-const GroupedSidebar: React.FC<GroupedSidebarProps> = ({ 
-  darkMode, 
-  onDarkModeToggle, 
-  open, 
-  onClose, 
-  isMobile
+const GroupedSidebar: React.FC<GroupedSidebarProps> = ({
+  darkMode,
+  onDarkModeToggle,
+  open,
+  onClose,
+  isMobile,
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { state, logout } = useApp();
-  
-  // 用户菜单状态
-  const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
+  const user = useAuthStore(state => state.user);
+  const token = useAuthStore(state => state.token);
+  const logout = useAuthStore(state => state.logout);
+  const isAuthenticated = !!token && !!user;
 
   // 定义菜单分组数据
   const menuGroups: MenuGroup[] = [
     {
       id: 'file-management',
       title: '文件管理',
-      icon: <Folder />,
+      icon: <FolderOutlined />,
       defaultExpanded: true,
       items: [
-        { id: 'public-directory', title: '公共目录', icon: <Folder />, path: '/' },
-        { id: 'my-files', title: '我的文件', icon: <InsertDriveFile />, path: '/@pages/myfile' },
-        { id: 'my-shares', title: '我的分享', icon: <Share />, path: '/@pages/my-shares' }
-      ]
-    },
-    {
-      id: 'task-management',
-      title: '任务管理',
-      icon: <Assignment />,
-      defaultExpanded: false,
-      items: [
-        { id: 'task-config', title: '任务管理', icon: <Assignment />, path: '/@pages/task-config' },
-        { id: 'offline-download', title: '离线下载', icon: <CloudDownload />, path: '/@pages/offline-download' }
-      ]
+        { id: 'public-directory', title: '公共目录', icon: <FolderOutlined />, path: '/' },
+        { id: 'my-files', title: '我的文件', icon: <FileOutlined />, path: '/@pages/myfile' },
+        { id: 'my-shares', title: '我的分享', icon: <ShareAltOutlined />, path: '/@pages/my-shares' },
+      ],
     },
     {
       id: 'personal-settings',
       title: '个人设置',
-      icon: <AccountCircle />,
+      icon: <UserOutlined />,
       defaultExpanded: false,
       items: [
-        { id: 'connection-config', title: '挂载连接', icon: <Cloud />, path: '/@pages/connection-config' },
-        { id: 'account-settings', title: '账号设置', icon: <AccountCircle />, path: '/@pages/account-settings' }
-      ]
+        { id: 'account-settings', title: '账号设置', icon: <UserOutlined />, path: '/@pages/account-settings' },
+      ],
     },
     {
       id: 'storage-management',
       title: '存储管理',
-      icon: <Storage />,
+      icon: <DatabaseOutlined />,
       defaultExpanded: false,
       items: [
-        { id: 'mount-management', title: '挂载管理', icon: <Cloud />, path: '/@pages/mount-management' },
-        { id: 'mates-config', title: '目录配置', icon: <FolderSpecial />, path: '/@pages/mates-config' },
-        { id: 'crypt-config', title: '加密配置', icon: <Security />, path: '/@pages/crypt-config' }
-      ]
+        { id: 'mount-management', title: '挂载管理', icon: <CloudOutlined />, path: '/@pages/mount-management' },
+        { id: 'mates-config', title: '目录配置', icon: <FolderOpenOutlined />, path: '/@pages/mates-config' },
+        { id: 'crypt-config', title: '加密配置', icon: <SafetyCertificateOutlined />, path: '/@pages/crypt-config' },
+      ],
     },
     {
       id: 'user-management',
       title: '用户管理',
-      icon: <Group />,
+      icon: <TeamOutlined />,
       defaultExpanded: false,
       items: [
-        { id: 'user-management', title: '用户管理', icon: <Group />, path: '/@pages/user-management' },
-        { id: 'group-management', title: '分组管理', icon: <AdminPanelSettings />, path: '/@pages/group-management' },
-        { id: 'oauth-management', title: '三方登录', icon: <VpnKey />, path: '/@pages/oauth-management' }
-      ]
+        { id: 'user-management', title: '用户管理', icon: <TeamOutlined />, path: '/@pages/user-management' },
+        { id: 'group-management', title: '分组管理', icon: <CrownOutlined />, path: '/@pages/group-management' },
+        { id: 'oauth-management', title: '三方登录', icon: <KeyOutlined />, path: '/@pages/oauth-management' },
+      ],
     },
     {
       id: 'setup-settings',
       title: '系统设置',
-      icon: <Settings />,
+      icon: <SettingOutlined />,
       defaultExpanded: false,
       items: [
-        { id: 'site-settings', title: '站点设置', icon: <Language />, path: '/@pages/site-settings' },
-        { id: 'about-platform', title: '关于平台', icon: <Info />, path: '/@pages/about-platform' }
-      ]
-    }
+        { id: 'site-settings', title: '站点设置', icon: <GlobalOutlined />, path: '/@pages/site-settings' },
+        { id: 'about-platform', title: '关于平台', icon: <InfoCircleOutlined />, path: '/@pages/about-platform' },
+      ],
+    },
   ];
 
-  // 管理每个分组的展开状态
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
-    menuGroups.reduce((acc, group) => {
-      acc[group.id] = group.defaultExpanded || false;
-      return acc;
-    }, {} as Record<string, boolean>)
-  );
+  // 构建 Antd Menu items
+  const menuItems: MenuProps['items'] = menuGroups.map((group) => ({
+    key: group.id,
+    icon: group.icon,
+    label: group.title,
+    children: group.items.map((item) => ({
+      key: item.path,
+      icon: item.icon,
+      label: item.title,
+    })),
+  }));
 
-  const handleGroupToggle = (groupId: string) => {
-    setExpandedGroups(prev => ({
-      ...prev,
-      [groupId]: !prev[groupId]
-    }));
-  };
+  // 默认展开的分组
+  const defaultOpenKeys = menuGroups
+    .filter((g) => g.defaultExpanded)
+    .map((g) => g.id);
 
-  const handleMenuClick = (path: string) => {
-    navigate(path);
-  };
+  // 当前选中的菜单项
+  const selectedKeys = [location.pathname];
 
-  const isActive = (path: string) => {
-    return location.pathname === path;
-  };
-
-  // 用户菜单处理函数
-  const handleUserMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setUserMenuAnchor(event.currentTarget);
-  };
-
-  const handleUserMenuClose = () => {
-    setUserMenuAnchor(null);
+  const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
+    navigate(key);
+    if (isMobile) {
+      onClose();
+    }
   };
 
   const handleLogout = () => {
     logout();
-    handleUserMenuClose();
     navigate('/login');
   };
 
@@ -210,213 +174,200 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({
     navigate('/register');
   };
 
-  const getPageTitle = () => {
-    for (const group of menuGroups) {
-      const item = group.items.find(item => item.path === location.pathname);
-      if (item) return item.title;
-    }
-    return 'OpenList';
-  };
+  // 用户下拉菜单
+  const userDropdownItems: MenuProps['items'] = [
+    {
+      key: 'account-settings',
+      icon: <UserOutlined />,
+      label: '账号设置',
+      onClick: () => navigate('/@pages/account-settings'),
+    },
+    { type: 'divider' },
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: '退出登录',
+      danger: true,
+      onClick: handleLogout,
+    },
+  ];
 
   // 渲染用户信息区域
   const renderUserSection = () => {
-    if (state.isAuthenticated && state.user) {
-      // 已登录状态
+    if (isAuthenticated && user) {
       return (
-        <Box sx={{ p: 2 }}>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              backgroundColor: 'action.hover',
-              borderRadius: '15px',
-              p: 1.5,
-              cursor: 'pointer',
-              '&:hover': {
-                backgroundColor: 'action.selected',
-              },
-            }}
-            onClick={handleUserMenuOpen}
-          >
-            <Avatar
-              src={state.user.avatar}
-              alt={state.user.username}
-              sx={{ width: 40, height: 40, mr: 1.5 }}
+        <div style={{ padding: '12px 16px' }}>
+          <Dropdown menu={{ items: userDropdownItems }} trigger={['click']} placement="bottomRight">
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                padding: '10px 12px',
+                borderRadius: 12,
+                cursor: 'pointer',
+                transition: 'background-color 0.2s',
+                backgroundColor: darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+              }}
             >
-              {state.user.username.charAt(0).toUpperCase()}
-            </Avatar>
-            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-              <Typography
-                variant="body2"
-                fontWeight="medium"
-                noWrap
-                sx={{ lineHeight: 1.2 }}
+              <Avatar
+                size={40}
+                style={{ marginRight: 10, flexShrink: 0 }}
               >
-                {state.user.username}
-              </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-                <Tooltip title={state.user.email} placement="top">
-                  <IconButton size="small" sx={{ p: 0.25 }}>
-                    <Email fontSize="small" color="action" />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="个人设置" placement="top">
-                  <IconButton 
-                    size="small" 
-                    sx={{ p: 0.25 }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleUserMenuClose();
-                      navigate('/@pages/account-settings');
-                    }}
-                  >
-                    <Settings fontSize="small" color="action" />
-                  </IconButton>
-                </Tooltip>
-              </Box>
-            </Box>
-            <IconButton size="small" sx={{ ml: 0.5 }}>
-              <MoreVert fontSize="small" />
-            </IconButton>
-          </Box>
-
-          {/* 用户菜单 */}
-          <Menu
-            anchorEl={userMenuAnchor}
-            open={Boolean(userMenuAnchor)}
-            onClose={handleUserMenuClose}
-            anchorOrigin={{
-              vertical: 'top',
-              horizontal: 'right',
-            }}
-            transformOrigin={{
-              vertical: 'top',
-              horizontal: 'right',
-            }}
-          >
-            <MenuItem onClick={() => { handleUserMenuClose(); navigate('/@pages/account-settings'); }}>
-              <ListItemIcon>
-                <AccountCircle fontSize="small" />
-              </ListItemIcon>
-              <ListItemText>账号设置</ListItemText>
-            </MenuItem>
-            <Divider />
-            <MenuItem onClick={handleLogout}>
-              <ListItemIcon>
-                <Logout fontSize="small" />
-              </ListItemIcon>
-              <ListItemText>退出登录</ListItemText>
-            </MenuItem>
-          </Menu>
-        </Box>
+                {(user.users_name || 'U').charAt(0).toUpperCase()}
+              </Avatar>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Typography.Text
+                  strong
+                  ellipsis
+                  style={{ display: 'block', fontSize: 14, lineHeight: 1.3 }}
+                >
+                  {user.users_name}
+                </Typography.Text>
+                <Space size={4} style={{ marginTop: 4 }}>
+                  <Tooltip title={user.users_mail}>
+                    <MailOutlined style={{ fontSize: 14, color: '#999', cursor: 'pointer' }} />
+                  </Tooltip>
+                  <Tooltip title="个人设置">
+                    <SettingOutlined
+                      style={{ fontSize: 14, color: '#999', cursor: 'pointer' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate('/@pages/account-settings');
+                      }}
+                    />
+                  </Tooltip>
+                </Space>
+              </div>
+              <MoreOutlined style={{ fontSize: 16, color: '#999', marginLeft: 4 }} />
+            </div>
+          </Dropdown>
+        </div>
       );
     } else {
-      // 未登录状态
       return (
-        <Box sx={{ p: 2 }}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <div style={{ padding: '12px 16px' }}>
+          <Space direction="vertical" style={{ width: '100%' }} size={8}>
             <Button
-              variant="contained"
-              fullWidth
-              startIcon={<Login />}
+              type="primary"
+              block
+              icon={<LoginOutlined />}
               onClick={handleLogin}
-              sx={{
-                borderRadius: '15px',
-                textTransform: 'none',
-                fontWeight: 'medium'
-              }}
+              style={{ borderRadius: 12, height: 38 }}
             >
               登录
             </Button>
             <Button
-              variant="outlined"
-              fullWidth
-              startIcon={<PersonAdd />}
+              block
+              icon={<UserAddOutlined />}
               onClick={handleRegister}
-              sx={{
-                borderRadius: '15px',
-                textTransform: 'none',
-                fontWeight: 'medium'
-              }}
+              style={{ borderRadius: 12, height: 38 }}
             >
               注册
             </Button>
-          </Box>
-        </Box>
+          </Space>
+        </div>
       );
     }
   };
 
-  const renderMenuGroup = (group: MenuGroup) => (
-    <Box key={group.id}>
-      <ListItemButton 
-        onClick={() => handleGroupToggle(group.id)}
-        sx={{
-          borderRadius: '15px',
-          margin: '4px 8px',
-          backgroundColor: 'transparent',
-          width: '180px',
-          maxWidth: '180px',
-          '&:hover': {
-            backgroundColor: 'action.hover',
-          },
+  // 侧边栏宽度
+  const sidebarWidth = isMobile ? 280 : 220;
+
+  const sidebarContent = (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Logo 区域 */}
+      <div
+        style={{
+          padding: '16px',
+          textAlign: 'center',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
       >
-        <ListItemIcon sx={{ minWidth: 40 }}>
-          {group.icon}
-        </ListItemIcon>
-        <ListItemText 
-          primary={group.title}
-          primaryTypographyProps={{ 
-            fontSize: '0.9rem',
-            fontWeight: 'medium',
-            width: '120px',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap'
+        <img
+          src="https://res.oplist.org/logo/120x120.webp"
+          alt="logo"
+          style={{ width: 40, height: 40, marginRight: 8 }}
+        />
+        <Typography.Title level={4} style={{ margin: 0 }}>
+          OpenList
+        </Typography.Title>
+      </div>
+
+      <Divider style={{ margin: 0 }} />
+
+      {/* 用户信息区域 */}
+      {renderUserSection()}
+
+      <Divider style={{ margin: 0 }} />
+
+      {/* 菜单分组区域 */}
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        <Menu
+          mode="inline"
+          selectedKeys={selectedKeys}
+          defaultOpenKeys={defaultOpenKeys}
+          items={menuItems}
+          onClick={handleMenuClick}
+          style={{
+            border: 'none',
+            background: 'transparent',
           }}
         />
-        {expandedGroups[group.id] ? <ExpandLess /> : <ExpandMore />}
-      </ListItemButton>
+      </div>
 
-      <Collapse in={expandedGroups[group.id]} timeout="auto" unmountOnExit>
-        <List component="div" disablePadding>
-          {group.items.map((item) => (
-            <ListItem
-              key={item.id}
-              onClick={() => handleMenuClick(item.path)}
-              sx={{
-                backgroundColor: isActive(item.path) ? 'primary.light' : 'transparent',
-                borderRadius: '15px',
-                margin: '2px 10px',
-                cursor: 'pointer',
-                pl: 2,
-                pr: 2,
-                width: '180px',
-                maxWidth: '180px',
-                '&:hover': {
-                  backgroundColor: isActive(item.path) ? 'primary.light' : 'action.hover',
-                },
-              }}
-            >
-              <ListItemIcon sx={{ minWidth: 36 }}>
-                {item.icon}
-              </ListItemIcon>
-              <ListItemText 
-                primary={item.title}
-                primaryTypographyProps={{ 
-                  fontSize: '0.875rem',
-                  width: '120px',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap'
-                }}
-              />
-            </ListItem>
-          ))}
-        </List>
-      </Collapse>
-    </Box>
+      {/* 底部区域 */}
+      <div style={{ padding: '12px 16px' }}>
+        {/* 主题切换 */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 12,
+          }}
+        >
+          <Space size={8}>
+            {darkMode ? (
+              <MoonOutlined style={{ fontSize: 16 }} />
+            ) : (
+              <SunOutlined style={{ fontSize: 16 }} />
+            )}
+            <Typography.Text style={{ fontSize: 14 }}>深色模式</Typography.Text>
+          </Space>
+          <Switch checked={darkMode} onChange={onDarkModeToggle} size="small" />
+        </div>
+
+        {/* 存储空间显示 */}
+        <div
+          style={{
+            backgroundColor: darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+            borderRadius: 12,
+            padding: '12px 14px',
+          }}
+        >
+          <Typography.Text style={{ fontSize: 13 }}>存储空间</Typography.Text>
+          <Progress percent={50} showInfo={false} size="small" style={{ margin: '6px 0 4px' }} />
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            5GB / 10GB
+          </Typography.Text>
+        </div>
+      </div>
+    </div>
   );
 
   // 如果是桌面端且侧边栏关闭，则不渲染
@@ -424,93 +375,40 @@ const GroupedSidebar: React.FC<GroupedSidebarProps> = ({
     return null;
   }
 
+  // 移动端使用 Drawer，桌面端直接渲染
+  if (isMobile) {
+    return (
+      <Drawer
+        placement="left"
+        open={open}
+        onClose={onClose}
+        width={sidebarWidth}
+        closable={false}
+        styles={{
+          body: { padding: 0 },
+        }}
+      >
+        {sidebarContent}
+      </Drawer>
+    );
+  }
+
+  // 桌面端 - 固定侧边栏
   return (
-    <Drawer
-      variant={isMobile ? "temporary" : "permanent"}
-      open={isMobile ? open : true} // 移动端使用open状态，桌面端总是true（通过上面的条件渲染控制）
-      onClose={onClose}
-      ModalProps={{
-        keepMounted: true, // 更好的移动端性能
-      }}
-      sx={{
-        width: isMobile ? 280 : 220, // 移动端稍微宽一点
-        height: isMobile ? '100vh' : 'calc(100vh - 10px)',
+    <div
+      style={{
+        width: sidebarWidth,
+        height: 'calc(100vh - 18px)',
         flexShrink: 0,
-        marginBottom: isMobile ? 0 : '10px',
-        '& .MuiDrawer-paper': {
-          width: isMobile ? 280 : 220,
-          height: isMobile ? '100%' : 'calc(100% - 18px)',
-          boxSizing: 'border-box',
-          backgroundColor: 'background.paper',
-          borderRadius: isMobile ? '0 15px 15px 0' : '15px', // 移动端右侧圆角
-          margin: isMobile ? 0 : '8px 22px 0px 8px',
-          border: 'none',
-          display: 'flex',
-          flexDirection: 'column',
-          boxShadow: isMobile ? '2px 0 8px rgba(0,0,0,0.15)' : '0 4px 12px rgba(0,0,0,0.15)', // 移动端右侧阴影
-          // 移动端从左侧滑入的动画
-          ...(isMobile && {
-            transform: open ? 'translateX(0)' : 'translateX(-100%)',
-            transition: 'transform 0.3s ease-in-out',
-          }),
-        },
+        margin: '8px 22px 10px 8px',
+        borderRadius: 15,
+        overflow: 'hidden',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+        background: darkMode ? '#141414' : '#fff',
       }}
     >
-      {/* Logo 区域 */}
-      <Box sx={{
-        p: 2,
-        textAlign: 'center',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}>
-        <img
-          src="https://res.oplist.org/logo/120x120.webp"
-          alt="logo"
-          style={{ width: '40px', height: '40px', marginRight: '8px' }}
-        />
-        <Typography variant="h6">OpenList</Typography>
-      </Box>
-      
-      <Divider />
-
-      {/* 用户信息区域 */}
-      {renderUserSection()}
-      
-      <Divider />
-
-      {/* 菜单分组区域 */}
-      <List sx={{ flexGrow: 1, overflow: 'auto', py: 1 }}>
-        {menuGroups.map((group) => renderMenuGroup(group))}
-      </List>
-
-      {/* 底部区域 */}
-      <Box sx={{ p: 2 }}>
-        {/* 主题切换 */}
-        <FormControlLabel
-          control={
-            <Switch
-              checked={darkMode}
-              onChange={(e) => onDarkModeToggle()}
-            />
-          }
-          label={
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              {darkMode ? <DarkMode sx={{ fontSize: 20 }} /> : <LightMode sx={{ fontSize: 20 }} />}
-              深色模式
-            </Box>
-          }
-          sx={{ mb: 2 }}
-        />
-        
-        {/* 存储空间显示 */}
-        <Box sx={{ backgroundColor: 'action.hover', borderRadius: '15px', p: 2 }}>
-          <Typography variant="body2">存储空间</Typography>
-          <LinearProgress variant="determinate" value={50} sx={{ mt: 1 }} />
-          <Typography variant="caption">5GB / 10GB</Typography>
-        </Box>
-      </Box>
-    </Drawer>
+      {sidebarContent}
+    </div>
   );
 };
 

@@ -1,22 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import {
-    Box,
-    Card,
-    CardContent,
-    Typography,
-    CircularProgress,
-    Alert,
-    Button
-} from '@mui/material';
-import { useApp } from '../../components/AppContext';
+import { Card, Typography, Spin, Alert, Button, message } from 'antd';
 import oauthService from '../../services/OAuthService';
-import { getUserAvatarUrl } from '../../utils/gravatar';
+import { useAuthStore } from '../../store';
 
 const OAuthCallback: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const { login, showNotification } = useApp();
+    const { login: authLogin } = useAuthStore();
     
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -66,7 +57,7 @@ const OAuthCallback: React.FC = () => {
                     const response = await oauthService.bindAccount(code, state, bindProvider);
                     
                     if (response.flag) {
-                        showNotification('success', 'OAuth账户绑定成功！');
+                        message.success('OAuth账户绑定成功！');
                         
                         // 跳转回个人设置页面
                         setTimeout(() => {
@@ -80,18 +71,17 @@ const OAuthCallback: React.FC = () => {
                     const response = await oauthService.handleCallback(code, state, oauthName);
 
                     if (response.flag && response.token && response.data) {
-                        // 保存token和用户信息
-                        localStorage.setItem('token', response.token);
-                        localStorage.setItem('user', JSON.stringify(response.data));
+                        // 更新 Zustand 认证状态
+                        authLogin(response.token, {
+                            users_name: response.data.users_name || response.data.username || '',
+                            users_mail: response.data.users_mail || response.data.email,
+                        });
                         
-                        // 登录用户
-                        login(response.data);
+                        message.success('OAuth登录成功！');
                         
-                        showNotification('success', 'OAuth登录成功！');
-                        
-                        // 跳转到仪表板
+                        // 跳转到文件管理页
                         setTimeout(() => {
-                            navigate('/dashboard');
+                            navigate('/files');
                         }, 1000);
                     } else {
                         throw new Error(response.text || 'OAuth登录失败');
@@ -113,58 +103,60 @@ const OAuthCallback: React.FC = () => {
     };
 
     return (
-        <Box
-            sx={{
+        <div
+            style={{
                 minHeight: '100vh',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                p: 2
+                padding: 16,
             }}
         >
             <Card
-                sx={{
+                style={{
                     width: '100%',
                     maxWidth: 450,
                     boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
-                    borderRadius: 3,
+                    borderRadius: 12,
                 }}
+                styles={{ body: { padding: 32, textAlign: 'center' } }}
             >
-                <CardContent sx={{ p: 4, textAlign: 'center' }}>
-                    {/* Logo和标题 */}
-                    <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-                        OpenList
-                    </Typography>
-                    
-                    {loading ? (
-                        <>
-                            <CircularProgress sx={{ mb: 2 }} />
-                            <Typography variant="body1" color="text.secondary">
-                                正在处理OAuth登录...
-                            </Typography>
-                        </>
-                    ) : error ? (
-                        <>
-                            <Alert severity="error" sx={{ mb: 3, textAlign: 'left' }}>
-                                {error}
-                            </Alert>
-                            <Button
-                                variant="contained"
-                                onClick={handleReturnToLogin}
-                                sx={{ mt: 2 }}
-                            >
-                                返回登录页面
-                            </Button>
-                        </>
-                    ) : (
-                        <Typography variant="body1" color="text.secondary">
-                            登录成功，正在跳转...
-                        </Typography>
-                    )}
-                </CardContent>
+                {/* Logo和标题 */}
+                <Typography.Title level={3} style={{ fontWeight: 'bold', color: '#1677ff', marginBottom: 24 }}>
+                    OpenList
+                </Typography.Title>
+
+                {loading ? (
+                    <>
+                        <Spin size="large" style={{ marginBottom: 16 }} />
+                        <Typography.Paragraph type="secondary">
+                            正在处理OAuth登录...
+                        </Typography.Paragraph>
+                    </>
+                ) : error ? (
+                    <>
+                        <Alert
+                            type="error"
+                            message={error}
+                            showIcon
+                            style={{ marginBottom: 24, textAlign: 'left' }}
+                        />
+                        <Button
+                            type="primary"
+                            onClick={handleReturnToLogin}
+                            style={{ marginTop: 8 }}
+                        >
+                            返回登录页面
+                        </Button>
+                    </>
+                ) : (
+                    <Typography.Paragraph type="secondary">
+                        登录成功，正在跳转...
+                    </Typography.Paragraph>
+                )}
             </Card>
-        </Box>
+        </div>
     );
 };
 

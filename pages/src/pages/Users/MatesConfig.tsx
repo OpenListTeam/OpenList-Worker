@@ -1,39 +1,40 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Box,
   Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
+  Modal,
+  Input,
+  InputNumber,
   Switch,
-  FormControlLabel,
-  Snackbar,
-  Alert,
-  Chip,
+  Tag,
   Typography,
-  Grid,
-  Card,
-  CardContent,
-  Divider
-} from '@mui/material';
-import { Add, Edit, Delete, Folder, Security } from '@mui/icons-material';
+  Row,
+  Col,
+  Divider,
+  Form,
+  Space,
+  message,
+} from 'antd';
+import {
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  FolderOutlined,
+  SafetyCertificateOutlined,
+} from '@ant-design/icons';
 import ResponsiveDataTable from '../../components/ResponsiveDataTable';
 import { Mates } from '../../types';
 import apiService from '../../posts/api';
+
+const { Title, Text } = Typography;
+const { TextArea } = Input;
 
 const MatesConfig: React.FC = () => {
   const [mates, setMates] = useState<Mates[]>([]);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMate, setEditingMate] = useState<Mates | null>(null);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
-  
+  const [messageApi, contextHolder] = message.useMessage();
+
   // 表单状态
   const [formData, setFormData] = useState({
     mates_name: '',
@@ -48,8 +49,6 @@ const MatesConfig: React.FC = () => {
     cache_time: 0
   });
 
-
-
   // 获取路径配置列表
   const fetchMates = async () => {
     setLoading(true);
@@ -58,10 +57,10 @@ const MatesConfig: React.FC = () => {
       if (response.flag) {
         setMates(response.data || []);
       } else {
-        showSnackbar(response.text || '获取路径配置列表失败', 'error');
+        messageApi.error(response.text || '获取路径配置列表失败');
       }
     } catch (error) {
-      showSnackbar('获取路径配置列表失败', 'error');
+      messageApi.error('获取路径配置列表失败');
     } finally {
       setLoading(false);
     }
@@ -70,14 +69,6 @@ const MatesConfig: React.FC = () => {
   useEffect(() => {
     fetchMates();
   }, []);
-
-  const showSnackbar = (message: string, severity: 'success' | 'error') => {
-    setSnackbar({ open: true, message, severity });
-  };
-
-  const handleCloseSnackbar = () => {
-    setSnackbar({ ...snackbar, open: false });
-  };
 
   // 打开添加对话框
   const handleAdd = () => {
@@ -124,147 +115,131 @@ const MatesConfig: React.FC = () => {
     try {
       const response = await apiService.post('/@mates/remove/none', { mates_name: mate.mates_name });
       if (response.flag) {
-        showSnackbar('删除成功', 'success');
+        messageApi.success('删除成功');
         fetchMates();
       } else {
-        showSnackbar(response.text || '删除失败', 'error');
+        messageApi.error(response.text || '删除失败');
       }
     } catch (error) {
-      showSnackbar('删除失败', 'error');
+      messageApi.error('删除失败');
     }
   };
 
   // 切换启用状态
   const handleToggleStatus = async (mate: Mates) => {
     try {
-      const response = await apiService.post('/@mates/status/none', { 
+      const response = await apiService.post('/@mates/status/none', {
         mates_name: mate.mates_name,
         is_enabled: mate.is_enabled === 1 ? 0 : 1
       });
       if (response.flag) {
-        showSnackbar('状态更新成功', 'success');
+        messageApi.success('状态更新成功');
         fetchMates();
       } else {
-        showSnackbar(response.text || '状态更新失败', 'error');
+        messageApi.error(response.text || '状态更新失败');
       }
     } catch (error) {
-      showSnackbar('状态更新失败', 'error');
+      messageApi.error('状态更新失败');
     }
   };
 
   // 保存路径配置
   const handleSave = async () => {
     if (!formData.mates_name.trim()) {
-      showSnackbar('路径名称不能为空', 'error');
+      messageApi.error('路径名称不能为空');
       return;
     }
 
     try {
       const action = editingMate ? 'config' : 'create';
       const response = await apiService.post(`/@mates/${action}/none`, formData);
-      
+
       if (response.flag) {
-        showSnackbar(editingMate ? '更新成功' : '创建成功', 'success');
+        messageApi.success(editingMate ? '更新成功' : '创建成功');
         setDialogOpen(false);
         fetchMates();
       } else {
-        showSnackbar(response.text || '操作失败', 'error');
+        messageApi.error(response.text || '操作失败');
       }
     } catch (error) {
-      showSnackbar('操作失败', 'error');
+      messageApi.error('操作失败');
     }
   };
 
   const columns = [
-    { 
-      id: 'mates_name', 
-      label: '路径名称', 
+    {
+      id: 'mates_name',
+      label: '路径名称',
       minWidth: 150,
       format: (value: string) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Folder fontSize="small" />
+        <Space>
+          <FolderOutlined />
           {value}
-        </Box>
+        </Space>
       )
     },
-    { 
-      id: 'mates_mask', 
-      label: '权限掩码', 
+    {
+      id: 'mates_mask',
+      label: '权限掩码',
       minWidth: 100,
       format: (value: number) => (
-        <Chip
-          label={value.toString(8)}
-          size="small"
-          variant="outlined"
-          icon={<Security />}
-        />
+        <Tag icon={<SafetyCertificateOutlined />} variant="borderless">
+          {value.toString(8)}
+        </Tag>
       )
     },
     { id: 'mates_user', label: '用户ID', minWidth: 80 },
-    { 
-      id: 'is_enabled', 
-      label: '状态', 
+    {
+      id: 'is_enabled',
+      label: '状态',
       minWidth: 80,
       format: (value: number) => (
-        <Chip
-          label={value === 1 ? '启用' : '禁用'}
-          size="small"
-          color={value === 1 ? 'success' : 'default'}
-        />
+        <Tag color={value === 1 ? 'success' : 'default'}>
+          {value === 1 ? '启用' : '禁用'}
+        </Tag>
       )
     },
-    { 
-      id: 'dir_hidden', 
-      label: '隐藏', 
+    {
+      id: 'dir_hidden',
+      label: '隐藏',
       minWidth: 80,
       format: (value: number) => (
-        <Chip
-          label={value === 1 ? '是' : '否'}
-          size="small"
-          color={value === 1 ? 'warning' : 'default'}
-        />
+        <Tag color={value === 1 ? 'warning' : 'default'}>
+          {value === 1 ? '是' : '否'}
+        </Tag>
       )
     },
-    { 
-      id: 'dir_shared', 
-      label: '共享', 
+    {
+      id: 'dir_shared',
+      label: '共享',
       minWidth: 80,
       format: (value: number) => (
-        <Chip
-          label={value === 1 ? '是' : '否'}
-          size="small"
-          color={value === 1 ? 'primary' : 'default'}
-        />
+        <Tag color={value === 1 ? 'blue' : 'default'}>
+          {value === 1 ? '是' : '否'}
+        </Tag>
       )
     },
     { id: 'crypt_name', label: '加密配置', minWidth: 120 },
-    { 
-      id: 'cache_time', 
-      label: '缓存时间', 
+    {
+      id: 'cache_time',
+      label: '缓存时间',
       minWidth: 100,
       format: (value: number) => value === 0 ? '无缓存' : `${value}秒`
     },
   ];
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box 
-        sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between', 
-          mb: 3 
-        }}
-      >
-        <Box>
-          <Typography variant="h4" component="h2">
-            目录配置
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+    <div style={{ padding: 24 }}>
+      {contextHolder}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div>
+          <Title level={4} style={{ margin: 0 }}>目录配置</Title>
+          <Text type="secondary" style={{ marginTop: 4, display: 'block' }}>
             配置目录权限、加密和缓存策略，优化文件访问体验
-          </Typography>
-        </Box>
-      </Box>
+          </Text>
+        </div>
+      </div>
+
       <ResponsiveDataTable
         title="路径配置管理"
         columns={columns}
@@ -279,141 +254,119 @@ const MatesConfig: React.FC = () => {
       />
 
       {/* 添加/编辑对话框 */}
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          {editingMate ? '编辑路径配置' : '添加路径配置'}
-        </DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="路径名称"
-                value={formData.mates_name}
-                onChange={(e) => setFormData({ ...formData, mates_name: e.target.value })}
-                placeholder="例如: /documents"
-                disabled={!!editingMate}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="权限掩码"
-                type="number"
-                value={formData.mates_mask}
-                onChange={(e) => setFormData({ ...formData, mates_mask: parseInt(e.target.value) || 0 })}
-                placeholder="例如: 755"
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="用户ID"
-                type="number"
-                value={formData.mates_user}
-                onChange={(e) => setFormData({ ...formData, mates_user: parseInt(e.target.value) || 0 })}
-                placeholder="0表示所有用户"
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="缓存时间(秒)"
-                type="number"
-                value={formData.cache_time}
-                onChange={(e) => setFormData({ ...formData, cache_time: parseInt(e.target.value) || 0 })}
-                placeholder="0表示无缓存"
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="加密配置名称"
-                value={formData.crypt_name}
-                onChange={(e) => setFormData({ ...formData, crypt_name: e.target.value })}
-                placeholder="留空表示不加密"
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={formData.is_enabled === 1}
-                    onChange={(e) => setFormData({ ...formData, is_enabled: e.target.checked ? 1 : 0 })}
-                  />
-                }
-                label="启用配置"
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={formData.dir_hidden === 1}
-                    onChange={(e) => setFormData({ ...formData, dir_hidden: e.target.checked ? 1 : 0 })}
-                  />
-                }
-                label="隐藏目录"
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={formData.dir_shared === 1}
-                    onChange={(e) => setFormData({ ...formData, dir_shared: e.target.checked ? 1 : 0 })}
-                  />
-                }
-                label="共享目录"
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <Divider sx={{ my: 2 }} />
-              <Typography variant="h6" gutterBottom>高级配置</Typography>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="压缩配置"
-                value={formData.set_zipped}
-                onChange={(e) => setFormData({ ...formData, set_zipped: e.target.value })}
-                placeholder='例如: {"enabled": true, "level": 6}'
-                multiline
-                rows={2}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="分片配置"
-                value={formData.set_parted}
-                onChange={(e) => setFormData({ ...formData, set_parted: e.target.value })}
-                placeholder='例如: {"enabled": true, "size": "100MB"}'
-                multiline
-                rows={2}
-              />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>取消</Button>
-          <Button onClick={handleSave} variant="contained">
-            {editingMate ? '更新' : '创建'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* 消息提示 */}
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={handleCloseSnackbar}
+      <Modal
+        title={editingMate ? '编辑路径配置' : '添加路径配置'}
+        open={dialogOpen}
+        onCancel={() => setDialogOpen(false)}
+        onOk={handleSave}
+        okText={editingMate ? '更新' : '创建'}
+        cancelText="取消"
+        width={720}
+        destroyOnClose
       >
-        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity}>
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-    </Box>
+        <Form layout="vertical" style={{ marginTop: 16 }}>
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Form.Item label="路径名称">
+                <Input
+                  value={formData.mates_name}
+                  onChange={(e) => setFormData({ ...formData, mates_name: e.target.value })}
+                  placeholder="例如: /documents"
+                  disabled={!!editingMate}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="权限掩码">
+                <InputNumber
+                  style={{ width: '100%' }}
+                  value={formData.mates_mask}
+                  onChange={(val) => setFormData({ ...formData, mates_mask: val || 0 })}
+                  placeholder="例如: 755"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="用户ID">
+                <InputNumber
+                  style={{ width: '100%' }}
+                  value={formData.mates_user}
+                  onChange={(val) => setFormData({ ...formData, mates_user: val || 0 })}
+                  placeholder="0表示所有用户"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="缓存时间(秒)">
+                <InputNumber
+                  style={{ width: '100%' }}
+                  value={formData.cache_time}
+                  onChange={(val) => setFormData({ ...formData, cache_time: val || 0 })}
+                  placeholder="0表示无缓存"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="加密配置名称">
+                <Input
+                  value={formData.crypt_name}
+                  onChange={(e) => setFormData({ ...formData, crypt_name: e.target.value })}
+                  placeholder="留空表示不加密"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="启用配置">
+                <Switch
+                  checked={formData.is_enabled === 1}
+                  onChange={(checked) => setFormData({ ...formData, is_enabled: checked ? 1 : 0 })}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="隐藏目录">
+                <Switch
+                  checked={formData.dir_hidden === 1}
+                  onChange={(checked) => setFormData({ ...formData, dir_hidden: checked ? 1 : 0 })}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="共享目录">
+                <Switch
+                  checked={formData.dir_shared === 1}
+                  onChange={(checked) => setFormData({ ...formData, dir_shared: checked ? 1 : 0 })}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={24}>
+              <Divider />
+              <Title level={5}>高级配置</Title>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="压缩配置">
+                <TextArea
+                  value={formData.set_zipped}
+                  onChange={(e) => setFormData({ ...formData, set_zipped: e.target.value })}
+                  placeholder='例如: {"enabled": true, "level": 6}'
+                  rows={2}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="分片配置">
+                <TextArea
+                  value={formData.set_parted}
+                  onChange={(e) => setFormData({ ...formData, set_parted: e.target.value })}
+                  placeholder='例如: {"enabled": true, "size": "100MB"}'
+                  rows={2}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
+    </div>
   );
 };
 

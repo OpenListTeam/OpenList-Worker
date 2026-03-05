@@ -1,27 +1,23 @@
 import React, {useState, useEffect} from 'react';
 import {
-    Box,
     Button,
-    Chip,
+    Tag,
     Alert,
-    Snackbar,
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    DialogContentText,
-    DialogActions,
+    Modal,
     Typography,
-    Grid,
+    Row,
+    Col,
     Card,
-    CardContent,
-    CardActions,
-    IconButton
-} from '@mui/material';
-import {Add as AddIcon, Edit, Delete} from '@mui/icons-material';
+    Space,
+    message,
+} from 'antd';
+import {PlusOutlined, EditOutlined, DeleteOutlined} from '@ant-design/icons';
 import DataTable from '../../components/DataTable';
 import UserDialog from '../../components/UserDialog';
 import {User, UsersConfig, CreateUserRequest, UpdateUserRequest} from '../../types';
 import {useUsers} from '../../hooks/useUsers';
+
+const {Title, Text} = Typography;
 
 const UserManagement: React.FC = () => {
     const [users, setUsers] = useState<User[]>([]);
@@ -30,7 +26,6 @@ const UserManagement: React.FC = () => {
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState<UsersConfig | null>(null);
     const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create');
-    const [snackbar, setSnackbar] = useState({open: false, message: '', severity: 'success' as 'success' | 'error'});
     const [searchValue, setSearchValue] = useState('');
     const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
 
@@ -63,7 +58,6 @@ const UserManagement: React.FC = () => {
         try {
             const result = await getUsers();
             if (result.flag && result.data) {
-                // 转换数据格式以适配前端显示
                 const userData = result.data.map((user, index) => ({
                     users_uuid: index + 1,
                     users_name: user.users_name,
@@ -79,10 +73,10 @@ const UserManagement: React.FC = () => {
                 setUsers(userData);
                 setFilteredUsers(filterUsers(searchValue, userData));
             } else {
-                showSnackbar(result.text, 'error');
+                message.error(result.text);
             }
         } catch (err) {
-            showSnackbar('加载用户数据失败', 'error');
+            message.error('加载用户数据失败');
         }
     };
 
@@ -130,64 +124,53 @@ const UserManagement: React.FC = () => {
         setFilteredUsers(filterUsers(searchValue, users));
     }, [users, searchValue]);
 
-    // 显示提示消息
-    const showSnackbar = (message: string, severity: 'success' | 'error') => {
-        setSnackbar({open: true, message, severity});
-    };
-
     // 渲染网格视图
     const renderGridView = () => (
-        <Grid container spacing={2}>
+        <Row gutter={[16, 16]}>
             {filteredUsers.map((user: User) => (
-                <Grid item xs={12} sm={6} md={4} lg={3} key={user.users_name}>
-                    <Card>
-                        <CardContent>
-                            <Typography variant="h6" component="div" gutterBottom>
-                                {user.users_name}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" gutterBottom>
-                                {user.users_mail}
-                            </Typography>
-                            <Box sx={{mb: 1}}>
-                                <Chip
-                                    label={user.users_mask}
-                                    size="small"
-                                    color="primary"
-                                    variant="outlined"
-                                />
-                            </Box>
-                            <Box sx={{mb: 1}}>
-                                <Chip
-                                    label={user.is_enabled === 1 ? '启用' : '禁用'}
-                                    size="small"
-                                    color={user.is_enabled === 1 ? 'success' : 'error'}
-                                />
-                            </Box>
-                            <Typography variant="body2" color="text.secondary">
-                                存储: {(user.total_used / 1024 / 1024 / 1024).toFixed(2)}GB
-                                / {(user.total_size / 1024 / 1024 / 1024).toFixed(2)}GB
-                            </Typography>
-                        </CardContent>
-                        <CardActions>
-                            <IconButton
-                                size="small"
+                <Col xs={24} sm={12} md={8} lg={6} key={user.users_name}>
+                    <Card
+                        hoverable
+                        actions={[
+                            <Button
+                                type="text"
+                                icon={<EditOutlined />}
                                 onClick={() => handleEdit(user)}
-                                color="primary"
-                            >
-                                <Edit/>
-                            </IconButton>
-                            <IconButton
-                                size="small"
+                                key="edit"
+                            />,
+                            <Button
+                                type="text"
+                                danger
+                                icon={<DeleteOutlined />}
                                 onClick={() => handleDelete(user)}
-                                color="error"
-                            >
-                                <Delete/>
-                            </IconButton>
-                        </CardActions>
+                                key="delete"
+                            />,
+                        ]}
+                    >
+                        <Card.Meta
+                            title={user.users_name}
+                            description={user.users_mail}
+                        />
+                        <div style={{marginTop: 12}}>
+                            <Space direction="vertical" size={8} style={{width: '100%'}}>
+                                <div>
+                                    <Tag color="blue">{user.users_mask}</Tag>
+                                </div>
+                                <div>
+                                    <Tag color={user.is_enabled === 1 ? 'success' : 'default'}>
+                                        {user.is_enabled === 1 ? '启用' : '禁用'}
+                                    </Tag>
+                                </div>
+                                <Text type="secondary" style={{fontSize: 12}}>
+                                    存储: {(user.total_used / 1024 / 1024 / 1024).toFixed(2)}GB
+                                    / {(user.total_size / 1024 / 1024 / 1024).toFixed(2)}GB
+                                </Text>
+                            </Space>
+                        </div>
                     </Card>
-                </Grid>
+                </Col>
             ))}
-        </Grid>
+        </Row>
     );
 
     // 格式化文件大小
@@ -226,14 +209,11 @@ const UserManagement: React.FC = () => {
             label: '状态',
             minWidth: 80,
             format: (value: string) => {
-                // is_enabled只会是字符串类型
                 const isEnabled = value === 'true';
                 return (
-                    <Chip
-                        label={isEnabled ? '启用' : '禁用'}
-                        size="small"
-                        color={isEnabled ? 'success' : 'default'}
-                    />
+                    <Tag color={isEnabled ? 'success' : 'default'}>
+                        {isEnabled ? '启用' : '禁用'}
+                    </Tag>
                 );
             }
         },
@@ -300,14 +280,14 @@ const UserManagement: React.FC = () => {
             }
 
             if (result.flag) {
-                showSnackbar(result.text, 'success');
-                await loadUsers(); // 重新加载数据
+                message.success(result.text);
+                await loadUsers();
                 setUserDialogOpen(false);
             } else {
-                showSnackbar(result.text, 'error');
+                message.error(result.text);
             }
         } catch (err) {
-            showSnackbar('操作失败，请稍后重试', 'error');
+            message.error('操作失败，请稍后重试');
         }
     };
 
@@ -318,13 +298,13 @@ const UserManagement: React.FC = () => {
         try {
             const result = await deleteUser(selectedUser.users_name);
             if (result.flag) {
-                showSnackbar(result.text, 'success');
-                await loadUsers(); // 重新加载数据
+                message.success(result.text);
+                await loadUsers();
             } else {
-                showSnackbar(result.text, 'error');
+                message.error(result.text);
             }
         } catch (err) {
-            showSnackbar('删除失败，请稍后重试', 'error');
+            message.error('删除失败，请稍后重试');
         } finally {
             setDeleteDialogOpen(false);
             setSelectedUser(null);
@@ -332,26 +312,30 @@ const UserManagement: React.FC = () => {
     };
 
     return (
-        <Box sx={{p: 3}}>
+        <div style={{padding: 24}}>
             {error && (
-                <Alert severity="error" sx={{mb: 2}}>
-                    {error}
-                </Alert>
+                <Alert
+                    message={error}
+                    type="error"
+                    showIcon
+                    closable
+                    style={{marginBottom: 16}}
+                />
             )}
 
-            <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2}}>
-                <Typography variant="h4" component="h1">
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
+                <Title level={4} style={{margin: 0}}>
                     用户管理
-                </Typography>
+                </Title>
                 <Button
-                    variant="contained"
-                    startIcon={<AddIcon/>}
+                    type="primary"
+                    icon={<PlusOutlined />}
                     onClick={handleCreateUser}
-                    disabled={loading}
+                    loading={loading}
                 >
                     创建用户
                 </Button>
-            </Box>
+            </div>
 
             {viewMode === 'table' ? (
                 <DataTable
@@ -378,49 +362,34 @@ const UserManagement: React.FC = () => {
             />
 
             {/* 删除确认对话框 */}
-            <Dialog
+            <Modal
+                title="确认删除"
                 open={deleteDialogOpen}
-                onClose={() => setDeleteDialogOpen(false)}
-            >
-                <DialogTitle>确认删除</DialogTitle>
-                <DialogContent>
-                    <DialogContentText>
-                        确定要删除用户 "{selectedUser?.users_name}" 吗？此操作不可撤销。
-                    </DialogContentText>
-                </DialogContent>
-                <DialogActions>
+                onCancel={() => setDeleteDialogOpen(false)}
+                footer={[
                     <Button
+                        key="cancel"
                         onClick={() => setDeleteDialogOpen(false)}
                         disabled={loading}
                     >
                         取消
-                    </Button>
+                    </Button>,
                     <Button
+                        key="confirm"
+                        type="primary"
+                        danger
+                        loading={loading}
                         onClick={handleConfirmDelete}
-                        color="error"
-                        variant="contained"
-                        disabled={loading}
                     >
-                        {loading ? '删除中...' : '确认删除'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
-
-            {/* 提示消息 */}
-            <Snackbar
-                open={snackbar.open}
-                autoHideDuration={6000}
-                onClose={() => setSnackbar(prev => ({...prev, open: false}))}
+                        确认删除
+                    </Button>,
+                ]}
             >
-                <Alert
-                    onClose={() => setSnackbar(prev => ({...prev, open: false}))}
-                    severity={snackbar.severity}
-                    sx={{width: '100%'}}
-                >
-                    {snackbar.message}
-                </Alert>
-            </Snackbar>
-        </Box>
+                <Text>
+                    确定要删除用户 "<Text strong>{selectedUser?.users_name}</Text>" 吗？此操作不可撤销。
+                </Text>
+            </Modal>
+        </div>
     );
 };
 

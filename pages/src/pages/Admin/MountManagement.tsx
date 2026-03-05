@@ -1,30 +1,35 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Box,
   Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  FormControl,
-  InputLabel,
+  Modal,
+  Input,
+  InputNumber,
   Select,
-  MenuItem,
   Switch,
-  FormControlLabel,
   Typography,
   Alert,
-  Chip,
-  Grid,
-  Paper,
+  Tag,
+  Row,
+  Col,
+  Card,
   Divider,
-  IconButton
-} from '@mui/material';
-import { Add, Edit, Delete, Refresh, Replay } from '@mui/icons-material';
+  Form,
+  Space,
+  Spin,
+} from 'antd';
+import {
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  ReloadOutlined,
+  UndoOutlined,
+} from '@ant-design/icons';
 import DataTable from '../../components/DataTable';
 import { MountConfig } from '../../types';
 import apiService from '../../posts/api';
+
+const { TextArea } = Input;
+const { Title, Text } = Typography;
 
 interface Driver {
   key: string;
@@ -142,50 +147,48 @@ const MountManagement: React.FC = () => {
   }, [selectedDriver, drivers, editingMount]);
 
   const columns = [
-    { 
-      id: 'index_list', 
-      label: '序号', 
+    {
+      id: 'index_list',
+      label: '序号',
       minWidth: 60,
-      format: (value: number) => value !== undefined && value !== null ? value : 1
+      format: (value: number) => value !== undefined && value !== null ? value : 1,
     },
     { id: 'mount_path', label: '挂载路径', minWidth: 150 },
     { id: 'mount_type', label: '驱动类型', minWidth: 120 },
-    { 
-      id: 'proxy_mode', 
-      label: '代理模式', 
+    {
+      id: 'proxy_mode',
+      label: '代理模式',
       minWidth: 80,
-      format: (value: number) => value === 1 ? '代理' : '直连'
+      format: (value: number) => value === 1 ? '代理' : '直连',
     },
-    { 
-      id: 'is_enabled', 
-      label: '状态', 
+    {
+      id: 'is_enabled',
+      label: '状态',
       minWidth: 80,
       format: (value: number) => (
-        <Chip
-          label={value === 1 ? '启用' : '禁用'}
-          size="small"
-          color={value === 1 ? 'success' : 'default'}
-        />
-      )
+        <Tag color={value === 1 ? 'success' : 'default'}>
+          {value === 1 ? '启用' : '禁用'}
+        </Tag>
+      ),
     },
-    { 
-      id: 'cache_time', 
-      label: '缓存时间(秒)', 
+    {
+      id: 'cache_time',
+      label: '缓存时间(秒)',
       minWidth: 100,
-      format: (value: number) => value === 0 ? '无缓存' : `${value}秒`
+      format: (value: number) => (value === 0 ? '无缓存' : `${value}秒`),
     },
-    { 
-      id: 'proxy_data', 
-      label: '代理地址', 
+    {
+      id: 'proxy_data',
+      label: '代理地址',
       minWidth: 150,
-      format: (value: string) => value || '-'
+      format: (value: string) => value || '-',
     },
-    { 
-      id: 'drive_logs', 
-      label: '日志', 
+    {
+      id: 'drive_logs',
+      label: '日志',
       minWidth: 150,
-      format: (value: string) => value || '-'
-    }
+      format: (value: string) => value || '-',
+    },
   ];
 
   const handleAdd = () => {
@@ -381,309 +384,323 @@ const MountManagement: React.FC = () => {
     switch (field.type) {
       case 'boolean':
         return (
-          <FormControlLabel
-            key={field.key}
-            control={
+          <div key={field.key} style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Switch
                 checked={formData[field.key] || false}
-                onChange={(e) => setFormData(prev => ({ ...prev, [field.key]: e.target.checked }))}
+                onChange={(checked) =>
+                  setFormData((prev) => ({ ...prev, [field.key]: checked }))
+                }
               />
-            }
-            label={field.label}
-            sx={{ width: '100%', display: 'block' }}
-          />
+              <Text>{field.label}</Text>
+            </div>
+          </div>
         );
       case 'select':
         return (
-          <FormControl key={field.key} fullWidth required={field.required} sx={{ width: '100%' }}>
-            <InputLabel>{field.label}</InputLabel>
+          <div key={field.key} style={{ marginBottom: 16 }}>
+            <Text style={{ display: 'block', marginBottom: 4 }}>
+              {field.label}
+              {field.required && <span style={{ color: '#ff4d4f' }}> *</span>}
+            </Text>
             <Select
-              value={formData[field.key] || field.defaultValue || ''}
-              label={field.label}
-              onChange={(e) => setFormData(prev => ({ ...prev, [field.key]: e.target.value }))}
+              style={{ width: '100%' }}
+              value={formData[field.key] || field.defaultValue || undefined}
+              onChange={(value) =>
+                setFormData((prev) => ({ ...prev, [field.key]: value }))
+              }
+              placeholder={`请选择${field.label}`}
             >
               {field.options?.map((option: any) => (
-                <MenuItem key={option.value} value={option.value}>
+                <Select.Option key={option.value} value={option.value}>
                   {option.label}
-                </MenuItem>
+                </Select.Option>
               ))}
             </Select>
-          </FormControl>
+          </div>
         );
       case 'textarea':
         return (
-          <TextField
-            key={field.key}
-            fullWidth
-            multiline
-            rows={3}
-            label={field.label}
-            value={formData[field.key] || ''}
-            onChange={(e) => setFormData(prev => ({ ...prev, [field.key]: e.target.value }))}
-            placeholder={field.placeholder}
-            required={field.required}
-            sx={{ width: '100%' }}
-          />
+          <div key={field.key} style={{ marginBottom: 16 }}>
+            <Text style={{ display: 'block', marginBottom: 4 }}>
+              {field.label}
+              {field.required && <span style={{ color: '#ff4d4f' }}> *</span>}
+            </Text>
+            <TextArea
+              rows={3}
+              value={formData[field.key] || ''}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, [field.key]: e.target.value }))
+              }
+              placeholder={field.placeholder}
+            />
+          </div>
         );
       case 'password':
         return (
-          <TextField
-            key={field.key}
-            fullWidth
-            type="password"
-            label={field.label}
-            value={formData[field.key] || ''}
-            onChange={(e) => setFormData(prev => ({ ...prev, [field.key]: e.target.value }))}
-            placeholder={field.placeholder}
-            required={field.required}
-            sx={{ width: '100%' }}
-          />
+          <div key={field.key} style={{ marginBottom: 16 }}>
+            <Text style={{ display: 'block', marginBottom: 4 }}>
+              {field.label}
+              {field.required && <span style={{ color: '#ff4d4f' }}> *</span>}
+            </Text>
+            <Input.Password
+              value={formData[field.key] || ''}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, [field.key]: e.target.value }))
+              }
+              placeholder={field.placeholder}
+            />
+          </div>
         );
       default:
         return (
-          <TextField
-            key={field.key}
-            fullWidth
-            label={field.label}
-            value={formData[field.key] || ''}
-            onChange={(e) => setFormData(prev => ({ ...prev, [field.key]: e.target.value }))}
-            placeholder={field.placeholder}
-            required={field.required}
-            sx={{ width: '100%' }}
-          />
+          <div key={field.key} style={{ marginBottom: 16 }}>
+            <Text style={{ display: 'block', marginBottom: 4 }}>
+              {field.label}
+              {field.required && <span style={{ color: '#ff4d4f' }}> *</span>}
+            </Text>
+            <Input
+              value={formData[field.key] || ''}
+              onChange={(e) =>
+                setFormData((prev) => ({ ...prev, [field.key]: e.target.value }))
+              }
+              placeholder={field.placeholder}
+            />
+          </div>
         );
     }
   };
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box 
-        sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between', 
-          mb: 3 
+    <div style={{ padding: 24 }}>
+      {/* 页面标题栏 */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 24,
         }}
       >
-        <Box>
-          <Typography variant="h4" component="h2">
+        <div>
+          <Title level={4} style={{ margin: 0 }}>
             挂载管理
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          </Title>
+          <Text type="secondary" style={{ marginTop: 4, display: 'block' }}>
             管理和配置各种存储驱动的挂载点，支持多种云存储服务
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+          </Text>
+        </div>
+        <Space>
           <Button
-            variant="contained"
-            startIcon={<Add />}
+            type="primary"
+            icon={<PlusOutlined />}
             onClick={handleAdd}
             disabled={loading}
           >
             新增挂载
           </Button>
           <Button
-            variant="outlined"
-            startIcon={<Refresh />}
+            icon={<ReloadOutlined />}
             onClick={loadMounts}
             disabled={loading}
           >
             刷新
           </Button>
           <Button
-            variant="contained"
-            startIcon={<Replay />}
+            type="primary"
+            icon={<UndoOutlined />}
             onClick={handleReloadAll}
             disabled={loading || mounts.length === 0}
-            sx={{ 
-              backgroundColor: '#ffa726',
-              '&:hover': {
-                backgroundColor: '#ff9800'
-              }
-            }}
+            style={{ backgroundColor: '#ffa726', borderColor: '#ffa726' }}
           >
             全部重新加载
           </Button>
-        </Box>
-      </Box>
-      
+        </Space>
+      </div>
+
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
+        <Alert
+          message={error}
+          type="error"
+          showIcon
+          closable
+          onClose={() => setError('')}
+          style={{ marginBottom: 16 }}
+        />
       )}
 
-      <DataTable
-        title="挂载点列表"
-        columns={columns}
-        data={mounts}
-        loading={loading}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        onReload={handleReload}
-        actions={['edit', 'delete', 'reload']}
-      />
+      <Spin spinning={loading}>
+        <DataTable
+          title="挂载点列表"
+          columns={columns}
+          data={mounts}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onReload={handleReload}
+          actions={['edit', 'delete', 'reload']}
+        />
+      </Spin>
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          {editingMount ? '编辑挂载点' : '新增挂载点'}
-        </DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2}>
-            {/* 第一行：驱动类型(60%) 和 挂载路径(40%) */}
-            <Grid item xs={12}  sx={{ width: '60%' }}>
-              <FormControl fullWidth margin="normal">
-                <InputLabel>驱动类型</InputLabel>
-                <Select
-                  value={selectedDriver}
-                  label="驱动类型"
-                  onChange={(e) => setSelectedDriver(e.target.value)}
-                  disabled={!!editingMount}
-                >
-                  {drivers.map((driver) => (
-                    <MenuItem key={driver.key} value={driver.key}>
-                      {driver.name} - {driver.description}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid item xs={12}  sx={{ width: '38%' }}>
-              <TextField
-                fullWidth
-                label="挂载路径"
+      {/* 新增/编辑对话框 */}
+      <Modal
+        title={editingMount ? '编辑挂载点' : '新增挂载点'}
+        open={dialogOpen}
+        onCancel={() => setDialogOpen(false)}
+        onOk={handleSave}
+        okText="保存"
+        cancelText="取消"
+        width={800}
+        destroyOnClose
+      >
+        <div style={{ maxHeight: '60vh', overflowY: 'auto', padding: '8px 0' }}>
+          {/* 第一行：驱动类型 和 挂载路径 */}
+          <Row gutter={16}>
+            <Col span={14}>
+              <Text style={{ display: 'block', marginBottom: 4 }}>
+                驱动类型 <span style={{ color: '#ff4d4f' }}>*</span>
+              </Text>
+              <Select
+                style={{ width: '100%' }}
+                value={selectedDriver || undefined}
+                onChange={(value) => setSelectedDriver(value)}
+                disabled={!!editingMount}
+                placeholder="请选择驱动类型"
+                showSearch
+                optionFilterProp="children"
+              >
+                {drivers.map((driver) => (
+                  <Select.Option key={driver.key} value={driver.key}>
+                    {driver.name} - {driver.description}
+                  </Select.Option>
+                ))}
+              </Select>
+            </Col>
+            <Col span={10}>
+              <Text style={{ display: 'block', marginBottom: 4 }}>
+                挂载路径 <span style={{ color: '#ff4d4f' }}>*</span>
+              </Text>
+              <Input
                 value={formData.mount_path || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, mount_path: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, mount_path: e.target.value }))
+                }
                 placeholder="/example"
-                required
-                margin="normal"
                 disabled={!!editingMount}
               />
-            </Grid>
+            </Col>
+          </Row>
 
-{/* 第二行：缓存时间(20%) 序号(20%) 代理模式(30%) 启用(30%) */}
-            <Grid item sx={{ width: '15%' }}>
-              <TextField
-                fullWidth
-                type="number"
-                label="缓存时间(秒)"
+          {/* 第二行：缓存时间 序号 代理模式 代理地址 状态 */}
+          <Row gutter={16} style={{ marginTop: 16 }}>
+            <Col span={5}>
+              <Text style={{ display: 'block', marginBottom: 4 }}>缓存时间(秒)</Text>
+              <InputNumber
+                style={{ width: '100%' }}
                 value={formData.cache_time || 3600}
-                onChange={(e) => setFormData(prev => ({ ...prev, cache_time: parseInt(e.target.value) || 3600 }))}
-                margin="normal"
+                onChange={(value) =>
+                  setFormData((prev) => ({ ...prev, cache_time: value || 3600 }))
+                }
+                min={0}
               />
-            </Grid>
-
-            <Grid item sx={{ width: '8%' }}>
-              <TextField
-                fullWidth
-                type="number"
-                label="序号"
+            </Col>
+            <Col span={3}>
+              <Text style={{ display: 'block', marginBottom: 4 }}>序号</Text>
+              <InputNumber
+                style={{ width: '100%' }}
                 value={formData.index_list || 1}
-                onChange={(e) => setFormData(prev => ({ ...prev, index_list: parseInt(e.target.value) || 1 }))}
-                margin="normal"
-                inputProps={{ min: 1 }}
+                onChange={(value) =>
+                  setFormData((prev) => ({ ...prev, index_list: value || 1 }))
+                }
+                min={1}
               />
-            </Grid>
-
-            <Grid item sx={{ width: '15%' }}>
-              <FormControl fullWidth margin="normal">
-                <InputLabel>代理模式</InputLabel>
-                <Select
-                  value={formData.proxy_mode || 0}
-                  label="代理模式"
-                  onChange={(e) => setFormData(prev => ({ ...prev, proxy_mode: e.target.value }))}
-                  disabled={drivers.find(d => d.key === selectedDriver)?.proxy_only}
-                >
-                  <MenuItem value={0}>直连</MenuItem>
-                  <MenuItem value={1}>代理</MenuItem>
-                </Select>
-                {drivers.find(d => d.key === selectedDriver)?.proxy_only && (
-                  <Typography variant="caption" color="warning.main" sx={{ mt: 1, display: 'block' }}>
-                    该驱动仅支持代理模式
-                  </Typography>
-                )}
-              </FormControl>
-            </Grid>
-
-
-
-            {/* 第三行：代理URL地址 */}
-            <Grid item xs={12} sx={{ width: '44%' }}>
-              <TextField
-                fullWidth
-                label="代理地址"
+            </Col>
+            <Col span={5}>
+              <Text style={{ display: 'block', marginBottom: 4 }}>代理模式</Text>
+              <Select
+                style={{ width: '100%' }}
+                value={formData.proxy_mode || 0}
+                onChange={(value) =>
+                  setFormData((prev) => ({ ...prev, proxy_mode: value }))
+                }
+                disabled={drivers.find((d) => d.key === selectedDriver)?.proxy_only}
+              >
+                <Select.Option value={0}>直连</Select.Option>
+                <Select.Option value={1}>代理</Select.Option>
+              </Select>
+              {drivers.find((d) => d.key === selectedDriver)?.proxy_only && (
+                <Text type="warning" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
+                  该驱动仅支持代理模式
+                </Text>
+              )}
+            </Col>
+            <Col span={8}>
+              <Text style={{ display: 'block', marginBottom: 4 }}>代理地址</Text>
+              <Input
                 value={formData.proxy_data || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, proxy_data: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, proxy_data: e.target.value }))
+                }
                 placeholder="http://proxy.example.com:8080"
-                margin="normal"
                 disabled={formData.proxy_mode !== 1}
-                sx={{ width: '100%' }}
               />
-            </Grid>
-            
-            <Grid item sx={{ width: '10%' }}>
-              <FormControl fullWidth margin="normal">
-                <InputLabel>状态</InputLabel>
-                <Select
-                  value={formData.is_enabled ? 'enabled' : 'disabled'}
-                  label="状态"
-                  onChange={(e) => setFormData(prev => ({ ...prev, is_enabled: e.target.value === 'enabled' }))}
-                >
-                  <MenuItem value="enabled">启用</MenuItem>
-                  <MenuItem value="disabled">停用</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
+            </Col>
+            <Col span={3}>
+              <Text style={{ display: 'block', marginBottom: 4 }}>状态</Text>
+              <Select
+                style={{ width: '100%' }}
+                value={formData.is_enabled ? 'enabled' : 'disabled'}
+                onChange={(value) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    is_enabled: value === 'enabled',
+                  }))
+                }
+              >
+                <Select.Option value="enabled">启用</Select.Option>
+                <Select.Option value="disabled">停用</Select.Option>
+              </Select>
+            </Col>
+          </Row>
 
-            {/* 第四行：备注信息 */}
-            <Grid item xs={12} sx={{ width: '100%' }}>
-              <TextField
-                fullWidth
-                label="备注信息"
+          {/* 第三行：备注信息 */}
+          <Row gutter={16} style={{ marginTop: 16 }}>
+            <Col span={24}>
+              <Text style={{ display: 'block', marginBottom: 4 }}>备注信息</Text>
+              <TextArea
                 value={formData.drive_tips || ''}
-                onChange={(e) => setFormData(prev => ({ ...prev, drive_tips: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, drive_tips: e.target.value }))
+                }
                 placeholder="请输入备注信息"
-                margin="normal"
-                multiline
                 rows={2}
-                sx={{ width: '100%' }}
               />
-            </Grid>
+            </Col>
+          </Row>
 
-            {driverFields.length > 0 && (
-              <Grid item xs={12} sx={{ width: '100%' }}>
-                <Divider sx={{ my: 2 }} />
-                <Typography variant="h6" gutterBottom>
-                  驱动配置
-                </Typography>
-                <Paper sx={{ p: 2 }}>
-                  <Grid container spacing={2}>
-                    {driverFields.map((field) => (
-                      <Grid item xs={12} sx={{ width: '100%' }}>
-                        {renderFormField(field)}
-                      </Grid>
-                    ))}
-                  </Grid>
-                </Paper>
-              </Grid>
-            )}
-          </Grid>
+          {/* 驱动配置字段 */}
+          {driverFields.length > 0 && (
+            <>
+              <Divider />
+              <Title level={5} style={{ marginBottom: 16 }}>
+                驱动配置
+              </Title>
+              <Card size="small" style={{ borderRadius: 8 }}>
+                {driverFields.map((field) => renderFormField(field))}
+              </Card>
+            </>
+          )}
 
           {error && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {error}
-            </Alert>
+            <Alert
+              message={error}
+              type="error"
+              showIcon
+              style={{ marginTop: 16 }}
+            />
           )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>取消</Button>
-          <Button onClick={handleSave} variant="contained">
-            保存
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+        </div>
+      </Modal>
+    </div>
   );
 };
 

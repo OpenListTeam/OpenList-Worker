@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type {AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError} from 'axios';
+import { useAuthStore } from '../store';
 
 // API响应格式
 interface ApiResponse<T = any> {
@@ -29,10 +30,10 @@ class ApiService {
         // 安全获取API基础URL，提供默认值
         let baseURL: string;
         try {
-            baseURL = import.meta.env.VITE_API_BASE_URL || '/api';
+            baseURL = import.meta.env.VITE_API_BASE_URL || '';
         } catch (error) {
             console.warn('无法读取环境变量，使用默认API地址');
-            baseURL = '/api';
+            baseURL = '';
         }
 
         this.instance = axios.create({
@@ -63,8 +64,8 @@ class ApiService {
         // 请求拦截器
         this.instance.interceptors.request.use(
             (config) => {
-                // 添加认证token
-                const token = localStorage.getItem('token');
+                // 从 Zustand 持久化存储中读取 token
+                const token = useAuthStore.getState().token;
                 if (token) {
                     config.headers.Authorization = `Bearer ${token}`;
                 }
@@ -84,12 +85,8 @@ class ApiService {
                 if (data && typeof data === 'object') {
                     if (data.hasOwnProperty('flag')) {
                         // 后端格式：{flag: boolean, text: string, data?: any}
-                        if (data.flag) {
-                            return data; // 返回完整的响应数据
-                        } else {
-                            // 移除字符串判断，只通过HTTP状态码处理未登录状态
-                            throw new ApiError(data.text || '操作失败', response.status, response);
-                        }
+                        // 直接返回完整响应，让业务代码自行判断 flag
+                        return data;
                     } else if (data.hasOwnProperty('success')) {
                         // 标准格式：{success: boolean, message: string, data: any}
                         if (data.success) {
@@ -110,9 +107,8 @@ class ApiService {
                     
                     // 处理401未登录状态
                     if (status === 401) {
-                        // 清除本地存储的token
-                        localStorage.removeItem('token');
-                        localStorage.removeItem('user');
+                        // 清除 Zustand 认证状态（同时会清除 localStorage 中的持久化数据）
+                        useAuthStore.getState().logout();
                         
                         // 检查当前是否已经在登录页面，避免无限重定向
                         if (window.location.pathname !== '/login') {

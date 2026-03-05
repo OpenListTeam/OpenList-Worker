@@ -34,10 +34,16 @@ export const API_PATHS = {
 	
 	// 下载 (proapi.115.com)
 	DOWNLOAD: "/app/chrome/downurl",
+	DOWNLOAD_OPEN: "/open/ufile/downurl", // Open API下载端点
 	
 	// 上传
 	UPLOAD_INIT: "/3.0/upload/init",
 	UPLOAD_TOKEN: "/files/upload_token",
+	UPLOAD_OPEN_INIT: "/open/upload/init",   // Open API上传初始化
+	UPLOAD_OPEN_TOKEN: "/open/upload/get_token", // Open API上传Token
+	
+	// OAuth2 Token刷新
+	OAUTH_TOKEN: "/open/oauth2/token",
 };
 
 //====== PRO API路径 (传统API) ======

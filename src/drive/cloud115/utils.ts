@@ -151,6 +151,43 @@ export class HostClouds extends BasicClouds {
 		return this.saving;
 	}
 
+	//====== OAuth2 Token刷新 ======
+	/**
+	 * 使用refresh_token刷新access_token
+	 * 基于115开放平台OAuth2接口
+	 */
+	async refreshToken(): Promise<void> {
+		const refreshToken = this.config.refresh_token || this.saving.refresh_token;
+		if (!refreshToken) {
+			throw new Error("没有可用的refresh_token");
+		}
+		try {
+			const url = `${con.PRO_API_BASE_URL}${con.API_PATHS.OAUTH_TOKEN}`;
+			const resp = await fetch(url, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ grant_type: "refresh_token", refresh_token: refreshToken }),
+			});
+			const data: any = await resp.json();
+			if (data.access_token) {
+				this.config.access_token = data.access_token;
+				this.saving.access_token = data.access_token;
+				if (data.refresh_token) {
+					this.config.refresh_token = data.refresh_token;
+					this.saving.refresh_token = data.refresh_token;
+				}
+				this.change = true;
+				await this.putSaves();
+				console.log("[115云盘] Token刷新成功");
+			} else {
+				throw new Error("Token刷新失败: " + JSON.stringify(data));
+			}
+		} catch (e: any) {
+			console.error("[115云盘] Token刷新失败:", e.message);
+			throw e;
+		}
+	}
+
 	//====== 限流控制 ======
 	/**
 	 * 等待限流
@@ -219,7 +256,8 @@ export class HostClouds extends BasicClouds {
 		method: string = "GET",
 		body?: any,
 		headers?: Record<string, string>,
-		isFormData: boolean = false
+		isFormData: boolean = false,
+		_retry: boolean = false
 	): Promise<any> {
 		// 限流控制
 		await this.waitLimit();
@@ -336,6 +374,17 @@ const accessToken = this.config.access_token || this.saving.access_token || "";
 			if (data.state === false) {
 				// 记录错误
 				this.recordError();
+				
+				// Token失效时尝试自动刷新并重试
+				if ((data.errcode === 401 || data.errcode === 99 || data.errno === 99) && !_retry) {
+					try {
+						console.log("[115云盘] Token失效，尝试自动刷新...");
+						await this.refreshToken();
+						return this.request(url, method, body, headers, isFormData, true);
+					} catch (refreshErr) {
+						console.error("[115云盘] Token刷新失败:", refreshErr);
+					}
+				}
 				
 				let errorMessage = "Request failed";
 				
@@ -529,6 +578,16 @@ return textResponse;
 			if (data.state === false) {
 				// 记录错误
 				this.recordError();
+				
+				// Token失效时尝试自动刷新
+				if (data.errcode === 401 || data.errcode === 99 || data.errno === 99) {
+					try {
+						console.log("[115云盘] Token失效(FullUrl)，尝试自动刷新...");
+						await this.refreshToken();
+					} catch (refreshErr) {
+						console.error("[115云盘] Token刷新失败(FullUrl):", refreshErr);
+					}
+				}
 				
 				let errorMessage = "Request failed";
 				

@@ -122,7 +122,7 @@ export class OAuthService {
      * 获取可用的OAuth提供商
      */
     async getAvailableProviders(): Promise<{ flag: boolean; text: string; data?: any[] }> {
-        const response = await apiService.post('/@oauth/select/none/', {});
+      const response = await apiService.post('/@oauth/select/none', {});
         return response;
     }
 

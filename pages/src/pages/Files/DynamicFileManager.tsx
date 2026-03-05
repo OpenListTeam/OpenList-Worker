@@ -1,46 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useApp } from '../../components/AppContext';
+import { useAuthStore } from '../../store';
 import {
-  Box,
-  Typography,
-  CircularProgress,
+  Spin,
   Alert,
-  Breadcrumbs,
-  Link,
-  IconButton,
+  Breadcrumb,
+  Button,
   Tooltip,
   Card,
-  CardContent,
-  Snackbar,
-  useTheme,
-  useMediaQuery,
+  message,
   Grid,
-  CardActions,
-  Chip,
-  Menu,
-  MenuItem,
-  ListItemIcon,
-  ListItemText,
-} from '@mui/material';
+  Typography,
+  Dropdown,
+} from 'antd';
+import type { MenuProps } from 'antd';
 import {
-  Folder,
-  InsertDriveFile,
-  Home,
-  NavigateNext,
-  Refresh,
-  Upload,
-  CreateNewFolder,
-  NoteAdd,
-  Edit,
-  Delete,
-  MoreVert,
-  Download,
-  Share,
-  DriveFileMove,
-  FileCopy,
-  CloudDownload,
-} from '@mui/icons-material';
+  FolderOutlined,
+  FolderOpenOutlined,
+  FileOutlined,
+  HomeOutlined,
+  RightOutlined,
+  ReloadOutlined,
+  UploadOutlined,
+  FolderAddOutlined,
+  FileAddOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  MoreOutlined,
+  DownloadOutlined,
+  ShareAltOutlined,
+  DragOutlined,
+  CopyOutlined,
+  CloudDownloadOutlined,
+} from '@ant-design/icons';
 import ResponsiveDataTable from '../../components/ResponsiveDataTable';
 import { PathSelectDialog, NameInputDialog } from '../../components/FileOperationDialogs';
 import FileUploadDialog from '../../components/FileUploadDialog';
@@ -49,13 +41,21 @@ import { FileInfo, PathInfo } from '../../types';
 import { downloadFile, FileInfo as DownloadFileInfo } from '../../utils/downloadUtils';
 import apiService, { fileApi } from '../../posts/api';
 
+const { Row, Col } = Grid;
+
 const DynamicFileManager: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { state: appState } = useApp();
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const authUser = useAuthStore(state => state.user);
+  // 简单的移动端检测
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pathInfo, setPathInfo] = useState<PathInfo | null>(null);
@@ -92,15 +92,10 @@ const DynamicFileManager: React.FC = () => {
     open: false,
   });
 
-  // 消息提示状态
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: '',
-    severity: 'success' as 'success' | 'error' | 'warning' | 'info',
-  });
+  // 消息提示 - 使用antd message
+  const [messageApi, contextHolder] = message.useMessage();
 
   // 更多操作菜单状态
-  const [moreMenuAnchor, setMoreMenuAnchor] = useState<null | HTMLElement>(null);
   const [selectedFileForMenu, setSelectedFileForMenu] = useState<any>(null);
 
   // 检查是否为个人文件路径
@@ -190,7 +185,7 @@ const DynamicFileManager: React.FC = () => {
       console.log('获取文件列表:', 'Original path:', path, 'Backend path:', backendPath, 'Clean path:', cleanBackendPath);
       
       // 获取当前用户名
-      const username = appState.user?.username;
+      const username = authUser?.users_name;
       
       // 判断是否为个人文件
       const isPersonal = isPersonalFile(location.pathname);
@@ -267,8 +262,8 @@ const DynamicFileManager: React.FC = () => {
   };
 
   // 显示消息
-  const showMessage = (message: string, severity: 'success' | 'error' | 'warning' | 'info' = 'success') => {
-    setSnackbar({ open: true, message, severity });
+  const showMessage = (msg: string, severity: 'success' | 'error' | 'warning' | 'info' = 'success') => {
+    messageApi[severity](msg);
   };
 
   // 处理文件删除
@@ -291,7 +286,7 @@ const DynamicFileManager: React.FC = () => {
       console.log('- cleanBackendPath:', cleanBackendPath);
       
       // 获取当前用户名和个人文件标识
-      const username = appState.user?.username;
+      const username = authUser?.users_name;
       const isPersonal = isPersonalFile(location.pathname);
       
       // 使用fileApi.removeFile()，这样会经过响应拦截器处理
@@ -400,7 +395,7 @@ const DynamicFileManager: React.FC = () => {
       const response = await apiService.post('/@fetch/create/none', {
         fetch_from: fileUrl,
         fetch_dest: currentPath,
-        fetch_user: appState.user?.username || ''
+        fetch_user: authUser?.users_name || ''
       });
 
       if (response.flag) {
@@ -421,28 +416,47 @@ const DynamicFileManager: React.FC = () => {
   };
 
   // 处理更多操作菜单
-  const handleMoreMenuOpen = (event: React.MouseEvent<HTMLElement>, file: any) => {
-    event.stopPropagation();
-    setMoreMenuAnchor(event.currentTarget);
-    setSelectedFileForMenu(file);
-  };
-
-  const handleMoreMenuClose = () => {
-    setMoreMenuAnchor(null);
-    setSelectedFileForMenu(null);
-  };
-
-  // 处理文件重命名
-  const handleFileRename = (file: any) => {
-    handleMoreMenuClose();
-    setNameInputDialog({
-      open: true,
-      title: `重命名 "${file.name}"`,
-      placeholder: '新名称',
-      type: 'rename',
-      selectedFile: file
-    });
-  };
+  const getMoreMenuItems = (file: any): MenuProps['items'] => [
+    {
+      key: 'offline',
+      icon: <CloudDownloadOutlined />,
+      label: '离线下载',
+      onClick: () => handleOfflineDownload(file),
+    },
+    {
+      key: 'move',
+      icon: <DragOutlined />,
+      label: '移动',
+      onClick: () => handleFileMove(file),
+    },
+    {
+      key: 'copy',
+      icon: <CopyOutlined />,
+      label: '复制',
+      onClick: () => handleFileCopy(file),
+    },
+    {
+      key: 'rename',
+      icon: <EditOutlined />,
+      label: '重命名',
+      onClick: () => {
+        setNameInputDialog({
+          open: true,
+          title: `重命名 "${file.name}"`,
+          placeholder: '新名称',
+          type: 'rename',
+          selectedFile: file,
+        });
+      },
+    },
+    {
+      key: 'delete',
+      icon: <DeleteOutlined />,
+      label: '删除',
+      danger: true,
+      onClick: () => handleFileDelete(file),
+    },
+  ];
 
   // 处理路径选择确认
   const handlePathSelectConfirm = async (targetPath: string, operation: string, selectedFile: any) => {
@@ -477,7 +491,7 @@ const DynamicFileManager: React.FC = () => {
       console.log('发送请求...');
       
       // 获取当前用户名和个人文件标识
-      const username = appState.user?.username;
+      const username = authUser?.users_name;
       const isPersonal = isPersonalFile(location.pathname);
       
       // 使用fileApi的新函数，这样会经过响应拦截器处理
@@ -535,12 +549,8 @@ const DynamicFileManager: React.FC = () => {
 
   // 处理上传完成
   const handleUploadComplete = () => {
-    setSnackbar({
-      open: true,
-      message: '文件上传完成',
-      severity: 'success',
-    });
-    // 不再自动刷新文件列表，等待用户手动关闭对话框时再刷新
+      showMessage('文件上传完成');
+      // 不再自动刷新文件列表，等待用户手动关闭对话框时再刷新
   };
 
   // 处理名称输入确认
@@ -568,7 +578,7 @@ const DynamicFileManager: React.FC = () => {
         console.log('- cleanBackendPath:', cleanBackendPath);
         
         // 获取当前用户名和个人文件标识
-        const username = appState.user?.username;
+        const username = authUser?.users_name;
         const isPersonal = isPersonalFile(location.pathname);
         
         // 使用新的重命名API
@@ -595,7 +605,7 @@ const DynamicFileManager: React.FC = () => {
         console.log('- targetName:', targetName);
         
         // 获取当前用户名和个人文件标识
-        const username = appState.user?.username;
+        const username = authUser?.users_name;
         const isPersonal = isPersonalFile(location.pathname);
         
         // 使用fileApi.createFileOrFolder()
@@ -797,7 +807,7 @@ const DynamicFileManager: React.FC = () => {
       {
         label: isPersonal ? '我的文件' : '公共目录',
         path: '/',
-        icon: <Home fontSize="small" />
+        icon: <HomeOutlined />
       }
     ];
 
@@ -807,7 +817,7 @@ const DynamicFileManager: React.FC = () => {
       breadcrumbs.push({
         label: part,
         path: currentBreadcrumbPath,
-        icon: <Folder fontSize="small" />
+        icon: <FolderOutlined />
       });
     });
 
@@ -870,15 +880,15 @@ const DynamicFileManager: React.FC = () => {
     if (!pathInfo?.fileList) return [];
 
     const tableData = pathInfo.fileList.map((file: FileInfo) => ({
-        id: file.fileUUID || file.fileName, // 使用fileUUID作为唯一标识
+        id: file.fileUUID || file.fileName,
         name: file.fileName,
         type: file.fileType === 0 ? '文件夹' : '文件',
         size: file.fileType === 0 ? '-' : formatFileSize(file.fileSize || 0),
         modified: formatDate(file.timeModify),
-        icon: file.fileType === 0 ? <Folder color="primary" /> : <InsertDriveFile />,
+        icon: file.fileType === 0 ? <FolderOutlined style={{ color: '#1890ff', fontSize: 18 }} /> : <FileOutlined style={{ fontSize: 18 }} />,
         is_dir: file.fileType === 0,
-        fileSize: file.fileSize || 0, // 保留原始文件大小用于排序
-        timeModify: file.timeModify // 保留原始修改时间用于排序
+        fileSize: file.fileSize || 0,
+        timeModify: file.timeModify
       }));
 
     // 排序逻辑：目录在前，然后按指定字段排序
@@ -923,21 +933,20 @@ const DynamicFileManager: React.FC = () => {
   // 网格视图渲染函数
   const renderGridView = () => {
     return (
-      <Grid container spacing={2}>
+      <Row gutter={[16, 16]}>
         {filteredData.map((file) => (
-          <Grid item xs={12} sm={6} md={4} lg={3} key={file.id}>
-            <Card 
-              sx={{ 
-                height: 200, // 固定高度，确保所有格子大小一样
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                '&:hover': {
-                  boxShadow: 3,
-                  transform: 'translateY(-2px)',
-                  transition: 'all 0.2s ease-in-out'
-                }
-              }}
+          <Col xs={24} sm={12} md={8} lg={6} key={file.id}>
+            <Card
+              hoverable
+              style={{ height: 200, cursor: 'pointer' }}
+              styles={{ body: { 
+                display: 'flex', 
+                flexDirection: 'column', 
+                justifyContent: 'center', 
+                alignItems: 'center',
+                height: '100%',
+                padding: '16px 12px 8px',
+              }}}
               onClick={() => handleRowClick(file)}
               onDoubleClick={() => {
                 if (file.is_dir) {
@@ -945,85 +954,63 @@ const DynamicFileManager: React.FC = () => {
                 }
               }}
             >
-              <CardContent sx={{ 
-                textAlign: 'center', 
-                pb: 1, 
-                flex: 1, 
-                display: 'flex', 
-                flexDirection: 'column', 
-                justifyContent: 'center' 
-              }}>
-                <Box sx={{ fontSize: '3rem', mb: 1 }}>
-                  {file.icon}
-                </Box>
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    fontWeight: 'medium',
-                    wordBreak: 'break-word',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical',
-                  }}
-                  title={file.name}
-                >
-                  {file.name}
-                </Typography>
-                {!file.is_dir && (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-                    {file.size}
-                  </Typography>
-                )}
-              </CardContent>
-              <CardActions sx={{ justifyContent: 'center', pt: 0, pb: 1 }}>
+              <div style={{ fontSize: 40, marginBottom: 8 }}>
+                {file.icon}
+              </div>
+              <Typography.Text
+                ellipsis={{ tooltip: file.name }}
+                style={{ 
+                  fontWeight: 500,
+                  textAlign: 'center',
+                  width: '100%',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {file.name}
+              </Typography.Text>
+              {!file.is_dir && (
+                <Typography.Text type="secondary" style={{ fontSize: 12, marginTop: 4 }}>
+                  {file.size}
+                </Typography.Text>
+              )}
+              <div style={{ marginTop: 'auto', display: 'flex', gap: 4, paddingTop: 8 }}>
                 <Tooltip title="下载">
-                  <IconButton 
-                    size="small" 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleFileDownload(file);
-                    }}
-                  >
-                    <Download fontSize="small" />
-                  </IconButton>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<DownloadOutlined />}
+                    onClick={(e) => { e.stopPropagation(); handleFileDownload(file); }}
+                  />
                 </Tooltip>
                 <Tooltip title="离线下载">
-                  <IconButton 
-                    size="small" 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOfflineDownload(file);
-                    }}
-                  >
-                    <CloudDownload fontSize="small" />
-                  </IconButton>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<CloudDownloadOutlined />}
+                    onClick={(e) => { e.stopPropagation(); handleOfflineDownload(file); }}
+                  />
                 </Tooltip>
                 <Tooltip title="分享">
-                  <IconButton 
-                    size="small" 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleFileShare(file);
-                    }}
-                  >
-                    <Share fontSize="small" />
-                  </IconButton>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<ShareAltOutlined />}
+                    onClick={(e) => { e.stopPropagation(); handleFileShare(file); }}
+                  />
                 </Tooltip>
-                <Tooltip title="更多操作">
-                  <IconButton 
-                    size="small" 
-                    onClick={(e) => handleMoreMenuOpen(e, file)}
-                  >
-                    <MoreVert fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </CardActions>
+                <Dropdown menu={{ items: getMoreMenuItems(file) }} trigger={['click']}>
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<MoreOutlined />}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </Dropdown>
+              </div>
             </Card>
-          </Grid>
+          </Col>
         ))}
-      </Grid>
+      </Row>
     );
   };
 
@@ -1088,23 +1075,24 @@ const DynamicFileManager: React.FC = () => {
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-        <CircularProgress />
-      </Box>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
+        <Spin size="large" />
+      </div>
     );
   }
 
   if (error) {
     return (
-      <Box p={3}>
-        <Alert severity="error" action={
-          <IconButton color="inherit" size="small" onClick={handleRefresh}>
-            <Refresh />
-          </IconButton>
-        }>
-          {error}
-        </Alert>
-      </Box>
+      <div style={{ padding: 24 }}>
+        <Alert
+          type="error"
+          message={error}
+          showIcon
+          action={
+            <Button type="text" size="small" icon={<ReloadOutlined />} onClick={handleRefresh} />
+          }
+        />
+      </div>
     );
   }
 
@@ -1112,67 +1100,56 @@ const DynamicFileManager: React.FC = () => {
   const tableData = prepareTableData();
 
   return (
-    <Box p={isMobile ? 1 : 3}>
-      <Card>
-        <CardContent sx={{ p: isMobile ? 1 : 2, '&:last-child': { pb: isMobile ? 1 : 2 } }}>
+    <div style={{ padding: isMobile ? 8 : 24 }}>
+      {contextHolder}
+      <Card styles={{ body: { padding: isMobile ? 8 : 16 } }}>
+        <div style={{ padding: isMobile ? '8px' : '16px' }}>
           {/* 路径栏和工具栏 */}
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
             {/* 面包屑导航 */}
-            <Box flex={1}>
-              <Breadcrumbs separator={<NavigateNext fontSize="small" />}>
-                {breadcrumbs.map((breadcrumb, index) => (
-                  <Link
-                    key={index}
-                    component="button"
-                    variant="body2"
-                    onClick={() => handleBreadcrumbClick(breadcrumb.path)}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 0.5,
-                      textDecoration: 'none',
-                      color: index === breadcrumbs.length - 1 ? 'text.primary' : 'primary.main',
-                      '&:hover': {
-                        textDecoration: 'underline',
-                      },
-                    }}
-                  >
-                    {breadcrumb.icon}
-                    {breadcrumb.label}
-                  </Link>
-                ))}
-              </Breadcrumbs>
-            </Box>
+            <div style={{ flex: 1 }}>
+              <Breadcrumb
+                separator={<RightOutlined style={{ fontSize: 10 }} />}
+                items={breadcrumbs.map((breadcrumb, index) => ({
+                  key: index,
+                  title: (
+                    <a
+                      onClick={(e) => { e.preventDefault(); handleBreadcrumbClick(breadcrumb.path); }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        color: index === breadcrumbs.length - 1 ? undefined : '#1890ff',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {breadcrumb.icon}
+                      <span>{breadcrumb.label}</span>
+                    </a>
+                  ),
+                }))}
+              />
+            </div>
             
             {/* 操作按钮 */}
-            <Box>
+            <div style={{ display: 'flex', gap: 4 }}>
               <Tooltip title="刷新">
-                <IconButton onClick={handleRefresh}>
-                  <Refresh />
-                </IconButton>
+                <Button type="text" icon={<ReloadOutlined />} onClick={handleRefresh} />
               </Tooltip>
               <Tooltip title="新建文件夹">
-                <IconButton onClick={handleCreateFolder}>
-                  <CreateNewFolder />
-                </IconButton>
+                <Button type="text" icon={<FolderAddOutlined />} onClick={handleCreateFolder} />
               </Tooltip>
               <Tooltip title="新建文件">
-                <IconButton onClick={handleCreateFile}>
-                  <NoteAdd />
-                </IconButton>
+                <Button type="text" icon={<FileAddOutlined />} onClick={handleCreateFile} />
               </Tooltip>
               <Tooltip title="上传文件">
-                <IconButton onClick={handleUpload}>
-                  <Upload />
-                </IconButton>
+                <Button type="text" icon={<UploadOutlined />} onClick={handleUpload} />
               </Tooltip>
               <Tooltip title="离线下载">
-                <IconButton onClick={handleBatchOfflineDownload}>
-                  <CloudDownload />
-                </IconButton>
+                <Button type="text" icon={<CloudDownloadOutlined />} onClick={handleBatchOfflineDownload} />
               </Tooltip>
-            </Box>
-          </Box>
+            </div>
+          </div>
 
           {/* 文件列表 */}
           {viewMode === 'table' ? (
@@ -1201,83 +1178,13 @@ const DynamicFileManager: React.FC = () => {
               onSort={handleSort}
             />
           ) : (
-            <Box>
-              <Typography variant="h6" sx={{ mb: 2 }}>
+            <div>
+              <Typography.Title level={5} style={{ marginBottom: 16 }}>
                 文件列表
-              </Typography>
+              </Typography.Title>
               {renderGridView()}
-            </Box>
+            </div>
           )}
-
-          {/* 更多操作菜单 */}
-          <Menu
-            anchorEl={moreMenuAnchor}
-            open={Boolean(moreMenuAnchor)}
-            onClose={handleMoreMenuClose}
-            anchorOrigin={{
-              vertical: 'bottom',
-              horizontal: 'right',
-            }}
-            transformOrigin={{
-              vertical: 'top',
-              horizontal: 'right',
-            }}
-          >
-            <MenuItem onClick={() => {
-              handleMoreMenuClose();
-              if (selectedFileForMenu) {
-                handleOfflineDownload(selectedFileForMenu);
-              }
-            }}>
-              <ListItemIcon>
-                <CloudDownload fontSize="small" />
-              </ListItemIcon>
-              <ListItemText>离线下载</ListItemText>
-            </MenuItem>
-            <MenuItem onClick={() => {
-              handleMoreMenuClose();
-              if (selectedFileForMenu) {
-                handleFileMove(selectedFileForMenu);
-              }
-            }}>
-              <ListItemIcon>
-                <DriveFileMove fontSize="small" />
-              </ListItemIcon>
-              <ListItemText>移动</ListItemText>
-            </MenuItem>
-            <MenuItem onClick={() => {
-              handleMoreMenuClose();
-              if (selectedFileForMenu) {
-                handleFileCopy(selectedFileForMenu);
-              }
-            }}>
-              <ListItemIcon>
-                <FileCopy fontSize="small" />
-              </ListItemIcon>
-              <ListItemText>复制</ListItemText>
-            </MenuItem>
-            <MenuItem onClick={() => {
-              if (selectedFileForMenu) {
-                handleFileRename(selectedFileForMenu);
-              }
-            }}>
-              <ListItemIcon>
-                <Edit fontSize="small" />
-              </ListItemIcon>
-              <ListItemText>重命名</ListItemText>
-            </MenuItem>
-            <MenuItem onClick={() => {
-              handleMoreMenuClose();
-              if (selectedFileForMenu) {
-                handleFileDelete(selectedFileForMenu);
-              }
-            }}>
-              <ListItemIcon>
-                <Delete fontSize="small" />
-              </ListItemIcon>
-              <ListItemText>删除</ListItemText>
-            </MenuItem>
-          </Menu>
 
           {/* 路径选择对话框 */}
           <PathSelectDialog
@@ -1311,17 +1218,9 @@ const DynamicFileManager: React.FC = () => {
             currentPath={currentPath}
             onUploadComplete={handleUploadComplete}
           />
-
-          {/* 消息提示 */}
-          <Snackbar
-            open={snackbar.open}
-            autoHideDuration={6000}
-            onClose={() => setSnackbar({ ...snackbar, open: false })}
-            message={snackbar.message}
-          />
-        </CardContent>
+        </div>
       </Card>
-    </Box>
+    </div>
   );
 };
 

@@ -1,34 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Button, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  TextField,
+import {
+  Button,
+  Modal,
+  Input,
   Typography,
   Alert,
-  ButtonGroup,
-  Snackbar,
-  Chip
-} from '@mui/material';
-import { 
-  Add, 
-  PlayArrow, 
-  Pause, 
-  Stop, 
-  Delete,
-  Download
-} from '@mui/icons-material';
+  Space,
+  Tag,
+  message,
+} from 'antd';
+import {
+  PlusOutlined,
+  CaretRightOutlined,
+  PauseOutlined,
+  StopOutlined,
+  DeleteOutlined,
+} from '@ant-design/icons';
 import DataTable from '../../components/DataTable';
 import { PathSelectDialog } from '../../components/FileOperationDialogs';
-import { useApp } from '../../components/AppContext';
+import { useAuthStore } from '../../store';
 import apiService from '../../posts/api';
 import type { Fetch } from '../../types';
 
+const { Title, Text } = Typography;
+
 const OfflineDownload: React.FC = () => {
-  const { state: appState } = useApp();
+  const user = useAuthStore(state => state.user);
   const [data, setData] = useState<Fetch[]>([]);
   const [loading, setLoading] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -36,11 +33,6 @@ const OfflineDownload: React.FC = () => {
   const [downloadUrl, setDownloadUrl] = useState('');
   const [selectedPath, setSelectedPath] = useState('/');
   const [error, setError] = useState('');
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: '',
-    severity: 'success' as 'success' | 'error' | 'warning' | 'info'
-  });
 
   // 获取离线下载任务列表
   const fetchDownloadTasks = async () => {
@@ -62,9 +54,9 @@ const OfflineDownload: React.FC = () => {
   }, []);
 
   const getStatusText = (flag: number) => {
-    const statusMap: { [key: number]: { text: string; color: any } } = {
+    const statusMap: { [key: number]: { text: string; color: string } } = {
       0: { text: '等待中', color: 'default' },
-      1: { text: '下载中', color: 'primary' },
+      1: { text: '下载中', color: 'processing' },
       2: { text: '已完成', color: 'success' },
       3: { text: '失败', color: 'error' },
       4: { text: '暂停', color: 'warning' },
@@ -74,32 +66,26 @@ const OfflineDownload: React.FC = () => {
 
   const columns = [
     { id: 'fetch_uuid', label: '任务UUID', minWidth: 150 },
-    { 
-      id: 'fetch_from', 
-      label: '下载地址', 
+    {
+      id: 'fetch_from',
+      label: '下载地址',
       minWidth: 300,
       format: (value: string) => (
         <div style={{ maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {value}
         </div>
-      )
+      ),
     },
     { id: 'fetch_dest', label: '目标路径', minWidth: 150 },
     { id: 'fetch_user', label: '所属用户', minWidth: 120 },
-    { 
-      id: 'fetch_flag', 
-      label: '任务状态', 
+    {
+      id: 'fetch_flag',
+      label: '任务状态',
       minWidth: 100,
       format: (value: number) => {
         const status = getStatusText(value);
-        return (
-          <Chip
-            label={status.text}
-            size="small"
-            color={status.color}
-          />
-        );
-      }
+        return <Tag color={status.color}>{status.text}</Tag>;
+      },
     },
   ];
 
@@ -110,10 +96,10 @@ const OfflineDownload: React.FC = () => {
   const handleDelete = async (item: Fetch) => {
     try {
       const response = await apiService.post('/@fetch/remove/none', {
-        fetch_uuid: item.fetch_uuid
+        fetch_uuid: item.fetch_uuid,
       });
       if (response.flag) {
-        await fetchDownloadTasks(); // 刷新列表
+        await fetchDownloadTasks();
       }
     } catch (error) {
       console.error('删除离线下载任务失败:', error);
@@ -137,12 +123,12 @@ const OfflineDownload: React.FC = () => {
       const response = await apiService.post('/@fetch/create/none', {
         fetch_from: downloadUrl.trim(),
         fetch_dest: selectedPath,
-        fetch_user: appState.user?.username || ''
+        fetch_user: user?.users_name || ''
       });
 
       if (response.flag) {
         setAddDialogOpen(false);
-        await fetchDownloadTasks(); // 刷新列表
+        await fetchDownloadTasks();
       } else {
         setError(response.text || '创建下载任务失败');
       }
@@ -156,165 +142,147 @@ const OfflineDownload: React.FC = () => {
     setPathSelectOpen(false);
   };
 
-  // Snackbar管理
-  const showSnackbar = (message: string, severity: 'success' | 'error' | 'warning' | 'info' = 'success') => {
-    setSnackbar({ open: true, message, severity });
-  };
-
-  const handleCloseSnackbar = () => {
-    setSnackbar(prev => ({ ...prev, open: false }));
-  };
-
   // 批量操作函数
   const handleStartAllTasks = async () => {
     try {
-      const pausedTasks = data.filter(task => task.fetch_flag === 2); // 暂停状态
+      const pausedTasks = data.filter((task) => task.fetch_flag === 2);
       let successCount = 0;
-      
+
       for (const task of pausedTasks) {
-        const response = await apiService.post('/@fetch/status/none/', {
+        const response = await apiService.post('/@fetch/status/none', {
           fetch_uuid: task.fetch_uuid,
-          fetch_flag: 0 // 设置为待下载状态
+          fetch_flag: 0,
         });
         if (response.flag) successCount++;
       }
-      
+
       if (successCount > 0) {
-        showSnackbar(`成功启动 ${successCount} 个任务`, 'success');
-        fetchData(); // 刷新数据
+        message.success(`成功启动 ${successCount} 个任务`);
+        fetchDownloadTasks();
       } else {
-        showSnackbar('没有可启动的任务', 'warning');
+        message.warning('没有可启动的任务');
       }
     } catch (error) {
-      showSnackbar('启动任务失败', 'error');
+      message.error('启动任务失败');
     }
   };
 
   const handlePauseAllTasks = async () => {
     try {
-      const runningTasks = data.filter(task => task.fetch_flag === 0 || task.fetch_flag === 1); // 待下载或下载中
+      const runningTasks = data.filter(
+        (task) => task.fetch_flag === 0 || task.fetch_flag === 1
+      );
       let successCount = 0;
-      
+
       for (const task of runningTasks) {
-        const response = await apiService.post('/@fetch/status/none/', {
+        const response = await apiService.post('/@fetch/status/none', {
           fetch_uuid: task.fetch_uuid,
-          fetch_flag: 2 // 设置为暂停状态
+          fetch_flag: 2,
         });
         if (response.flag) successCount++;
       }
-      
+
       if (successCount > 0) {
-        showSnackbar(`成功暂停 ${successCount} 个任务`, 'success');
-        fetchData(); // 刷新数据
+        message.success(`成功暂停 ${successCount} 个任务`);
+        fetchDownloadTasks();
       } else {
-        showSnackbar('没有可暂停的任务', 'warning');
+        message.warning('没有可暂停的任务');
       }
     } catch (error) {
-      showSnackbar('暂停任务失败', 'error');
+      message.error('暂停任务失败');
     }
   };
 
   const handleStopAllTasks = async () => {
     try {
-      const activeTasks = data.filter(task => task.fetch_flag !== 3 && task.fetch_flag !== 4); // 非已完成和失败状态
+      const activeTasks = data.filter(
+        (task) => task.fetch_flag !== 3 && task.fetch_flag !== 4
+      );
       let successCount = 0;
-      
+
       for (const task of activeTasks) {
-        const response = await apiService.post('/@fetch/status/none/', {
+        const response = await apiService.post('/@fetch/status/none', {
           fetch_uuid: task.fetch_uuid,
-          fetch_flag: 4 // 设置为失败/停止状态
+          fetch_flag: 4,
         });
         if (response.flag) successCount++;
       }
-      
+
       if (successCount > 0) {
-        showSnackbar(`成功停止 ${successCount} 个任务`, 'success');
-        fetchData(); // 刷新数据
+        message.success(`成功停止 ${successCount} 个任务`);
+        fetchDownloadTasks();
       } else {
-        showSnackbar('没有可停止的任务', 'warning');
+        message.warning('没有可停止的任务');
       }
     } catch (error) {
-      showSnackbar('停止任务失败', 'error');
+      message.error('停止任务失败');
     }
   };
 
   const handleDeleteCompletedTasks = async () => {
     try {
-      const completedTasks = data.filter(task => task.fetch_flag === 3 || task.fetch_flag === 4); // 已完成或失败状态
+      const completedTasks = data.filter(
+        (task) => task.fetch_flag === 3 || task.fetch_flag === 4
+      );
       let successCount = 0;
-      
+
       for (const task of completedTasks) {
-        const response = await apiService.post('/@fetch/remove/none/', {
-          fetch_uuid: task.fetch_uuid
+        const response = await apiService.post('/@fetch/remove/none', {
+          fetch_uuid: task.fetch_uuid,
         });
         if (response.flag) successCount++;
       }
-      
+
       if (successCount > 0) {
-        showSnackbar(`成功删除 ${successCount} 个已完成任务`, 'success');
-        fetchData(); // 刷新数据
+        message.success(`成功删除 ${successCount} 个已完成任务`);
+        fetchDownloadTasks();
       } else {
-        showSnackbar('没有可删除的已完成任务', 'warning');
+        message.warning('没有可删除的已完成任务');
       }
     } catch (error) {
-      showSnackbar('删除任务失败', 'error');
+      message.error('删除任务失败');
     }
   };
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box 
-        sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between', 
-          mb: 3 
+    <div style={{ padding: 24 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 24,
         }}
       >
-        <Box>
-          <Typography variant="h4" component="h2">
+        <div>
+          <Title level={4} style={{ margin: 0 }}>
             离线下载
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          </Title>
+          <Text type="secondary" style={{ marginTop: 4, display: 'block' }}>
             创建和管理离线下载任务，支持多种下载协议
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          <ButtonGroup variant="outlined" size="small">
-            <Button
-              startIcon={<PlayArrow />}
-              onClick={handleStartAllTasks}
-            >
+          </Text>
+        </div>
+        <Space size={12}>
+          <Space.Compact>
+            <Button icon={<CaretRightOutlined />} onClick={handleStartAllTasks}>
               开始所有
             </Button>
-            <Button
-              startIcon={<Pause />}
-              onClick={handlePauseAllTasks}
-            >
+            <Button icon={<PauseOutlined />} onClick={handlePauseAllTasks}>
               暂停所有
             </Button>
-            <Button
-              startIcon={<Stop />}
-              onClick={handleStopAllTasks}
-            >
+            <Button icon={<StopOutlined />} onClick={handleStopAllTasks}>
               停止所有
             </Button>
-            <Button
-              startIcon={<Delete />}
-              onClick={handleDeleteCompletedTasks}
-            >
+            <Button icon={<DeleteOutlined />} onClick={handleDeleteCompletedTasks}>
               清理已完成
             </Button>
-          </ButtonGroup>
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={handleAddDownload}
-          >
+          </Space.Compact>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAddDownload}>
             添加下载
           </Button>
-        </Box>
-      </Box>
+        </Space>
+      </div>
+
       <DataTable
         title="离线下载"
         columns={columns}
@@ -325,73 +293,54 @@ const OfflineDownload: React.FC = () => {
         actions={['edit', 'delete']}
       />
 
-      {/* Snackbar */}
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={handleCloseSnackbar}
-      >
-        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity}>
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-
       {/* 新增下载对话框 */}
-      <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>新增离线下载任务</DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt: 1 }}>
-            {error && (
-              <Alert severity="error" sx={{ mb: 2 }}>
-                {error}
-              </Alert>
-            )}
-            
-            <TextField
-              fullWidth
-              label="下载链接"
+      <Modal
+        title="新增离线下载任务"
+        open={addDialogOpen}
+        onCancel={() => setAddDialogOpen(false)}
+        onOk={handleConfirmAdd}
+        okText="确定"
+        cancelText="取消"
+        width={520}
+      >
+        <div style={{ paddingTop: 8 }}>
+          {error && (
+            <Alert message={error} type="error" showIcon style={{ marginBottom: 16 }} />
+          )}
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>
+              下载链接
+            </label>
+            <Input
               value={downloadUrl}
               onChange={(e) => setDownloadUrl(e.target.value)}
               placeholder="请输入要下载的文件链接"
-              sx={{ mb: 2 }}
             />
-            
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <TextField
-                fullWidth
-                label="目标路径"
-                value={selectedPath}
-                InputProps={{
-                  readOnly: true,
-                }}
-              />
-              <Button
-                variant="outlined"
-                onClick={() => setPathSelectOpen(true)}
-              >
-                选择
-              </Button>
-            </Box>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAddDialogOpen(false)}>取消</Button>
-          <Button onClick={handleConfirmAdd} variant="contained">
-            确定
-          </Button>
-        </DialogActions>
-      </Dialog>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>
+              目标路径
+            </label>
+            <Space.Compact style={{ width: '100%' }}>
+              <Input value={selectedPath} readOnly style={{ flex: 1 }} />
+              <Button onClick={() => setPathSelectOpen(true)}>选择</Button>
+            </Space.Compact>
+          </div>
+        </div>
+      </Modal>
 
       {/* 路径选择对话框 */}
-       <PathSelectDialog
-         open={pathSelectOpen}
-         onClose={() => setPathSelectOpen(false)}
-         onConfirm={handlePathSelect}
-         title="选择下载目标路径"
-         currentPath={selectedPath}
-         isPersonalFile={true}
-       />
-    </Box>
+      <PathSelectDialog
+        open={pathSelectOpen}
+        onClose={() => setPathSelectOpen(false)}
+        onConfirm={handlePathSelect}
+        title="选择下载目标路径"
+        currentPath={selectedPath}
+        isPersonalFile={true}
+      />
+    </div>
   );
 };
 

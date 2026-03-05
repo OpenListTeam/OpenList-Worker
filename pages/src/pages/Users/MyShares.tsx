@@ -1,29 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Typography, 
-  CircularProgress, 
-  Alert, 
-  Snackbar,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
+import {
+  Spin,
+  Alert,
+  Modal,
   Button,
-  TextField,
-  FormControlLabel,
-  Switch
-} from '@mui/material';
+  Input,
+  Switch,
+  Tag,
+  Typography,
+  message,
+  Space,
+  Form,
+  DatePicker,
+} from 'antd';
+import dayjs from 'dayjs';
 import ResponsiveDataTable from '../../components/ResponsiveDataTable';
 import { ShareConfig } from '../../types';
-import { Chip } from '@mui/material';
 import apiService from '../../posts/api';
+
+const { Title, Text } = Typography;
 
 const MyShares: React.FC = () => {
   const [shares, setShares] = useState<ShareConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
   const [editDialog, setEditDialog] = useState({ open: false, share: null as ShareConfig | null });
   const [createDialog, setCreateDialog] = useState({ open: false });
   const [formData, setFormData] = useState<Partial<ShareConfig>>({
@@ -33,16 +33,15 @@ const MyShares: React.FC = () => {
     share_ends: '',
     is_enabled: 1
   });
+  const [messageApi, contextHolder] = message.useMessage();
 
   // 获取分享列表
   const fetchShares = async () => {
     try {
       setLoading(true);
-      const result = await apiService.request('/@share/select/none/', 'POST', {});
-      
+      const result = await apiService.request('/@share/select/none', 'POST', {});
       if (result.flag) {
         const data = result.data;
-        // 确保数据是数组类型
         if (Array.isArray(data)) {
           setShares(data);
         } else {
@@ -52,8 +51,8 @@ const MyShares: React.FC = () => {
       } else {
         setError(result.text || '获取分享列表失败');
       }
-    } catch (error) {
-      console.error('获取分享列表错误:', error);
+    } catch (err) {
+      console.error('获取分享列表错误:', err);
       setError('获取分享列表失败，请检查网络连接');
     } finally {
       setLoading(false);
@@ -75,37 +74,37 @@ const MyShares: React.FC = () => {
     { id: 'share_path', label: '分享路径', minWidth: 200 },
     { id: 'share_pass', label: '分享密码', minWidth: 100, format: (value: string) => value || '无密码' },
     { id: 'share_user', label: '分享用户', minWidth: 100 },
-    { 
-      id: 'share_date', 
-      label: '分享日期', 
+    {
+      id: 'share_date',
+      label: '分享日期',
       minWidth: 200,
       format: (value: string | number) => formatDate(value)
     },
-    { 
-      id: 'share_ends', 
-      label: '有效期限', 
+    {
+      id: 'share_ends',
+      label: '有效期限',
       minWidth: 200,
       format: (value: string | number) => formatDate(value)
     },
-    { 
-      id: 'is_enabled', 
-      label: '状态', 
+    {
+      id: 'is_enabled',
+      label: '状态',
       minWidth: 80,
       format: (value: number, row: ShareConfig) => (
-        <Chip
-          label={value === 1 ? '启用' : '禁用'}
-          size="small"
+        <Tag
           color={value === 1 ? 'success' : 'default'}
-          onClick={() => handleToggleStatus(row)}
           style={{ cursor: 'pointer' }}
-        />
+          onClick={() => handleToggleStatus(row)}
+        >
+          {value === 1 ? '启用' : '禁用'}
+        </Tag>
       )
     },
   ];
 
   // 显示消息
-  const showMessage = (message: string, severity: 'success' | 'error' = 'success') => {
-    setSnackbar({ open: true, message, severity });
+  const showMessage = (msg: string, type: 'success' | 'error' = 'success') => {
+    messageApi[type](msg);
   };
 
   // 处理添加分享
@@ -126,7 +125,6 @@ const MyShares: React.FC = () => {
       showMessage('请填写分享路径和用户', 'error');
       return;
     }
-
     try {
       const shareData: ShareConfig = {
         share_uuid: '',
@@ -137,18 +135,16 @@ const MyShares: React.FC = () => {
         share_ends: formData.share_ends || '',
         is_enabled: formData.is_enabled || 1
       };
-
-      const result = await apiService.request('/@share/create/none/', 'POST', shareData);
-      
+      const result = await apiService.request('/@share/create/none', 'POST', shareData);
       if (result.flag) {
         showMessage('分享创建成功');
         setCreateDialog({ open: false });
-        fetchShares(); // 刷新列表
+        fetchShares();
       } else {
         showMessage(`创建分享失败: ${result.text}`, 'error');
       }
-    } catch (error) {
-      console.error('创建分享错误:', error);
+    } catch (err) {
+      console.error('创建分享错误:', err);
       showMessage('创建分享失败，请检查网络连接', 'error');
     }
   };
@@ -160,23 +156,26 @@ const MyShares: React.FC = () => {
 
   // 处理删除分享
   const handleDelete = async (share: ShareConfig) => {
-    if (!confirm('确定要删除这个分享吗？')) return;
-    
-    try {
-      const result = await apiService.request('/@share/remove/none/', 'POST', {
-        share_uuid: share.share_uuid
-      });
-      
-      if (result.flag) {
-        showMessage('分享删除成功');
-        fetchShares(); // 刷新列表
-      } else {
-        showMessage(`删除分享失败: ${result.text}`, 'error');
+    Modal.confirm({
+      title: '确认删除',
+      content: '确定要删除这个分享吗？',
+      onOk: async () => {
+        try {
+          const result = await apiService.request('/@share/remove/none', 'POST', {
+            share_uuid: share.share_uuid
+          });
+          if (result.flag) {
+            showMessage('分享删除成功');
+            fetchShares();
+          } else {
+            showMessage(`删除分享失败: ${result.text}`, 'error');
+          }
+        } catch (err) {
+          console.error('删除分享错误:', err);
+          showMessage('删除分享失败，请检查网络连接', 'error');
+        }
       }
-    } catch (error) {
-      console.error('删除分享错误:', error);
-      showMessage('删除分享失败，请检查网络连接', 'error');
-    }
+    });
   };
 
   // 处理复制分享链接
@@ -185,8 +184,8 @@ const MyShares: React.FC = () => {
       const shareUrl = `${window.location.origin}/share/${share.share_uuid}`;
       await navigator.clipboard.writeText(shareUrl);
       showMessage(`分享链接已复制到剪贴板: ${shareUrl}`);
-    } catch (error) {
-      console.error('复制链接错误:', error);
+    } catch (err) {
+      console.error('复制链接错误:', err);
       showMessage('复制链接失败', 'error');
     }
   };
@@ -195,19 +194,18 @@ const MyShares: React.FC = () => {
   const handleToggleStatus = async (share: ShareConfig) => {
     try {
       const newStatus = share.is_enabled === 1 ? 0 : 1;
-      const result = await apiService.request('/@share/status/none/', 'POST', {
+      const result = await apiService.request('/@share/status/none', 'POST', {
         share_uuid: share.share_uuid,
         is_enabled: newStatus
       });
-      
       if (result.flag) {
         showMessage(`分享已${newStatus === 1 ? '启用' : '禁用'}`);
-        fetchShares(); // 刷新列表
+        fetchShares();
       } else {
         showMessage(`更新分享状态失败: ${result.text}`, 'error');
       }
-    } catch (error) {
-      console.error('更新分享状态错误:', error);
+    } catch (err) {
+      console.error('更新分享状态错误:', err);
       showMessage('更新分享状态失败，请检查网络连接', 'error');
     }
   };
@@ -215,58 +213,49 @@ const MyShares: React.FC = () => {
   // 保存编辑的分享
   const handleSaveEdit = async () => {
     if (!editDialog.share) return;
-
     try {
-      const result = await apiService.request('/@share/config/none/', 'POST', editDialog.share);
-      
+      const result = await apiService.request('/@share/config/none', 'POST', editDialog.share);
       if (result.flag) {
         showMessage('分享更新成功');
         setEditDialog({ open: false, share: null });
-        fetchShares(); // 刷新列表
+        fetchShares();
       } else {
         showMessage(`更新分享失败: ${result.text}`, 'error');
       }
-    } catch (error) {
-      console.error('更新分享错误:', error);
+    } catch (err) {
+      console.error('更新分享错误:', err);
       showMessage('更新分享失败，请检查网络连接', 'error');
     }
   };
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="400px">
-        <CircularProgress />
-      </Box>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 400 }}>
+        <Spin size="large" />
+      </div>
     );
   }
 
   if (error) {
     return (
-      <Box p={2}>
-        <Alert severity="error">{error}</Alert>
-      </Box>
+      <div style={{ padding: 16 }}>
+        <Alert message={error} type="error" showIcon />
+      </div>
     );
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box 
-        sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between', 
-          mb: 3 
-        }}
-      >
-        <Box>
-          <Typography variant="h4" component="h2">
-            我的分享
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+    <div style={{ padding: 24 }}>
+      {contextHolder}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div>
+          <Title level={2} style={{ margin: 0 }}>我的分享</Title>
+          <Text type="secondary" style={{ marginTop: 4, display: 'block' }}>
             管理和分享您的文件，设置分享权限和有效期
-          </Typography>
-        </Box>
-      </Box>
+          </Text>
+        </div>
+      </div>
+
       <ResponsiveDataTable
         title="我的分享"
         columns={columns}
@@ -280,118 +269,98 @@ const MyShares: React.FC = () => {
       />
 
       {/* 编辑分享对话框 */}
-      <Dialog open={editDialog.open} onClose={() => setEditDialog({ open: false, share: null })} maxWidth="sm" fullWidth>
-        <DialogTitle>编辑分享</DialogTitle>
-        <DialogContent>
-          <TextField
-            fullWidth
-            label="分享密码"
-            value={editDialog.share?.share_pass || ''}
-            onChange={(e) => setEditDialog(prev => ({
-              ...prev,
-              share: prev.share ? { ...prev.share, share_pass: e.target.value } : null
-            }))}
-            margin="normal"
-          />
-          <TextField
-            fullWidth
-            label="有效期限"
-            type="datetime-local"
-            value={editDialog.share && editDialog.share.share_ends ? 
-              (typeof editDialog.share.share_ends === 'string' ? 
-                new Date(editDialog.share.share_ends).toISOString().slice(0, 16) : 
-                new Date(editDialog.share.share_ends * 1000).toISOString().slice(0, 16)
-              ) : ''
-            }
-            onChange={(e) => setEditDialog(prev => ({
-              ...prev,
-              share: prev.share ? { ...prev.share, share_ends: e.target.value ? new Date(e.target.value).toISOString() : "" } : null
-            }))}
-            margin="normal"
-            InputLabelProps={{ shrink: true }}
-          />
-          <FormControlLabel
-            control={
-              <Switch
-                checked={editDialog.share?.is_enabled === 1}
-                onChange={(e) => setEditDialog(prev => ({
-                  ...prev,
-                  share: prev.share ? { ...prev.share, is_enabled: e.target.checked ? 1 : 0 } : null
-                }))}
-              />
-            }
-            label="启用分享"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditDialog({ open: false, share: null })}>取消</Button>
-          <Button onClick={handleSaveEdit} variant="contained">保存</Button>
-        </DialogActions>
-      </Dialog>
+      <Modal
+        title="编辑分享"
+        open={editDialog.open}
+        onCancel={() => setEditDialog({ open: false, share: null })}
+        onOk={handleSaveEdit}
+        okText="保存"
+        cancelText="取消"
+        width={520}
+      >
+        <Form layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item label="分享密码">
+            <Input
+              value={editDialog.share?.share_pass || ''}
+              onChange={(e) => setEditDialog(prev => ({
+                ...prev,
+                share: prev.share ? { ...prev.share, share_pass: e.target.value } : null
+              }))}
+            />
+          </Form.Item>
+          <Form.Item label="有效期限">
+            <DatePicker
+              showTime
+              style={{ width: '100%' }}
+              value={editDialog.share?.share_ends
+                ? dayjs(typeof editDialog.share.share_ends === 'string'
+                  ? editDialog.share.share_ends
+                  : editDialog.share.share_ends * 1000)
+                : null}
+              onChange={(val) => setEditDialog(prev => ({
+                ...prev,
+                share: prev.share ? { ...prev.share, share_ends: val ? val.toISOString() : '' } : null
+              }))}
+            />
+          </Form.Item>
+          <Form.Item label="启用分享">
+            <Switch
+              checked={editDialog.share?.is_enabled === 1}
+              onChange={(checked) => setEditDialog(prev => ({
+                ...prev,
+                share: prev.share ? { ...prev.share, is_enabled: checked ? 1 : 0 } : null
+              }))}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       {/* 创建分享对话框 */}
-      <Dialog open={createDialog.open} onClose={() => setCreateDialog({ open: false })} maxWidth="sm" fullWidth>
-        <DialogTitle>创建分享</DialogTitle>
-        <DialogContent>
-          <TextField
-            fullWidth
-            label="分享路径"
-            value={formData.share_path || ''}
-            onChange={(e) => setFormData(prev => ({ ...prev, share_path: e.target.value }))}
-            margin="normal"
-            required
-          />
-          <TextField
-            fullWidth
-            label="分享用户"
-            value={formData.share_user || ''}
-            onChange={(e) => setFormData(prev => ({ ...prev, share_user: e.target.value }))}
-            margin="normal"
-            required
-          />
-          <TextField
-            fullWidth
-            label="分享密码（可选）"
-            value={formData.share_pass || ''}
-            onChange={(e) => setFormData(prev => ({ ...prev, share_pass: e.target.value }))}
-            margin="normal"
-          />
-          <TextField
-            fullWidth
-            label="有效期限（可选）"
-            type="datetime-local"
-            value={formData.share_ends ? new Date(formData.share_ends).toISOString().slice(0, 16) : ''}
-            onChange={(e) => setFormData(prev => ({ ...prev, share_ends: e.target.value ? new Date(e.target.value).toISOString() : '' }))}
-            margin="normal"
-            InputLabelProps={{ shrink: true }}
-          />
-          <FormControlLabel
-            control={
-              <Switch
-                checked={formData.is_enabled === 1}
-                onChange={(e) => setFormData(prev => ({ ...prev, is_enabled: e.target.checked ? 1 : 0 }))}
-              />
-            }
-            label="启用分享"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateDialog({ open: false })}>取消</Button>
-          <Button onClick={handleSaveCreate} variant="contained">创建</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* 消息提示 */}
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}
+      <Modal
+        title="创建分享"
+        open={createDialog.open}
+        onCancel={() => setCreateDialog({ open: false })}
+        onOk={handleSaveCreate}
+        okText="创建"
+        cancelText="取消"
+        width={520}
       >
-        <Alert severity={snackbar.severity} onClose={() => setSnackbar(prev => ({ ...prev, open: false }))}>
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-    </Box>
+        <Form layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item label="分享路径" required>
+            <Input
+              value={formData.share_path || ''}
+              onChange={(e) => setFormData(prev => ({ ...prev, share_path: e.target.value }))}
+            />
+          </Form.Item>
+          <Form.Item label="分享用户" required>
+            <Input
+              value={formData.share_user || ''}
+              onChange={(e) => setFormData(prev => ({ ...prev, share_user: e.target.value }))}
+            />
+          </Form.Item>
+          <Form.Item label="分享密码（可选）">
+            <Input
+              value={formData.share_pass || ''}
+              onChange={(e) => setFormData(prev => ({ ...prev, share_pass: e.target.value }))}
+            />
+          </Form.Item>
+          <Form.Item label="有效期限（可选）">
+            <DatePicker
+              showTime
+              style={{ width: '100%' }}
+              value={formData.share_ends ? dayjs(formData.share_ends) : null}
+              onChange={(val) => setFormData(prev => ({ ...prev, share_ends: val ? val.toISOString() : '' }))}
+            />
+          </Form.Item>
+          <Form.Item label="启用分享">
+            <Switch
+              checked={formData.is_enabled === 1}
+              onChange={(checked) => setFormData(prev => ({ ...prev, is_enabled: checked ? 1 : 0 }))}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </div>
   );
 };
 

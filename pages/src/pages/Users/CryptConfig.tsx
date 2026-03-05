@@ -1,33 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import ResponsiveDataTable from '../../components/ResponsiveDataTable';
 import { CryptInfo } from '../../types';
-import { 
-  Chip, 
-  Dialog, 
-  DialogTitle, 
-  DialogContent, 
-  DialogActions, 
-  Button, 
-  TextField, 
-  FormControl, 
-  InputLabel, 
-  Select, 
-  MenuItem, 
-  FormControlLabel, 
+import {
+  Modal,
+  Input,
+  Select,
   Switch,
-  Snackbar,
-  Alert,
-  Box,
-  Typography
-} from '@mui/material';
+  Tag,
+  Typography,
+  Form,
+  message,
+} from 'antd';
 import apiService from '../../posts/api';
+
+const { Option } = Select;
+const { TextArea } = Input;
 
 const CryptConfig: React.FC = () => {
   const [crypts, setCrypts] = useState<CryptInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingCrypt, setEditingCrypt] = useState<CryptInfo | null>(null);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
   
   const [formData, setFormData] = useState<CryptInfo>({
     crypt_name: '',
@@ -49,6 +42,14 @@ const CryptConfig: React.FC = () => {
     fetchCrypts();
   }, []);
 
+  const showMessage = (msg: string, severity: 'success' | 'error') => {
+    if (severity === 'success') {
+      message.success(msg);
+    } else {
+      message.error(msg);
+    }
+  };
+
   const fetchCrypts = async () => {
     setLoading(true);
     try {
@@ -58,36 +59,10 @@ const CryptConfig: React.FC = () => {
       }
     } catch (error) {
       console.error('获取加密配置失败:', error);
-      showSnackbar('获取加密配置失败', 'error');
+      showMessage('获取加密配置失败', 'error');
     } finally {
       setLoading(false);
     }
-  };
-
-  const showSnackbar = (message: string, severity: 'success' | 'error') => {
-    setSnackbar({ open: true, message, severity });
-  };
-
-  const handleCloseSnackbar = () => {
-    setSnackbar({ ...snackbar, open: false });
-  };
-
-  const handleAdd = () => {
-    setEditingCrypt(null);
-    setFormData({
-      crypt_name: '',
-      crypt_user: '',
-      crypt_pass: '',
-      crypt_type: 1,
-      crypt_mode: 0x03,
-      is_enabled: true,
-      crypt_self: false,
-      rands_pass: false,
-      write_name: '',
-      write_info: '',
-      oauth_data: {}
-    });
-    setOpenDialog(true);
   };
 
   const getCryptTypeText = (type: number) => {
@@ -121,6 +96,24 @@ const CryptConfig: React.FC = () => {
     return modeMap[mode] || `模式0x${mode.toString(16)}`;
   };
 
+  const handleAdd = () => {
+    setEditingCrypt(null);
+    setFormData({
+      crypt_name: '',
+      crypt_user: '',
+      crypt_pass: '',
+      crypt_type: 1,
+      crypt_mode: 0x03,
+      is_enabled: true,
+      crypt_self: false,
+      rands_pass: false,
+      write_name: '',
+      write_info: '',
+      oauth_data: {}
+    });
+    setOpenDialog(true);
+  };
+
   const handleEdit = (crypt: CryptInfo) => {
     setEditingCrypt(crypt);
     setFormData({ ...crypt });
@@ -138,14 +131,14 @@ const CryptConfig: React.FC = () => {
       });
       
       if (response.flag) {
-        showSnackbar('删除成功', 'success');
+        showMessage('删除成功', 'success');
         fetchCrypts();
       } else {
-        showSnackbar(response.text || '删除失败', 'error');
+        showMessage(response.text || '删除失败', 'error');
       }
     } catch (error) {
       console.error('删除加密配置失败:', error);
-      showSnackbar('删除失败', 'error');
+      showMessage('删除失败', 'error');
     }
   };
 
@@ -157,14 +150,14 @@ const CryptConfig: React.FC = () => {
       });
       
       if (response.flag) {
-        showSnackbar('状态更新成功', 'success');
+        showMessage('状态更新成功', 'success');
         fetchCrypts();
       } else {
-        showSnackbar(response.text || '状态更新失败', 'error');
+        showMessage(response.text || '状态更新失败', 'error');
       }
     } catch (error) {
       console.error('更新状态失败:', error);
-      showSnackbar('状态更新失败', 'error');
+      showMessage('状态更新失败', 'error');
     }
   };
 
@@ -174,15 +167,15 @@ const CryptConfig: React.FC = () => {
       const response = await apiService.post(endpoint, formData);
       
       if (response.flag) {
-        showSnackbar(editingCrypt ? '更新成功' : '创建成功', 'success');
+        showMessage(editingCrypt ? '更新成功' : '创建成功', 'success');
         setOpenDialog(false);
         fetchCrypts();
       } else {
-        showSnackbar(response.text || '保存失败', 'error');
+        showMessage(response.text || '保存失败', 'error');
       }
     } catch (error) {
       console.error('保存加密配置失败:', error);
-      showSnackbar('保存失败', 'error');
+      showMessage('保存失败', 'error');
     }
   };
 
@@ -206,13 +199,13 @@ const CryptConfig: React.FC = () => {
       label: '状态', 
       minWidth: 80,
       format: (value: boolean, row: CryptInfo) => (
-        <Chip
-          label={value ? '启用' : '禁用'}
-          size="small"
+        <Tag
           color={value ? 'success' : 'default'}
           onClick={() => handleToggleStatus(row)}
           style={{ cursor: 'pointer' }}
-        />
+        >
+          {value ? '启用' : '禁用'}
+        </Tag>
       )
     },
     { 
@@ -220,11 +213,9 @@ const CryptConfig: React.FC = () => {
       label: '存储密码', 
       minWidth: 100,
       format: (value: boolean) => (
-        <Chip
-          label={value ? '是' : '否'}
-          size="small"
-          color={value ? 'primary' : 'default'}
-        />
+        <Tag color={value ? 'blue' : 'default'}>
+          {value ? '是' : '否'}
+        </Tag>
       )
     },
     { 
@@ -232,30 +223,28 @@ const CryptConfig: React.FC = () => {
       label: '随机密码', 
       minWidth: 100,
       format: (value: boolean) => (
-        <Chip
-          label={value ? '启用' : '禁用'}
-          size="small"
-          color={value ? 'primary' : 'default'}
-        />
+        <Tag color={value ? 'blue' : 'default'}>
+          {value ? '启用' : '禁用'}
+        </Tag>
       )
     },
     { id: 'write_name', label: '后缀名称', minWidth: 120 },
   ];
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box 
-        sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between', 
-          mb: 3 
+    <div style={{ padding: 24 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 24,
         }}
       >
-        <Typography variant="h4" component="h2">
+        <Typography.Title level={4} style={{ margin: 0 }}>
           加密配置
-        </Typography>
-      </Box>
+        </Typography.Title>
+      </div>
       <ResponsiveDataTable
         title="加密配置"
         columns={columns}
@@ -267,126 +256,109 @@ const CryptConfig: React.FC = () => {
         actions={['add', 'edit', 'delete']}
       />
 
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth>
-        <DialogTitle>{editingCrypt ? '编辑加密配置' : '添加加密配置'}</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-            <TextField
-              label="加密名称"
+      <Modal
+        title={editingCrypt ? '编辑加密配置' : '添加加密配置'}
+        open={openDialog}
+        onCancel={() => setOpenDialog(false)}
+        onOk={handleSave}
+        okText="保存"
+        cancelText="取消"
+        width={720}
+        destroyOnClose
+      >
+        <Form layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item label="加密名称" required>
+            <Input
               value={formData.crypt_name}
               onChange={(e) => setFormData({ ...formData, crypt_name: e.target.value })}
-              fullWidth
-              required
+              placeholder="请输入加密名称"
             />
-            <TextField
-              label="用户标识"
+          </Form.Item>
+          <Form.Item label="用户标识" required>
+            <Input
               value={formData.crypt_user}
               onChange={(e) => setFormData({ ...formData, crypt_user: e.target.value })}
-              fullWidth
-              required
+              placeholder="请输入用户标识"
             />
-            <TextField
-              label="加密密码"
-              type="password"
+          </Form.Item>
+          <Form.Item label="加密密码" required>
+            <Input.Password
               value={formData.crypt_pass}
               onChange={(e) => setFormData({ ...formData, crypt_pass: e.target.value })}
-              fullWidth
-              required
+              placeholder="请输入加密密码"
             />
-            <FormControl fullWidth>
-              <InputLabel>加密类型</InputLabel>
-              <Select
-                value={formData.crypt_type}
-                onChange={(e) => setFormData({ ...formData, crypt_type: e.target.value as number })}
-              >
-                <MenuItem value={1}>AES</MenuItem>
-                <MenuItem value={2}>RSA</MenuItem>
-                <MenuItem value={3}>ChaCha20</MenuItem>
-              </Select>
-            </FormControl>
-            <FormControl fullWidth>
-              <InputLabel>加密模式</InputLabel>
-              <Select
-                value={formData.crypt_mode}
-                onChange={(e) => setFormData({ ...formData, crypt_mode: e.target.value as number })}
-              >
-                <MenuItem value={0x00}>仅文件名不加密</MenuItem>
-                <MenuItem value={0x01}>仅文件AES验证</MenuItem>
-                <MenuItem value={0x02}>仅文件名AES验证</MenuItem>
-                <MenuItem value={0x03}>文件和文件名AES验证</MenuItem>
-                <MenuItem value={0x04}>仅文件XOR验证</MenuItem>
-                <MenuItem value={0x05}>仅文件名XOR验证</MenuItem>
-                <MenuItem value={0x06}>文件和文件名XOR验证</MenuItem>
-                <MenuItem value={0x07}>仅文件XOR保存</MenuItem>
-                <MenuItem value={0x08}>仅文件名XOR保存</MenuItem>
-                <MenuItem value={0x09}>文件和文件名XOR保存</MenuItem>
-                <MenuItem value={0x0a}>仅文件C20验证</MenuItem>
-                <MenuItem value={0x0b}>仅文件名C20验证</MenuItem>
-                <MenuItem value={0x0c}>文件和文件名C20验证</MenuItem>
-                <MenuItem value={0x0d}>仅文件C20保存</MenuItem>
-                <MenuItem value={0x0e}>仅文件名C20保存</MenuItem>
-                <MenuItem value={0x0f}>文件和文件名C20保存</MenuItem>
-              </Select>
-            </FormControl>
-            <TextField
-              label="写入后缀名称"
+          </Form.Item>
+          <Form.Item label="加密类型">
+            <Select
+              value={formData.crypt_type}
+              onChange={(value) => setFormData({ ...formData, crypt_type: value })}
+              style={{ width: '100%' }}
+            >
+              <Option value={1}>AES</Option>
+              <Option value={2}>RSA</Option>
+              <Option value={3}>ChaCha20</Option>
+            </Select>
+          </Form.Item>
+          <Form.Item label="加密模式">
+            <Select
+              value={formData.crypt_mode}
+              onChange={(value) => setFormData({ ...formData, crypt_mode: value })}
+              style={{ width: '100%' }}
+            >
+              <Option value={0x00}>仅文件名不加密</Option>
+              <Option value={0x01}>仅文件AES验证</Option>
+              <Option value={0x02}>仅文件名AES验证</Option>
+              <Option value={0x03}>文件和文件名AES验证</Option>
+              <Option value={0x04}>仅文件XOR验证</Option>
+              <Option value={0x05}>仅文件名XOR验证</Option>
+              <Option value={0x06}>文件和文件名XOR验证</Option>
+              <Option value={0x07}>仅文件XOR保存</Option>
+              <Option value={0x08}>仅文件名XOR保存</Option>
+              <Option value={0x09}>文件和文件名XOR保存</Option>
+              <Option value={0x0a}>仅文件C20验证</Option>
+              <Option value={0x0b}>仅文件名C20验证</Option>
+              <Option value={0x0c}>文件和文件名C20验证</Option>
+              <Option value={0x0d}>仅文件C20保存</Option>
+              <Option value={0x0e}>仅文件名C20保存</Option>
+              <Option value={0x0f}>文件和文件名C20保存</Option>
+            </Select>
+          </Form.Item>
+          <Form.Item label="写入后缀名称">
+            <Input
               value={formData.write_name}
               onChange={(e) => setFormData({ ...formData, write_name: e.target.value })}
-              fullWidth
+              placeholder="请输入写入后缀名称"
             />
-            <TextField
-              label="写入信息"
+          </Form.Item>
+          <Form.Item label="写入信息">
+            <TextArea
               value={formData.write_info}
               onChange={(e) => setFormData({ ...formData, write_info: e.target.value })}
-              fullWidth
-              multiline
               rows={2}
+              placeholder="请输入写入信息"
             />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={formData.is_enabled}
-                  onChange={(e) => setFormData({ ...formData, is_enabled: e.target.checked })}
-                />
-              }
-              label="启用配置"
+          </Form.Item>
+          <Form.Item label="启用配置">
+            <Switch
+              checked={formData.is_enabled}
+              onChange={(checked) => setFormData({ ...formData, is_enabled: checked })}
             />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={formData.crypt_self}
-                  onChange={(e) => setFormData({ ...formData, crypt_self: e.target.checked })}
-                />
-              }
-              label="存储密码"
+          </Form.Item>
+          <Form.Item label="存储密码">
+            <Switch
+              checked={formData.crypt_self}
+              onChange={(checked) => setFormData({ ...formData, crypt_self: checked })}
             />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={formData.rands_pass}
-                  onChange={(e) => setFormData({ ...formData, rands_pass: e.target.checked })}
-                />
-              }
-              label="随机密码"
+          </Form.Item>
+          <Form.Item label="随机密码">
+            <Switch
+              checked={formData.rands_pass}
+              onChange={(checked) => setFormData({ ...formData, rands_pass: checked })}
             />
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenDialog(false)}>取消</Button>
-          <Button onClick={handleSave} variant="contained">保存</Button>
-        </DialogActions>
-      </Dialog>
-
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={handleCloseSnackbar}
-      >
-        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity}>
-          {snackbar.message}
-        </Alert>
-      </Snackbar>
-    </Box>
+          </Form.Item>
+        </Form>
+      </Modal>
+    </div>
   );
 };
 

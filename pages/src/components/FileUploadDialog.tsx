@@ -1,37 +1,27 @@
 import React, { useState, useRef } from 'react';
 import { useApp } from './AppContext';
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
+  Modal,
   Button,
-  Box,
   Typography,
-  LinearProgress,
-  CircularProgress,
+  Progress,
+  Spin,
   List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
-  Chip,
-  Alert,
+  Tag,
   Divider,
   Tooltip,
-} from '@mui/material';
+  Space,
+} from 'antd';
 import {
-  CloudUpload,
-  Folder,
-  InsertDriveFile,
-  Delete,
-  CheckCircle,
-  Error,
-  Cancel,
-  Refresh,
-  Warning,
-} from '@mui/icons-material';
+  CloudUploadOutlined,
+  FolderOutlined,
+  FileOutlined,
+  DeleteOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  ReloadOutlined,
+  WarningOutlined,
+} from '@ant-design/icons';
 
 interface UploadItem {
   id: string;
@@ -61,6 +51,7 @@ const FileUploadDialog: React.FC<FileUploadDialogProps> = ({
   const { state: appState } = useApp();
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [isUploadCompleted, setIsUploadCompleted] = useState(false);
   const [hasSuccessfulUploads, setHasSuccessfulUploads] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -333,204 +324,58 @@ const FileUploadDialog: React.FC<FileUploadDialogProps> = ({
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'success':
-        return <CheckCircle color="success" />;
+        return <CheckCircleOutlined style={{ color: '#52c41a' }} />;
       case 'error':
-        return <Error color="error" />;
+        return <CloseCircleOutlined style={{ color: '#ff4d4f' }} />;
       case 'uploading':
-        return <CircularProgress size={20} />;
+        return <Spin size="small" />;
       default:
         return null;
     }
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): string => {
     switch (status) {
       case 'success':
         return 'success';
       case 'error':
         return 'error';
       case 'uploading':
-        return 'primary';
+        return 'processing';
       default:
         return 'default';
     }
   };
 
   return (
-    <Dialog 
-      open={open} 
-      onClose={handleClose} 
-      maxWidth="md" 
-      fullWidth
-      disableEscapeKeyDown={isUploading}
-      onBackdropClick={(event) => {
-        event.stopPropagation();
-      }}
-    >
-      <DialogTitle>
-        <Box display="flex" alignItems="center" gap={1}>
-          <CloudUpload />
-          文件上传
-        </Box>
-      </DialogTitle>
-      
-      <DialogContent>
-        <Box mb={2}>
-          <Typography variant="body2" color="textSecondary" gutterBottom>
-            当前路径: {currentPath}
-          </Typography>
-        </Box>
-
-        <Box display="flex" gap={2} mb={3}>
-          <Button
-            variant="outlined"
-            startIcon={<InsertDriveFile />}
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-          >
-            添加文件
-          </Button>
-          
-          <Button
-            variant="outlined"
-            startIcon={<Folder />}
-            onClick={() => folderInputRef.current?.click()}
-            disabled={isUploading}
-          >
-            添加目录
-          </Button>
-        </Box>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          style={{ display: 'none' }}
-          onChange={handleFileSelect}
-        />
-        
-        <input
-          ref={folderInputRef}
-          type="file"
-          {...({ webkitdirectory: "" } as any)}
-          style={{ display: 'none' }}
-          onChange={handleFolderSelect}
-        />
-
-        {uploadItems.length > 0 && (
-          <>
-            <Divider sx={{ mb: 2 }} />
-            <Typography variant="h6" gutterBottom>
-              上传列表 ({uploadItems.length} 项)
-            </Typography>
-            
-            <List>
-              {uploadItems.map((item) => (
-                <ListItem key={item.id}>
-                  <ListItemIcon>
-                    {item.type === 'folder' ? <Folder /> : <InsertDriveFile />}
-                  </ListItemIcon>
-                  
-                  <ListItemText
-                    primary={
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '0.875rem' }}>
-                          {item.name}
-                        </span>
-                        <Chip
-                          label={item.status}
-                          size="small"
-                          color={getStatusColor(item.status) as any}
-                        />
-                      </span>
-                    }
-                    secondary={
-                      <>
-                        {item.size && (
-                          <span style={{ fontSize: '0.75rem', color: 'rgba(0, 0, 0, 0.6)' }}>
-                            {formatFileSize(item.size)}
-                          </span>
-                        )}
-                        {item.status === 'uploading' && (
-                          <LinearProgress 
-                            variant="indeterminate" 
-                            sx={{ mt: 1 }} 
-                          />
-                        )}
-                        {item.error && (
-                          <Box display="flex" alignItems="center" sx={{ mt: 1 }}>
-                            <Tooltip title={item.error} arrow placement="top">
-                              <Warning 
-                                color="error" 
-                                sx={{ 
-                                  fontSize: '1rem', 
-                                  cursor: 'pointer',
-                                  '&:hover': { opacity: 0.7 }
-                                }} 
-                              />
-                            </Tooltip>
-                            <Typography 
-                              variant="caption" 
-                              color="error" 
-                              sx={{ ml: 0.5, fontSize: '0.75rem' }}
-                            >
-                              上传失败
-                            </Typography>
-                          </Box>
-                        )}
-                      </>
-                    }
-                  />
-                  
-                  <ListItemSecondaryAction>
-                    <Box display="flex" gap={1}>
-                      {item.status === 'error' && (
-                        <IconButton
-                          size="small"
-                          onClick={() => handleRetryItem(item.id)}
-                          disabled={isUploading}
-                          title="重试"
-                        >
-                          <Refresh />
-                        </IconButton>
-                      )}
-                      <IconButton
-                        size="small"
-                        onClick={() => handleDeleteItem(item.id)}
-                        disabled={isUploading}
-                        title="删除"
-                      >
-                        <Delete />
-                      </IconButton>
-                    </Box>
-                  </ListItemSecondaryAction>
-                </ListItem>
-              ))}
-            </List>
-          </>
-        )}
-      </DialogContent>
-      
-      <DialogActions>
-        <Box display="flex" justifyContent="space-between" alignItems="center" width="100%">
+    <Modal
+      open={open}
+      onCancel={handleClose}
+      title={
+        <Space>
+          <CloudUploadOutlined />
+          <span>文件上传</span>
+        </Space>
+      }
+      width={720}
+      maskClosable={!isUploading}
+      keyboard={!isUploading}
+      footer={
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           {/* 左侧：取消/关闭按钮 */}
-          <Button 
-            onClick={handleClose} 
+          <Button
+            onClick={handleClose}
             disabled={isUploading}
-            variant={allItemsCompleted ? "contained" : "outlined"}
+            type={allItemsCompleted ? 'primary' : 'default'}
           >
             {isUploading ? '上传中...' : allItemsCompleted ? '关闭' : '取消'}
           </Button>
 
           {/* 右侧：其他操作按钮 */}
-          <Box display="flex" gap={1}>
+          <Space>
             {/* 清空已完成按钮 */}
             {hasSuccessItems && !isUploading && (
-              <Button
-                onClick={handleClearCompleted}
-                variant="outlined"
-                color="secondary"
-              >
+              <Button onClick={handleClearCompleted}>
                 清空已完成
               </Button>
             )}
@@ -538,10 +383,10 @@ const FileUploadDialog: React.FC<FileUploadDialogProps> = ({
             {/* 上传/重试按钮 */}
             {!allItemsCompleted && (
               <Button
+                type="primary"
                 onClick={handleUpload}
-                variant="contained"
                 disabled={uploadItems.length === 0 || isUploading}
-                startIcon={isUploading ? <CircularProgress size={20} /> : <CloudUpload />}
+                icon={isUploading ? <Spin size="small" /> : <CloudUploadOutlined />}
               >
                 {isUploading ? '上传中...' : '开始上传'}
               </Button>
@@ -550,18 +395,142 @@ const FileUploadDialog: React.FC<FileUploadDialogProps> = ({
             {/* 重试所有失败项按钮 */}
             {allItemsCompleted && hasFailedItems && !isUploading && (
               <Button
+                type="primary"
+                danger
                 onClick={handleUpload}
-                variant="contained"
-                color="warning"
-                startIcon={<Refresh />}
+                icon={<ReloadOutlined />}
               >
                 重试所有
               </Button>
             )}
-          </Box>
-        </Box>
-      </DialogActions>
-    </Dialog>
+          </Space>
+        </div>
+      }
+    >
+      <div style={{ marginBottom: 12 }}>
+        <Typography.Text type="secondary">
+          当前路径: {currentPath}
+        </Typography.Text>
+      </div>
+
+      <Space style={{ marginBottom: 16 }}>
+        <Button
+          icon={<FileOutlined />}
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isUploading}
+        >
+          添加文件
+        </Button>
+
+        <Button
+          icon={<FolderOutlined />}
+          onClick={() => folderInputRef.current?.click()}
+          disabled={isUploading}
+        >
+          添加目录
+        </Button>
+      </Space>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        style={{ display: 'none' }}
+        onChange={handleFileSelect}
+      />
+
+      <input
+        ref={folderInputRef}
+        type="file"
+        {...({ webkitdirectory: "" } as any)}
+        style={{ display: 'none' }}
+        onChange={handleFolderSelect}
+      />
+
+      {uploadItems.length > 0 && (
+        <>
+          <Divider style={{ margin: '12px 0' }} />
+          <Typography.Title level={5} style={{ marginBottom: 12 }}>
+            上传列表 ({uploadItems.length} 项)
+          </Typography.Title>
+
+          <List
+            dataSource={uploadItems}
+            style={{ maxHeight: 400, overflow: 'auto' }}
+            renderItem={(item) => (
+              <List.Item
+                key={item.id}
+                actions={[
+                  ...(item.status === 'error' ? [
+                    <Tooltip title="重试" key="retry">
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<ReloadOutlined />}
+                        onClick={() => handleRetryItem(item.id)}
+                        disabled={isUploading}
+                      />
+                    </Tooltip>
+                  ] : []),
+                  <Tooltip title="删除" key="delete">
+                    <Button
+                      type="text"
+                      size="small"
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={() => handleDeleteItem(item.id)}
+                      disabled={isUploading}
+                    />
+                  </Tooltip>,
+                ]}
+              >
+                <List.Item.Meta
+                  avatar={
+                    item.type === 'folder'
+                      ? <FolderOutlined style={{ fontSize: 20 }} />
+                      : <FileOutlined style={{ fontSize: 20 }} />
+                  }
+                  title={
+                    <Space size={8}>
+                      <span style={{ fontSize: 14 }}>{item.name}</span>
+                      <Tag color={getStatusColor(item.status)}>{item.status}</Tag>
+                      {getStatusIcon(item.status)}
+                    </Space>
+                  }
+                  description={
+                    <>
+                      {item.size != null && (
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          {formatFileSize(item.size)}
+                        </Typography.Text>
+                      )}
+                      {item.status === 'uploading' && (
+                        <Progress
+                          percent={item.progress}
+                          size="small"
+                          status="active"
+                          style={{ marginTop: 4, marginBottom: 0 }}
+                        />
+                      )}
+                      {item.error && (
+                        <div style={{ display: 'flex', alignItems: 'center', marginTop: 4 }}>
+                          <Tooltip title={item.error}>
+                            <WarningOutlined style={{ color: '#ff4d4f', fontSize: 14, cursor: 'pointer' }} />
+                          </Tooltip>
+                          <Typography.Text type="danger" style={{ marginLeft: 4, fontSize: 12 }}>
+                            上传失败
+                          </Typography.Text>
+                        </div>
+                      )}
+                    </>
+                  }
+                />
+              </List.Item>
+            )}
+          />
+        </>
+      )}
+    </Modal>
   );
 };
 

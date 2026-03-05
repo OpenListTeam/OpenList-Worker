@@ -64,7 +64,7 @@ export const useUsers = () => {
     setError(null);
     
     try {
-      const response = await axios.post(`${API_BASE_URL}/login/post`, loginData);
+      const response = await axios.post(`${API_BASE_URL}/login/none`, loginData);
       const result = handleResponse(response);
       
       if (result.flag && result.token) {
@@ -85,7 +85,7 @@ export const useUsers = () => {
     setError(null);
     
     try {
-      const response = await axios.post(`${API_BASE_URL}/logout/post`, {}, {
+      const response = await axios.post(`${API_BASE_URL}/logout/none`, {}, {
         headers: getAuthHeaders()
       });
       const result = handleResponse(response);
@@ -149,7 +149,7 @@ export const useUsers = () => {
     setError(null);
     
     try {
-      const response = await axios.post(`${API_BASE_URL}/config/name`, userData, {
+      const response = await axios.post(`${API_BASE_URL}/config/none`, userData, {
         headers: getAuthHeaders()
       });
       
@@ -167,7 +167,7 @@ export const useUsers = () => {
     setError(null);
     
     try {
-      const response = await axios.post(`${API_BASE_URL}/remove/post`, {
+      const response = await axios.post(`${API_BASE_URL}/remove/none`, {
         users_name: username
       }, {
         headers: getAuthHeaders()
