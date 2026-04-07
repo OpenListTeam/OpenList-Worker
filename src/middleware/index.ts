@@ -19,7 +19,31 @@ const PUBLIC_ROUTES: Array<{ path: string; method?: string }> = [
     { path: '/@oauth-token/callback/', method: 'POST' },
     { path: '/@oauth-token/bind/', method: 'POST' },
     { path: '/@oauth/enabled/none', method: 'GET' },
+    { path: '/@system/info/none', method: 'GET' },
 ];
+
+/**
+ * 软认证路由列表 — 不强制要求登录，但如果有token则解析用户信息
+ * 用于文件管理等公开访问但需要区分权限的路由
+ */
+const SOFT_AUTH_ROUTES: Array<{ path: string; method?: string }> = [
+    { path: '/@files/list/' },
+    { path: '/@files/link/' },
+    { path: '/@media/list/' },
+    { path: '/@media/stats' },
+    { path: '/@media/categories' },
+];
+
+/**
+ * 检查是否为软认证路由
+ */
+function isSoftAuthRoute(path: string, method: string): boolean {
+    return SOFT_AUTH_ROUTES.some(route => {
+        const pathMatch = path.startsWith(route.path);
+        const methodMatch = !route.method || route.method === method;
+        return pathMatch && methodMatch;
+    });
+}
 
 /**
  * 检查是否为公开路由
@@ -54,6 +78,18 @@ export async function authMiddleware(c: Context, next: Next): Promise<any> {
 
     // 静态资源跳过认证
     if (!path.startsWith('/@')) {
+        await next();
+        return;
+    }
+
+    // 软认证路由：尝试解析token但不强制要求
+    if (isSoftAuthRoute(path, method)) {
+        const authResult = await UsersManage.checkAuth(c);
+        if (authResult.flag) {
+            // 有有效token，存储用户信息
+            c.set('user', authResult.data);
+        }
+        // 无论是否登录都继续处理
         await next();
         return;
     }

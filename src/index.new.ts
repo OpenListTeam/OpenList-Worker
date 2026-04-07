@@ -36,6 +36,8 @@ import { oauthRoutes } from './routes/oauth';
 import { oauthTokenRoutes } from './routes/oauthToken';
 import { adminRoutes } from './routes/admin';
 import { setupRoutes } from './routes/setup';
+import { webdavRoutes } from './routes/webdav';
+import { mediaRoutes } from './routes/media';
 
 // ========================================================================
 // 类型定义
@@ -66,7 +68,7 @@ app.use('*', corsMiddleware);
 // 3. 请求日志 — 开发环境下记录请求信息
 app.use('*', loggerMiddleware);
 
-// 4. 认证中间件 — 仅对/@开头的API路由进行JWT验证
+// 4. 认证中间件 — 仅对/@开头的API路由进行JWT验证（WebDAV使用Basic Auth，不走JWT）
 app.use('/@*', authMiddleware);
 
 // ========================================================================
@@ -82,6 +84,7 @@ groupRoutes(app);      // /@group — 分组权限
 
 // --- 文件操作 ---
 filesRoutes(app);      // /@files — 文件操作
+mediaRoutes(app);      // /@media — 媒体库
 
 // --- 安全管理 ---
 cryptRoutes(app);      // /@crypt — 加密配置
@@ -104,6 +107,9 @@ oauthTokenRoutes(app); // /@oauth-token — OAuth令牌
 // --- 系统管理 ---
 adminRoutes(app);      // /@admin — 系统管理
 setupRoutes(app);      // /@setup — 系统初始化
+
+// --- WebDAV ---
+webdavRoutes(app);     // /dav — WebDAV文件访问（Basic Auth认证）
 
 // ========================================================================
 // 默认导出

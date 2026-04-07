@@ -14,10 +14,26 @@ export function oauthRoutes(app: Hono<any>) {
         const source: string = "/" + (c.req.param('source') || "");
         const config: Record<string, any> = await getConfig(c, 'config');
 
+        let oauth: OauthManage = new OauthManage(c);
+
+        // enabled action 不需要认证（登录页需要显示可用的OAuth选项）
+        if (action === 'enabled') {
+            const r = await oauth.getEnabledOauth();
+            // 对未登录用户隐藏敏感的 oauth_data 字段
+            if (r.flag && r.data) {
+                r.data = r.data.map(item => ({
+                    oauth_name: item.oauth_name,
+                    oauth_type: item.oauth_type,
+                    oauth_data: '', // 不暴露client_secret等敏感信息
+                    is_enabled: item.is_enabled,
+                }));
+            }
+            return c.json(r, r.flag ? 200 : 400);
+        }
+
+        // 其他action需要管理员认证
         const authResult = await UsersManage.checkAuth(c);
         if (!authResult.flag) return c.json(authResult, 401);
-
-        let oauth: OauthManage = new OauthManage(c);
 
         switch (method) {
             case "name": {
@@ -56,7 +72,6 @@ export function oauthRoutes(app: Hono<any>) {
                 const r = await oauth.toggleStatus(config.oauth_name, config.is_enabled);
                 return c.json(r, r.flag ? 200 : 400);
             }
-            case "enabled": { const r = await oauth.getEnabledOauth(); return c.json(r, r.flag ? 200 : 400); }
             case "type": {
                 if (!config.oauth_type) return c.json({ flag: false, text: 'Invalid OAuth Type' }, 400);
                 const r = await oauth.getByType(config.oauth_type);

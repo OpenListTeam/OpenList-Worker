@@ -250,6 +250,83 @@ export class PathRuleService {
     }
 
     /**
+     * 检查路径是否被隐藏
+     * 根据路径规则的 dir_hidden 标记判断
+     */
+    static isHidden(rule: PathRule | null): boolean {
+        if (!rule) return false;
+        return rule.dir_hidden === 1;
+    }
+
+    /**
+     * 过滤文件列表 — 根据路径规则移除隐藏文件/文件夹
+     * 
+     * @param fileList 原始文件列表
+     * @param basePath 当前目录路径
+     * @param rules 所有启用的路径规则
+     * @param userRole 用户角色 ('owner' | 'group' | 'other')
+     * @returns 过滤后的文件列表
+     */
+    static filterFileList(
+        fileList: any[],
+        basePath: string,
+        rules: PathRule[],
+        userRole: 'owner' | 'group' | 'other' = 'other'
+    ): any[] {
+        if (!fileList || fileList.length === 0) return fileList;
+        if (!rules || rules.length === 0) return fileList;
+
+        return fileList.filter(file => {
+            // 构建文件的完整路径
+            const filePath = basePath === '/'
+                ? `/${file.fileName}`
+                : `${basePath}/${file.fileName}`;
+
+            // 查找匹配的路径规则
+            const rule = PathRuleService.matchRule(filePath, rules);
+
+            // 如果有规则且标记为隐藏，则过滤掉（管理员/所有者除外）
+            if (rule && PathRuleService.isHidden(rule)) {
+                // 所有者可以看到隐藏文件
+                if (userRole === 'owner') return true;
+                return false;
+            }
+
+            // 检查下载权限（如果没有下载权限，也不显示）
+            if (rule && !PathRuleService.checkPermission(rule.mates_mask, 'download', userRole)) {
+                return false;
+            }
+
+            return true;
+        });
+    }
+
+    /**
+     * 获取文件的加密信息
+     * 如果路径规则指定了加密配置，返回加密配置名称
+     */
+    static getCryptConfig(filePath: string, rules: PathRule[]): string | null {
+        const rule = PathRuleService.matchRule(filePath, rules);
+        if (!rule) return null;
+        if (rule.crypt_name && rule.crypt_name.length > 0) {
+            return rule.crypt_name;
+        }
+        if (rule.mates_mask & FileMaskBit.ATTR_ENCRYPTED) {
+            return rule.crypt_name || null;
+        }
+        return null;
+    }
+
+    /**
+     * 获取路径的缓存时间
+     */
+    static getCacheTime(filePath: string, rules: PathRule[]): number {
+        const rule = PathRuleService.matchRule(filePath, rules);
+        if (!rule) return 0;
+        return rule.cache_time || 0;
+    }
+
+    /**
      * 构建权限掩码
      */
     static buildMask(config: {

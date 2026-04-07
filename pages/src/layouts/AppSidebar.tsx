@@ -1,11 +1,17 @@
 /**
  * 侧边栏导航 — 基于系统结构设置文档
  * 分组：文件 | 存储 | 用户 | 全局 | 任务 | 连接 | 分享 | 安全 | 关于
+ * 
+ * 权限控制：
+ * - 未登录(guest)：只显示文件管理（公共文件 + 媒体库）
+ * - 普通用户(user)：文件管理 + 我的文件 + 个人设置 + 任务 + 分享
+ * - 管理员(admin)：显示所有菜单
  */
 import React, { useMemo } from 'react';
-import { Layout, Menu, Avatar, Dropdown, Typography, Space, Tooltip, Badge } from 'antd';
+import { Layout, Menu, Avatar, Dropdown, Typography, Tooltip, Button } from 'antd';
 import {
   FolderOutlined,
+  FolderOpenOutlined,
   DatabaseOutlined,
   UserOutlined,
   SettingOutlined,
@@ -17,6 +23,7 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   LogoutOutlined,
+  LoginOutlined,
   MoonOutlined,
   SunOutlined,
   GlobalOutlined,
@@ -30,13 +37,18 @@ import {
   KeyOutlined,
   AppstoreOutlined,
   NodeIndexOutlined,
-  EyeInvisibleOutlined,
   BgColorsOutlined,
   SaveOutlined,
   FundProjectionScreenOutlined,
   QuestionCircleOutlined,
   HomeOutlined,
   LinkOutlined,
+  VideoCameraOutlined,
+  CustomerServiceOutlined,
+  PictureOutlined,
+  ReadOutlined,
+  IdcardOutlined,
+  SecurityScanOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -53,61 +65,144 @@ const AppSidebar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { collapsed, toggleCollapsed } = useSidebarStore();
-  const { user, logout } = useAuthStore();
+  const { user, logout, isAuthenticated, isAdmin, isGuest } = useAuthStore();
   const { themeMode, setThemePreference } = useThemeStore();
   const { language, setLanguage } = useLangStore();
 
-  // 基于系统结构设置文档构建菜单
-  const menuItems: MenuItem[] = useMemo(() => [
-    // ═══════════ 文件管理 ═══════════
-    {
-      key: '/files',
+  const _isAdmin = isAdmin();
+  const _isGuest = isGuest();
+  const _isLoggedIn = isAuthenticated;
+
+  // 基于用户角色构建菜单
+  const menuItems: MenuItem[] = useMemo(() => {
+    const items: MenuItem[] = [];
+
+    // ═══════════ 文件管理（所有用户可见，下拉菜单） ═══════════
+    const fileChildren: MenuItem[] = [
+      { key: '/files', icon: <FolderOpenOutlined />, label: '公共文件' },
+    ];
+
+    // 登录用户可见：我的文件
+    if (_isLoggedIn) {
+      fileChildren.push(
+        { key: '/files/my', icon: <FolderOutlined />, label: '我的文件' },
+      );
+    }
+
+    // 媒体库（所有用户可见）
+    fileChildren.push(
+      { type: 'divider' },
+      { key: '/media/video', icon: <VideoCameraOutlined />, label: '视频影音' },
+      { key: '/media/music', icon: <CustomerServiceOutlined />, label: '音乐音频' },
+      { key: '/media/image', icon: <PictureOutlined />, label: '照片图片' },
+      { key: '/media/books', icon: <ReadOutlined />, label: '书籍报刊' },
+    );
+
+    items.push({
+      key: 'files-group',
       icon: <FolderOutlined />,
-      label: t('sidebar.files'),
-    },
+      label: '文件管理',
+      children: fileChildren,
+    });
 
-    { type: 'divider' },
+    // 未登录用户到此为止
+    if (_isGuest) {
+      items.push({ type: 'divider' });
+      items.push({
+        key: 'about-group',
+        icon: <InfoCircleOutlined />,
+        label: t('sidebar.about'),
+        children: [
+          { key: '/about', icon: <InfoCircleOutlined />, label: t('sidebar.aboutSite') },
+          { key: '/help', icon: <QuestionCircleOutlined />, label: t('sidebar.helpDoc') },
+          { key: '/homepage', icon: <HomeOutlined />, label: t('sidebar.homepage') },
+        ],
+      });
+      return items;
+    }
 
-    // ═══════════ 存储 ═══════════
-    {
-      key: 'storage-group',
-      icon: <DatabaseOutlined />,
-      label: t('sidebar.storage'),
-      children: [
-        { key: '/admin/mounts', icon: <CloudSyncOutlined />, label: t('sidebar.storageManage') },
-        { key: '/admin/path-rules', icon: <NodeIndexOutlined />, label: t('sidebar.pathRules') },
-        { key: '/admin/path-manage', icon: <AppstoreOutlined />, label: t('sidebar.pathManage') },
-        { key: '/admin/index-manage', icon: <FundProjectionScreenOutlined />, label: t('sidebar.indexManage') },
-      ],
-    },
+    // ═══════════ 以下仅登录用户可见 ═══════════
 
-    // ═══════════ 用户 ═══════════
-    {
-      key: 'users-group',
-      icon: <TeamOutlined />,
-      label: t('sidebar.users'),
-      children: [
-        { key: '/admin/users', icon: <UserOutlined />, label: t('sidebar.userManage') },
-        { key: '/admin/groups', icon: <SafetyCertificateOutlined />, label: t('sidebar.groupManage') },
-        { key: '/admin/auth', icon: <KeyOutlined />, label: t('sidebar.authManage') },
-        { key: '/admin/private-space', icon: <EyeInvisibleOutlined />, label: t('sidebar.privateSpace') },
-      ],
-    },
+    // 普通用户：个人设置
+    if (!_isAdmin) {
+      items.push({ type: 'divider' });
+      items.push({
+        key: 'personal-group',
+        icon: <IdcardOutlined />,
+        label: '个人设置',
+        children: [
+          { key: '/user/profile', icon: <UserOutlined />, label: '个人信息' },
+          { key: '/user/password', icon: <KeyOutlined />, label: '修改密码' },
+        ],
+      });
+    }
 
-    // ═══════════ 全局 ═══════════
-    {
-      key: 'global-group',
-      icon: <SettingOutlined />,
-      label: t('sidebar.global'),
-      children: [
-        { key: '/admin/site-settings', icon: <SettingOutlined />, label: t('sidebar.siteSettings') },
-        { key: '/admin/appearance', icon: <BgColorsOutlined />, label: t('sidebar.appearance') },
-        { key: '/admin/backup', icon: <SaveOutlined />, label: t('sidebar.backupRestore') },
-      ],
-    },
+    // ═══════════ 以下仅管理员可见 ═══════════
+    if (_isAdmin) {
+      items.push({ type: 'divider' });
 
-    // ═══════════ 任务 ═══════════
-    {
+      // ═══════════ 存储 ═══════════
+      items.push({
+        key: 'storage-group',
+        icon: <DatabaseOutlined />,
+        label: t('sidebar.storage'),
+        children: [
+          { key: '/admin/mounts', icon: <CloudSyncOutlined />, label: t('sidebar.storageManage') },
+          { key: '/admin/path-rules', icon: <NodeIndexOutlined />, label: t('sidebar.pathRules') },
+          { key: '/admin/path-manage', icon: <AppstoreOutlined />, label: t('sidebar.pathManage') },
+          { key: '/admin/index-manage', icon: <FundProjectionScreenOutlined />, label: t('sidebar.indexManage') },
+        ],
+      });
+
+      // ═══════════ 用户 ═══════════
+      items.push({
+        key: 'users-group',
+        icon: <TeamOutlined />,
+        label: t('sidebar.users'),
+        children: [
+          { key: '/admin/users', icon: <UserOutlined />, label: t('sidebar.userManage') },
+          { key: '/admin/groups', icon: <SafetyCertificateOutlined />, label: t('sidebar.groupManage') },
+          { key: '/admin/auth', icon: <KeyOutlined />, label: t('sidebar.authManage') },
+        ],
+      });
+
+      // ═══════════ 全局 ═══════════
+      items.push({
+        key: 'global-group',
+        icon: <SettingOutlined />,
+        label: t('sidebar.global'),
+        children: [
+          { key: '/admin/site-settings', icon: <SettingOutlined />, label: t('sidebar.siteSettings') },
+          { key: '/admin/appearance', icon: <BgColorsOutlined />, label: t('sidebar.appearance') },
+          { key: '/admin/backup', icon: <SaveOutlined />, label: t('sidebar.backupRestore') },
+        ],
+      });
+
+      // ═══════════ 安全 ═══════════
+      items.push({
+        key: 'security-group',
+        icon: <LockOutlined />,
+        label: t('sidebar.security'),
+        children: [
+          { key: '/admin/crypt-settings', icon: <SecurityScanOutlined />, label: '加密设置' },
+          { key: '/user/crypt', icon: <LockOutlined />, label: t('sidebar.cryptManage') },
+        ],
+      });
+
+      // 管理员也有个人设置
+      items.push({
+        key: 'personal-group',
+        icon: <IdcardOutlined />,
+        label: '个人设置',
+        children: [
+          { key: '/user/profile', icon: <UserOutlined />, label: '个人信息' },
+          { key: '/user/password', icon: <KeyOutlined />, label: '修改密码' },
+        ],
+      });
+    }
+
+    // ═══════════ 任务（登录用户可见） ═══════════
+    items.push({
       key: 'tasks-group',
       icon: <CloudSyncOutlined />,
       label: t('sidebar.tasks'),
@@ -119,46 +214,27 @@ const AppSidebar: React.FC = () => {
         { key: '/user/cloud-move', icon: <SwapOutlined />, label: t('sidebar.cloudMove') },
         { key: '/user/cloud-extract', icon: <FileZipOutlined />, label: t('sidebar.cloudExtract') },
       ],
-    },
+    });
 
-    // ═══════════ 连接 ═══════════
-    {
-      key: 'connections-group',
-      icon: <ApiOutlined />,
-      label: t('sidebar.connections'),
-      children: [
-        { key: '/admin/ldap', icon: <LinkOutlined />, label: t('sidebar.ldap') },
-        { key: '/admin/ftp', icon: <ApiOutlined />, label: t('sidebar.ftpSftp') },
-        { key: '/admin/nfs', icon: <ApiOutlined />, label: t('sidebar.nfsDlna') },
-        { key: '/admin/smb', icon: <ApiOutlined />, label: t('sidebar.smb') },
-      ],
-    },
-
-    // ═══════════ 分享 ═══════════
-    {
+    // ═══════════ 分享（登录用户可见） ═══════════
+    items.push({
       key: 'sharing-group',
       icon: <ShareAltOutlined />,
       label: t('sidebar.sharing'),
-      children: [
-        { key: '/admin/share-settings', icon: <SettingOutlined />, label: t('sidebar.shareSettings') },
-        { key: '/user/shares', icon: <ShareAltOutlined />, label: t('sidebar.shareManage') },
-      ],
-    },
+      children: _isAdmin
+        ? [
+            { key: '/admin/share-settings', icon: <SettingOutlined />, label: t('sidebar.shareSettings') },
+            { key: '/user/shares', icon: <ShareAltOutlined />, label: t('sidebar.shareManage') },
+          ]
+        : [
+            { key: '/user/shares', icon: <ShareAltOutlined />, label: t('sidebar.shareManage') },
+          ],
+    });
 
-    // ═══════════ 安全 ═══════════
-    {
-      key: 'security-group',
-      icon: <LockOutlined />,
-      label: t('sidebar.security'),
-      children: [
-        { key: '/user/crypt', icon: <LockOutlined />, label: t('sidebar.cryptManage') },
-      ],
-    },
-
-    { type: 'divider' },
+    items.push({ type: 'divider' });
 
     // ═══════════ 关于 ═══════════
-    {
+    items.push({
       key: 'about-group',
       icon: <InfoCircleOutlined />,
       label: t('sidebar.about'),
@@ -167,8 +243,10 @@ const AppSidebar: React.FC = () => {
         { key: '/help', icon: <QuestionCircleOutlined />, label: t('sidebar.helpDoc') },
         { key: '/homepage', icon: <HomeOutlined />, label: t('sidebar.homepage') },
       ],
-    },
-  ], [t]);
+    });
+
+    return items;
+  }, [t, _isAdmin, _isGuest, _isLoggedIn]);
 
   // 选中的菜单项
   const selectedKeys = useMemo(() => {
@@ -179,23 +257,25 @@ const AppSidebar: React.FC = () => {
   // 默认展开的菜单组
   const defaultOpenKeys = useMemo(() => {
     const path = location.pathname;
+    if (path.startsWith('/files') || path.startsWith('/media'))
+      return ['files-group'];
+    if (path.startsWith('/user/profile') || path.startsWith('/user/password'))
+      return ['personal-group'];
     if (path.startsWith('/admin/mount') || path.startsWith('/admin/path') || path.startsWith('/admin/index'))
       return ['storage-group'];
-    if (path.startsWith('/admin/user') || path.startsWith('/admin/group') || path.startsWith('/admin/auth') || path.startsWith('/admin/private'))
+    if (path.startsWith('/admin/user') || path.startsWith('/admin/group') || path.startsWith('/admin/auth'))
       return ['users-group'];
     if (path.startsWith('/admin/site') || path.startsWith('/admin/appear') || path.startsWith('/admin/backup'))
       return ['global-group'];
     if (path.startsWith('/user/task') || path.startsWith('/user/offline') || path.startsWith('/user/upload') || path.startsWith('/user/cloud'))
       return ['tasks-group'];
-    if (path.startsWith('/admin/ldap') || path.startsWith('/admin/ftp') || path.startsWith('/admin/nfs') || path.startsWith('/admin/smb'))
-      return ['connections-group'];
     if (path.startsWith('/admin/share') || path.startsWith('/user/share'))
       return ['sharing-group'];
-    if (path.startsWith('/user/crypt'))
+    if (path.startsWith('/user/crypt') || path.startsWith('/admin/crypt'))
       return ['security-group'];
     if (path.startsWith('/about') || path.startsWith('/help'))
       return ['about-group'];
-    return [];
+    return ['files-group'];
   }, [location.pathname]);
 
   // 菜单点击
@@ -208,12 +288,18 @@ const AppSidebar: React.FC = () => {
   };
 
   // 用户头像下拉菜单
-  const userMenuItems: MenuProps['items'] = [
+  const userMenuItems: MenuProps['items'] = _isLoggedIn ? [
     {
-      key: 'account',
+      key: 'profile',
       icon: <UserOutlined />,
-      label: t('user.accountSettings'),
-      onClick: () => navigate('/user/account'),
+      label: '个人信息',
+      onClick: () => navigate('/user/profile'),
+    },
+    {
+      key: 'password',
+      icon: <KeyOutlined />,
+      label: '修改密码',
+      onClick: () => navigate('/user/password'),
     },
     { type: 'divider' },
     {
@@ -225,6 +311,13 @@ const AppSidebar: React.FC = () => {
         logout();
         navigate('/login');
       },
+    },
+  ] : [
+    {
+      key: 'login',
+      icon: <LoginOutlined />,
+      label: '登录',
+      onClick: () => navigate('/login'),
     },
   ];
 
@@ -351,7 +444,7 @@ const AppSidebar: React.FC = () => {
           gap: 4,
           paddingLeft: collapsed ? 0 : 4,
         }}>
-          <Tooltip title={collapsed ? t('sidebar.files') : undefined} placement="right">
+          <Tooltip title={collapsed ? '展开菜单' : '收起菜单'} placement="right">
             <div
               onClick={toggleCollapsed}
               style={{
@@ -392,7 +485,6 @@ const AppSidebar: React.FC = () => {
                   onClick={() => {
                     const newLang = language === 'en-US' ? 'zh-CN' : 'en-US';
                     setLanguage(newLang);
-                    // 同步i18n语言切换（无需reload）
                     import('i18next').then(i18n => i18n.default.changeLanguage(newLang));
                   }}
                   style={{
@@ -410,18 +502,59 @@ const AppSidebar: React.FC = () => {
           )}
         </div>
 
-        {/* 用户信息 */}
-        <Dropdown menu={{ items: userMenuItems }} trigger={['click']} placement="topRight">
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            padding: '8px 10px',
-            borderRadius: 10,
-            cursor: 'pointer',
-            transition: 'background 0.2s',
-            justifyContent: collapsed ? 'center' : 'flex-start',
-          }}
+        {/* 用户信息 / 登录按钮 */}
+        {_isLoggedIn ? (
+          <Dropdown menu={{ items: userMenuItems }} trigger={['click']} placement="topRight">
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '8px 10px',
+              borderRadius: 10,
+              cursor: 'pointer',
+              transition: 'background 0.2s',
+              justifyContent: collapsed ? 'center' : 'flex-start',
+            }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = themeMode === 'light'
+                  ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)';
+              }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            >
+              <Avatar
+                size={collapsed ? 36 : 32}
+                style={{
+                  background: 'linear-gradient(135deg, #3B82F6, #8B5CF6)',
+                  flexShrink: 0,
+                }}
+              >
+                {user?.users_name?.charAt(0)?.toUpperCase() || 'U'}
+              </Avatar>
+              {!collapsed && (
+                <div style={{ overflow: 'hidden' }}>
+                  <Text strong ellipsis style={{ display: 'block', fontSize: 13, lineHeight: '18px' }}>
+                    {user?.users_name || 'User'}
+                  </Text>
+                  <Text type="secondary" style={{ fontSize: 11, lineHeight: '14px' }}>
+                    {_isAdmin ? '管理员' : '普通用户'}
+                  </Text>
+                </div>
+              )}
+            </div>
+          </Dropdown>
+        ) : (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '8px 10px',
+              borderRadius: 10,
+              cursor: 'pointer',
+              transition: 'background 0.2s',
+              justifyContent: collapsed ? 'center' : 'flex-start',
+            }}
+            onClick={() => navigate('/login')}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = themeMode === 'light'
                 ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)';
@@ -430,25 +563,24 @@ const AppSidebar: React.FC = () => {
           >
             <Avatar
               size={collapsed ? 36 : 32}
+              icon={<LoginOutlined />}
               style={{
-                background: 'linear-gradient(135deg, #3B82F6, #8B5CF6)',
+                background: '#8c8c8c',
                 flexShrink: 0,
               }}
-            >
-              {user?.users_name?.charAt(0)?.toUpperCase() || 'U'}
-            </Avatar>
+            />
             {!collapsed && (
               <div style={{ overflow: 'hidden' }}>
-                <Text strong ellipsis style={{ display: 'block', fontSize: 13, lineHeight: '18px' }}>
-                  {user?.users_name || 'User'}
+                <Text strong style={{ display: 'block', fontSize: 13, lineHeight: '18px' }}>
+                  未登录
                 </Text>
                 <Text type="secondary" style={{ fontSize: 11, lineHeight: '14px' }}>
-                  {user?.users_mail || 'admin'}
+                  点击登录
                 </Text>
               </div>
             )}
           </div>
-        </Dropdown>
+        )}
       </div>
     </Sider>
   );

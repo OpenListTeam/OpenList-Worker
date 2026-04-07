@@ -78,6 +78,29 @@ export function usersRoutes(app: Hono<any>) {
                 const result: UsersResult = await users.unbindOAuth(config.users_name, config.oauth_name, config.oauth_user_id);
                 return c.json(result, result.flag ? 200 : 400);
             }
+            case "password": {
+                // 修改密码：需要验证旧密码
+                if (!config.users_name || !config.old_password || !config.new_password)
+                    return c.json({ flag: false, text: '请提供用户名、旧密码和新密码' }, 400);
+                if (config.new_password.length < 6)
+                    return c.json({ flag: false, text: '新密码至少6个字符' }, 400);
+                
+                // 先验证旧密码
+                const loginCheck: UsersResult = await users.log_in({
+                    users_name: config.users_name,
+                    users_pass: config.old_password,
+                });
+                if (!loginCheck.flag) {
+                    return c.json({ flag: false, text: '当前密码不正确' }, 400);
+                }
+                
+                // 更新密码
+                const updateResult: UsersResult = await users.config({
+                    users_name: config.users_name,
+                    users_pass: config.new_password,
+                } as UsersConfig);
+                return c.json(updateResult, updateResult.flag ? 200 : 400);
+            }
             default: return c.json({ flag: false, text: 'Invalid Action' }, 400);
         }
     });

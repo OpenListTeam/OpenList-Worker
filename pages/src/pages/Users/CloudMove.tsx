@@ -1,0 +1,120 @@
+/**
+ * 云端移动页面
+ * 管理云端文件移动任务
+ */
+import React, { useState, useEffect } from 'react';
+import { Card, Table, Button, Form, Input, Modal, Typography, Space, Tag, message, Popconfirm } from 'antd';
+import { SwapOutlined, PlusOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
+import { apiService } from '../../posts/api';
+
+const { Title } = Typography;
+
+const CloudMove: React.FC = () => {
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [form] = Form.useForm();
+
+  const fetchTasks = async () => {
+    setLoading(true);
+    try {
+      const res: any = await apiService.get('/@tasks/select/none?tasks_type=cloud_move');
+      if (res.flag && res.data) {
+        setTasks(Array.isArray(res.data) ? res.data : []);
+      }
+    } catch (error) {
+      console.error('获取移动任务失败:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchTasks(); }, []);
+
+  const handleCreate = async (values: any) => {
+    try {
+      const res: any = await apiService.post('/@tasks/create/none', {
+        tasks_type: 'cloud_move',
+        tasks_info: JSON.stringify({
+          source_path: values.source_path,
+          target_path: values.target_path,
+        }),
+      });
+      if (res.flag) {
+        message.success('移动任务已创建');
+        setModalVisible(false);
+        form.resetFields();
+        fetchTasks();
+      } else {
+        message.error(res.text || '创建失败');
+      }
+    } catch (error: any) {
+      message.error(error.message || '创建失败');
+    }
+  };
+
+  const columns = [
+    { title: '源路径', key: 'source', render: (_: any, r: any) => {
+      try { return JSON.parse(r.tasks_info || '{}').source_path || '-'; } catch { return '-'; }
+    }},
+    { title: '目标路径', key: 'target', render: (_: any, r: any) => {
+      try { return JSON.parse(r.tasks_info || '{}').target_path || '-'; } catch { return '-'; }
+    }},
+    {
+      title: '状态', dataIndex: 'tasks_flag', key: 'tasks_flag',
+      render: (v: number) => {
+        const map: Record<number, { color: string; text: string }> = {
+          0: { color: 'default', text: '等待中' }, 1: { color: 'blue', text: '执行中' },
+          2: { color: 'green', text: '已完成' }, 3: { color: 'red', text: '失败' },
+        };
+        const item = map[v] || { color: 'default', text: '未知' };
+        return <Tag color={item.color}>{item.text}</Tag>;
+      },
+    },
+    {
+      title: '操作', key: 'actions',
+      render: (_: any, record: any) => (
+        <Popconfirm title="确定删除？" onConfirm={async () => {
+          try {
+            const res: any = await apiService.post('/@tasks/remove/none', { tasks_uuid: record.tasks_uuid });
+            if (res.flag) { message.success('已删除'); fetchTasks(); }
+          } catch (e: any) { message.error(e.message); }
+        }}>
+          <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
+        </Popconfirm>
+      ),
+    },
+  ];
+
+  return (
+    <div style={{ padding: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <Title level={3} style={{ margin: 0 }}>
+          <SwapOutlined style={{ marginRight: 12 }} />
+          云端移动
+        </Title>
+        <Space>
+          <Button icon={<ReloadOutlined />} onClick={fetchTasks}>刷新</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>新建任务</Button>
+        </Space>
+      </div>
+
+      <Card>
+        <Table columns={columns} dataSource={tasks} rowKey="tasks_uuid" loading={loading} pagination={false} />
+      </Card>
+
+      <Modal title="新建云端移动任务" open={modalVisible} onCancel={() => setModalVisible(false)} onOk={() => form.submit()}>
+        <Form form={form} layout="vertical" onFinish={handleCreate}>
+          <Form.Item label="源路径" name="source_path" rules={[{ required: true }]}>
+            <Input placeholder="要移动的文件/文件夹路径" />
+          </Form.Item>
+          <Form.Item label="目标路径" name="target_path" rules={[{ required: true }]}>
+            <Input placeholder="移动到的目标路径" />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </div>
+  );
+};
+
+export default CloudMove;

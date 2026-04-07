@@ -1,6 +1,9 @@
 import {Context} from "hono";
 import {MountManage} from "../mount/MountManage";
 import {FileType} from "./FilesObject";
+import {MatesManage} from "../mates/MatesManage";
+import {PathRuleService, PathRule} from "../mates/PathRuleService";
+import {UsersManage} from "../users/UsersManage";
 
 export class FilesManage {
     public c: Context
@@ -11,12 +14,121 @@ export class FilesManage {
         this.d = d
     }
 
+    /**
+     * 获取当前用户角色（用于路径规则权限检查）
+     */
+    private async getUserRole(originalSource: string, rules: PathRule[]): Promise<'owner' | 'group' | 'other'> {
+        try {
+            // 从上下文获取用户信息
+            const user = this.c.get('user');
+            if (!user) return 'other'; // 未登录用户
+
+            // 检查是否为管理员
+            if (user.users_mask && (user.users_mask.includes('admin') || user.users_mask === '1')) {
+                return 'owner';
+            }
+            if (user.users_name === 'admin') {
+                return 'owner';
+            }
+
+            // 查找匹配的路径规则，检查是否为文件所有者
+            const rule = PathRuleService.matchRule(originalSource, rules);
+            if (rule && rule.mates_user) {
+                // TODO: 将 mates_user (number) 与当前用户ID比较
+                // 目前简单处理：登录用户为 group 角色
+                return 'group';
+            }
+
+            return 'group'; // 登录用户默认为 group 角色
+        } catch (error) {
+            return 'other';
+        }
+    }
+
+    /**
+     * 加载所有启用的路径规则
+     */
+    private async loadPathRules(): Promise<PathRule[]> {
+        try {
+            const matesManage = new MatesManage(this.c);
+            const result = await matesManage.getEnabledMates();
+            if (result.flag && result.data) {
+                return result.data.map(m => ({
+                    mates_name: m.mates_name,
+                    mates_mask: m.mates_mask,
+                    mates_user: m.mates_user,
+                    is_enabled: m.is_enabled,
+                    dir_hidden: m.dir_hidden || 0,
+                    dir_shared: m.dir_shared || 0,
+                    set_zipped: m.set_zipped ? JSON.parse(m.set_zipped) : null,
+                    set_parted: m.set_parted ? JSON.parse(m.set_parted) : null,
+                    crypt_name: m.crypt_name || '',
+                    cache_time: m.cache_time || 0,
+                }));
+            }
+        } catch (error) {
+            console.error("加载路径规则失败:", error);
+        }
+        return [];
+    }
+
+    /**
+     * 检查操作权限
+     */
+    private checkActionPermission(
+        action: string,
+        originalSource: string,
+        rules: PathRule[],
+        userRole: 'owner' | 'group' | 'other'
+    ): boolean {
+        const rule = PathRuleService.matchRule(originalSource, rules);
+        if (!rule) return true; // 没有规则则允许
+
+        switch (action) {
+            case 'list':
+            case 'link':
+                return PathRuleService.checkPermission(rule.mates_mask, 'download', userRole);
+            case 'copy':
+            case 'create':
+            case 'upload':
+            case 'rename':
+                return PathRuleService.checkPermission(rule.mates_mask, 'write', userRole);
+            case 'move':
+                return PathRuleService.checkPermission(rule.mates_mask, 'write', userRole)
+                    && PathRuleService.checkPermission(rule.mates_mask, 'delete', userRole);
+            case 'remove':
+                return PathRuleService.checkPermission(rule.mates_mask, 'delete', userRole);
+            default:
+                return true;
+        }
+    }
+
     async action(action?: string | undefined,
                  source?: string | undefined,
                  target?: string | undefined,
                  config?: Record<string, any> | undefined,
                  driver?: string | undefined,
                  upload?: { [key: string]: any } | undefined): Promise<any> {
+        // 保存原始路径（用于路径规则匹配）
+        const originalSource = source || '/';
+
+        // 加载路径规则 ======================================================================
+        const pathRules = await this.loadPathRules();
+        const userRole = await this.getUserRole(originalSource, pathRules);
+
+        // 权限检查 ==========================================================================
+        if (action && !this.checkActionPermission(action, originalSource, pathRules, userRole)) {
+            return this.c.json({flag: false, text: '权限不足，无法执行此操作'}, 403);
+        }
+
+        // 检查路径是否被隐藏（非管理员不能访问隐藏路径）
+        if (action && action !== 'list') {
+            const rule = PathRuleService.matchRule(originalSource, pathRules);
+            if (rule && PathRuleService.isHidden(rule) && userRole !== 'owner') {
+                return this.c.json({flag: false, text: '404 NOT FOUND'}, 404);
+            }
+        }
+
         // 检查参数 ==========================================================================
         console.log("@action before", action, source, target, config)
         let mount_data: MountManage = new MountManage(this.c);
@@ -86,32 +198,63 @@ case "list": { // 列出文件 =================================================
                     subMountCount++;
                 }
 
-                // 修复：正确的文件数量应该是实际文件数 + 子挂载数
-                const totalFileCount = realFileCount + subMountCount;
+                // 应用路径规则过滤（隐藏文件、权限检查） ====================================
+                if (pathRules.length > 0) {
+                    file_list = PathRuleService.filterFileList(
+                        file_list, originalSource, pathRules, userRole
+                    );
+                }
+
+                // 为加密路径的文件添加加密标记 ==============================================
+                for (const file of file_list) {
+                    const filePath = originalSource === '/'
+                        ? `/${file.fileName}`
+                        : `${originalSource}/${file.fileName}`;
+                    const cryptName = PathRuleService.getCryptConfig(filePath, pathRules);
+                    if (cryptName) {
+                        file.fileCrypts = {
+                            crypt_name: cryptName,
+                            is_encrypted: true,
+                        };
+                    }
+                }
+
+                // 修复：正确的文件数量应该是过滤后的文件数
+                const totalFileCount = file_list.length;
                 
                 return this.c.json({
                     flag: true, text: 'Success', data: {
                         pageSize: totalFileCount,
-                        filePath: source || "/",
+                        filePath: originalSource || "/",
                         fileList: file_list
                     }
                 })
             }
 case "link": { // 获取链接 =======================================================
+                // 检查加密：如果文件在加密路径下，需要验证密码
+                const cryptName = PathRuleService.getCryptConfig(originalSource, pathRules);
+                if (cryptName) {
+                    // 检查请求中是否提供了加密密码
+                    const cryptPass = config?.crypt_pass || this.c.req.header('X-Crypt-Pass');
+                    if (!cryptPass) {
+                        return this.c.json({
+                            flag: false,
+                            text: '此文件已加密，请提供解密密码',
+                            data: { need_crypt_pass: true, crypt_name: cryptName }
+                        }, 403);
+                    }
+                    // TODO: 验证密码是否正确
+                }
+
                 const file_links = await drive_load[0].downFile({path: source})
                 
 				// 检查是否有流式下载
 				if (file_links && file_links.length > 0 && file_links[0].stream) {
 					try {
 						console.log('开始流式下载处理');
-						
-						// 调用stream函数获取ReadableStream
 						const streamResult = await file_links[0].stream(this.c);
-						
-						// 如果返回的是ReadableStream，直接流式响应
 						if (streamResult instanceof ReadableStream) {
 							console.log('返回ReadableStream响应');
-							// 将Headers转换为普通对象
 							const headersObj: Record<string, string> = {};
 							if (this.c.res.headers) {
 								this.c.res.headers.forEach((value: string, key: string) => {
@@ -120,21 +263,17 @@ case "link": { // 获取链接 =================================================
 							}
 							return this.c.body(streamResult, 200, headersObj);
 						}
-						
-						// 如果没有返回流，返回默认响应
 						return this.c.json({flag: false, text: '流式下载未返回有效流'}, 500);
 					} catch (error: any) {
 						console.error('Stream download error:', error);
 						return this.c.json({flag: false, text: error.message || '流式下载失败'}, 500);
 					}
 				} else {
-					// 常规链接响应
 					return this.c.json({flag: true, text: 'Success', data: file_links})
 				}
 			}
             case "copy": { // 复制文件 =======================================================
                 console.log("@action", "copy", source, target)
-                // target 是目标目录，拼接源文件名构成完整目标路径
                 const copyFileName = source?.includes('/')
                     ? source.substring(source.lastIndexOf('/') + 1)
                     : source || ''
@@ -145,7 +284,6 @@ case "link": { // 获取链接 =================================================
             }
             case "move": { // 移动文件 =======================================================
                 console.log("@action", "moveFile", source, target)
-                // target 是目标目录，拼接源文件名构成完整目标路径
                 const moveFileName = source?.includes('/')
                     ? source.substring(source.lastIndexOf('/') + 1)
                     : source || ''
@@ -156,7 +294,6 @@ case "link": { // 获取链接 =================================================
             }
             case "rename": { // 重命名文件 ===================================================
                 if (!target) return this.c.json({flag: false, text: 'Invalid Target'}, 400)
-                // target 为新名称（不含路径），拼接父目录构成完整目标路径
                 const parentDir = source?.includes('/')
                     ? source.substring(0, source.lastIndexOf('/')) || '/'
                     : '/'
@@ -171,7 +308,6 @@ case "link": { // 获取链接 =================================================
                     {path: source},
                     target,
                     target.endsWith("/") ? FileType.F_DIR : FileType.F_ALL)
-                // 检查创建结果，如果失败则返回错误
                 if (create_result && !create_result.flag) {
                     return this.c.json({flag: false, text: create_result.text}, 400)
                 }

@@ -61,6 +61,11 @@ export const useLangStore = create<LangState>()(
 );
 
 // ========================================================================
+// 用户角色类型
+// ========================================================================
+export type UserRole = 'admin' | 'user' | 'guest';
+
+// ========================================================================
 // 用户认证
 // ========================================================================
 interface UserInfo {
@@ -69,6 +74,7 @@ interface UserInfo {
   users_mask?: string;
   total_size?: number;
   total_used?: number;
+  group_name?: string;
 }
 
 interface AuthState {
@@ -78,11 +84,31 @@ interface AuthState {
   login: (token: string, user: UserInfo) => void;
   logout: () => void;
   updateUser: (user: Partial<UserInfo>) => void;
+  /** 获取用户角色：admin / user / guest */
+  getRole: () => UserRole;
+  /** 是否为管理员 */
+  isAdmin: () => boolean;
+  /** 是否为访客（未登录） */
+  isGuest: () => boolean;
+  /** 是否为普通登录用户（非管理员） */
+  isUser: () => boolean;
+}
+
+/**
+ * 根据用户信息判断角色
+ */
+function resolveRole(user: UserInfo | null, isAuthenticated: boolean): UserRole {
+  if (!isAuthenticated || !user) return 'guest';
+  // users_mask 包含 admin 标记则为管理员
+  if (user.users_mask && (user.users_mask.includes('admin') || user.users_mask === '1')) return 'admin';
+  // users_name 为 admin 也视为管理员
+  if (user.users_name === 'admin') return 'admin';
+  return 'user';
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       isAuthenticated: false,
       token: null,
       user: null,
@@ -99,6 +125,22 @@ export const useAuthStore = create<AuthState>()(
       updateUser: (partial) => set((state) => ({
         user: state.user ? { ...state.user, ...partial } : null,
       })),
+      getRole: () => {
+        const state = get();
+        return resolveRole(state.user, state.isAuthenticated);
+      },
+      isAdmin: () => {
+        const state = get();
+        return resolveRole(state.user, state.isAuthenticated) === 'admin';
+      },
+      isGuest: () => {
+        const state = get();
+        return !state.isAuthenticated;
+      },
+      isUser: () => {
+        const state = get();
+        return state.isAuthenticated && resolveRole(state.user, state.isAuthenticated) === 'user';
+      },
     }),
     { name: 'openlist-auth' }
   )

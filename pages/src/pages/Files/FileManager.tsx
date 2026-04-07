@@ -92,6 +92,12 @@ const FileManager: React.FC = () => {
   const [encryptGroups, setEncryptGroups] = useState<{ crypt_name: string; crypt_pass?: string }[]>([]);
   const [encryptLoading, setEncryptLoading] = useState(false);
 
+  // 解密对话框
+  const [decryptOpen, setDecryptOpen] = useState(false);
+  const [decryptTarget, setDecryptTarget] = useState<FileItem | null>(null);
+  const [decryptPass, setDecryptPass] = useState('');
+  const [decryptLoading, setDecryptLoading] = useState(false);
+
   // 目录树（复制/移动用）
   const [dirTreeData, setDirTreeData] = useState<any[]>([]);
   const [dirTreeLoading, setDirTreeLoading] = useState(false);
@@ -416,6 +422,27 @@ const FileManager: React.FC = () => {
     finally { setEncryptLoading(false); }
   };
 
+  // 解密文件（移除路径的加密关联或解密文件内容）
+  const handleDecrypt = async () => {
+    if (!decryptTarget) return;
+    setDecryptLoading(true);
+    try {
+      const filePath = getFilePath(decryptTarget);
+      // 调用文件解密API
+      const res = await api.post(`/@files/decrypt${filePath}`, {
+        crypt_pass: decryptPass,
+      });
+      if (res?.flag) {
+        message.success('文件解密成功');
+        setDecryptOpen(false); setDecryptTarget(null); setDecryptPass('');
+        fetchFiles(currentPath); // 刷新文件列表
+      } else {
+        message.error(res?.text || '解密失败');
+      }
+    } catch { message.error('解密失败'); }
+    finally { setDecryptLoading(false); }
+  };
+
   // 文件夹编辑（分配路径规则和加密组）
   const handleFolderEdit = async () => {
     if (!folderEditTarget) return;
@@ -520,6 +547,7 @@ const FileManager: React.FC = () => {
     { type: 'divider' as const },
     { key: 'share', icon: <ShareAltOutlined />, label: t('common.share'), onClick: () => { setContextMenu(null); setShareTarget(record); setShareLink(''); setShareExpire(7); setSharePass(''); setShareOpen(true); } },
     { key: 'encrypt', icon: <LockOutlined />, label: t('common.encrypt'), onClick: () => { setContextMenu(null); openEncryptDialog(record); } },
+    { key: 'decrypt', icon: <LockOutlined />, label: '解密', onClick: () => { setContextMenu(null); setDecryptTarget(record); setDecryptPass(''); setDecryptOpen(true); } },
     { key: 'compress', icon: <FileZipOutlined />, label: t('common.compress'), onClick: () => { setContextMenu(null); setCompressTarget(record); setCompressName(record.fileName.replace(/\.[^.]+$/, '') || record.fileName); setCompressFormat('zip'); setCompressOpen(true); } },
     { type: 'divider' as const },
     { key: 'delete', icon: <DeleteOutlined />, label: t('common.delete'), danger: true, onClick: () => { setContextMenu(null); handleDelete(record); } },
@@ -800,6 +828,26 @@ const FileManager: React.FC = () => {
               style={{ width: '100%' }}
               options={encryptGroups.map(g => ({ label: g.crypt_name, value: g.crypt_name }))}
               notFoundContent={<span style={{ color: '#999', fontSize: 12 }}>暂无加密组，请先在「加密配置」中创建</span>}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 解密对话框 */}
+      <Modal
+        title={`解密文件 "${decryptTarget?.fileName}"`} open={decryptOpen}
+        onOk={handleDecrypt} onCancel={() => { setDecryptOpen(false); setDecryptTarget(null); setDecryptPass(''); }}
+        okText="确认解密" cancelText={t('common.cancel')}
+        confirmLoading={decryptLoading}
+        okButtonProps={{ disabled: !decryptPass }}
+      >
+        <Form layout="vertical">
+          <Form.Item label="解密密码" extra="请输入此文件关联的加密组密码">
+            <Input.Password
+              placeholder="请输入解密密码"
+              value={decryptPass}
+              onChange={(e) => setDecryptPass(e.target.value)}
+              autoFocus
             />
           </Form.Item>
         </Form>
