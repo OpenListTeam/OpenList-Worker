@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "openlist-work",
-  "main": "src/index.new.ts",
+  "main": "src/index.ts",
   "compatibility_date": "2025-08-16",
   "compatibility_flags": [
     "nodejs_compat"
