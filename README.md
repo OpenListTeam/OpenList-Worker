@@ -109,8 +109,8 @@ OpenList-TSWorker/
 
 #### 1. 克隆项目
 ```bash
-git clone https://github.com/OpenListTeam/OpenList-TSWorker.git
-cd OpenList-TSWorker
+git clone https://github.com/OpenListTeam/OpenList-Worker.git
+cd OpenList-Worker
 ```
 
 #### 2. 安装依赖
@@ -341,7 +341,7 @@ npm run build
 
 ## 📞 联系方式
 
-- GitHub Issues: [提交问题](https://github.com/OpenListTeam/OpenList-TSWorker/issues)
+- GitHub Issues: [提交问题](https://github.com/OpenListTeam/OpenList-Worker/issues)
 - 项目主页: [OpenList](https://github.com/OpenListTeam)
 
 ## 🗺️ 路线图
