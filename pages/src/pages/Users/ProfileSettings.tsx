@@ -27,15 +27,14 @@ const ProfileSettings: React.FC = () => {
   const handleSave = async (values: any) => {
     setLoading(true);
     try {
-      const res: any = await apiService.post('/@users/config/none', {
-        users_name: user?.users_name,
-        users_mail: values.users_mail,
+      const res: any = await apiService.post('/api/me/update', {
+        email: values.users_mail,
       });
-      if (res.flag) {
+      if (res.code === 200) {
         updateUser({ users_mail: values.users_mail });
         message.success('个人信息更新成功');
       } else {
-        message.error(res.text || '更新失败');
+        message.error(res.message || '更新失败');
       }
     } catch (error: any) {
       message.error(error.message || '更新失败');

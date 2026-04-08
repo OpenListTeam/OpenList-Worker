@@ -1,16 +1,17 @@
 /**
  * 主布局组件 — 包含侧边栏 + 内容区域
  * 支持响应式、暗黑、透明模式
+ * 美化：精致顶部栏、面包屑、内容区动画
  */
-import React, { useEffect } from 'react';
-import { Breadcrumb, Button, Drawer } from 'antd';
-import { MenuOutlined, HomeOutlined } from '@ant-design/icons';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Breadcrumb, Button, Drawer, Typography } from 'antd';
+import { MenuOutlined, HomeOutlined, RightOutlined } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import AppSidebar from './AppSidebar';
 import { useSidebarStore, useThemeStore } from '../store';
 
-
+const { Text } = Typography;
 
 // 路由 → 面包屑映射
 const breadcrumbMap: Record<string, string> = {
@@ -51,49 +52,90 @@ const MainLayout: React.FC = () => {
   const { collapsed, mobileOpen, setMobileOpen } = useSidebarStore();
   const { themeMode } = useThemeStore();
 
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  // 响应式 isMobile（监听窗口大小变化）
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' && window.innerWidth < 768
+  );
+  // 内容区域动画 key，路由切换时触发重新渲染
+  const [contentKey, setContentKey] = useState(location.pathname);
 
-  // 监听路由变化关闭移动端抽屉
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // 监听路由变化：关闭移动端抽屉 + 触发内容动画
   useEffect(() => {
     setMobileOpen(false);
+    setContentKey(location.pathname);
   }, [location.pathname, setMobileOpen]);
 
   // 面包屑
-  const getBreadcrumbItems = () => {
+  const getBreadcrumbItems = useCallback(() => {
     const items = [
       {
-        title: <HomeOutlined onClick={() => navigate('/files')} style={{ cursor: 'pointer' }} />,
+        title: (
+          <span
+            onClick={() => navigate('/files')}
+            style={{
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              opacity: 0.7,
+              transition: 'opacity 0.2s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
+          >
+            <HomeOutlined style={{ fontSize: 13 }} />
+          </span>
+        ),
       },
     ];
     const current = breadcrumbMap[location.pathname];
     if (current) {
-      items.push({ title: <span>{t(current)}</span> });
+      items.push({
+        title: (
+          <Text
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              fontFamily: "'Space Grotesk', sans-serif",
+            }}
+          >
+            {t(current)}
+          </Text>
+        ),
+      });
     }
     return items;
-  };
+  }, [location.pathname, navigate, t]);
 
   const siderWidth = collapsed ? 72 : 260;
 
-  const headerStyle: React.CSSProperties = {
-    padding: '0 24px',
-    height: 56,
-    lineHeight: '56px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    position: 'sticky',
-    top: 0,
-    zIndex: 10,
-    backdropFilter: themeMode === 'transparent' ? 'blur(20px) saturate(180%)' : 'blur(8px)',
-    borderBottom: themeMode === 'transparent'
+  // 主题相关样式变量
+  const isTransparent = themeMode === 'transparent';
+  const isDark = themeMode === 'dark' || isTransparent;
+
+  const headerBg = isTransparent
+    ? 'rgba(17, 19, 24, 0.55)'
+    : isDark
+      ? 'rgba(26, 29, 35, 0.92)'
+      : 'rgba(255, 255, 255, 0.88)';
+
+  const headerBorder = isTransparent
+    ? '1px solid rgba(255,255,255,0.07)'
+    : isDark
       ? '1px solid rgba(255,255,255,0.06)'
-      : themeMode === 'dark'
-        ? '1px solid #2D3039'
-        : '1px solid #E5E7EB',
-  };
+      : '1px solid rgba(0,0,0,0.06)';
+
+  const headerShadow = isDark
+    ? '0 1px 0 rgba(255,255,255,0.04), 0 4px 16px rgba(0,0,0,0.2)'
+    : '0 1px 0 rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06)';
 
   return (
-    // 用普通 div 作为根容器，避免 Ant Design Layout flex 布局与 fixed 侧边栏冲突
     <div style={{ minHeight: '100vh' }}>
       {/* 桌面端侧边栏（position: fixed，脱离文档流） */}
       {!isMobile && <AppSidebar />}
@@ -105,44 +147,99 @@ const MainLayout: React.FC = () => {
           open={mobileOpen}
           onClose={() => setMobileOpen(false)}
           width={280}
-          styles={{ body: { padding: 0 } }}
+          styles={{
+            body: { padding: 0, overflow: 'hidden' },
+            mask: { backdropFilter: 'blur(4px)' },
+          }}
           closable={false}
         >
           <AppSidebar />
         </Drawer>
       )}
 
-      {/* 主内容区域：用 paddingLeft 偏移，width 自然是 100vw，不受 flex 影响 */}
-      <div style={{
-        paddingLeft: isMobile ? 0 : siderWidth,
-        transition: 'padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-      }}>
-        {/* 顶部栏 */}
-        <header style={headerStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      {/* 主内容区域 */}
+      <div
+        style={{
+          paddingLeft: isMobile ? 0 : siderWidth,
+          transition: 'padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        {/* ── 顶部栏 ── */}
+        <header
+          style={{
+            padding: '0 20px 0 24px',
+            height: 52,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            position: 'sticky',
+            top: 0,
+            zIndex: 10,
+            background: headerBg,
+            backdropFilter: 'blur(20px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+            borderBottom: headerBorder,
+            boxShadow: headerShadow,
+            transition: 'background 0.3s, border-color 0.3s, box-shadow 0.3s',
+          }}
+        >
+          {/* 左侧：汉堡菜单（移动端）+ 面包屑 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {isMobile && (
               <Button
                 type="text"
+                size="small"
                 icon={<MenuOutlined />}
                 onClick={() => setMobileOpen(true)}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
               />
             )}
-            <Breadcrumb items={getBreadcrumbItems()} />
+            <Breadcrumb
+              separator={
+                <RightOutlined
+                  style={{ fontSize: 10, opacity: 0.35, verticalAlign: 'middle' }}
+                />
+              }
+              items={getBreadcrumbItems()}
+              style={{ fontSize: 13 }}
+            />
           </div>
+
+          {/* 右侧：预留插槽（可扩展搜索、通知等） */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }} />
         </header>
 
-        {/* 内容区域 */}
-        <main style={{
-          padding: isMobile ? 16 : 24,
-          flex: 1,
-          overflow: 'auto',
-        }}>
+        {/* ── 内容区域 ── */}
+        <main
+          key={contentKey}
+          style={{
+            padding: isMobile ? '16px 12px' : '24px 28px',
+            flex: 1,
+            overflow: 'auto',
+            animation: 'mainContentFadeIn 0.28s ease-out both',
+          }}
+        >
           <Outlet />
         </main>
       </div>
+
+      {/* 内容区域进入动画 keyframes（注入到 head，避免依赖外部 CSS） */}
+      <style>{`
+        @keyframes mainContentFadeIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 };

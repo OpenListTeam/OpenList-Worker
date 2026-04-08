@@ -208,7 +208,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             if (savedUser && savedToken) {
                 try {
                     // 验证token有效性（使用 /api 前缀经过 Vite 代理）
-                    const response = await fetch('/api/@users/select/none', {
+                    const response = await fetch('/api/me', {
                         headers: {
                             'Authorization': `Bearer ${savedToken}`
                         }

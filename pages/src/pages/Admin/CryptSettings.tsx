@@ -20,8 +20,8 @@ const CryptSettings: React.FC = () => {
   const fetchCrypts = async () => {
     setLoading(true);
     try {
-      const res: any = await apiService.get('/@crypt/select/none');
-      if (res.flag && res.data) {
+      const res: any = await apiService.get('/api/admin/setting/list?group=crypt');
+      if (res.code === 200 && res.data) {
         setCrypts(Array.isArray(res.data) ? res.data : []);
       }
     } catch (error) {
@@ -35,9 +35,9 @@ const CryptSettings: React.FC = () => {
 
   const handleSave = async (values: any) => {
     try {
-      const url = editingCrypt ? '/@crypt/config/none' : '/@crypt/create/none';
+      const url = editingCrypt ? '/api/admin/setting/update' : '/api/admin/setting/create';
       const res: any = await apiService.post(url, values);
-      if (res.flag) {
+      if (res.code === 200) {
         message.success(editingCrypt ? '加密配置更新成功' : '加密配置创建成功');
         setModalVisible(false);
         form.resetFields();
@@ -53,8 +53,8 @@ const CryptSettings: React.FC = () => {
 
   const handleDelete = async (cryptName: string) => {
     try {
-      const res: any = await apiService.post('/@crypt/remove/none', { crypt_name: cryptName });
-      if (res.flag) {
+      const res: any = await apiService.post('/api/admin/setting/delete', { crypt_name: cryptName });
+      if (res.code === 200) {
         message.success('加密配置已删除');
         fetchCrypts();
       } else {

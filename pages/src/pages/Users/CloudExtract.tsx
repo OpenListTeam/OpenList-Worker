@@ -18,7 +18,7 @@ const CloudExtract: React.FC = () => {
   const fetchTasks = async () => {
     setLoading(true);
     try {
-      const res: any = await apiService.get('/@tasks/select/none?tasks_type=cloud_extract');
+      const res: any = await apiService.get('/api/task/decompress/undone');
       if (res.flag && res.data) {
         setTasks(Array.isArray(res.data) ? res.data : []);
       }
@@ -33,21 +33,19 @@ const CloudExtract: React.FC = () => {
 
   const handleCreate = async (values: any) => {
     try {
-      const res: any = await apiService.post('/@tasks/create/none', {
-        tasks_type: 'cloud_extract',
-        tasks_info: JSON.stringify({
-          archive_path: values.archive_path,
-          target_path: values.target_path,
-          password: values.password || '',
-        }),
+      const res: any = await apiService.post('/api/fs/other', {
+        method: 'decompress',
+        path: values.archive_path,
+        dst_dir: values.target_path,
+        password: values.password || '',
       });
-      if (res.flag) {
+      if (res.code === 200) {
         message.success('解压任务已创建');
         setModalVisible(false);
         form.resetFields();
         fetchTasks();
       } else {
-        message.error(res.text || '创建失败');
+        message.error(res.message || '创建失败');
       }
     } catch (error: any) {
       message.error(error.message || '创建失败');
@@ -77,8 +75,8 @@ const CloudExtract: React.FC = () => {
       render: (_: any, record: any) => (
         <Popconfirm title="确定删除？" onConfirm={async () => {
           try {
-            const res: any = await apiService.post('/@tasks/remove/none', { tasks_uuid: record.tasks_uuid });
-            if (res.flag) { message.success('已删除'); fetchTasks(); }
+            const res: any = await apiService.post('/api/task/decompress/delete', { tid: record.tasks_uuid });
+            if (res.code === 200) { message.success('已删除'); fetchTasks(); }
           } catch (e: any) { message.error(e.message); }
         }}>
           <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>

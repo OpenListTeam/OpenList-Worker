@@ -16,8 +16,8 @@ const BackupRestore: React.FC = () => {
   const handleBackup = async () => {
     setBackupLoading(true);
     try {
-      const res: any = await apiService.get('/@system/backup/none');
-      if (res.flag) {
+      const res: any = await apiService.get('/api/admin/setting/backup');
+      if (res.code === 200) {
         // 下载备份文件
         const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -28,7 +28,7 @@ const BackupRestore: React.FC = () => {
         URL.revokeObjectURL(url);
         message.success('备份文件已下载');
       } else {
-        message.error(res.text || '备份失败');
+        message.error(res.message || '备份失败');
       }
     } catch (error: any) {
       message.error(error.message || '备份失败');
@@ -42,11 +42,11 @@ const BackupRestore: React.FC = () => {
     try {
       const text = await file.text();
       const data = JSON.parse(text);
-      const res: any = await apiService.post('/@system/restore/none', { backup_data: data });
-      if (res.flag) {
+      const res: any = await apiService.post('/api/admin/setting/restore', { backup_data: data });
+      if (res.code === 200) {
         message.success('数据恢复成功，请刷新页面');
       } else {
-        message.error(res.text || '恢复失败');
+        message.error(res.message || '恢复失败');
       }
     } catch (error: any) {
       message.error(error.message || '恢复失败，请检查备份文件格式');

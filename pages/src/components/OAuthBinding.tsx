@@ -82,8 +82,8 @@ const OAuthBinding: React.FC = () => {
       setLoading(true);
       setError('');
 
-      // 获取启用的OAuth提供商
-      const providersResult = await apiService.post('/@oauth/enabled/none', {});
+      // 获取启用的OAuth提供商（新版 API）
+      const providersResult = await apiService.get('/api/admin/oauth/list');
       if (!providersResult.flag) {
         setError('获取OAuth提供商失败');
         return;
@@ -91,11 +91,11 @@ const OAuthBinding: React.FC = () => {
 
       setProviders(providersResult.data || []);
 
-      // 获取用户的OAuth绑定
-      if (state.user?.username) {
-        const userResult = await apiService.post(`/@users/select/name/${state.user.users_name}`, {});
-        if (userResult.flag && userResult.data && userResult.data.length > 0) {
-          const userData = userResult.data[0];
+      // 获取用户的OAuth绑定（新版 API：GET /api/me）
+      if (state.user?.users_name) {
+        const userResult = await apiService.get('/api/me');
+        if (userResult.flag && userResult.data) {
+          const userData = userResult.data;
           if (userData.oauth_data) {
             try {
               const oauthBindings = JSON.parse(userData.oauth_data);
@@ -127,23 +127,24 @@ const OAuthBinding: React.FC = () => {
       setProcessing(true);
       setError('');
 
-      // 生成授权URL
+      // 生成授权URL（新版 API）
       const redirectUri = `${window.location.origin}/oauth/callback`;
-      const result = await apiService.post(`/@oauth-token/authurl/name/${provider.oauth_name}`, {
+      const result = await apiService.post(`/api/auth/sso`, {
+        provider: provider.oauth_name,
         redirect_uri: redirectUri,
         state: `bind_${Date.now()}`
       });
 
-      if (result.flag && result.data && result.data.length > 0) {
-        const authData = result.data[0];
+      if (result.flag && result.data) {
+        const authUrl = result.data.auth_url || result.data.access_token;
         // 保存绑定状态到sessionStorage
         sessionStorage.setItem('oauth_bind_mode', 'true');
         sessionStorage.setItem('oauth_bind_provider', provider.oauth_name);
         
         // 跳转到OAuth授权页面
-        window.location.href = authData.access_token; // access_token字段存储的是auth_url
+        window.location.href = authUrl;
       } else {
-        setError(result.text || '获取授权URL失败');
+        setError(result.text || result.message || '获取授权URL失败');
       }
     } catch (err) {
       setError('绑定失败，请稍后重试');
@@ -165,10 +166,12 @@ const OAuthBinding: React.FC = () => {
         return;
       }
 
-      const result = await apiService.post('/@users/oauth-unbind/none', {
-        users_name: state.user.users_name,
-        oauth_name: binding.oauth_name,
-        oauth_user_id: binding.oauth_user_id
+      // 解绑OAuth（新版 API：POST /api/me/update）
+      const result = await apiService.post('/api/me/update', {
+        oauth_unbind: {
+          oauth_name: binding.oauth_name,
+          oauth_user_id: binding.oauth_user_id
+        }
       });
 
       if (result.flag) {

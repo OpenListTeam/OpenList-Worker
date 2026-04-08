@@ -151,27 +151,34 @@ const FileUploadDialog: React.FC<FileUploadDialogProps> = ({
       ? `${currentPath}/${item.webkitRelativePath}`.replace(/\/+/g, '/')
       : `${currentPath}/${item.name}`.replace(/\/+/g, '/');
     
-    const backendPath = buildBackendPath(targetPath);
-    const cleanBackendPath = cleanPath(backendPath);
-    const apiUrl = `/@files/upload/path${cleanBackendPath}`;
-
-    const formData = new FormData();
-    formData.append('files', item.file);
+    const cleanTargetPath = cleanPath(targetPath);
+    // 新版 API：PUT /api/fs/put，通过 File-Path 请求头传递目标路径
+    const apiUrl = `/api/fs/put`;
 
     try {
       setUploadItems(prev => prev.map(i => 
         i.id === item.id ? { ...i, status: 'uploading' } : i
       ));
 
+      const token = localStorage.getItem('auth-storage')
+        ? JSON.parse(localStorage.getItem('auth-storage')!).state?.token
+        : null;
+
       const response = await fetch(apiUrl, {
-        method: 'POST',
-        body: formData,
+        method: 'PUT',
+        headers: {
+          'File-Path': cleanTargetPath,
+          'Content-Length': String(item.file.size),
+          'Content-Type': item.file.type || 'application/octet-stream',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        body: item.file,
       });
 
       const result = await response.json();
       
-      if (!response.ok || !result.flag) {
-        throw new Error(result.text || `上传失败: ${response.statusText}`);
+      if (!response.ok || result.code !== 200) {
+        throw new Error(result.message || `上传失败: ${response.statusText}`);
       }
 
       setUploadItems(prev => prev.map(i => 
@@ -189,15 +196,22 @@ const FileUploadDialog: React.FC<FileUploadDialogProps> = ({
   };
 
   const createFolder = async (folderPath: string): Promise<void> => {
-    const backendPath = buildBackendPath(currentPath);
-    const cleanBackendPath = cleanPath(backendPath);
-    // target参数只包含文件夹名称，不包含完整路径
-    const targetName = folderPath + '/';
-    const apiUrl = `/@files/create/path${cleanBackendPath}?target=${encodeURIComponent(targetName)}`;
+    // 新版 API：POST /api/fs/mkdir，body 传递完整目标路径
+    const fullFolderPath = cleanPath(`${currentPath}/${folderPath}`);
+    const apiUrl = `/api/fs/mkdir`;
+
+    const token = localStorage.getItem('auth-storage')
+      ? JSON.parse(localStorage.getItem('auth-storage')!).state?.token
+      : null;
 
     try {
       const response = await fetch(apiUrl, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ path: fullFolderPath }),
       });
 
       if (!response.ok) {
@@ -206,8 +220,8 @@ const FileUploadDialog: React.FC<FileUploadDialogProps> = ({
 
       const result = await response.json();
       
-      if (!result.flag) {
-        throw new Error(result.text || '创建文件夹失败');
+      if (result.code !== 200) {
+        throw new Error(result.message || '创建文件夹失败');
       }
     } catch (error) {
       throw error;

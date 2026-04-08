@@ -63,14 +63,12 @@ const MountManagement: React.FC = () => {
   const loadMounts = async () => {
     try {
       setLoading(true);
-      const result = await apiService.get('/@mount/select/none');
-      if (result.flag) {
-        setMounts(result.data || []);
-      } else {
-        setError(result.text || '加载挂载点失败');
-      }
-    } catch (err) {
-      setError('网络错误');
+      // 拦截器已解包：result 为 { content: [...], total: N }
+      const result: any = await apiService.get('/api/admin/storage/list');
+      const list = result?.content || result?.data?.content || result || [];
+      setMounts(Array.isArray(list) ? list : []);
+    } catch (err: any) {
+      setError(err.message || '加载挂载点失败');
     } finally {
       setLoading(false);
     }
@@ -79,18 +77,12 @@ const MountManagement: React.FC = () => {
   // 加载可用驱动列表
   const loadDrivers = async () => {
     try {
-      console.log('正在请求驱动列表: /@mount/driver/none');
-      const result = await apiService.get('/@mount/driver/none');
-      console.log('驱动列表响应:', result);
-      
-      if (result.flag && result.data) {
-        setDrivers(result.data);
-        console.log('成功加载驱动列表:', result.data);
-      } else {
-        console.error('加载驱动列表失败:', result.text);
-      }
-    } catch (err) {
-      console.error('加载驱动列表失败:', err);
+      // 拦截器已解包：result 为驱动数组 [...]
+      const result: any = await apiService.get('/api/admin/driver/list');
+      const list = Array.isArray(result) ? result : (result?.data || []);
+      setDrivers(list);
+    } catch (err: any) {
+      console.error('加载驱动列表失败:', err.message);
     }
   };
 
@@ -251,17 +243,13 @@ const MountManagement: React.FC = () => {
     }
 
     try {
-      const result = await apiService.post('/@mount/remove/none', {
+      // 拦截器：成功时返回 {}，失败时抛出 ApiError
+      await apiService.post('/api/admin/storage/delete', {
         mount_path: mount.mount_path
       });
-      
-      if (result.flag) {
-        await loadMounts();
-      } else {
-        setError(result.text || '删除失败');
-      }
-    } catch (err) {
-      setError('网络错误，删除失败');
+      await loadMounts();
+    } catch (err: any) {
+      setError(err.message || '删除失败');
     }
   };
 
@@ -306,17 +294,13 @@ const MountManagement: React.FC = () => {
     };
 
     try {
-      const action = editingMount ? 'config' : 'create';
-      const result = await apiService.post(`/@mount/${action}/none`, mountConfig);
-      
-      if (result.flag) {
-        setDialogOpen(false);
-        await loadMounts();
-      } else {
-        setError(result.text || '保存失败');
-      }
-    } catch (err) {
-      setError('网络错误，保存失败');
+      const url = editingMount ? '/api/admin/storage/update' : '/api/admin/storage/create';
+      // 拦截器：成功时返回 {}，失败时抛出 ApiError
+      await apiService.post(url, mountConfig);
+      setDialogOpen(false);
+      await loadMounts();
+    } catch (err: any) {
+      setError(err.message || '保存失败');
     }
   };
 
@@ -324,17 +308,11 @@ const MountManagement: React.FC = () => {
   const handleReload = async (mount: MountConfig) => {
     try {
       setLoading(true);
-      const result = await apiService.post(`/@mount/reload/path${mount.mount_path}`, {});
-      
-      if (result.flag) {
-        setError('');
-        // 重新加载挂载点列表以获取最新状态
-        await loadMounts();
-      } else {
-        setError(result.text || `重新加载挂载点 "${mount.mount_path}" 失败`);
-      }
-    } catch (err) {
-      setError(`重新加载挂载点 "${mount.mount_path}" 时发生网络错误`);
+      await apiService.post('/api/admin/storage/enable', { mount_path: mount.mount_path });
+      setError('');
+      await loadMounts();
+    } catch (err: any) {
+      setError(err.message || `重新加载挂载点 "${mount.mount_path}" 失败`);
     } finally {
       setLoading(false);
     }
@@ -353,10 +331,10 @@ const MountManagement: React.FC = () => {
       // 为每个挂载点调用重新加载
       const reloadPromises = mounts.map(async (mount) => {
         try {
-          const result = await apiService.post(`/@mount/reload/path${mount.mount_path}`, {});
-          return { mount: mount.mount_path, success: result.flag, message: result.text };
-        } catch (err) {
-          return { mount: mount.mount_path, success: false, message: '网络错误' };
+          await apiService.post('/api/admin/storage/enable', { mount_path: mount.mount_path });
+          return { mount: mount.mount_path, success: true, message: '' };
+        } catch (err: any) {
+          return { mount: mount.mount_path, success: false, message: err.message || '网络错误' };
         }
       });
 

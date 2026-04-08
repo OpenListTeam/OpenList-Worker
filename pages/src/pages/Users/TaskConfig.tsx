@@ -20,11 +20,11 @@ const TaskConfig: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await apiService.request('/@tasks/select/none', 'POST', {});
-      if (response.flag) {
+      const response = await apiService.get('/api/task/upload/undone');
+      if (response.code === 200) {
         setTasks(response.data || []);
       } else {
-        setError(response.text || '获取任务列表失败');
+        setError(response.message || '获取任务列表失败');
       }
     } catch (err) {
       console.error('获取任务列表错误:', err);
@@ -59,11 +59,10 @@ const TaskConfig: React.FC = () => {
       let successCount = 0;
       for (const task of pendingTasks) {
         try {
-          const response = await apiService.request('/@tasks/status/none', 'POST', {
-            tasks_uuid: task.tasks_uuid,
-            tasks_flag: 1 // 设置为运行状态
+          const response = await apiService.post('/api/task/upload/retry', {
+            tid: task.tasks_uuid
           });
-          if (response.flag) {
+          if (response.code === 200) {
             successCount++;
           }
         } catch (error) {
@@ -91,11 +90,10 @@ const TaskConfig: React.FC = () => {
       let successCount = 0;
       for (const task of runningTasks) {
         try {
-          const response = await apiService.request('/@tasks/status/none', 'POST', {
-            tasks_uuid: task.tasks_uuid,
-            tasks_flag: 2 // 设置为暂停状态
+          const response = await apiService.post('/api/task/upload/cancel', {
+            tid: task.tasks_uuid
           });
-          if (response.flag) {
+          if (response.code === 200) {
             successCount++;
           }
         } catch (error) {
@@ -123,11 +121,10 @@ const TaskConfig: React.FC = () => {
       let successCount = 0;
       for (const task of activeTasks) {
         try {
-          const response = await apiService.request('/@tasks/status/none', 'POST', {
-            tasks_uuid: task.tasks_uuid,
-            tasks_flag: 0 // 设置为停止状态
+          const response = await apiService.post('/api/task/upload/cancel', {
+            tid: task.tasks_uuid
           });
-          if (response.flag) {
+          if (response.code === 200) {
             successCount++;
           }
         } catch (error) {
@@ -159,10 +156,10 @@ const TaskConfig: React.FC = () => {
       let successCount = 0;
       for (const task of completedTasks) {
         try {
-          const response = await apiService.request('/@tasks/remove/none', 'POST', {
-            tasks_uuid: task.tasks_uuid
+          const response = await apiService.post('/api/task/upload/delete', {
+            tid: task.tasks_uuid
           });
-          if (response.flag) {
+          if (response.code === 200) {
             successCount++;
           }
         } catch (error) {
@@ -247,14 +244,13 @@ const TaskConfig: React.FC = () => {
 
   const handleDelete = async (task: Task) => {
     try {
-      const response = await apiService.request('/@tasks/remove/none', 'POST', {
-        tasks_uuid: task.tasks_uuid
+      const response = await apiService.post('/api/task/upload/delete', {
+        tid: task.tasks_uuid
       });
-      if (response.flag) {
-        // 删除成功，重新获取任务列表
+      if (response.code === 200) {
         await fetchTasks();
       } else {
-        setError(response.text || '删除任务失败');
+        setError(response.message || '删除任务失败');
       }
     } catch (err) {
       console.error('删除任务错误:', err);

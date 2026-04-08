@@ -62,8 +62,8 @@ const PathRules: React.FC = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.post('/@mates/select/none', {});
-      if (res.flag) {
+    const res = await api.get('/api/admin/meta/list');
+      if (res.code === 200) {
         setDataSource(res.data || []);
       }
     } catch (err) {
@@ -76,8 +76,8 @@ const PathRules: React.FC = () => {
   // 加载加密组列表
   const fetchCryptGroups = useCallback(async () => {
     try {
-      const res = await api.post('/@crypt/select/none', {});
-      if (res.flag) {
+      const res = await api.get('/api/admin/setting/list?group=crypt');
+      if (res.code === 200) {
         setCryptGroups(res.data || []);
       }
     } catch { /* 忽略 */ }
@@ -159,11 +159,11 @@ const PathRules: React.FC = () => {
       };
 
       const url = editingItem
-        ? '/@mates/config/none'
-        : '/@mates/create/none';
+        ? '/api/admin/meta/update'
+        : '/api/admin/meta/create';
 
-      const res = await api.post(url, { config: payload });
-      if (res.flag) {
+      const res = await api.post(url, payload);
+      if (res.code === 200) {
         message.success(t('common.success'));
         setEditVisible(false);
         fetchData();
@@ -178,8 +178,8 @@ const PathRules: React.FC = () => {
   // 删除
   const handleDelete = async (name: string) => {
     try {
-      const res = await api.post('/@mates/remove/none', { config: { mates_name: name } });
-      if (res.flag) {
+      const res = await api.post('/api/admin/meta/delete', { mates_name: name });
+      if (res.code === 200) {
         message.success(t('common.success'));
         fetchData();
       } else {
@@ -194,7 +194,7 @@ const PathRules: React.FC = () => {
   const renderMaskTags = (mask: number) => {
     const tags: React.ReactNode[] = [];
     if (mask & MASK_BITS.ATTR_ENCRYPTED) tags.push(<Tag key="enc" color="red"><LockOutlined /> {t('common.encrypt')}</Tag>);
-    if (mask & MASK_BITS.ATTR_COMPRESSED) tags.push(<Tag key="zip" color="orange"><FileZipOutlined /> {t('common.compress')}</Tag>);
+    if (mask & MASK_BITS.ATTR_COMPRESSED) tags.push(<Tag key="zip" color="orange"><FileZipOutlined /> {t('common.unzip')}</Tag>);
     if (mask & MASK_BITS.OWNER_DOWNLOAD) tags.push(<Tag key="od" color="blue">主↓</Tag>);
     if (mask & MASK_BITS.OWNER_WRITE) tags.push(<Tag key="ow" color="blue">主↑</Tag>);
     if (mask & MASK_BITS.GROUP_DOWNLOAD) tags.push(<Tag key="gd" color="cyan">组↓</Tag>);

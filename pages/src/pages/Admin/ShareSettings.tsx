@@ -15,8 +15,8 @@ const ShareSettings: React.FC = () => {
 
   const fetchSettings = async () => {
     try {
-      const res: any = await apiService.get('/@admin/select/none?admin_keys=share_settings');
-      if (res.flag && res.data) {
+      const res: any = await apiService.get('/api/admin/setting/list?group=share_settings');
+      if (res.code === 200 && res.data) {
         const settings = JSON.parse(res.data.admin_data || '{}');
         form.setFieldsValue(settings);
       }
@@ -30,14 +30,14 @@ const ShareSettings: React.FC = () => {
   const handleSave = async (values: any) => {
     setLoading(true);
     try {
-      const res: any = await apiService.post('/@admin/config/none', {
+      const res: any = await apiService.post('/api/admin/setting/save', {
         admin_keys: 'share_settings',
         admin_data: JSON.stringify(values),
       });
-      if (res.flag) {
+      if (res.code === 200) {
         message.success('分享设置保存成功');
       } else {
-        message.error(res.text || '保存失败');
+        message.error(res.message || '保存失败');
       }
     } catch (error: any) {
       message.error(error.message || '保存失败');

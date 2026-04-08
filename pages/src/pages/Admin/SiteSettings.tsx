@@ -24,7 +24,7 @@ const SiteSettings: React.FC = () => {
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const result = await apiService.get('/@admin/select/none');
+        const result = await apiService.get('/api/admin/setting/list');
         if (result.flag && result.data) {
           const data: Record<string, any> = {};
           (result.data as any[]).forEach((item: any) => {
@@ -63,7 +63,7 @@ const SiteSettings: React.FC = () => {
         { admin_keys: 'enable_captcha', admin_data: settings.enableCaptcha ? '1' : '0' },
         { admin_keys: 'maintenance_mode', admin_data: settings.maintenanceMode ? '1' : '0' },
       ];
-      const result = await apiService.post('/@admin/batch/none', { items });
+      const result = await apiService.post('/api/admin/setting/save', { items });
       if (result.flag) {
         message.success('站点设置保存成功');
       } else {

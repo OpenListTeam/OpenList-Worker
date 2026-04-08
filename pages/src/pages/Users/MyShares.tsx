@@ -39,18 +39,10 @@ const MyShares: React.FC = () => {
   const fetchShares = async () => {
     try {
       setLoading(true);
-      const result = await apiService.request('/@share/select/none', 'POST', {});
-      if (result.flag) {
-        const data = result.data;
-        if (Array.isArray(data)) {
-          setShares(data);
-        } else {
-          setShares([]);
-          console.warn('API返回的数据不是数组类型:', data);
-        }
-      } else {
-        setError(result.text || '获取分享列表失败');
-      }
+      const result = await apiService.get('/api/share/list');
+      // 拦截器已解包：result 直接是数组或含 content 的对象
+      const data = Array.isArray(result) ? result : (result?.content || result?.data || []);
+      setShares(data);
     } catch (err) {
       console.error('获取分享列表错误:', err);
       setError('获取分享列表失败，请检查网络连接');
@@ -135,14 +127,10 @@ const MyShares: React.FC = () => {
         share_ends: formData.share_ends || '',
         is_enabled: formData.is_enabled || 1
       };
-      const result = await apiService.request('/@share/create/none', 'POST', shareData);
-      if (result.flag) {
-        showMessage('分享创建成功');
-        setCreateDialog({ open: false });
-        fetchShares();
-      } else {
-        showMessage(`创建分享失败: ${result.text}`, 'error');
-      }
+      const result = await apiService.post('/api/share/create', shareData);
+      showMessage('分享创建成功');
+      setCreateDialog({ open: false });
+      fetchShares();
     } catch (err) {
       console.error('创建分享错误:', err);
       showMessage('创建分享失败，请检查网络连接', 'error');
@@ -161,15 +149,11 @@ const MyShares: React.FC = () => {
       content: '确定要删除这个分享吗？',
       onOk: async () => {
         try {
-          const result = await apiService.request('/@share/remove/none', 'POST', {
-            share_uuid: share.share_uuid
+          const result = await apiService.post('/api/share/delete', {
+            id: share.share_uuid
           });
-          if (result.flag) {
-            showMessage('分享删除成功');
-            fetchShares();
-          } else {
-            showMessage(`删除分享失败: ${result.text}`, 'error');
-          }
+          showMessage('分享删除成功');
+          fetchShares();
         } catch (err) {
           console.error('删除分享错误:', err);
           showMessage('删除分享失败，请检查网络连接', 'error');
@@ -194,16 +178,10 @@ const MyShares: React.FC = () => {
   const handleToggleStatus = async (share: ShareConfig) => {
     try {
       const newStatus = share.is_enabled === 1 ? 0 : 1;
-      const result = await apiService.request('/@share/status/none', 'POST', {
-        share_uuid: share.share_uuid,
-        is_enabled: newStatus
-      });
-      if (result.flag) {
-        showMessage(`分享已${newStatus === 1 ? '启用' : '禁用'}`);
-        fetchShares();
-      } else {
-        showMessage(`更新分享状态失败: ${result.text}`, 'error');
-      }
+      const endpoint = newStatus === 1 ? '/api/share/enable' : '/api/share/disable';
+      const result = await apiService.post(endpoint, { id: share.share_uuid });
+      showMessage(`分享已${newStatus === 1 ? '启用' : '禁用'}`);
+      fetchShares();
     } catch (err) {
       console.error('更新分享状态错误:', err);
       showMessage('更新分享状态失败，请检查网络连接', 'error');
@@ -214,14 +192,10 @@ const MyShares: React.FC = () => {
   const handleSaveEdit = async () => {
     if (!editDialog.share) return;
     try {
-      const result = await apiService.request('/@share/config/none', 'POST', editDialog.share);
-      if (result.flag) {
-        showMessage('分享更新成功');
-        setEditDialog({ open: false, share: null });
-        fetchShares();
-      } else {
-        showMessage(`更新分享失败: ${result.text}`, 'error');
-      }
+      const result = await apiService.post('/api/share/update', editDialog.share);
+      showMessage('分享更新成功');
+      setEditDialog({ open: false, share: null });
+      fetchShares();
     } catch (err) {
       console.error('更新分享错误:', err);
       showMessage('更新分享失败，请检查网络连接', 'error');

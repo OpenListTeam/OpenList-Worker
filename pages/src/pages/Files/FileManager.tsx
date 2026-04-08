@@ -120,16 +120,16 @@ const FileManager: React.FC = () => {
   // 加载加密组列表
   const loadEncryptGroups = useCallback(async () => {
     try {
-      const res = await api.post('/@crypt/select/none', {});
-      if (res?.flag && res?.data) setEncryptGroups(res.data);
+      const res = await api.post('/api/admin/setting/list', { group: 'crypt' });
+      if (res?.code === 200 && res?.data) setEncryptGroups(res.data);
     } catch { /* 忽略 */ }
   }, []);
 
   // 加载路径规则列表
   const loadMatesOptions = useCallback(async () => {
     try {
-      const res = await api.post('/@mates/select/none', {});
-      if (res?.flag && res?.data) setMatesOptions(res.data);
+      const res = await api.post('/api/admin/meta/list', {});
+      if (res?.code === 200 && res?.data) setMatesOptions(res.data);
     } catch { /* 忽略 */ }
   }, []);
 
@@ -137,12 +137,12 @@ const FileManager: React.FC = () => {
   const loadDirTree = useCallback(async (parentPath: string = '/') => {
     setDirTreeLoading(true);
     try {
-      const res = await api.get(`/@files/list/path${parentPath}`);
-      if (res?.flag && res?.data?.fileList) {
-        const dirs = (res.data.fileList as FileItem[]).filter(f => f.fileType === 0);
-        return dirs.map(d => ({
-          title: d.fileName,
-          key: parentPath === '/' ? `/${d.fileName}` : `${parentPath}/${d.fileName}`,
+      const res = await api.post('/api/fs/list', { path: parentPath, password: '', page: 1, per_page: 0, refresh: false });
+      if (res?.code === 200 && res?.data?.content) {
+        const dirs = (res.data.content as any[]).filter(f => f.is_dir);
+        return dirs.map((d: any) => ({
+          title: d.name,
+          key: parentPath === '/' ? `/${d.name}` : `${parentPath}/${d.name}`,
           isLeaf: false,
         }));
       }
@@ -182,9 +182,19 @@ const FileManager: React.FC = () => {
   const loadFiles = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/@files/list/path${currentPath}`);
-      if (res?.flag && res?.data?.fileList) {
-        setFiles(res.data.fileList);
+      const res = await api.post('/api/fs/list', { path: currentPath, password: '', page: 1, per_page: 0, refresh: false });
+      if (res?.code === 200 && res?.data?.content) {
+        // 将新版 API 格式转换为组件内部格式
+        const content = res.data.content as any[];
+        setFiles(content.map(item => ({
+          filePath: `${currentPath === '/' ? '' : currentPath}/${item.name}`,
+          fileName: item.name,
+          fileSize: item.size || 0,
+          fileType: item.is_dir ? 0 : 1,
+          timeModify: item.modified,
+          timeCreate: item.created,
+          thumbnails: item.thumb,
+        })));
       } else {
         setFiles([]);
       }
@@ -275,9 +285,9 @@ const FileManager: React.FC = () => {
   // 下载文件
   const handleDownload = async (record: FileItem) => {
     try {
-      const res = await api.get(`/@files/link/path${getFilePath(record)}`);
-      if (res?.flag && res?.data?.[0]?.direct) {
-        window.open(res.data[0].direct, '_blank');
+      const res = await api.post('/api/fs/get', { path: getFilePath(record), password: '' });
+      if (res?.code === 200 && res?.data?.raw_url) {
+        window.open(res.data.raw_url, '_blank');
       } else {
         message.info(t('files.downloadLink') + ': ' + JSON.stringify(res?.data));
       }
@@ -293,9 +303,9 @@ const FileManager: React.FC = () => {
       okType: 'danger',
       onOk: async () => {
         try {
-          const res = await api.delete(`/@files/remove/path${getFilePath(record)}`);
-          if (res?.flag) { message.success(t('common.success')); loadFiles(); }
-          else message.error(res?.text || t('common.failed'));
+          const res = await api.post('/api/fs/remove', { dir: currentPath, names: [record.fileName] });
+          if (res?.code === 200) { message.success(t('common.success')); loadFiles(); }
+          else message.error(res?.message || t('common.failed'));
         } catch { message.error(t('common.failed')); }
       },
     });
@@ -305,11 +315,12 @@ const FileManager: React.FC = () => {
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) return;
     try {
-      const res = await api.post(`/@files/create/path${currentPath}?target=${encodeURIComponent(newFolderName + '/')}`, {});
-      if (res?.flag) {
+      const newPath = currentPath === '/' ? `/${newFolderName}` : `${currentPath}/${newFolderName}`;
+      const res = await api.post('/api/fs/mkdir', { path: newPath });
+      if (res?.code === 200) {
         message.success(t('common.success'));
         setNewFolderOpen(false); setNewFolderName(''); loadFiles();
-      } else message.error(res?.text || t('common.failed'));
+      } else message.error(res?.message || t('common.failed'));
     } catch { message.error(t('common.failed')); }
   };
 
@@ -317,11 +328,11 @@ const FileManager: React.FC = () => {
   const handleRename = async () => {
     if (!renameTarget || !renameName.trim()) return;
     try {
-      const res = await api.post(`/@files/rename/path${getFilePath(renameTarget)}?target=${encodeURIComponent(renameName)}`, {});
-      if (res?.flag) {
+      const res = await api.post('/api/fs/rename', { path: getFilePath(renameTarget), name: renameName });
+      if (res?.code === 200) {
         message.success(t('common.success'));
         setRenameOpen(false); setRenameTarget(null); loadFiles();
-      } else message.error(res?.text || t('common.failed'));
+      } else message.error(res?.message || t('common.failed'));
     } catch { message.error(t('common.failed')); }
   };
 
@@ -329,12 +340,11 @@ const FileManager: React.FC = () => {
   const handleMove = async () => {
     if (!moveTarget || !moveDest.trim()) return;
     try {
-      const destPath = moveDest.endsWith('/') ? `${moveDest}${moveTarget.fileName}` : `${moveDest}/${moveTarget.fileName}`;
-      const res = await api.post(`/@files/move/path${getFilePath(moveTarget)}?target=${encodeURIComponent(destPath)}`, {});
-      if (res?.flag) {
+      const res = await api.post('/api/fs/move', { src_dir: currentPath, dst_dir: moveDest, names: [moveTarget.fileName] });
+      if (res?.code === 200) {
         message.success(t('common.success'));
         setMoveOpen(false); setMoveTarget(null); setMoveDest(''); loadFiles();
-      } else message.error(res?.text || t('common.failed'));
+      } else message.error(res?.message || t('common.failed'));
     } catch { message.error(t('common.failed')); }
   };
 
@@ -342,12 +352,11 @@ const FileManager: React.FC = () => {
   const handleCopy = async () => {
     if (!copyTarget || !copyDest.trim()) return;
     try {
-      const destPath = copyDest.endsWith('/') ? `${copyDest}${copyTarget.fileName}` : `${copyDest}/${copyTarget.fileName}`;
-      const res = await api.post(`/@files/copy/path${getFilePath(copyTarget)}?target=${encodeURIComponent(destPath)}`, {});
-      if (res?.flag) {
+      const res = await api.post('/api/fs/copy', { src_dir: currentPath, dst_dir: copyDest, names: [copyTarget.fileName] });
+      if (res?.code === 200) {
         message.success(t('common.success'));
         setCopyOpen(false); setCopyTarget(null); setCopyDest(''); loadFiles();
-      } else message.error(res?.text || t('common.failed'));
+      } else message.error(res?.message || t('common.failed'));
     } catch { message.error(t('common.failed')); }
   };
 
@@ -385,39 +394,37 @@ const FileManager: React.FC = () => {
           }
         } catch { /* 忽略 */ }
       }
-      const res = await api.post(`/@share/create/none`, {
-        share_path: getFilePath(shareTarget),
-        share_user: userName,
-        share_pass: sharePass,
-        share_date: new Date().toISOString(),
-        share_ends: endsDate,
-        is_enabled: 1,
+      const res = await api.post('/api/share/create', {
+        path: getFilePath(shareTarget),
+        password: sharePass,
+        expire: shareExpire > 0 ? shareExpire * 86400 : 0,
       });
-      if (res?.flag) {
-        const uuid = res?.data?.[0]?.share_uuid || res?.data?.share_uuid || '';
-        setShareLink(uuid ? `${window.location.origin}/share/${uuid}` : `${window.location.origin}/share/`);
+      if (res?.code === 200 && res?.data) {
+        const id = res.data.id || res.data.share_uuid || '';
+        setShareLink(id ? `${window.location.origin}/s/${id}` : `${window.location.origin}/s/`);
       } else {
-        message.error(res?.text || t('common.failed'));
+        message.error(res?.message || t('common.failed'));
       }
     } catch { message.error(t('common.failed')); }
     finally { setShareLoading(false); }
   };
 
-  // 加密文件（关联加密组到文件路径的 mates 规则）
+  // 加密文件（关联加密组到文件路径的 meta 规则）
   const handleEncrypt = async () => {
     if (!encryptTarget || !encryptGroup) return;
     setEncryptLoading(true);
     try {
       const filePath = getFilePath(encryptTarget);
-      const res = await api.post(`/@mates/create/none`, {
-        mates_name: filePath,
-        crypt_name: encryptGroup,
-        is_enabled: 1,
+      const res = await api.post('/api/admin/meta/create', {
+        path: filePath,
+        password: encryptGroup,
+        p_sub: true,
+        write: false,
       });
-      if (res?.flag) {
+      if (res?.code === 200) {
         message.success('加密关联成功');
         setEncryptOpen(false); setEncryptTarget(null); setEncryptGroup('');
-      } else message.error(res?.text || t('common.failed'));
+      } else message.error(res?.message || t('common.failed'));
     } catch { message.error(t('common.failed')); }
     finally { setEncryptLoading(false); }
   };
@@ -428,16 +435,18 @@ const FileManager: React.FC = () => {
     setDecryptLoading(true);
     try {
       const filePath = getFilePath(decryptTarget);
-      // 调用文件解密API
-      const res = await api.post(`/@files/decrypt${filePath}`, {
-        crypt_pass: decryptPass,
+      // 调用文件其他操作API（解密）
+      const res = await api.post('/api/fs/other', {
+        path: filePath,
+        method: 'decrypt',
+        args: { password: decryptPass },
       });
-      if (res?.flag) {
+      if (res?.code === 200) {
         message.success('文件解密成功');
         setDecryptOpen(false); setDecryptTarget(null); setDecryptPass('');
-        fetchFiles(currentPath); // 刷新文件列表
+        loadFiles();
       } else {
-        message.error(res?.text || '解密失败');
+        message.error(res?.message || '解密失败');
       }
     } catch { message.error('解密失败'); }
     finally { setDecryptLoading(false); }
@@ -449,15 +458,16 @@ const FileManager: React.FC = () => {
     setFolderEditLoading(true);
     try {
       const folderPath = getFilePath(folderEditTarget);
-      const res = await api.post(`/@mates/create/none`, {
-        mates_name: folderPath,
-        crypt_name: folderCryptName || undefined,
-        is_enabled: 1,
+      const res = await api.post('/api/admin/meta/create', {
+        path: folderPath,
+        password: folderCryptName || undefined,
+        p_sub: true,
+        write: false,
       });
-      if (res?.flag) {
+      if (res?.code === 200) {
         message.success('文件夹配置已保存');
         setFolderEditOpen(false); setFolderEditTarget(null); setFolderMatesName(''); setFolderCryptName('');
-      } else message.error(res?.text || t('common.failed'));
+      } else message.error(res?.message || t('common.failed'));
     } catch { message.error(t('common.failed')); }
     finally { setFolderEditLoading(false); }
   };
@@ -470,34 +480,33 @@ const FileManager: React.FC = () => {
       const userName = currentUser?.users_name || '';
       if (!userName) { message.error('用户未登录'); setCompressLoading(false); return; }
       const outputPath = `${currentPath === '/' ? '' : currentPath}/${compressName}.${compressFormat}`;
-      const res = await api.post(`/@tasks/create/none`, {
-        tasks_type: 'compress',
-        tasks_user: userName,
-        tasks_info: JSON.stringify({
-          source: getFilePath(compressTarget),
-          output: outputPath,
-          format: compressFormat,
-        }),
-        tasks_flag: 0,
+      const res = await api.post('/api/task/offline_download/add', {
+        type: 'compress',
+        urls: [getFilePath(compressTarget)],
+        save_path: outputPath,
+        tool: compressFormat,
       });
-      if (res?.flag) {
+      if (res?.code === 200) {
         message.success(t('common.success'));
         setCompressOpen(false); setCompressTarget(null); setCompressName(''); loadFiles();
-      } else message.error(res?.text || t('common.failed'));
+      } else message.error(res?.message || t('common.failed'));
     } catch { message.error(t('common.failed')); }
     finally { setCompressLoading(false); }
   };
 
   // 上传文件
   const handleUpload = async (file: File) => {
-    const formData = new FormData();
-    formData.append('files', file);
     try {
-      const res = await api.post(`/@files/upload/path${currentPath}`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const uploadPath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
+      const res = await api.put('/api/fs/put', file, {
+        headers: {
+          'File-Path': encodeURIComponent(uploadPath),
+          'Content-Type': file.type || 'application/octet-stream',
+          'Content-Length': String(file.size),
+        },
       });
-      if (res?.flag) { message.success(t('common.success')); loadFiles(); }
-      else message.error(res?.text || t('common.failed'));
+      if (res?.code === 200) { message.success(t('common.success')); loadFiles(); }
+      else message.error(res?.message || t('common.failed'));
     } catch { message.error(t('common.failed')); }
     return false;
   };
@@ -548,7 +557,7 @@ const FileManager: React.FC = () => {
     { key: 'share', icon: <ShareAltOutlined />, label: t('common.share'), onClick: () => { setContextMenu(null); setShareTarget(record); setShareLink(''); setShareExpire(7); setSharePass(''); setShareOpen(true); } },
     { key: 'encrypt', icon: <LockOutlined />, label: t('common.encrypt'), onClick: () => { setContextMenu(null); openEncryptDialog(record); } },
     { key: 'decrypt', icon: <LockOutlined />, label: '解密', onClick: () => { setContextMenu(null); setDecryptTarget(record); setDecryptPass(''); setDecryptOpen(true); } },
-    { key: 'compress', icon: <FileZipOutlined />, label: t('common.compress'), onClick: () => { setContextMenu(null); setCompressTarget(record); setCompressName(record.fileName.replace(/\.[^.]+$/, '') || record.fileName); setCompressFormat('zip'); setCompressOpen(true); } },
+    { key: 'compress', icon: <FileZipOutlined />, label: t('common.unzip'), onClick: () => { setContextMenu(null); setCompressTarget(record); setCompressName(record.fileName.replace(/\.[^.]+$/, '') || record.fileName); setCompressFormat('zip'); setCompressOpen(true); } },
     { type: 'divider' as const },
     { key: 'delete', icon: <DeleteOutlined />, label: t('common.delete'), danger: true, onClick: () => { setContextMenu(null); handleDelete(record); } },
   ];
@@ -636,27 +645,104 @@ const FileManager: React.FC = () => {
       </Card>
 
       {/* 文件列表 */}
-      <Card variant="borderless" style={{ borderRadius: 12 }} styles={{ body: { padding: 0 } }}>
+      <Card variant="borderless" style={{ borderRadius: 12 }} styles={{ body: { padding: viewMode === 'grid' ? 16 : 0 } }}>
         {loading ? (
           <div style={{ padding: 24 }}><Skeleton active paragraph={{ rows: 8 }} /></div>
         ) : files.length === 0 ? (
           <Empty description={t('files.noFiles')} style={{ padding: '80px 0' }} />
+        ) : viewMode === 'grid' ? (
+          /* ── 网格视图 ── */
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+            gap: 12,
+          }}>
+            {files.map((record) => (
+              <div
+                key={record.fileName}
+                onClick={() => handleClick(record)}
+                onContextMenu={(e) => openContextMenu(e, record)}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  padding: '16px 8px 12px',
+                  borderRadius: 10,
+                  cursor: 'pointer',
+                  border: '1px solid var(--ant-color-border-secondary, #f0f0f0)',
+                  background: 'var(--ant-color-bg-container, #fff)',
+                  transition: 'box-shadow 0.2s, border-color 0.2s, transform 0.2s',
+                  userSelect: 'none',
+                  position: 'relative',
+                }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 16px rgba(59,130,246,0.12)';
+                  (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(59,130,246,0.3)';
+                  (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLDivElement).style.boxShadow = 'none';
+                  (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--ant-color-border-secondary, #f0f0f0)';
+                  (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)';
+                }}
+              >
+                {/* 文件图标 */}
+                <div style={{ fontSize: 40, marginBottom: 10, lineHeight: 1 }}>
+                  {getFileIcon(record)}
+                </div>
+                {/* 文件名 */}
+                <Text
+                  ellipsis={{ tooltip: record.fileName }}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 500,
+                    textAlign: 'center',
+                    width: '100%',
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {record.fileName}
+                </Text>
+                {/* 文件大小 */}
+                {record.fileType !== 0 && (
+                  <Text type="secondary" style={{ fontSize: 11, marginTop: 4 }}>
+                    {formatSize(record.fileSize)}
+                  </Text>
+                )}
+                {/* 操作按钮（悬停时显示） */}
+                <div
+                  style={{ marginTop: 8 }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <Dropdown menu={{ items: actionMenuItems(record) }} trigger={['click']}>
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<MoreOutlined />}
+                      style={{ opacity: 0.6 }}
+                    />
+                  </Dropdown>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
+          /* ── 列表视图 ── */
           <Table
             dataSource={files}
             columns={columns}
             rowKey={(record) => record.fileName}
             pagination={false}
             size="middle"
-      onRow={(record) => ({
-        onClick: (e) => {
-          // 如果点击的是操作列按钮，不触发行点击
-          const target = e.target as HTMLElement;
-          if (target.closest('.ant-dropdown-trigger') || target.closest('.ant-btn')) return;
-          handleClick(record);
-        },
-        onContextMenu: (e) => openContextMenu(e, record),
-      })}
+            onRow={(record) => ({
+              onClick: (e) => {
+                // 如果点击的是操作列按钮，不触发行点击
+                const target = e.target as HTMLElement;
+                if (target.closest('.ant-dropdown-trigger') || target.closest('.ant-btn')) return;
+                handleClick(record);
+              },
+              onContextMenu: (e) => openContextMenu(e, record),
+            })}
             style={{ borderRadius: 12, overflow: 'hidden' }}
           />
         )}

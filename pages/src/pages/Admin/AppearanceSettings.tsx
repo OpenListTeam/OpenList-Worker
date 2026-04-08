@@ -16,7 +16,7 @@ const AppearanceSettings: React.FC = () => {
 
   const fetchSettings = async () => {
     try {
-      const res: any = await apiService.get('/@admin/select/none?admin_keys=appearance');
+      const res: any = await apiService.get('/api/admin/setting/list?group=appearance');
       if (res.flag && res.data) {
         const settings = JSON.parse(res.data.admin_data || '{}');
         form.setFieldsValue(settings);
@@ -31,7 +31,7 @@ const AppearanceSettings: React.FC = () => {
   const handleSave = async (values: any) => {
     setLoading(true);
     try {
-      const res: any = await apiService.post('/@admin/config/none', {
+      const res: any = await apiService.post('/api/admin/setting/save', {
         admin_keys: 'appearance',
         admin_data: JSON.stringify(values),
       });

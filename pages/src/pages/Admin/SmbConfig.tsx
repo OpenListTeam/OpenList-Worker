@@ -14,8 +14,8 @@ const SmbConfig: React.FC = () => {
 
   const fetchConfig = async () => {
     try {
-      const res: any = await apiService.get('/@token/select/none?token_type=smb');
-      if (res.flag && res.data && res.data.length > 0) {
+      const res: any = await apiService.get('/api/admin/setting/list?group=smb');
+      if (res.code === 200 && res.data && res.data.length > 0) {
         const config = JSON.parse(res.data[0].token_info || '{}');
         form.setFieldsValue(config);
       }
@@ -29,18 +29,14 @@ const SmbConfig: React.FC = () => {
   const handleSave = async (values: any) => {
     setLoading(true);
     try {
-      const res: any = await apiService.post('/@token/config/none', {
-        token_uuid: 'smb-default',
-        token_path: values.share_path || '/',
-        token_user: 'system',
-        token_type: 'smb',
-        token_info: JSON.stringify(values),
-        is_enabled: values.is_enabled ? 1 : 0,
+      const res: any = await apiService.post('/api/admin/setting/save', {
+        admin_keys: 'smb',
+        admin_data: JSON.stringify(values),
       });
-      if (res.flag) {
+      if (res.code === 200) {
         message.success('SMB配置保存成功');
       } else {
-        message.error(res.text || '保存失败');
+        message.error(res.message || '保存失败');
       }
     } catch (error: any) {
       message.error(error.message || '保存失败');

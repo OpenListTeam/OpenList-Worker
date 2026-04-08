@@ -33,14 +33,11 @@ const OAuthManagement: React.FC = () => {
   const fetchOauths = async () => {
     try {
       setLoading(true);
-      const result = await apiService.request('/@oauth/select/none', 'POST', {});
-      
-      if (result.flag) {
-        setOauths(result.data || []);
-        setError(null);
-      } else {
-        setError(`获取OAuth配置失败: ${result.text}`);
-      }
+      const result = await apiService.get('/api/admin/user/list?oauth=1');
+      // 拦截器已解包：result 直接是数组或含 content 的对象
+      const list = Array.isArray(result) ? result : (result?.content || result?.data || []);
+      setOauths(list);
+      setError(null);
     } catch (error) {
       console.error('获取OAuth配置错误:', error);
       setError('获取OAuth配置失败，请检查网络连接');
@@ -119,17 +116,13 @@ const OAuthManagement: React.FC = () => {
   const handleToggleStatus = async (oauth: OAuth) => {
     try {
       const newStatus = oauth.is_enabled === 1 ? 0 : 1;
-      const result = await apiService.request('/@oauth/status/none', 'POST', {
+      const result = await apiService.post('/api/admin/user/update', {
         oauth_name: oauth.oauth_name,
         is_enabled: newStatus
       });
 
-      if (result.flag) {
-        showMessage(`OAuth配置已${newStatus === 1 ? '启用' : '禁用'}`);
-        await fetchOauths();
-      } else {
-        showMessage(`状态切换失败: ${result.text}`, 'error');
-      }
+      showMessage(`OAuth配置已${newStatus === 1 ? '启用' : '禁用'}`);
+      await fetchOauths();
     } catch (error) {
       console.error('切换状态错误:', error);
       showMessage('状态切换失败', 'error');
@@ -165,16 +158,12 @@ const OAuthManagement: React.FC = () => {
     }
 
     try {
-      const result = await apiService.request('/@oauth/remove/none', 'POST', {
+      const result = await apiService.post('/api/admin/user/delete', {
         oauth_name: oauth.oauth_name
       });
 
-      if (result.flag) {
-        showMessage('OAuth配置删除成功');
-        await fetchOauths();
-      } else {
-        showMessage(`删除失败: ${result.text}`, 'error');
-      }
+      showMessage('OAuth配置删除成功');
+      await fetchOauths();
     } catch (error) {
       console.error('删除OAuth配置错误:', error);
       showMessage('删除失败', 'error');
@@ -192,15 +181,11 @@ const OAuthManagement: React.FC = () => {
       // 验证oauth_data是否为有效JSON
       JSON.parse(formData.oauth_data!);
       
-      const result = await apiService.request('/@oauth/create/none', 'POST', formData);
+      const result = await apiService.post('/api/admin/user/create', formData);
 
-      if (result.flag) {
-        showMessage('OAuth配置创建成功');
-        setCreateDialog({ open: false });
-        await fetchOauths();
-      } else {
-        showMessage(`创建失败: ${result.text}`, 'error');
-      }
+      showMessage('OAuth配置创建成功');
+      setCreateDialog({ open: false });
+      await fetchOauths();
     } catch (error) {
       if (error instanceof SyntaxError) {
         showMessage('OAuth数据格式错误，请输入有效的JSON', 'error');
@@ -222,15 +207,11 @@ const OAuthManagement: React.FC = () => {
       // 验证oauth_data是否为有效JSON
       JSON.parse(formData.oauth_data!);
       
-      const result = await apiService.request('/@oauth/config/none', 'POST', formData);
+      const result = await apiService.post('/api/admin/user/update', formData);
 
-      if (result.flag) {
-        showMessage('OAuth配置更新成功');
-        setEditDialog({ open: false, oauth: null });
-        await fetchOauths();
-      } else {
-        showMessage(`更新失败: ${result.text}`, 'error');
-      }
+      showMessage('OAuth配置更新成功');
+      setEditDialog({ open: false, oauth: null });
+      await fetchOauths();
     } catch (error) {
       if (error instanceof SyntaxError) {
         showMessage('OAuth数据格式错误，请输入有效的JSON', 'error');

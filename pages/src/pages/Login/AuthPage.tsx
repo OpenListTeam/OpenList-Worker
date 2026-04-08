@@ -1,16 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-    Card,
     Input,
     Button,
     Typography,
     Alert,
-    Select,
     Checkbox,
     Tabs,
     Divider,
-    Spin,
     Form,
+    App,
 } from 'antd';
 import {
     LoginOutlined,
@@ -18,8 +16,16 @@ import {
     GoogleOutlined,
     GithubOutlined,
     WindowsOutlined,
-    EyeInvisibleOutlined,
-    EyeOutlined,
+    UserOutlined,
+    LockOutlined,
+    MailOutlined,
+    FolderOutlined,
+    ThunderboltOutlined,
+    SafetyCertificateOutlined,
+    CloudOutlined,
+    TeamOutlined,
+    ArrowRightOutlined,
+    LinkOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { userApi } from '../../posts/api';
@@ -28,341 +34,298 @@ import { useAuthStore } from '../../store';
 import type { UsersResult, UsersConfig } from '../../types';
 
 const { Title, Text, Link: AntdLink } = Typography;
-const { Password } = Input;
+
+/* ─── 内联关键帧动画样式（与 LoginPage 共享同名前缀 ap-） ─── */
+const animStyles = `
+@keyframes ap-float-up {
+  0%   { opacity: 0; transform: translateY(32px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes ap-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes ap-pulse-glow {
+  0%, 100% { box-shadow: 0 0 32px rgba(59,130,246,0.35), 0 0 64px rgba(139,92,246,0.15); }
+  50%       { box-shadow: 0 0 48px rgba(59,130,246,0.55), 0 0 96px rgba(139,92,246,0.25); }
+}
+@keyframes ap-orbit {
+  from { transform: rotate(0deg) translateX(110px) rotate(0deg); }
+  to   { transform: rotate(360deg) translateX(110px) rotate(-360deg); }
+}
+@keyframes ap-orbit2 {
+  from { transform: rotate(120deg) translateX(160px) rotate(-120deg); }
+  to   { transform: rotate(480deg) translateX(160px) rotate(-480deg); }
+}
+@keyframes ap-orbit3 {
+  from { transform: rotate(240deg) translateX(200px) rotate(-240deg); }
+  to   { transform: rotate(600deg) translateX(200px) rotate(-600deg); }
+}
+.ap-float-1 { animation: ap-float-up 0.6s 0.05s ease-out both; }
+.ap-float-2 { animation: ap-float-up 0.6s 0.15s ease-out both; }
+.ap-float-3 { animation: ap-float-up 0.6s 0.25s ease-out both; }
+.ap-float-4 { animation: ap-float-up 0.6s 0.35s ease-out both; }
+.ap-float-5 { animation: ap-float-up 0.6s 0.45s ease-out both; }
+.ap-fade    { animation: ap-fade-in  0.8s 0.1s  ease-out both; }
+.ap-login-btn {
+  position: relative; overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+}
+.ap-login-btn:hover  { transform: translateY(-2px) !important; box-shadow: 0 8px 28px rgba(59,130,246,0.45) !important; }
+.ap-login-btn:active { transform: translateY(0) !important; }
+.ap-input-wrap .ant-input-affix-wrapper,
+.ap-input-wrap .ant-input {
+  transition: border-color 0.25s, box-shadow 0.25s !important;
+}
+.ap-input-wrap .ant-input-affix-wrapper:hover,
+.ap-input-wrap .ant-input:hover {
+  border-color: rgba(59,130,246,0.6) !important;
+}
+.ap-input-wrap .ant-input-affix-wrapper-focused,
+.ap-input-wrap .ant-input:focus {
+  border-color: #3B82F6 !important;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.12) !important;
+}
+.ap-oauth-btn {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease !important;
+}
+.ap-oauth-btn:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.15) !important;
+}
+`;
+
+/* ─── 特性统计数据 ─── */
+const stats = [
+    { icon: <CloudOutlined />,             value: '25+',  label: '网盘驱动' },
+    { icon: <SafetyCertificateOutlined />, value: 'AES',  label: '军级加密' },
+    { icon: <TeamOutlined />,              value: '∞',    label: '多用户' },
+    { icon: <ThunderboltOutlined />,       value: 'Fast', label: '极致性能' },
+];
+
+/* ─── OAuth 图标 & 颜色 ─── */
+const getOAuthIcon = (oauthType: string) => {
+    switch (oauthType.toLowerCase()) {
+        case 'google':    return <GoogleOutlined />;
+        case 'github':    return <GithubOutlined />;
+        case 'microsoft': return <WindowsOutlined />;
+        default:          return <LinkOutlined />;
+    }
+};
+
+const getOAuthColor = (oauthType: string) => {
+    switch (oauthType.toLowerCase()) {
+        case 'google':    return '#4285f4';
+        case 'github':    return '#6e40c9';
+        case 'microsoft': return '#0078d4';
+        default:          return '#3B82F6';
+    }
+};
 
 const AuthPage: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const { login: authLogin } = useAuthStore();
-    
-    // Tab状态
+    const { message: msg } = App.useApp();
+    const styleInjected = useRef(false);
+
     const [tabValue, setTabValue] = useState('login');
-    
-    // 登录表单状态
-    const [loginForm, setLoginForm] = useState({
-        loginMethod: 'account',
-        username: '',
-        password: '',
-    });
-    
-    // 注册表单状态
-    const [registerForm, setRegisterForm] = useState({
-        username: '',
-        email: '',
-        password: '',
-        confirmPassword: '',
-        agreeTerms: false,
-        agreePrivacy: false,
-    });
-    
-    // 通用状态
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    
-    // OAuth状态
     const [oauthProviders, setOauthProviders] = useState<Array<{ oauth_name: string; oauth_type: string; is_enabled: boolean }>>([]);
     const [oauthLoading, setOauthLoading] = useState<Record<string, boolean>>({});
 
-    // 根据路由设置初始标签页
+    const [loginForm] = Form.useForm();
+    const [registerForm] = Form.useForm();
+
+    /* 注入关键帧 */
     useEffect(() => {
-        if (location.pathname === '/register') {
-            setTabValue('register');
-        } else {
-            setTabValue('login');
-        }
+        if (styleInjected.current) return;
+        styleInjected.current = true;
+        const el = document.createElement('style');
+        el.textContent = animStyles;
+        document.head.appendChild(el);
+    }, []);
+
+    /* 根据路由设置初始标签页 */
+    useEffect(() => {
+        setTabValue(location.pathname === '/register' ? 'register' : 'login');
     }, [location.pathname]);
 
-    // 获取OAuth提供商列表
+    /* 获取 OAuth 提供商列表 */
     useEffect(() => {
         const fetchOAuthProviders = async (retryCount = 0) => {
             try {
                 const response = await oauthService.getAvailableProviders();
                 if (response.flag && response.data) {
-                    setOauthProviders(response.data.filter(provider => provider.is_enabled === 1));
+                    setOauthProviders(response.data.filter((p: any) => p.is_enabled === 1));
                 } else if (retryCount < 2) {
                     setTimeout(() => fetchOAuthProviders(retryCount + 1), 1000 * (retryCount + 1));
                 }
-            } catch (error) {
-                console.error('获取OAuth提供商失败:', error);
-                if (retryCount < 2) {
-                    setTimeout(() => fetchOAuthProviders(retryCount + 1), 1000 * (retryCount + 1));
-                }
+            } catch {
+                if (retryCount < 2) setTimeout(() => fetchOAuthProviders(retryCount + 1), 1000 * (retryCount + 1));
             }
         };
-
         fetchOAuthProviders();
     }, []);
 
-    const handleTabChange = (key: string) => {
-        setTabValue(key);
-        setError('');
-    };
+    const handleTabChange = (key: string) => { setTabValue(key); setError(''); };
 
-    // 登录相关处理函数
-    const handleLoginSubmit = async () => {
-        if (!loginForm.username) {
-            setError('请填写用户名');
-            return;
-        }
-
-        if (!loginForm.password) {
-            setError('请填写密码');
-            return;
-        }
-
+    /* ─── 登录 ─── */
+    const handleLoginSubmit = async (values: any) => {
         setLoading(true);
         setError('');
-
         try {
-            const loginData: UsersConfig = {
-                users_name: loginForm.username,
-                users_pass: loginForm.password
-            };
-
-            const response: UsersResult = await userApi.login(loginData);
-            
-            if (response.flag && response.token && response.data && response.data.length > 0) {
-                const userInfo = response.data[0];
-                
-                // 更新 Zustand 认证状态（持久化到 localStorage）
-                authLogin(response.token, {
-                    users_name: userInfo.users_name,
-                    users_mail: userInfo.users_mail,
-                });
-                
+            const response: any = await userApi.login({ username: values.username, password: values.password });
+            const token = response?.token || response?.data?.token;
+            if (token) {
+                // 先用 token 临时登录，再获取完整用户信息
+                authLogin(token, { users_name: values.username, users_mail: '' });
+                try {
+                    const meResp: any = await userApi.getMe();
+                    const userInfo = meResp?.users_name ? meResp : meResp?.data || meResp;
+                    if (userInfo?.users_name) {
+                        authLogin(token, {
+                            users_name: userInfo.users_name,
+                            users_mail: userInfo.users_mail || '',
+                            users_mask: userInfo.users_mask || '',
+                        });
+                    }
+                } catch {
+                    // 获取用户信息失败不影响登录
+                }
+                msg.success('登录成功');
                 const from = (location.state as any)?.from?.pathname || '/files';
                 navigate(from, { replace: true });
             } else {
-                setError(response.text || '登录失败');
+                setError(response?.message || '登录失败');
             }
-        } catch (error: any) {
-            console.error('🔴 登录catch捕获到异常:', error?.name, error?.message, error);
-            if (error.name === 'ApiError') {
-                setError(error.message);
-            } else if (error.response?.data) {
-                const responseData = error.response.data;
-                if (responseData.text) {
-                    setError(responseData.text);
-                } else if (responseData.message) {
-                    setError(responseData.message);
-                } else {
-                    setError('登录失败，请稍后重试');
-                }
-            } else if (error.message) {
-                setError(error.message);
-            } else {
-                setError('登录失败，请检查网络连接或稍后重试');
-            }
+        } catch (err: any) {
+            setError(err.name === 'ApiError' ? err.message : err.response?.data?.message || err.message || '登录失败，请稍后重试');
         } finally {
             setLoading(false);
         }
     };
 
-    // OAuth登录处理
+    /* ─── OAuth 登录 ─── */
     const handleOAuthLogin = async (oauthName: string) => {
         try {
             setOauthLoading(prev => ({ ...prev, [oauthName]: true }));
             setError('');
-            
             const redirectUri = `${window.location.origin}/oauth/callback`;
             const result = await oauthService.getAuthUrl(oauthName, redirectUri);
-            
             if (result.flag && result.data?.auth_url) {
                 sessionStorage.setItem('oauth_state', result.data.state);
                 sessionStorage.setItem('oauth_name', oauthName);
-                
                 window.location.href = result.data.auth_url;
             } else {
-                let errorMessage = result.text || '获取OAuth授权URL失败';
-                if (errorMessage.includes('未登录')) {
-                    errorMessage = `${oauthName} OAuth配置需要管理员权限，请联系管理员配置`;
-                } else if (errorMessage.includes('不存在')) {
-                    errorMessage = `${oauthName} OAuth配置不存在，请联系管理员配置`;
-                } else if (errorMessage.includes('禁用')) {
-                    errorMessage = `${oauthName} OAuth登录已被禁用，请联系管理员`;
-                }
-                setError(errorMessage);
+                setError(result.text || '获取OAuth授权URL失败');
             }
-        } catch (error: any) {
-            console.error('OAuth登录失败:', error);
-            let errorMessage = 'OAuth登录失败';
-            if (error.name === 'NetworkError' || error.message.includes('fetch')) {
-                errorMessage = '网络连接失败，请检查网络连接后重试';
-            } else if (error.message) {
-                errorMessage = error.message;
-            }
-            setError(errorMessage);
+        } catch (err: any) {
+            setError(err.message || 'OAuth登录失败');
         } finally {
             setOauthLoading(prev => ({ ...prev, [oauthName]: false }));
         }
     };
 
-    // 获取OAuth提供商图标
-    const getOAuthIcon = (oauthType: string) => {
-        switch (oauthType.toLowerCase()) {
-            case 'google':
-                return <GoogleOutlined />;
-            case 'github':
-                return <GithubOutlined />;
-            case 'microsoft':
-                return <WindowsOutlined />;
-            default:
-                return <LoginOutlined />;
-        }
-    };
-
-    // 获取OAuth提供商颜色
-    const getOAuthColor = (oauthType: string) => {
-        switch (oauthType.toLowerCase()) {
-            case 'google':
-                return '#4285f4';
-            case 'github':
-                return '#333';
-            case 'microsoft':
-                return '#0078d4';
-            default:
-                return '#1677ff';
-        }
-    };
-
-    // 注册相关处理函数
-    const handleRegisterSubmit = async () => {
-        if (!registerForm.username || !registerForm.email || !registerForm.password || !registerForm.confirmPassword) {
-            setError('请填写所有必填字段');
-            return;
-        }
-
-        if (registerForm.password !== registerForm.confirmPassword) {
-            setError('两次输入的密码不一致');
-            return;
-        }
-
-        if (registerForm.password.length < 6) {
-            setError('密码长度至少为6位');
-            return;
-        }
-
-        if (!registerForm.agreeTerms || !registerForm.agreePrivacy) {
-            setError('请同意服务条款和隐私政策');
-            return;
-        }
-
+    /* ─── 注册 ─── */
+    const handleRegisterSubmit = async (values: any) => {
         setLoading(true);
         setError('');
-
         try {
-            const registerData: UsersConfig = {
-                users_name: registerForm.username,
-                users_mail: registerForm.email,
-                users_pass: registerForm.password
-            };
-
-            const response: UsersResult = await userApi.register(registerData);
-            
-            if (response.flag) {
-                showNotification('success', '注册成功！请登录');
+            const response: any = await userApi.register({
+                username: values.username,
+                email: values.email,
+                password: values.password,
+            });
+            if (response && !response.message) {
+                msg.success('注册成功！请登录');
                 setTabValue('login');
-                
-                setRegisterForm({
-                    username: '',
-                    email: '',
-                    password: '',
-                    confirmPassword: '',
-                    agreeTerms: false,
-                    agreePrivacy: false,
-                });
+                registerForm.resetFields();
             } else {
-                setError(response.text || '注册失败');
+                setError(response?.message || '注册失败');
             }
-        } catch (error: any) {
-            console.error('注册错误:', error);
-            
-            if (error.name === 'ApiError') {
-                setError(error.message);
-            } else if (error.response?.data) {
-                const responseData = error.response.data;
-                if (responseData.text) {
-                    setError(responseData.text);
-                } else if (responseData.message) {
-                    setError(responseData.message);
-                } else {
-                    setError('注册失败，请稍后重试');
-                }
-            } else if (error.message) {
-                setError(error.message);
-            } else {
-                setError('注册失败，请检查网络连接或稍后重试');
-            }
+        } catch (err: any) {
+            setError(err.name === 'ApiError' ? err.message : err.response?.data?.text || err.message || '注册失败，请稍后重试');
         } finally {
             setLoading(false);
         }
     };
 
-    // 登录面板
+    /* ─── 通用样式 ─── */
+    const primaryBtnStyle: React.CSSProperties = {
+        height: 46,
+        fontWeight: 600,
+        fontSize: 15,
+        borderRadius: 12,
+        background: 'linear-gradient(135deg, #3B82F6 0%, #6366F1 100%)',
+        border: 'none',
+        boxShadow: '0 4px 20px rgba(59,130,246,0.35)',
+        letterSpacing: '0.02em',
+    };
+
+    const inputItemStyle: React.CSSProperties = { marginBottom: 16 };
+
+    /* ─── 登录面板 ─── */
     const loginPanel = (
-        <div>
-            <div style={{ marginBottom: 16 }}>
-                <Text style={{ display: 'block', marginBottom: 4 }}>登录方式</Text>
-                <Select
-                    value={loginForm.loginMethod}
-                    onChange={(value) => setLoginForm(prev => ({ ...prev, loginMethod: value }))}
-                    style={{ width: '100%' }}
-                    options={[{ value: 'account', label: '账号登录' }]}
-                />
+        <div style={{ paddingTop: 20 }}>
+            <div style={{ marginBottom: 28 }}>
+                <Title level={3} style={{ marginBottom: 6, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", letterSpacing: '-0.02em' }}>
+                    欢迎回来
+                </Title>
+                <Text type="secondary" style={{ fontSize: 14 }}>登录您的 OpenList 账号</Text>
             </div>
 
-            <div style={{ marginBottom: 16 }}>
-                <Text style={{ display: 'block', marginBottom: 4 }}>用户名 <span style={{ color: '#ff4d4f' }}>*</span></Text>
-                <Input
-                    placeholder="请输入用户名"
-                    value={loginForm.username}
-                    onChange={(e) => {
-                        setLoginForm(prev => ({ ...prev, username: e.target.value }));
-                        if (error) setError('');
-                    }}
-                    autoComplete="username"
-                    size="large"
-                />
-            </div>
+            <Form form={loginForm} onFinish={handleLoginSubmit} size="large" layout="vertical">
+                <Form.Item name="username" style={inputItemStyle} rules={[{ required: true, message: '请输入用户名' }]}>
+                    <div className="ap-input-wrap">
+                        <Input
+                            prefix={<UserOutlined style={{ color: '#3B82F6', opacity: 0.8 }} />}
+                            placeholder="用户名"
+                            autoComplete="username"
+                            style={{ borderRadius: 10, height: 46 }}
+                        />
+                    </div>
+                </Form.Item>
 
-            <div style={{ marginBottom: 8 }}>
-                <Text style={{ display: 'block', marginBottom: 4 }}>密码 <span style={{ color: '#ff4d4f' }}>*</span></Text>
-                <Password
-                    placeholder="请输入密码"
-                    value={loginForm.password}
-                    onChange={(e) => {
-                        setLoginForm(prev => ({ ...prev, password: e.target.value }));
-                        if (error) setError('');
-                    }}
-                    autoComplete="current-password"
-                    size="large"
-                    onPressEnter={handleLoginSubmit}
-                    iconRender={(visible) => (visible ? <EyeOutlined /> : <EyeInvisibleOutlined />)}
-                />
-                <Text type="secondary" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
-                    如果账户未设置密码，默认密码为：admin
+                <Form.Item name="password" style={{ marginBottom: 24 }} rules={[{ required: true, message: '请输入密码' }]}>
+                    <div className="ap-input-wrap">
+                        <Input.Password
+                            prefix={<LockOutlined style={{ color: '#3B82F6', opacity: 0.8 }} />}
+                            placeholder="密码"
+                            autoComplete="current-password"
+                            style={{ borderRadius: 10, height: 46 }}
+                        />
+                    </div>
+                </Form.Item>
+
+                <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 20, marginTop: -16 }}>
+                    未设置密码时，默认密码为：admin
                 </Text>
-            </div>
 
-            <Button
-                type="primary"
-                block
-                size="large"
-                loading={loading}
-                onClick={handleLoginSubmit}
-                style={{ marginTop: 24, marginBottom: 16, height: 48 }}
-            >
-                登录
-            </Button>
+                <Form.Item style={{ marginBottom: 0 }}>
+                    <Button
+                        type="primary"
+                        htmlType="submit"
+                        loading={loading}
+                        block
+                        className="ap-login-btn"
+                        style={primaryBtnStyle}
+                        icon={!loading && <ArrowRightOutlined />}
+                        iconPosition="end"
+                    >
+                        登录
+                    </Button>
+                </Form.Item>
+            </Form>
 
-            {/* OAuth登录 */}
+            {/* OAuth 登录 */}
             {oauthProviders.length > 0 && (
                 <>
-                    <Divider plain>
+                    <Divider plain style={{ margin: '20px 0' }}>
                         <Text type="secondary" style={{ fontSize: 12 }}>或使用第三方登录</Text>
                     </Divider>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {oauthProviders.map((provider) => (
                             <Button
                                 key={provider.oauth_name}
@@ -371,10 +334,13 @@ const AuthPage: React.FC = () => {
                                 loading={oauthLoading[provider.oauth_name]}
                                 icon={getOAuthIcon(provider.oauth_type)}
                                 onClick={() => handleOAuthLogin(provider.oauth_name)}
+                                className="ap-oauth-btn"
                                 style={{
-                                    height: 48,
+                                    height: 46,
+                                    borderRadius: 10,
                                     borderColor: getOAuthColor(provider.oauth_type),
                                     color: getOAuthColor(provider.oauth_type),
+                                    fontWeight: 500,
                                 }}
                             >
                                 使用 {provider.oauth_name} 登录
@@ -386,181 +352,356 @@ const AuthPage: React.FC = () => {
         </div>
     );
 
-    // 注册面板
+    /* ─── 注册面板 ─── */
     const registerPanel = (
-        <div>
-            <div style={{ marginBottom: 16 }}>
-                <Text style={{ display: 'block', marginBottom: 4 }}>用户名 <span style={{ color: '#ff4d4f' }}>*</span></Text>
-                <Input
-                    placeholder="请输入用户名"
-                    value={registerForm.username}
-                    onChange={(e) => {
-                        setRegisterForm(prev => ({ ...prev, username: e.target.value }));
-                        if (error) setError('');
-                    }}
-                    autoComplete="username"
-                    size="large"
-                />
+        <div style={{ paddingTop: 20 }}>
+            <div style={{ marginBottom: 24 }}>
+                <Title level={3} style={{ marginBottom: 6, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", letterSpacing: '-0.02em' }}>
+                    创建账号
+                </Title>
+                <Text type="secondary" style={{ fontSize: 14 }}>加入 OpenList，开始管理您的文件</Text>
             </div>
 
-            <div style={{ marginBottom: 16 }}>
-                <Text style={{ display: 'block', marginBottom: 4 }}>邮箱 <span style={{ color: '#ff4d4f' }}>*</span></Text>
-                <Input
-                    placeholder="请输入邮箱"
-                    type="email"
-                    value={registerForm.email}
-                    onChange={(e) => {
-                        setRegisterForm(prev => ({ ...prev, email: e.target.value }));
-                        if (error) setError('');
-                    }}
-                    autoComplete="email"
-                    size="large"
-                />
-            </div>
+            <Form form={registerForm} onFinish={handleRegisterSubmit} size="large" layout="vertical">
+                <Form.Item name="username" style={inputItemStyle} rules={[{ required: true, message: '请输入用户名' }, { min: 3, message: '至少3个字符' }]}>
+                    <div className="ap-input-wrap">
+                        <Input
+                            prefix={<UserOutlined style={{ color: '#3B82F6', opacity: 0.8 }} />}
+                            placeholder="用户名"
+                            autoComplete="username"
+                            style={{ borderRadius: 10, height: 46 }}
+                        />
+                    </div>
+                </Form.Item>
 
-            <div style={{ marginBottom: 16 }}>
-                <Text style={{ display: 'block', marginBottom: 4 }}>密码 <span style={{ color: '#ff4d4f' }}>*</span></Text>
-                <Password
-                    placeholder="请输入密码"
-                    value={registerForm.password}
-                    onChange={(e) => {
-                        setRegisterForm(prev => ({ ...prev, password: e.target.value }));
-                        if (error) setError('');
-                    }}
-                    autoComplete="new-password"
-                    size="large"
-                    iconRender={(visible) => (visible ? <EyeOutlined /> : <EyeInvisibleOutlined />)}
-                />
-            </div>
+                <Form.Item name="email" style={inputItemStyle} rules={[{ required: true, message: '请输入邮箱' }, { type: 'email', message: '邮箱格式不正确' }]}>
+                    <div className="ap-input-wrap">
+                        <Input
+                            prefix={<MailOutlined style={{ color: '#3B82F6', opacity: 0.8 }} />}
+                            placeholder="邮箱"
+                            autoComplete="email"
+                            style={{ borderRadius: 10, height: 46 }}
+                        />
+                    </div>
+                </Form.Item>
 
-            <div style={{ marginBottom: 16 }}>
-                <Text style={{ display: 'block', marginBottom: 4 }}>确认密码 <span style={{ color: '#ff4d4f' }}>*</span></Text>
-                <Password
-                    placeholder="请再次输入密码"
-                    value={registerForm.confirmPassword}
-                    onChange={(e) => {
-                        setRegisterForm(prev => ({ ...prev, confirmPassword: e.target.value }));
-                        if (error) setError('');
-                    }}
-                    autoComplete="new-password"
-                    size="large"
-                    onPressEnter={handleRegisterSubmit}
-                    iconRender={(visible) => (visible ? <EyeOutlined /> : <EyeInvisibleOutlined />)}
-                />
-            </div>
+                <Form.Item name="password" style={inputItemStyle} rules={[{ required: true, message: '请输入密码' }, { min: 6, message: '至少6个字符' }]}>
+                    <div className="ap-input-wrap">
+                        <Input.Password
+                            prefix={<LockOutlined style={{ color: '#3B82F6', opacity: 0.8 }} />}
+                            placeholder="密码"
+                            autoComplete="new-password"
+                            style={{ borderRadius: 10, height: 46 }}
+                        />
+                    </div>
+                </Form.Item>
 
-            <div style={{ marginTop: 16 }}>
-                <div style={{ marginBottom: 8 }}>
-                    <Checkbox
-                        checked={registerForm.agreeTerms}
-                        onChange={(e) => setRegisterForm(prev => ({ ...prev, agreeTerms: e.target.checked }))}
+                <Form.Item
+                    name="confirmPassword"
+                    style={{ marginBottom: 16 }}
+                    dependencies={['password']}
+                    rules={[
+                        { required: true, message: '请确认密码' },
+                        ({ getFieldValue }) => ({
+                            validator(_, value) {
+                                if (!value || getFieldValue('password') === value) return Promise.resolve();
+                                return Promise.reject(new Error('两次密码不一致'));
+                            },
+                        }),
+                    ]}
+                >
+                    <div className="ap-input-wrap">
+                        <Input.Password
+                            prefix={<LockOutlined style={{ color: '#3B82F6', opacity: 0.8 }} />}
+                            placeholder="确认密码"
+                            autoComplete="new-password"
+                            style={{ borderRadius: 10, height: 46 }}
+                        />
+                    </div>
+                </Form.Item>
+
+                <Form.Item name="agreeTerms" valuePropName="checked" style={{ marginBottom: 8 }} rules={[{ validator: (_, v) => v ? Promise.resolve() : Promise.reject('请同意服务条款') }]}>
+                    <Checkbox><Text style={{ fontSize: 13 }}>我同意 <AntdLink href="#">服务条款</AntdLink></Text></Checkbox>
+                </Form.Item>
+
+                <Form.Item name="agreePrivacy" valuePropName="checked" style={{ marginBottom: 24 }} rules={[{ validator: (_, v) => v ? Promise.resolve() : Promise.reject('请同意隐私政策') }]}>
+                    <Checkbox><Text style={{ fontSize: 13 }}>我同意 <AntdLink href="#">隐私政策</AntdLink></Text></Checkbox>
+                </Form.Item>
+
+                <Form.Item style={{ marginBottom: 0 }}>
+                    <Button
+                        type="primary"
+                        htmlType="submit"
+                        loading={loading}
+                        block
+                        className="ap-login-btn"
+                        style={primaryBtnStyle}
+                        icon={!loading && <ArrowRightOutlined />}
+                        iconPosition="end"
                     >
-                        <Text style={{ fontSize: 13 }}>我同意 <AntdLink href="#">服务条款</AntdLink></Text>
-                    </Checkbox>
-                </div>
-                <div>
-                    <Checkbox
-                        checked={registerForm.agreePrivacy}
-                        onChange={(e) => setRegisterForm(prev => ({ ...prev, agreePrivacy: e.target.checked }))}
-                    >
-                        <Text style={{ fontSize: 13 }}>我同意 <AntdLink href="#">隐私政策</AntdLink></Text>
-                    </Checkbox>
-                </div>
-            </div>
-
-            <Button
-                type="primary"
-                block
-                size="large"
-                loading={loading}
-                onClick={handleRegisterSubmit}
-                style={{ marginTop: 24, marginBottom: 16, height: 48 }}
-            >
-                注册
-            </Button>
+                        注册
+                    </Button>
+                </Form.Item>
+            </Form>
         </div>
     );
 
-    const tabItems = [
-        {
-            key: 'login',
-            label: (
-                <span>
-                    <LoginOutlined style={{ marginRight: 8 }} />
-                    登录
-                </span>
-            ),
-            children: loginPanel,
-        },
-        {
-            key: 'register',
-            label: (
-                <span>
-                    <UserAddOutlined style={{ marginRight: 8 }} />
-                    注册
-                </span>
-            ),
-            children: registerPanel,
-        },
-    ];
-
     return (
-        <div
-            style={{
-                width: '100vw',
-                height: '100vh',
-                minHeight: '100vh',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                padding: 16,
-                margin: 0,
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                overflow: 'auto',
-            }}
-        >
-            <Card
+        <div style={{ display: 'flex', minHeight: '100vh', overflow: 'hidden', background: '#0D1117' }}>
+
+            {/* ══════════ 左侧品牌区域 ══════════ */}
+            <div
+                className="hide-on-mobile ap-fade"
                 style={{
-                    width: '100%',
-                    maxWidth: 450,
-                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
-                    borderRadius: 12,
+                    flex: '0 0 46%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    padding: '60px 56px',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    background: 'linear-gradient(145deg, #0a1628 0%, #0f1f3d 40%, #162040 70%, #1a2a50 100%)',
                 }}
-                styles={{ body: { padding: 32 } }}
             >
-                {/* Logo和标题 */}
-                <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                    <Title level={3} style={{ fontWeight: 'bold', color: '#1677ff', marginBottom: 4 }}>
-                        OpenList
-                    </Title>
-                    <Text type="secondary">
-                        欢迎使用文件管理系统
-                    </Text>
+                {/* 多层光晕背景 */}
+                <div style={{
+                    position: 'absolute', inset: 0, pointerEvents: 'none',
+                    background: `
+                        radial-gradient(ellipse 70% 60% at 15% 85%, rgba(59,130,246,0.18) 0%, transparent 60%),
+                        radial-gradient(ellipse 60% 50% at 85% 15%, rgba(139,92,246,0.14) 0%, transparent 55%),
+                        radial-gradient(ellipse 50% 40% at 50% 50%, rgba(16,185,129,0.07) 0%, transparent 60%)
+                    `,
+                }} />
+
+                {/* 网格纹理 */}
+                <div style={{
+                    position: 'absolute', inset: 0, pointerEvents: 'none',
+                    backgroundImage: `
+                        linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px),
+                        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px)
+                    `,
+                    backgroundSize: '56px 56px',
+                }} />
+
+                {/* 装饰圆环 */}
+                <div style={{ position: 'absolute', width: 480, height: 480, borderRadius: '50%', border: '1px solid rgba(59,130,246,0.08)', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none' }} />
+                <div style={{ position: 'absolute', width: 360, height: 360, borderRadius: '50%', border: '1px solid rgba(139,92,246,0.07)', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', pointerEvents: 'none' }} />
+
+                {/* 轨道小点 */}
+                {[
+                    { anim: 'ap-orbit',  size: 8, color: '#3B82F6', dur: '12s' },
+                    { anim: 'ap-orbit2', size: 6, color: '#8B5CF6', dur: '18s' },
+                    { anim: 'ap-orbit3', size: 5, color: '#10B981', dur: '24s' },
+                ].map((dot, i) => (
+                    <div key={i} style={{
+                        position: 'absolute',
+                        top: '50%', left: '50%',
+                        width: dot.size, height: dot.size,
+                        marginTop: -dot.size / 2, marginLeft: -dot.size / 2,
+                        borderRadius: '50%',
+                        background: dot.color,
+                        boxShadow: `0 0 8px ${dot.color}`,
+                        animation: `${dot.anim} ${dot.dur} linear infinite`,
+                        pointerEvents: 'none',
+                    }} />
+                ))}
+
+                {/* 品牌内容 */}
+                <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', maxWidth: 420 }}>
+                    {/* Logo */}
+                    <div className="ap-float-1" style={{
+                        width: 88, height: 88, borderRadius: 24,
+                        background: 'linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        margin: '0 auto 28px',
+                        animation: 'ap-float-up 0.6s 0.05s ease-out both, ap-pulse-glow 3s 1s ease-in-out infinite',
+                        boxShadow: '0 12px 40px rgba(59,130,246,0.4)',
+                    }}>
+                        <FolderOutlined style={{ fontSize: 40, color: '#fff' }} />
+                    </div>
+
+                    {/* 标题 */}
+                    <div className="ap-float-2">
+                        <Title level={1} style={{
+                            color: '#fff', margin: '0 0 4px',
+                            fontFamily: "'Space Grotesk', sans-serif",
+                            fontWeight: 800, fontSize: 48,
+                            letterSpacing: '-0.04em', lineHeight: 1.1,
+                        }}>
+                            OpenList
+                        </Title>
+                        <div style={{
+                            display: 'inline-block', padding: '3px 12px', borderRadius: 20,
+                            background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.25)', marginBottom: 20,
+                        }}>
+                            <Text style={{ color: '#93C5FD', fontSize: 12, fontWeight: 500, letterSpacing: '0.08em' }}>
+                                UNIFIED FILE MANAGEMENT
+                            </Text>
+                        </div>
+                    </div>
+
+                    {/* 副标题 */}
+                    <div className="ap-float-3">
+                        <p style={{
+                            color: 'rgba(255,255,255,0.65)', fontSize: 15, lineHeight: 1.7,
+                            fontFamily: "'Noto Sans SC', sans-serif", margin: '0 0 40px',
+                        }}>
+                            统一文件管理系统，支持 25+ 网盘驱动
+                            <br />
+                            安全加密 · 灵活配置 · 极致性能
+                        </p>
+                    </div>
+
+                    {/* 统计卡片 */}
+                    <div className="ap-float-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 36 }}>
+                        {stats.map((s) => (
+                            <div key={s.label} style={{
+                                padding: '14px 8px', borderRadius: 14,
+                                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
+                                backdropFilter: 'blur(8px)', textAlign: 'center',
+                                transition: 'background 0.2s, transform 0.2s',
+                            }}
+                                onMouseEnter={e => {
+                                    (e.currentTarget as HTMLDivElement).style.background = 'rgba(59,130,246,0.12)';
+                                    (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-3px)';
+                                }}
+                                onMouseLeave={e => {
+                                    (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.05)';
+                                    (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)';
+                                }}
+                            >
+                                <div style={{ color: '#60A5FA', fontSize: 16, marginBottom: 4 }}>{s.icon}</div>
+                                <div style={{ color: '#fff', fontWeight: 700, fontSize: 15, fontFamily: "'Space Grotesk', sans-serif" }}>{s.value}</div>
+                                <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, marginTop: 2 }}>{s.label}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* 特性标签 */}
+                    <div className="ap-float-5" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+                        {['WebDAV', 'S3 协议', 'FTP/SFTP', 'NFS', 'SMB', '离线下载'].map(tag => (
+                            <span key={tag} style={{
+                                padding: '5px 13px', borderRadius: 20,
+                                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                                color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: 500,
+                                transition: 'background 0.2s, transform 0.2s', cursor: 'default',
+                            }}
+                                onMouseEnter={e => {
+                                    (e.currentTarget as HTMLSpanElement).style.background = 'rgba(59,130,246,0.15)';
+                                    (e.currentTarget as HTMLSpanElement).style.transform = 'translateY(-2px)';
+                                }}
+                                onMouseLeave={e => {
+                                    (e.currentTarget as HTMLSpanElement).style.background = 'rgba(255,255,255,0.06)';
+                                    (e.currentTarget as HTMLSpanElement).style.transform = 'translateY(0)';
+                                }}
+                            >
+                                {tag}
+                            </span>
+                        ))}
+                    </div>
                 </div>
 
-                {/* 错误提示 */}
-                {error && (
-                    <Alert
-                        message={error}
-                        type="error"
-                        showIcon
-                        closable
-                        onClose={() => setError('')}
-                        style={{ marginBottom: 16 }}
-                    />
-                )}
+                {/* 底部装饰线 */}
+                <div style={{ position: 'absolute', bottom: 32, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 6, alignItems: 'center' }}>
+                    {[1, 0.4, 0.2].map((op, i) => (
+                        <div key={i} style={{ width: i === 0 ? 24 : 8, height: 3, borderRadius: 2, background: `rgba(59,130,246,${op})` }} />
+                    ))}
+                </div>
+            </div>
 
-                {/* 标签页 */}
-                <Tabs
-                    activeKey={tabValue}
-                    onChange={handleTabChange}
-                    centered
-                    items={tabItems}
-                />
-            </Card>
+            {/* ══════════ 右侧表单区域 ══════════ */}
+            <div style={{
+                flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center',
+                padding: '40px 24px', position: 'relative',
+            }}>
+                {/* 右侧背景光晕 */}
+                <div style={{
+                    position: 'absolute', inset: 0, pointerEvents: 'none',
+                    background: `
+                        radial-gradient(ellipse 60% 50% at 70% 30%, rgba(59,130,246,0.06) 0%, transparent 60%),
+                        radial-gradient(ellipse 50% 40% at 30% 80%, rgba(139,92,246,0.05) 0%, transparent 55%)
+                    `,
+                }} />
+
+                <div className="ap-float-2" style={{ width: '100%', maxWidth: 440, position: 'relative' }}>
+
+                    {/* 移动端 Logo */}
+                    <div className="show-on-mobile-only" style={{ textAlign: 'center', marginBottom: 32 }}>
+                        <div style={{
+                            width: 60, height: 60, borderRadius: 16,
+                            background: 'linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)',
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: '0 8px 28px rgba(59,130,246,0.35)', marginBottom: 14,
+                        }}>
+                            <FolderOutlined style={{ fontSize: 26, color: '#fff' }} />
+                        </div>
+                        <Title level={3} style={{
+                            fontFamily: "'Space Grotesk', sans-serif", fontWeight: 800, letterSpacing: '-0.03em',
+                            background: 'linear-gradient(135deg, #3B82F6, #8B5CF6)',
+                            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', margin: 0,
+                        }}>
+                            OpenList
+                        </Title>
+                    </div>
+
+                    {/* 玻璃态表单卡片 */}
+                    <div style={{
+                        borderRadius: 24, padding: '36px 40px 32px',
+                        background: 'rgba(22, 27, 40, 0.75)',
+                        backdropFilter: 'blur(24px) saturate(160%)',
+                        border: '1px solid rgba(255,255,255,0.07)',
+                        boxShadow: '0 24px 64px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.05) inset',
+                    }}>
+                        {/* 错误提示 */}
+                        {error && (
+                            <Alert
+                                message={error}
+                                type="error"
+                                showIcon
+                                closable
+                                onClose={() => setError('')}
+                                style={{ marginBottom: 16, borderRadius: 10 }}
+                            />
+                        )}
+
+                        <Tabs
+                            activeKey={tabValue}
+                            onChange={handleTabChange}
+                            centered
+                            size="large"
+                            style={{ marginBottom: 0 }}
+                            items={[
+                                {
+                                    key: 'login',
+                                    label: (
+                                        <span style={{ fontWeight: 600, fontSize: 15, letterSpacing: '0.01em' }}>
+                                            <LoginOutlined style={{ marginRight: 6 }} />登录
+                                        </span>
+                                    ),
+                                    children: loginPanel,
+                                },
+                                {
+                                    key: 'register',
+                                    label: (
+                                        <span style={{ fontWeight: 600, fontSize: 15, letterSpacing: '0.01em' }}>
+                                            <UserAddOutlined style={{ marginRight: 6 }} />注册
+                                        </span>
+                                    ),
+                                    children: registerPanel,
+                                },
+                            ]}
+                        />
+                    </div>
+
+                    {/* 底部版权 */}
+                    <div style={{ textAlign: 'center', marginTop: 24 }}>
+                        <Text type="secondary" style={{ fontSize: 12, letterSpacing: '0.02em' }}>
+                            © 2026 OpenList · Built with ❤️ by OpenListTeam
+                        </Text>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };

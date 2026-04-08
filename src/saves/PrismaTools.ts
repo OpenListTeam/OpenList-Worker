@@ -1,5 +1,5 @@
 import "dotenv/config";
-import {PrismaClient} from '../generated/prisma/client';
+import {PrismaClient} from './client';
 import {DBResult} from "./SavesObject";
 import {D1Filter} from "./SavesObject";
 

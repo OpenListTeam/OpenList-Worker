@@ -52,87 +52,86 @@ export interface OAuthTokenResponse {
 export class OAuthService {
 
     /**
-     * 获取OAuth授权URL
+     * 获取OAuth授权URL（新版 API: POST /api/auth/sso）
      */
     async getAuthUrl(provider: string, redirectUri: string): Promise<OAuthAuthUrlResponse> {
-        const response = await apiService.post(`/@oauth-token/authurl/name/${provider}`, {
-            redirect_uri: redirectUri
+        const response = await apiService.post(`/api/auth/sso`, {
+            provider,
+            redirect_uri: redirectUri,
         });
         return {
-            flag: response.flag,
-            text: response.text,
-            data: response.data?.[0] ? {
-                auth_url: response.data[0].access_token, // 后端将URL存储在access_token字段
-                state: response.data[0].oauth_name
-            } : undefined
+            flag: response.flag ?? (response.code === 200),
+            text: response.message || response.text || '',
+            data: response.data ? {
+                auth_url: response.data.auth_url || response.data.access_token || '',
+                state: response.data.state || provider,
+            } : undefined,
         };
     }
 
     /**
-     * 处理OAuth回调
+     * 处理OAuth回调（新版 API: GET /api/auth/sso_callback）
      */
     async handleCallback(code: string, state: string, provider: string): Promise<OAuthCallbackResponse> {
-        const response = await apiService.post(`/@oauth-token/callback/name/${provider}`, {
-            code,
-            state
+        const response = await apiService.get(`/api/auth/sso_callback`, {
+            params: { code, state, provider },
         });
         return response;
     }
 
     /**
-     * 获取用户的OAuth令牌
+     * 获取用户的OAuth令牌（新版 API: GET /api/me）
      */
     async getUserTokens(provider?: string): Promise<OAuthTokenResponse> {
-        const url = provider ? `/@oauth-token/tokens/name/${provider}` : '/@oauth-token/tokens/none/';
-        const response = await apiService.post(url, {});
+        const response = await apiService.get('/api/me');
         return response;
     }
 
     /**
-     * 刷新OAuth令牌
+     * 刷新OAuth令牌（新版 API: POST /api/auth/login）
      */
     async refreshToken(provider: string, refreshToken: string): Promise<boolean> {
-        const response = await apiService.post(`/@oauth-token/refresh/name/${provider}`, { 
-            refresh_token: refreshToken 
+        const response = await apiService.post(`/api/auth/login`, {
+            provider,
+            refresh_token: refreshToken,
         });
-        return response.flag;
+        return response.flag ?? (response.code === 200);
     }
 
     /**
-     * 验证OAuth令牌
+     * 验证OAuth令牌（通过 GET /api/me 验证当前 token 有效性）
      */
     async validateToken(provider: string, accessToken: string): Promise<boolean> {
-        const response = await apiService.post(`/@oauth-token/validate/name/${provider}`, { 
-            access_token: accessToken 
-        });
-        return response.flag;
+        try {
+            const response = await apiService.get('/api/me');
+            return response.flag ?? (response.code === 200);
+        } catch {
+            return false;
+        }
     }
 
     /**
-     * 撤销OAuth令牌
+     * 撤销OAuth令牌（新版 API: GET /api/auth/logout）
      */
     async revokeToken(provider: string, accessToken: string): Promise<boolean> {
-        const response = await apiService.post(`/@oauth-token/revoke/name/${provider}`, { 
-            access_token: accessToken 
-        });
-        return response.flag;
+        const response = await apiService.get('/api/auth/logout');
+        return response.flag ?? (response.code === 200);
     }
 
     /**
-     * 获取可用的OAuth提供商
+     * 获取可用的OAuth提供商（新版 API: GET /api/admin/oauth/list）
      */
     async getAvailableProviders(): Promise<{ flag: boolean; text: string; data?: any[] }> {
-      const response = await apiService.post('/@oauth/select/none', {});
+        const response = await apiService.get('/api/admin/oauth/list');
         return response;
     }
 
     /**
-     * 绑定OAuth账户
+     * 绑定OAuth账户（新版 API: POST /api/auth/sso_callback with bind mode）
      */
     async bindAccount(code: string, state: string, provider: string): Promise<OAuthCallbackResponse> {
-        const response = await apiService.post(`/@oauth-token/bind/name/${provider}`, {
-            code,
-            state
+        const response = await apiService.get(`/api/auth/sso_callback`, {
+            params: { code, state, provider, mode: 'bind' },
         });
         return response;
     }

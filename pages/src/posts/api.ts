@@ -81,12 +81,20 @@ class ApiService {
             (response: AxiosResponse) => {
                 const {data} = response;
 
-                // 处理后端的响应格式 {flag: boolean, text: string, data?: any}
+                // 处理后端的响应格式
                 if (data && typeof data === 'object') {
                     if (data.hasOwnProperty('flag')) {
-                        // 后端格式：{flag: boolean, text: string, data?: any}
+                        // 旧版格式：{flag: boolean, text: string, data?: any}
                         // 直接返回完整响应，让业务代码自行判断 flag
                         return data;
+                    } else if (data.hasOwnProperty('code') && data.hasOwnProperty('message')) {
+                        // 新版 Go 后端格式：{code: number, message: string, data?: any}
+                        if (data.code === 200) {
+                            // 成功时返回 data 字段内容（若无 data 则返回空对象）
+                            return data.data !== undefined ? data.data : {};
+                        } else {
+                            throw new ApiError(data.message, data.code, response);
+                        }
                     } else if (data.hasOwnProperty('success')) {
                         // 标准格式：{success: boolean, message: string, data: any}
                         if (data.success) {
@@ -235,148 +243,312 @@ const buildFilePath = (filePath: string, username?: string, isPersonalFile: bool
 
 // 文件管理相关API
 export const fileApi = {
-    // 获取文件列表 - 使用新的后端API格式
-    getFileList: (filePath: string = '/', username?: string, isPersonalFile: boolean = false) => {
-        const fullPath = buildFilePath(filePath, username, isPersonalFile);
-        return apiService.get(`/@files/list/path${fullPath}`);
+    // 获取文件列表 - 新版 /api/fs/list
+    getFileList: (filePath: string = '/', password?: string, page: number = 1, perPage: number = 0, refresh: boolean = false) => {
+        return apiService.post('/api/fs/list', { path: filePath, password: password || '', page, per_page: perPage, refresh });
     },
 
-    // 获取文件列表 - 旧版本兼容
-    getFileListOld: (filePath: string = '/', action: string = 'list', method: string = 'path') => {
-        const encodedPath = encodeURIComponent(filePath);
-        return apiService.get(`/@files/${action}/${method}${filePath}`, {
-            params: { target: filePath }
+    // 获取文件/目录详情
+    getFileInfo: (filePath: string, password?: string) =>
+        apiService.post('/api/fs/get', { path: filePath, password: password || '' }),
+
+    // 搜索文件
+    searchFiles: (path: string, keywords: string, scope: number = 0, page: number = 1, perPage: number = 0, password?: string) =>
+        apiService.post('/api/fs/search', { parent: path, keywords, scope, page, per_page: perPage, password: password || '' }),
+
+    // 获取目录列表（用于选择目标目录）
+    getDirs: (path: string, password?: string, forceRoot: boolean = false) =>
+        apiService.get('/api/fs/dirs', { params: { path, password: password || '', force_root: forceRoot } }),
+
+    // 创建文件夹
+    mkdir: (path: string) =>
+        apiService.post('/api/fs/mkdir', { path }),
+
+    // 重命名
+    rename: (path: string, name: string) =>
+        apiService.post('/api/fs/rename', { path, name }),
+
+    // 移动文件
+    move: (srcDir: string, dstDir: string, names: string[]) =>
+        apiService.post('/api/fs/move', { src_dir: srcDir, dst_dir: dstDir, names }),
+
+    // 复制文件
+    copy: (srcDir: string, dstDir: string, names: string[]) =>
+        apiService.post('/api/fs/copy', { src_dir: srcDir, dst_dir: dstDir, names }),
+
+    // 删除文件
+    remove: (dir: string, names: string[]) =>
+        apiService.post('/api/fs/remove', { dir, names }),
+
+    // 获取下载链接
+    getLink: (path: string, password?: string) =>
+        apiService.post('/api/fs/link', { path, password: password || '' }),
+
+    // 添加离线下载
+    addOfflineDownload: (path: string, urls: string[], tool: string = 'aria2', deletePolicy: string = 'delete_on_upload_succeed') =>
+        apiService.post('/api/fs/add_offline_download', { path, urls, tool, delete_policy: deletePolicy }),
+
+    // 批量重命名
+    batchRename: (srcDir: string, renameObjects: Array<{ src_name: string; new_name: string }>) =>
+        apiService.post('/api/fs/batch_rename', { src_dir: srcDir, rename_objects: renameObjects }),
+
+    // 上传文件（PUT 方式）
+    uploadFile: (filePath: string, file: File, onProgress?: (progress: number) => void) => {
+        const token = (apiService as any).instance?.defaults?.headers?.Authorization || '';
+        return apiService.put('/api/fs/put', file, {
+            headers: {
+                'File-Path': encodeURIComponent(filePath),
+                'Content-Type': file.type || 'application/octet-stream',
+                'Content-Length': String(file.size),
+            },
+            onUploadProgress: (progressEvent: any) => {
+                if (onProgress && progressEvent.total) {
+                    const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                    onProgress(progress);
+                }
+            },
         });
     },
 
-    // 获取文件列表 (旧版本兼容)
+    // 下载文件（直接下载路径）
+    getDownloadUrl: (path: string) => `/d${path}`,
+
+    // 代理下载路径
+    getProxyUrl: (path: string) => `/p${path}`,
+
+    // 旧版兼容（保留，逐步迁移）
     getFiles: (params?: { path?: string; type?: string }) =>
-        apiService.get('/files', {params}),
+        apiService.post('/api/fs/list', { path: params?.path || '/', page: 1, per_page: 0 }),
 
-    // 创建文件夹
-    createFolder: (name: string, path: string) =>
-        apiService.post('/files/folder', {name, path}),
-
-    // 上传文件
-    uploadFile: (file: File, path: string, onProgress?: (progress: number) => void) => {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('path', path);
-        return apiService.upload('/files/upload', file, onProgress);
-    },
-
-    // 下载文件
     downloadFile: (path: string) =>
-        apiService.download(`/files/download?path=${encodeURIComponent(path)}`),
-
-    // 删除文件
-    deleteFile: (path: string) =>
-        apiService.delete('/files', {data: {path}}),
-
-    // 移动文件
-    moveFile: (fromPath: string, toPath: string) =>
-        apiService.put('/files/move', {fromPath, toPath}),
-
-    // 重命名文件
-    renameFile: (path: string, newName: string) =>
-        apiService.put('/files/rename', {path, newName}),
-
-    // 分享文件
-    shareFile: (path: string, expiresIn?: number) =>
-        apiService.post('/files/share', {path, expiresIn}),
-
-    // 新的后端API格式的操作函数
-    // 删除文件或文件夹
-    removeFile: (filePath: string, username?: string, isPersonalFile: boolean = false) => {
-        const fullPath = buildFilePath(filePath, username, isPersonalFile);
-        return apiService.delete(`/@files/remove/path${fullPath}`);
-    },
-
-    // 移动文件或文件夹
-    moveFileNew: (sourcePath: string, targetPath: string, username?: string, isPersonalFile: boolean = false) => {
-        const fullSourcePath = buildFilePath(sourcePath, username, isPersonalFile);
-        const fullTargetPath = buildFilePath(targetPath, username, isPersonalFile);
-        return apiService.post(`/@files/move/path${fullSourcePath}?target=${encodeURIComponent(fullTargetPath)}`);
-    },
-
-    // 复制文件或文件夹
-    copyFile: (sourcePath: string, targetPath: string, username?: string, isPersonalFile: boolean = false) => {
-        const fullSourcePath = buildFilePath(sourcePath, username, isPersonalFile);
-        const fullTargetPath = buildFilePath(targetPath, username, isPersonalFile);
-        return apiService.post(`/@files/copy/path${fullSourcePath}?target=${encodeURIComponent(fullTargetPath)}`);
-    },
-
-    // 创建文件或文件夹
-    createFileOrFolder: (path: string, target: string, username?: string, isPersonalFile: boolean = false) => {
-        const fullPath = buildFilePath(path, username, isPersonalFile);
-        return apiService.post(`/@files/create/path${fullPath}?target=${encodeURIComponent(target)}`);
-    },
-
-    // 重命名文件或文件夹
-    renameFileNew: (filePath: string, newName: string, username?: string, isPersonalFile: boolean = false) => {
-        const fullPath = buildFilePath(filePath, username, isPersonalFile);
-        return apiService.post(`/@files/rename/path${fullPath}?target=${encodeURIComponent(newName)}`);
-    },
+        apiService.download(`/d${path}`),
 };
 
 // 用户相关API
 export const userApi = {
     // 用户登录
-    login: (loginData: { users_name: string; users_pass: string }) =>
-        apiService.post('/@users/login/none', loginData),
+    login: (loginData: { username: string; password: string }) =>
+        apiService.post('/api/auth/login', loginData),
 
-    // 用户注册
-    register: (registerData: { users_name: string; users_mail?: string; users_pass: string }) =>
-        apiService.post('/@users/create/none', registerData),
+    // 用户登录（哈希密码）
+    loginHash: (loginData: { username: string; password: string; otp_code?: string }) =>
+        apiService.post('/api/auth/login/hash', loginData),
 
     // 用户登出
-    logout: () => apiService.post('/@users/logout/none', {}),
+    logout: () => apiService.get('/api/auth/logout'),
 
-    // 获取用户信息
-    getUserInfo: () => apiService.get('/user/info'),
+    // 获取当前用户信息
+    getMe: () => apiService.get('/api/me'),
 
-    // 更新用户信息
-    updateUserInfo: (data: any) => apiService.put('/user/info', data),
+    // 更新当前用户信息
+    updateMe: (data: any) => apiService.post('/api/me/update', data),
 
-    // 修改密码
-    changePassword: (oldPassword: string, newPassword: string) =>
-        apiService.put('/user/password', {oldPassword, newPassword}),
+    // 管理员：获取用户列表
+    getUsers: (params?: { page?: number; per_page?: number }) =>
+        apiService.get('/api/admin/user/list', { params }),
 
-    // 获取用户列表（管理员）
-    getUsers: (params?: { page?: number; size?: number; keyword?: string }) =>
-        apiService.get('/admin/users', {params}),
+    // 管理员：获取单个用户
+    getUser: (id: number) =>
+        apiService.get('/api/admin/user/get', { params: { id } }),
 
-    // 创建用户（管理员）
-    createUser: (userData: any) => apiService.post('/admin/users', userData),
+    // 管理员：创建用户
+    createUser: (userData: any) =>
+        apiService.post('/api/admin/user/create', userData),
 
-    // 更新用户（管理员）
-    updateUser: (userId: string, userData: any) =>
-        apiService.put(`/admin/users/${userId}`, userData),
+    // 管理员：更新用户
+    updateUser: (userData: any) =>
+        apiService.post('/api/admin/user/update', userData),
 
-    // 删除用户（管理员）
-    deleteUser: (userId: string) => apiService.delete(`/admin/users/${userId}`),
+    // 管理员：删除用户
+    deleteUser: (id: number) =>
+        apiService.post('/api/admin/user/delete', { id }),
+
+    // 管理员：取消2FA
+    cancel2FA: (id: number) =>
+        apiService.post('/api/admin/user/cancel_2fa', { id }),
+
+    // 用户注册（公开接口）
+    register: (data: { username: string; password: string; email?: string }) =>
+        apiService.post('/api/auth/register', data),
+};
+
+// 存储管理相关API
+export const storageApi = {
+    // 获取存储列表
+    list: (params?: { page?: number; per_page?: number }) =>
+        apiService.get('/api/admin/storage/list', { params }),
+
+    // 获取单个存储
+    get: (id: number) =>
+        apiService.get('/api/admin/storage/get', { params: { id } }),
+
+    // 创建存储
+    create: (data: any) =>
+        apiService.post('/api/admin/storage/create', data),
+
+    // 更新存储
+    update: (data: any) =>
+        apiService.post('/api/admin/storage/update', data),
+
+    // 删除存储
+    delete: (id: number) =>
+        apiService.post('/api/admin/storage/delete', { id }),
+
+    // 启用存储
+    enable: (id: number) =>
+        apiService.post('/api/admin/storage/enable', { id }),
+
+    // 禁用存储
+    disable: (id: number) =>
+        apiService.post('/api/admin/storage/disable', { id }),
+
+    // 重载所有存储
+    loadAll: () =>
+        apiService.post('/api/admin/storage/load_all', {}),
+
+    // 获取驱动列表
+    getDrivers: () =>
+        apiService.get('/api/admin/driver/list'),
+
+    // 获取驱动名称列表
+    getDriverNames: () =>
+        apiService.get('/api/admin/driver/names'),
+
+    // 获取驱动信息
+    getDriverInfo: (driverName: string) =>
+        apiService.get('/api/admin/driver/info', { params: { driver: driverName } }),
+};
+
+// 系统设置相关API
+export const settingApi = {
+    // 获取公开设置
+    getPublicSettings: () =>
+        apiService.get('/api/public/settings'),
+
+    // 获取设置列表
+    list: (params?: { group?: number }) =>
+        apiService.get('/api/admin/setting/list', { params }),
+
+    // 获取单个设置
+    get: (key: string) =>
+        apiService.get('/api/admin/setting/get', { params: { key } }),
+
+    // 保存设置
+    save: (settings: Array<{ key: string; value: string; type?: string }>) =>
+        apiService.post('/api/admin/setting/save', settings),
+
+    // 删除设置
+    delete: (key: string) =>
+        apiService.post('/api/admin/setting/delete', { key }),
+
+    // 重置 token
+    resetToken: () =>
+        apiService.post('/api/admin/setting/reset_token', {}),
+};
+
+// 元信息（路径规则）相关API
+export const metaApi = {
+    // 获取元信息列表
+    list: (params?: { page?: number; per_page?: number }) =>
+        apiService.get('/api/admin/meta/list', { params }),
+
+    // 获取单个元信息
+    get: (id: number) =>
+        apiService.get('/api/admin/meta/get', { params: { id } }),
+
+    // 创建元信息
+    create: (data: any) =>
+        apiService.post('/api/admin/meta/create', data),
+
+    // 更新元信息
+    update: (data: any) =>
+        apiService.post('/api/admin/meta/update', data),
+
+    // 删除元信息
+    delete: (id: number) =>
+        apiService.post('/api/admin/meta/delete', { id }),
+};
+
+// 分享相关API
+export const shareApi = {
+    // 获取分享列表
+    list: () =>
+        apiService.get('/api/share/list'),
+
+    // 获取单个分享
+    get: (id: number) =>
+        apiService.get('/api/share/get', { params: { id } }),
+
+    // 创建分享
+    create: (data: any) =>
+        apiService.post('/api/share/create', data),
+
+    // 更新分享
+    update: (data: any) =>
+        apiService.post('/api/share/update', data),
+
+    // 删除分享
+    delete: (id: number) =>
+        apiService.post('/api/share/delete', { id }),
+
+    // 启用分享
+    enable: (id: number) =>
+        apiService.post('/api/share/enable', { id }),
+
+    // 禁用分享
+    disable: (id: number) =>
+        apiService.post('/api/share/disable', { id }),
+};
+
+// 任务管理相关API
+export const taskApi = {
+    // 获取未完成任务
+    undone: (type: string) =>
+        apiService.get(`/api/task/${type}/undone`),
+
+    // 获取已完成任务
+    done: (type: string) =>
+        apiService.get(`/api/task/${type}/done`),
+
+    // 取消任务
+    cancel: (type: string, tid: string) =>
+        apiService.post(`/api/task/${type}/cancel`, { tid }),
+
+    // 删除任务
+    delete: (type: string, tid: string) =>
+        apiService.post(`/api/task/${type}/delete`, { tid }),
+
+    // 重试任务
+    retry: (type: string, tid: string) =>
+        apiService.post(`/api/task/${type}/retry`, { tid }),
+
+    // 清除已完成任务
+    clearDone: (type: string) =>
+        apiService.post(`/api/task/${type}/clear_done`, {}),
+
+    // 清除已成功任务
+    clearSucceeded: (type: string) =>
+        apiService.post(`/api/task/${type}/clear_succeeded`, {}),
+
+    // 重试失败任务
+    retryFailed: (type: string) =>
+        apiService.post(`/api/task/${type}/retry_failed`, {}),
 };
 
 // 系统管理相关API
 export const systemApi = {
-    // 获取系统信息
-    getSystemInfo: () => apiService.get('/@system/info/none'),
+    // 获取系统信息（需认证）
+    getSystemInfo: () => apiService.get('/@setup/info/none'),
 
-    // 获取系统设置
-    getSettings: () => apiService.get('/system/settings'),
+    // 检查系统初始化状态（公开）
+    getSetupStatus: () => apiService.get('/@setup/status/none'),
 
-    // 更新系统设置
-    updateSettings: (settings: any) => apiService.put('/system/settings', settings),
+    // 系统初始化（公开）
+    init: (data: { username: string; password: string; email?: string }) =>
+        apiService.post('/@setup/init/none', data),
 
-    // 备份系统
-    backupSystem: () => apiService.post('/system/backup'),
-
-    // 恢复系统
-    restoreSystem: (backupFile: File) => apiService.upload('/system/restore', backupFile),
-
-    // 获取日志
-    getLogs: (params?: { level?: string; startTime?: string; endTime?: string; page?: number; size?: number }) =>
-        apiService.get('/system/logs', {params}),
+    // ping
+    ping: () => apiService.get('/ping'),
 };
 
 export default apiService;

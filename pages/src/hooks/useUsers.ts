@@ -8,8 +8,10 @@ import {
   UpdateUserRequest 
 } from '../types';
 
-// API基础URL
-const API_BASE_URL = '/@users';
+// 新版 API 基础路径（与 GO 后端对齐）
+const API_AUTH   = '/api/auth';
+const API_ADMIN  = '/api/admin/user';
+const API_ME     = '/api/me';
 
 export const useUsers = () => {
   const [loading, setLoading] = useState(false);
@@ -64,7 +66,7 @@ export const useUsers = () => {
     setError(null);
     
     try {
-      const response = await axios.post(`${API_BASE_URL}/login/none`, loginData);
+      const response = await axios.post(`${API_AUTH}/login`, loginData);
       const result = handleResponse(response);
       
       if (result.flag && result.token) {
@@ -85,7 +87,7 @@ export const useUsers = () => {
     setError(null);
     
     try {
-      const response = await axios.post(`${API_BASE_URL}/logout/none`, {}, {
+      const response = await axios.get(`${API_AUTH}/logout`, {
         headers: getAuthHeaders()
       });
       const result = handleResponse(response);
@@ -103,15 +105,15 @@ export const useUsers = () => {
     }
   }, []);
 
-  // 获取用户列表
+  // 获取用户列表（管理员）
   const getUsers = useCallback(async (username?: string): Promise<UsersResult> => {
     setLoading(true);
     setError(null);
     
     try {
-      const url = username 
-        ? `${API_BASE_URL}/select/none/${encodeURIComponent(username)}`
-        : `${API_BASE_URL}/select/none`;
+      const url = username
+        ? `${API_ADMIN}/list?username=${encodeURIComponent(username)}`
+        : `${API_ADMIN}/list`;
       
       const response = await axios.get(url, {
         headers: getAuthHeaders()
@@ -125,13 +127,13 @@ export const useUsers = () => {
     }
   }, []);
 
-  // 创建用户
+  // 创建用户（管理员）
   const createUser = useCallback(async (userData: CreateUserRequest): Promise<UsersResult> => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await axios.post(`${API_BASE_URL}/create/none`, userData, {
+      const response = await axios.post(`${API_ADMIN}/create`, userData, {
         headers: getAuthHeaders()
       });
       
@@ -143,13 +145,13 @@ export const useUsers = () => {
     }
   }, []);
 
-  // 更新用户
+  // 更新用户信息
   const updateUser = useCallback(async (userData: UpdateUserRequest): Promise<UsersResult> => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await axios.post(`${API_BASE_URL}/config/none`, userData, {
+      const response = await axios.post(`${API_ME}/update`, userData, {
         headers: getAuthHeaders()
       });
       
@@ -161,14 +163,14 @@ export const useUsers = () => {
     }
   }, []);
 
-  // 删除用户
+  // 删除用户（管理员）
   const deleteUser = useCallback(async (username: string): Promise<UsersResult> => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await axios.post(`${API_BASE_URL}/remove/none`, {
-        users_name: username
+      const response = await axios.post(`${API_ADMIN}/delete`, {
+        username
       }, {
         headers: getAuthHeaders()
       });
@@ -181,7 +183,7 @@ export const useUsers = () => {
     }
   }, []);
 
-  // 验证当前用户权限
+  // 验证当前用户权限（获取当前登录用户信息）
   const checkAuth = useCallback(async (): Promise<UsersResult> => {
     const token = getAuthToken();
     if (!token) {
@@ -195,8 +197,7 @@ export const useUsers = () => {
     setError(null);
     
     try {
-      // 通过获取用户信息来验证token有效性
-      const response = await axios.get(`${API_BASE_URL}/select/none`, {
+      const response = await axios.get(`${API_ME}`, {
         headers: getAuthHeaders()
       });
       

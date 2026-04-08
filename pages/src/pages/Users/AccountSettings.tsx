@@ -68,10 +68,11 @@ const AccountSettings: React.FC = () => {
         return;
       }
 
-      const result = await apiService.post(`/@users/select/name/${user.users_name}`, {});
+      const result = await apiService.get('/api/me');
 
-      if (result.flag && result.data && result.data.length > 0) {
-        const userData = result.data[0];
+      // 拦截器已解包：result 直接是用户信息对象
+      const userData = result?.users_name ? result : (result?.data || result);
+      if (userData?.users_name) {
         const usedBytes = userData.total_used || 0;
         const totalBytes = userData.total_size || 1024 * 1024 * 1024;
         setUserInfo({
@@ -127,17 +128,12 @@ const AccountSettings: React.FC = () => {
         return;
       }
 
-      const result = await apiService.post('/@users/config/none', {
-        users_name: user.users_name,
-        users_mail: formData.users_mail,
+      const result = await apiService.post('/api/me/update', {
+        email: formData.users_mail,
       });
 
-      if (result.flag) {
-        message.success('个人信息更新成功');
-        await loadUserInfo();
-      } else {
-        setError(result.text || '更新个人信息失败');
-      }
+      message.success('个人信息更新成功');
+      await loadUserInfo();
     } catch (err) {
       setError('网络错误，请稍后重试');
       console.error('更新个人信息失败:', err);
@@ -165,21 +161,16 @@ const AccountSettings: React.FC = () => {
         return;
       }
 
-      const result = await apiService.post('/@users/config/none', {
-        users_name: user.users_name,
-        users_pass: formData.newPassword,
+      const result = await apiService.post('/api/me/update', {
+        password: formData.newPassword,
       });
 
-      if (result.flag) {
-        message.success('密码修改成功');
-        setFormData((prev) => ({
-          ...prev,
-          newPassword: '',
-          confirmPassword: '',
-        }));
-      } else {
-        setError(result.text || '修改密码失败');
-      }
+      message.success('密码修改成功');
+      setFormData((prev) => ({
+        ...prev,
+        newPassword: '',
+        confirmPassword: '',
+      }));
     } catch (err) {
       setError('网络错误，请稍后重试');
       console.error('修改密码失败:', err);

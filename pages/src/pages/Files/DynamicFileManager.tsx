@@ -9,6 +9,7 @@ import {
   Tooltip,
   Card,
   message,
+  Modal,
   Grid,
   Typography,
   Dropdown,
@@ -190,16 +191,15 @@ const DynamicFileManager: React.FC = () => {
       // 判断是否为个人文件
       const isPersonal = isPersonalFile(location.pathname);
       
-      // 使用fileApi.getFileList()，这样会经过响应拦截器处理
-      const response = await fileApi.getFileList(cleanBackendPath || '/', username, isPersonal);
+      // 使用fileApi.getFileList()，拦截器已解包，response 直接是 { content, total, write, ... }
+      const response = await fileApi.getFileList(cleanBackendPath || '/');
       
-      if (response && response.flag && response.data) {
-        // 后端返回格式: { flag: true, text: "Success", data: { pageSize, filePath, fileList } }
-        const apiData = response.data;
+      // 后端返回格式（解包后）: { content: ObjResp[], total, write, readme, ... }
+      if (response && Array.isArray(response.content)) {
         const pathInfo: PathInfo = {
-          pageSize: apiData.pageSize,
-          filePath: apiData.filePath,
-          fileList: apiData.fileList || []
+          pageSize: response.total || response.content.length,
+          filePath: cleanBackendPath || '/',
+          fileList: response.content,  // 直接使用 content 数组，字段为 name/is_dir/size/modified
         };
         setPathInfo(pathInfo);
       } else {
@@ -267,11 +267,18 @@ const DynamicFileManager: React.FC = () => {
   };
 
   // 处理文件删除
-  const handleFileDelete = async (file: any) => {
-    if (!window.confirm(`确定要删除 "${file.name}" 吗？`)) {
-      return;
-    }
+  const handleFileDelete = (file: any) => {
+    Modal.confirm({
+      title: '确认删除',
+      content: `确定要删除 "${file.name}" 吗？此操作不可撤销。`,
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: () => doFileDelete(file),
+    });
+  };
 
+  const doFileDelete = async (file: any) => {
     try {
       // 构建完整的文件路径
       const fullFilePath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
@@ -879,17 +886,24 @@ const DynamicFileManager: React.FC = () => {
   const prepareTableData = () => {
     if (!pathInfo?.fileList) return [];
 
-    const tableData = pathInfo.fileList.map((file: FileInfo) => ({
-        id: file.fileUUID || file.fileName,
-        name: file.fileName,
-        type: file.fileType === 0 ? '文件夹' : '文件',
-        size: file.fileType === 0 ? '-' : formatFileSize(file.fileSize || 0),
-        modified: formatDate(file.timeModify),
-        icon: file.fileType === 0 ? <FolderOutlined style={{ color: '#1890ff', fontSize: 18 }} /> : <FileOutlined style={{ fontSize: 18 }} />,
-        is_dir: file.fileType === 0,
-        fileSize: file.fileSize || 0,
-        timeModify: file.timeModify
-      }));
+    const tableData = pathInfo.fileList.map((file: any) => {
+        // 兼容后端新格式（name/is_dir/size/modified）和旧格式（fileName/fileType/fileSize/timeModify）
+        const name = file.name || file.fileName || '';
+        const isDir = file.is_dir !== undefined ? file.is_dir : (file.fileType === 0);
+        const size = file.size !== undefined ? file.size : (file.fileSize || 0);
+        const modified = file.modified || file.timeModify;
+        return {
+          id: file.sign || file.fileUUID || name,
+          name,
+          type: isDir ? '文件夹' : '文件',
+          size: isDir ? '-' : formatFileSize(size),
+          modified: formatDate(modified),
+          icon: isDir ? <FolderOutlined style={{ color: '#1890ff', fontSize: 18 }} /> : <FileOutlined style={{ fontSize: 18 }} />,
+          is_dir: isDir,
+          fileSize: size,
+          timeModify: modified,
+        };
+      });
 
     // 排序逻辑：目录在前，然后按指定字段排序
     return tableData.sort((a, b) => {
