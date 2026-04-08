@@ -10,7 +10,7 @@ import {PrismaMariaDb} from '@prisma/adapter-mariadb';
 import {PrismaPg} from '@prisma/adapter-pg'
 import {PrismaMssql} from '@prisma/adapter-mssql';
 import {PrismaClient} from '../generated/prisma/client';
-import mariadb from 'mariadb';
+import * as mariadb from 'mariadb';
 import pg, {PoolConfig} from 'pg';
 import sql from 'mssql';
 
