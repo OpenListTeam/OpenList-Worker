@@ -181,7 +181,7 @@ wrangler login
 2. **创建生产数据库**
 ```bash
 # 创建 KV 命名空间
-wrangler kv:namespace create "KV_DATA"
+wrangler kv namespace create "KV_DATA"
 
 # 创建 D1 数据库
 wrangler d1 create openlist-prod-db
