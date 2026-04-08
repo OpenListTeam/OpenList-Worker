@@ -16,20 +16,16 @@ const BackupRestore: React.FC = () => {
   const handleBackup = async () => {
     setBackupLoading(true);
     try {
-      const res: any = await apiService.get('/api/admin/setting/backup');
-      if (res.code === 200) {
-        // 下载备份文件
-        const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `openlist-backup-${new Date().toISOString().slice(0, 10)}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-        message.success('备份文件已下载');
-      } else {
-        message.error(res.message || '备份失败');
-      }
+      const data: any = await apiService.get('/api/admin/setting/backup');
+      // 下载备份文件
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `openlist-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      message.success('备份文件已下载');
     } catch (error: any) {
       message.error(error.message || '备份失败');
     } finally {
@@ -42,12 +38,8 @@ const BackupRestore: React.FC = () => {
     try {
       const text = await file.text();
       const data = JSON.parse(text);
-      const res: any = await apiService.post('/api/admin/setting/restore', { backup_data: data });
-      if (res.code === 200) {
-        message.success('数据恢复成功，请刷新页面');
-      } else {
-        message.error(res.message || '恢复失败');
-      }
+      await apiService.post('/api/admin/setting/restore', { backup_data: data });
+      message.success('数据恢复成功，请刷新页面');
     } catch (error: any) {
       message.error(error.message || '恢复失败，请检查备份文件格式');
     } finally {

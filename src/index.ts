@@ -151,6 +151,53 @@ setupRoutes(app);          // GET /@setup/status/none, POST /@setup/init/none（
 webdavRoutes(app);         // /dav/*
 
 // ========================================================================
+// 静态资源 & SPA 回退（必须放在所有 API 路由之后）
+//
+// 部署到 Cloudflare Workers + Assets 时的处理逻辑：
+//   1. 请求路径命中 public/ 目录中的真实文件 → 直接由 ASSETS 服务返回
+//   2. 请求路径未命中（前端 SPA 路由，如 /files、/login 等）→ 返回 index.html
+//      让 React Router 在客户端接管路由
+//
+// 注意：/api/*、/dav/*、/d/*、/p/*、/@setup/* 等后端路由已在上方注册，
+//       不会落入此处的通配符处理器。
+// ========================================================================
+app.get('*', async (c: Context) => {
+    // 仅在 Cloudflare Workers 环境（存在 ASSETS 绑定）时启用静态资源服务
+    if (!c.env?.ASSETS) {
+        return c.text('Not Found', 404);
+    }
+
+    const url = new URL(c.req.url);
+
+    // 1. 先尝试获取与请求路径完全匹配的静态文件
+    try {
+        const assetResp = await c.env.ASSETS.fetch(c.req.raw);
+        if (assetResp.status !== 404) {
+            return assetResp;
+        }
+    } catch {
+        // ASSETS.fetch 抛出异常时继续走 SPA 回退
+    }
+
+    // 2. 静态文件不存在 → 返回 index.html，交由前端 React Router 处理
+    //    将请求路径重写为根路径以获取 index.html
+    try {
+        const indexUrl = new URL('/', url.origin);
+        const indexResp = await c.env.ASSETS.fetch(new Request(indexUrl.toString(), c.req.raw));
+        // 克隆响应并强制设置正确的 Content-Type
+        return new Response(indexResp.body, {
+            status: 200,
+            headers: {
+                'Content-Type': 'text/html; charset=utf-8',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+            },
+        });
+    } catch {
+        return c.text('Service Unavailable', 503);
+    }
+});
+
+// ========================================================================
 // 默认导出
 // ========================================================================
 export default app;

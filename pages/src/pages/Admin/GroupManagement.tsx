@@ -64,13 +64,9 @@ const GroupManagement: React.FC = () => {
     setLoading(true);
     try {
       const response = await apiService.get('/api/admin/group/list');
-      if (response.code === 200) {
-        setGroups(response.data || []);
-      } else {
-        messageApi.error(response.message || '获取分组列表失败');
-      }
-    } catch (error) {
-      messageApi.error('获取分组列表失败');
+      setGroups(Array.isArray(response) ? response : (response || []));
+    } catch (error: any) {
+      messageApi.error(error.message || '获取分组列表失败');
     } finally {
       setLoading(false);
     }
@@ -116,15 +112,11 @@ const GroupManagement: React.FC = () => {
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
-          const response = await apiService.post('/api/admin/group/delete', { group_name: group.group_name });
-          if (response.code === 200) {
-            messageApi.success('删除成功');
-            fetchGroups();
-          } else {
-            messageApi.error(response.message || '删除失败');
-          }
-        } catch (error) {
-          messageApi.error('删除失败');
+          await apiService.post('/api/admin/group/delete', { group_name: group.group_name });
+          messageApi.success('删除成功');
+          fetchGroups();
+        } catch (error: any) {
+          messageApi.error(error.message || '删除失败');
         }
       }
     });
@@ -133,18 +125,14 @@ const GroupManagement: React.FC = () => {
   // 切换分组状态
   const handleToggleStatus = async (group: Group) => {
     try {
-      const response = await apiService.post('/api/admin/group/update', {
+      await apiService.post('/api/admin/group/update', {
         group_name: group.group_name,
         is_enabled: group.is_enabled === 1 ? 0 : 1
       });
-      if (response.code === 200) {
-        messageApi.success('状态更新成功');
-        fetchGroups();
-      } else {
-        messageApi.error(response.message || '状态更新失败');
-      }
-    } catch (error) {
-      messageApi.error('状态更新失败');
+      messageApi.success('状态更新成功');
+      fetchGroups();
+    } catch (error: any) {
+      messageApi.error(error.message || '状态更新失败');
     }
   };
 
@@ -157,17 +145,12 @@ const GroupManagement: React.FC = () => {
 
     try {
       const url = editingGroup ? '/api/admin/group/update' : '/api/admin/group/create';
-      const response = await apiService.post(url, formData);
-
-      if (response.code === 200) {
-        messageApi.success(editingGroup ? '更新成功' : '创建成功');
-        setDialogOpen(false);
-        fetchGroups();
-      } else {
-        messageApi.error(response.message || '操作失败');
-      }
-    } catch (error) {
-      messageApi.error('操作失败');
+      await apiService.post(url, formData);
+      messageApi.success(editingGroup ? '更新成功' : '创建成功');
+      setDialogOpen(false);
+      fetchGroups();
+    } catch (error: any) {
+      messageApi.error(error.message || '操作失败');
     }
   };
 
@@ -177,20 +160,15 @@ const GroupManagement: React.FC = () => {
 
     try {
       const group_mask = selectedPermissions.join(',');
-      const response = await apiService.post('/api/admin/group/update', {
+      await apiService.post('/api/admin/group/update', {
         group_name: editingGroup.group_name,
         group_mask
       });
-
-      if (response.code === 200) {
-        messageApi.success('权限更新成功');
-        setPermissionDialogOpen(false);
-        fetchGroups();
-      } else {
-        messageApi.error(response.message || '权限更新失败');
-      }
-    } catch (error) {
-      messageApi.error('权限更新失败');
+      messageApi.success('权限更新成功');
+      setPermissionDialogOpen(false);
+      fetchGroups();
+    } catch (error: any) {
+      messageApi.error(error.message || '权限更新失败');
     }
   };
 

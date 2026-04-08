@@ -54,11 +54,7 @@ const MatesConfig: React.FC = () => {
     setLoading(true);
     try {
       const response = await apiService.get('/api/admin/meta/list');
-      if (response.code === 200) {
-        setMates(response.data || []);
-      } else {
-        messageApi.error(response.message || '获取路径配置列表失败');
-      }
+      setMates(Array.isArray(response) ? response : []);
     } catch (error) {
       messageApi.error('获取路径配置列表失败');
     } finally {
@@ -113,13 +109,9 @@ const MatesConfig: React.FC = () => {
     }
 
     try {
-      const response = await apiService.post('/api/admin/meta/delete', { id: mate.mates_name });
-      if (response.code === 200) {
-        messageApi.success('删除成功');
-        fetchMates();
-      } else {
-        messageApi.error(response.message || '删除失败');
-      }
+      await apiService.post('/api/admin/meta/delete', { id: mate.mates_name });
+      messageApi.success('删除成功');
+      fetchMates();
     } catch (error) {
       messageApi.error('删除失败');
     }
@@ -128,16 +120,12 @@ const MatesConfig: React.FC = () => {
   // 切换启用状态
   const handleToggleStatus = async (mate: Mates) => {
     try {
-      const response = await apiService.post('/api/admin/meta/update', {
+      await apiService.post('/api/admin/meta/update', {
         ...mate,
         is_enabled: mate.is_enabled === 1 ? 0 : 1
       });
-      if (response.code === 200) {
-        messageApi.success('状态更新成功');
-        fetchMates();
-      } else {
-        messageApi.error(response.message || '状态更新失败');
-      }
+      messageApi.success('状态更新成功');
+      fetchMates();
     } catch (error) {
       messageApi.error('状态更新失败');
     }
@@ -152,15 +140,10 @@ const MatesConfig: React.FC = () => {
 
     try {
       const endpoint = editingMate ? '/api/admin/meta/update' : '/api/admin/meta/create';
-      const response = await apiService.post(endpoint, formData);
-
-      if (response.code === 200) {
-        messageApi.success(editingMate ? '更新成功' : '创建成功');
-        setDialogOpen(false);
-        fetchMates();
-      } else {
-        messageApi.error(response.message || '操作失败');
-      }
+      await apiService.post(endpoint, formData);
+      messageApi.success(editingMate ? '更新成功' : '创建成功');
+      setDialogOpen(false);
+      fetchMates();
     } catch (error) {
       messageApi.error('操作失败');
     }

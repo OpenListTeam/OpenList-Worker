@@ -57,11 +57,21 @@ const FilePreview: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get(`/@files/list/path${dirPath}`);
-      if (res?.flag && res?.data?.fileList) {
-        const target = res.data.fileList.find((f: FileItem) => f.fileName === fileName);
+      // 使用新版 /api/fs/list，拦截器解包后 response 直接是 { content, total, ... }
+      const res = await api.post('/api/fs/list', { path: dirPath || '/' });
+      if (res && Array.isArray(res.content)) {
+        const target = res.content.find((f: any) => (f.name || f.fileName) === fileName);
         if (target) {
-          setFileInfo(target);
+          // 将新格式字段映射到 FileItem
+          setFileInfo({
+            filePath: dirPath,
+            fileName: target.name || target.fileName || '',
+            fileSize: target.size ?? target.fileSize ?? 0,
+            fileType: target.is_dir ? 0 : 1,
+            fileHash: target.hash_info || target.fileHash,
+            timeModify: target.modified || target.timeModify,
+            timeCreate: target.created || target.timeCreate,
+          } as any);
         } else {
           setError('文件不存在');
         }
@@ -78,8 +88,11 @@ const FilePreview: React.FC = () => {
   // 获取下载链接
   const fetchDownloadUrl = async () => {
     try {
-      const res = await api.get(`/@files/link/path${filePath}`);
-      if (res?.flag && res?.data?.[0]?.direct) {
+      // 使用新版 /api/fs/link
+      const res = await api.post('/api/fs/link', { path: filePath });
+      if (res?.url) {
+        setDownloadUrl(res.url);
+      } else if (res?.data?.[0]?.direct) {
         setDownloadUrl(res.data[0].direct);
       }
     } catch { /* 忽略，预览时不强制要求 */ }

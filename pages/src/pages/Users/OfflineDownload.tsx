@@ -39,9 +39,7 @@ const OfflineDownload: React.FC = () => {
     setLoading(true);
     try {
       const response = await apiService.get('/api/task/offline_download/undone');
-      if (response.code === 200) {
-        setData(response.data || []);
-      }
+      setData(Array.isArray(response) ? response : []);
     } catch (error) {
       console.error('获取离线下载任务失败:', error);
     } finally {
@@ -95,12 +93,10 @@ const OfflineDownload: React.FC = () => {
 
   const handleDelete = async (item: Fetch) => {
     try {
-      const response = await apiService.post('/api/task/offline_download/delete', {
+      await apiService.post('/api/task/offline_download/delete', {
         tid: item.fetch_uuid,
       });
-      if (response.code === 200) {
-        await fetchDownloadTasks();
-      }
+      await fetchDownloadTasks();
     } catch (error) {
       console.error('删除离线下载任务失败:', error);
     }
@@ -127,14 +123,10 @@ const OfflineDownload: React.FC = () => {
         delete_policy: 'delete_on_upload_succeed',
       });
 
-      if (response.code === 200) {
-        setAddDialogOpen(false);
-        await fetchDownloadTasks();
-      } else {
-        setError(response.message || '创建下载任务失败');
-      }
+      setAddDialogOpen(false);
+      await fetchDownloadTasks();
     } catch (error: any) {
-      setError(error.response?.data?.text || '创建下载任务失败');
+      setError(error.message || '创建下载任务失败');
     }
   };
 
@@ -150,10 +142,10 @@ const OfflineDownload: React.FC = () => {
       let successCount = 0;
 
       for (const task of pausedTasks) {
-        const response = await apiService.post('/api/task/offline_download/retry', {
-          tid: task.fetch_uuid,
-        });
-        if (response.code === 200) successCount++;
+        try {
+          await apiService.post('/api/task/offline_download/retry', { tid: task.fetch_uuid });
+          successCount++;
+        } catch { /* 忽略单个任务失败 */ }
       }
 
       if (successCount > 0) {
@@ -175,10 +167,10 @@ const OfflineDownload: React.FC = () => {
       let successCount = 0;
 
       for (const task of runningTasks) {
-        const response = await apiService.post('/api/task/offline_download/cancel', {
-          tid: task.fetch_uuid,
-        });
-        if (response.code === 200) successCount++;
+        try {
+          await apiService.post('/api/task/offline_download/cancel', { tid: task.fetch_uuid });
+          successCount++;
+        } catch { /* 忽略单个任务失败 */ }
       }
 
       if (successCount > 0) {
@@ -200,10 +192,10 @@ const OfflineDownload: React.FC = () => {
       let successCount = 0;
 
       for (const task of activeTasks) {
-        const response = await apiService.post('/api/task/offline_download/cancel', {
-          tid: task.fetch_uuid,
-        });
-        if (response.code === 200) successCount++;
+        try {
+          await apiService.post('/api/task/offline_download/cancel', { tid: task.fetch_uuid });
+          successCount++;
+        } catch { /* 忽略单个任务失败 */ }
       }
 
       if (successCount > 0) {
@@ -225,10 +217,10 @@ const OfflineDownload: React.FC = () => {
       let successCount = 0;
 
       for (const task of completedTasks) {
-        const response = await apiService.post('/api/task/offline_download/delete', {
-          tid: task.fetch_uuid,
-        });
-        if (response.code === 200) successCount++;
+        try {
+          await apiService.post('/api/task/offline_download/delete', { tid: task.fetch_uuid });
+          successCount++;
+        } catch { /* 忽略单个任务失败 */ }
       }
 
       if (successCount > 0) {

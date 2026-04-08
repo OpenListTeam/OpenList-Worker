@@ -29,9 +29,9 @@ const IndexManage: React.FC = () => {
   const fetchIndexes = async () => {
     setLoading(true);
     try {
-      const res: any = await apiService.get('/api/admin/setting/list?group=index_configs');
-      if (res.code === 200 && res.data) {
-        const configs = JSON.parse(res.data.admin_data || '[]');
+      const data: any = await apiService.get('/api/admin/setting/list?group=index_configs');
+      if (data && data.admin_data) {
+        const configs = JSON.parse(data.admin_data || '[]');
         setIndexes(configs);
       }
     } catch (error) {
@@ -68,20 +68,15 @@ const IndexManage: React.FC = () => {
         updatedIndexes = [...indexes, newConfig];
       }
 
-      const res: any = await apiService.post('/api/admin/setting/save', {
+      await apiService.post('/api/admin/setting/save', {
         admin_keys: 'index_configs',
         admin_data: JSON.stringify(updatedIndexes),
       });
-
-      if (res.code === 200) {
-        message.success(editingIndex ? '索引配置更新成功' : '索引配置创建成功');
-        setIndexes(updatedIndexes);
-        setModalVisible(false);
-        form.resetFields();
-        setEditingIndex(null);
-      } else {
-        message.error(res.message || '操作失败');
-      }
+      message.success(editingIndex ? '索引配置更新成功' : '索引配置创建成功');
+      setIndexes(updatedIndexes);
+      setModalVisible(false);
+      form.resetFields();
+      setEditingIndex(null);
     } catch (error: any) {
       message.error(error.message || '操作失败');
     }
@@ -90,14 +85,12 @@ const IndexManage: React.FC = () => {
   const handleDelete = async (indexPath: string) => {
     const updatedIndexes = indexes.filter(idx => idx.index_path !== indexPath);
     try {
-      const res: any = await apiService.post('/api/admin/setting/save', {
+      await apiService.post('/api/admin/setting/save', {
         admin_keys: 'index_configs',
         admin_data: JSON.stringify(updatedIndexes),
       });
-      if (res.code === 200) {
-        message.success('索引配置已删除');
-        setIndexes(updatedIndexes);
-      }
+      message.success('索引配置已删除');
+      setIndexes(updatedIndexes);
     } catch (error: any) {
       message.error(error.message || '删除失败');
     }

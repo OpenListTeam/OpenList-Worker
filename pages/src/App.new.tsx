@@ -51,7 +51,11 @@ const AppRoot: React.FC = () => {
 
   return (
     <AppProvider>
-      <ConfigProvider theme={themeConfig} locale={locale}>
+      <ConfigProvider
+        theme={themeConfig}
+        locale={locale}
+        getPopupContainer={() => document.body}
+      >
         <AntdApp>
           <RouterProvider router={router} />
         </AntdApp>

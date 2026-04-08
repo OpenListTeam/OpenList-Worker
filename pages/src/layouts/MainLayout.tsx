@@ -136,7 +136,7 @@ const MainLayout: React.FC = () => {
     : '0 1px 0 rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06)';
 
   return (
-    <div style={{ minHeight: '100vh' }}>
+    <div style={{ minHeight: '100vh', height: '100vh', overflow: 'hidden' }}>
       {/* 桌面端侧边栏（position: fixed，脱离文档流） */}
       {!isMobile && <AppSidebar />}
 
@@ -162,7 +162,7 @@ const MainLayout: React.FC = () => {
         style={{
           paddingLeft: isMobile ? 0 : siderWidth,
           transition: 'padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          minHeight: '100vh',
+          height: '100vh',
           display: 'flex',
           flexDirection: 'column',
         }}

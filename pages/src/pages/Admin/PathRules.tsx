@@ -62,10 +62,8 @@ const PathRules: React.FC = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-    const res = await api.get('/api/admin/meta/list');
-      if (res.code === 200) {
-        setDataSource(res.data || []);
-      }
+    const data = await api.get('/api/admin/meta/list');
+      setDataSource(Array.isArray(data) ? data : []);
     } catch (err) {
       message.error(t('common.failed'));
     } finally {
@@ -76,10 +74,8 @@ const PathRules: React.FC = () => {
   // 加载加密组列表
   const fetchCryptGroups = useCallback(async () => {
     try {
-      const res = await api.get('/api/admin/setting/list?group=crypt');
-      if (res.code === 200) {
-        setCryptGroups(res.data || []);
-      }
+      const data = await api.get('/api/admin/setting/list?group=crypt');
+      setCryptGroups(Array.isArray(data) ? data : []);
     } catch { /* 忽略 */ }
   }, []);
 
@@ -162,31 +158,23 @@ const PathRules: React.FC = () => {
         ? '/api/admin/meta/update'
         : '/api/admin/meta/create';
 
-      const res = await api.post(url, payload);
-      if (res.code === 200) {
-        message.success(t('common.success'));
-        setEditVisible(false);
-        fetchData();
-      } else {
-        message.error(res.text || t('common.failed'));
-      }
-    } catch (err) {
-      message.error(t('common.failed'));
+      await api.post(url, payload);
+      message.success(t('common.success'));
+      setEditVisible(false);
+      fetchData();
+    } catch (err: any) {
+      message.error(err.message || t('common.failed'));
     }
   };
 
   // 删除
   const handleDelete = async (name: string) => {
     try {
-      const res = await api.post('/api/admin/meta/delete', { mates_name: name });
-      if (res.code === 200) {
-        message.success(t('common.success'));
-        fetchData();
-      } else {
-        message.error(res.text || t('common.failed'));
-      }
-    } catch {
-      message.error(t('common.failed'));
+      await api.post('/api/admin/meta/delete', { mates_name: name });
+      message.success(t('common.success'));
+      fetchData();
+    } catch (err: any) {
+      message.error(err.message || t('common.failed'));
     }
   };
 

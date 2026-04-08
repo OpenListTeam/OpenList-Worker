@@ -6,8 +6,12 @@
     "dev:test": "wrangler dev -c wrangler.test.jsonc",
     "dev:page": "cd pages && npm run dev",
     "dev:type": "wrangler types --env-interface CloudflareBindings",
-    "deploy:page": "cd pages && npm run build",
+    "install:page": "cd pages && npm install",
+    "build:page": "cd pages && npm run build",
+    "deploy:page": "npm run install:page && npm run build:page",
     "deploy": "npm run deploy:page && wrangler deploy --minify",
+    "deploy:worker": "wrangler deploy --minify",
+    "deploy:ci": "npm run build:page && wrangler deploy --minify",
     "prisma:generate": "prisma generate",
     "postinstall": "prisma generate"
   },

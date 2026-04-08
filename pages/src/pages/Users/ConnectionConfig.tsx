@@ -54,12 +54,12 @@ const ConnectionConfig: React.FC = () => {
         return;
       }
 
-      const result = await apiService.post('/@token/user/none', {
+      const result = await apiService.post('/api/admin/token/user', {
         token_user: user.users_name
       });
       
-      if (result.flag) {
-        const convertedTokens = (result.data || []).map((token: any) => ({
+      if (Array.isArray(result)) {
+        const convertedTokens = (result || []).map((token: any) => ({
           token_uuid: token.token_uuid,
           token_path: token.token_name || '',
           token_user: token.token_user,
@@ -68,8 +68,10 @@ const ConnectionConfig: React.FC = () => {
           is_enabled: token.is_enabled || 0,
         }));
         setTokens(convertedTokens);
-      } else {
+      } else if (result && result.flag === false) {
         setError(result.text || '获取连接配置失败');
+      } else {
+        setTokens([]);
       }
     } catch (err) {
       setError('网络错误，请稍后重试');
@@ -154,10 +156,10 @@ const ConnectionConfig: React.FC = () => {
       cancelText: '取消',
       onOk: async () => {
         try {
-          const response = await apiService.post('/@token/remove/none', { 
+          const response = await apiService.post('/api/admin/token/remove', { 
             token_uuid: token.token_uuid 
           });
-          if (response.flag) {
+          if (response === null || response === undefined || (response && response.flag !== false)) {
             message.success('删除成功');
             loadTokens();
           } else {
@@ -193,9 +195,9 @@ const ConnectionConfig: React.FC = () => {
       };
 
       const action = editingToken ? 'config' : 'create';
-      const response = await apiService.post(`/@token/${action}/none`, tokenData);
+      const response = await apiService.post(`/api/admin/token/${action}`, tokenData);
       
-      if (response.flag) {
+      if (response === null || response === undefined || (response && response.flag !== false)) {
         message.success(editingToken ? '更新成功' : '创建成功');
         setDialogOpen(false);
         loadTokens();

@@ -20,10 +20,8 @@ const CryptSettings: React.FC = () => {
   const fetchCrypts = async () => {
     setLoading(true);
     try {
-      const res: any = await apiService.get('/api/admin/setting/list?group=crypt');
-      if (res.code === 200 && res.data) {
-        setCrypts(Array.isArray(res.data) ? res.data : []);
-      }
+      const data: any = await apiService.get('/api/admin/setting/list?group=crypt');
+      setCrypts(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('获取加密配置失败:', error);
     } finally {
@@ -36,16 +34,12 @@ const CryptSettings: React.FC = () => {
   const handleSave = async (values: any) => {
     try {
       const url = editingCrypt ? '/api/admin/setting/update' : '/api/admin/setting/create';
-      const res: any = await apiService.post(url, values);
-      if (res.code === 200) {
-        message.success(editingCrypt ? '加密配置更新成功' : '加密配置创建成功');
-        setModalVisible(false);
-        form.resetFields();
-        setEditingCrypt(null);
-        fetchCrypts();
-      } else {
-        message.error(res.text || '操作失败');
-      }
+      await apiService.post(url, values);
+      message.success(editingCrypt ? '加密配置更新成功' : '加密配置创建成功');
+      setModalVisible(false);
+      form.resetFields();
+      setEditingCrypt(null);
+      fetchCrypts();
     } catch (error: any) {
       message.error(error.message || '操作失败');
     }
@@ -53,13 +47,9 @@ const CryptSettings: React.FC = () => {
 
   const handleDelete = async (cryptName: string) => {
     try {
-      const res: any = await apiService.post('/api/admin/setting/delete', { crypt_name: cryptName });
-      if (res.code === 200) {
-        message.success('加密配置已删除');
-        fetchCrypts();
-      } else {
-        message.error(res.text || '删除失败');
-      }
+      await apiService.post('/api/admin/setting/delete', { crypt_name: cryptName });
+      message.success('加密配置已删除');
+      fetchCrypts();
     } catch (error: any) {
       message.error(error.message || '删除失败');
     }

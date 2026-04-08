@@ -6,36 +6,59 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
+
+  // ── 环境变量 ──────────────────────────────────────────────────────────────
   "vars": {
-    // D1数据库配置 =====================================
-    "ENABLE_D1": true, // D1 是否启用，启用需要配置SQL信息
-    "REMOTE_D1": ""    // D1 远程地址，默认不填使用ENV绑定
-    /* D1 Database 配置指南 ==============================
-    local:// # 不填或为local:使用本地数据库：c.env.D1_DATA
-    mysql://<username>:<password>@<host>:<port>/<database>
-    maria://<username>:<password>@<host>:<port>/<database>
-    pgsql://<username>:<password>@<host>:<port>/<database>
-    =================================================== */
-
-
+    // D1 是否启用（true=使用D1/远程数据库，false=仅使用KV）
+    "ENABLE_D1": true,
+    // D1 连接地址，留空或填 "local://" 则使用下方绑定的 CF D1 本地数据库
+    // 也可填远程数据库连接串，格式见下方说明
+    "REMOTE_D1": ""
+    /* ── REMOTE_D1 连接串格式说明 ─────────────────────────────────────────
+       local://                                          → 使用 CF D1 绑定（默认）
+       mysql://<user>:<pass>@<host>:<port>/<db>          → MySQL / MariaDB
+       maria://<user>:<pass>@<host>:<port>/<db>          → MariaDB（别名）
+       pgsql://<user>:<pass>@<host>:<port>/<db>          → PostgreSQL
+       sqlserver://<host>:<port>;database=<db>;username=<u>;password=<p>
+    ──────────────────────────────────────────────────────────────────── */
   },
-  // 静态资源配置 =====================================
+
+  // ── 静态资源（前端 SPA）────────────────────────────────────────────────────
+  // 前端执行 npm run deploy:page 后会将产物输出到 ./public
   "assets": {
     "directory": "./public",
     "binding": "ASSETS"
+  },
+
+  // ── KV 命名空间 ───────────────────────────────────────────────────────────
+  // 用于存储会话、缓存等键值数据
+  // 在 Cloudflare 控制台创建 KV 命名空间后，将 ID 填入下方
+  "kv_namespaces": [
+    {
+      "binding": "KV_DATA",       // ← 请勿修改 binding 名称
+      "id": ""                    // ← 填入你在 CF 控制台创建的 KV 命名空间 ID
+    }
+  ],
+
+  // ── D1 数据库 ─────────────────────────────────────────────────────────────
+  // 仅当 REMOTE_D1 为空或 "local://" 时生效
+  // 在 Cloudflare 控制台创建 D1 数据库后，将名称和 UUID 填入下方
+  "d1_databases": [
+    {
+      "binding": "D1_DATA",       // ← 请勿修改 binding 名称
+      "database_name": "",        // ← 填入你在 CF 控制台创建的 D1 数据库名称
+      "database_id": ""           // ← 填入你在 CF 控制台创建的 D1 数据库 UUID
+    }
+  ],
+
+  // ── 可观测性（日志）─────────────────────────────────────────────────────────
+  "observability": {
+    "enabled": false,             // 生产环境建议开启以便排查问题
+    "head_sampling_rate": 1,      // 采样率，1 = 100%，请勿随意修改
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true
+    }
   }
-  // 临时注释掉KV和D1配置以便开发服务器能正常启动
-  /*
-  , "kv_namespaces": [{ // <-------KV 数据库配置-------->
-      "binding": "KV_DATA",// <---------请勿修改--------->
-      "id": "" // <----修改为你创建的Cloudflare KV数据库ID
-  }],"d1_databases": [{  // <-------D1 数据库配置-------->
-      "binding": "D1_DATA",// <---------请勿修改--------->
-      "database_name": "", // <----修改为你CF D1数据库名称
-      "database_id": ""    // <----修改为你CF D1数据库UUID
-  }], "observability": { // <-------CF 日志配置项-------->
-     "enabled": false,       // 开启日志，如果需调试可以开
-     "head_sampling_rate": 1 // <--------请勿修改-------->
-   }
-   */
 }

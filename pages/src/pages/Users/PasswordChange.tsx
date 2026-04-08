@@ -21,16 +21,12 @@ const PasswordChange: React.FC = () => {
     }
     setLoading(true);
     try {
-      const res: any = await apiService.post('/api/me/update', {
+      await apiService.post('/api/me/update', {
         old_password: values.old_password,
         password: values.new_password,
       });
-      if (res.code === 200) {
-        message.success('密码修改成功');
-        form.resetFields();
-      } else {
-        message.error(res.message || '密码修改失败');
-      }
+      message.success('密码修改成功');
+      form.resetFields();
     } catch (error: any) {
       message.error(error.message || '密码修改失败');
     } finally {

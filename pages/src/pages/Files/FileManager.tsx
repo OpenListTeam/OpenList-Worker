@@ -138,8 +138,8 @@ const FileManager: React.FC = () => {
     setDirTreeLoading(true);
     try {
       const res = await api.post('/api/fs/list', { path: parentPath, password: '', page: 1, per_page: 0, refresh: false });
-      if (res?.code === 200 && res?.data?.content) {
-        const dirs = (res.data.content as any[]).filter(f => f.is_dir);
+      if (res?.content) {
+        const dirs = (res.content as any[]).filter((f: any) => f.is_dir);
         return dirs.map((d: any) => ({
           title: d.name,
           key: parentPath === '/' ? `/${d.name}` : `${parentPath}/${d.name}`,
@@ -183,10 +183,10 @@ const FileManager: React.FC = () => {
     setLoading(true);
     try {
       const res = await api.post('/api/fs/list', { path: currentPath, password: '', page: 1, per_page: 0, refresh: false });
-      if (res?.code === 200 && res?.data?.content) {
-        // 将新版 API 格式转换为组件内部格式
-        const content = res.data.content as any[];
-        setFiles(content.map(item => ({
+      if (res?.content) {
+        // api拦截器已自动解包data层，res直接是 { content, total, ... }
+        const content = res.content as any[];
+        setFiles(content.map((item: any) => ({
           filePath: `${currentPath === '/' ? '' : currentPath}/${item.name}`,
           fileName: item.name,
           fileSize: item.size || 0,

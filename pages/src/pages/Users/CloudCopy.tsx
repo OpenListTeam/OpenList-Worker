@@ -28,9 +28,7 @@ const CloudCopy: React.FC = () => {
     setLoading(true);
     try {
       const res: any = await apiService.get('/api/task/copy/undone');
-      if (res.flag && res.data) {
-        setTasks(Array.isArray(res.data) ? res.data : []);
-      }
+      setTasks(Array.isArray(res) ? res : []);
     } catch (error) {
       console.error('获取复制任务失败:', error);
     } finally {
@@ -47,14 +45,10 @@ const CloudCopy: React.FC = () => {
         dst_dir: values.target_path,
         names: [],
       });
-      if (res.code === 200) {
-        message.success('复制任务已创建');
-        setModalVisible(false);
-        form.resetFields();
-        fetchTasks();
-      } else {
-        message.error(res.message || '创建失败');
-      }
+      message.success('复制任务已创建');
+      setModalVisible(false);
+      form.resetFields();
+      fetchTasks();
     } catch (error: any) {
       message.error(error.message || '创建失败');
     }
@@ -85,8 +79,9 @@ const CloudCopy: React.FC = () => {
       render: (_: any, record: any) => (
         <Popconfirm title="确定删除此任务？" onConfirm={async () => {
           try {
-            const res: any = await apiService.post('/api/task/copy/delete', { tid: record.tasks_uuid });
-            if (res.code === 200) { message.success('任务已删除'); fetchTasks(); }
+            await apiService.post('/api/task/copy/delete', { tid: record.tasks_uuid });
+            message.success('任务已删除');
+            fetchTasks();
           } catch (e: any) { message.error(e.message); }
         }}>
           <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>

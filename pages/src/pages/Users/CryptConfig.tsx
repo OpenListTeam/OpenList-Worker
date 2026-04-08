@@ -53,8 +53,10 @@ const CryptConfig: React.FC = () => {
   const fetchCrypts = async () => {
     setLoading(true);
     try {
-      const response = await apiService.get('/@crypt/select/none');
-      if (response.flag && response.data) {
+      const response = await apiService.get('/api/admin/crypt/list');
+      if (Array.isArray(response)) {
+        setCrypts(response);
+      } else if (response && Array.isArray(response.data)) {
         setCrypts(response.data);
       }
     } catch (error) {
@@ -126,11 +128,11 @@ const CryptConfig: React.FC = () => {
     }
 
     try {
-      const response = await apiService.post('/@crypt/remove/none', {
+      const response = await apiService.post('/api/admin/crypt/delete', {
         crypt_name: crypt.crypt_name
       });
       
-      if (response.flag) {
+      if (response === null || response === undefined || (response && response.flag !== false)) {
         showMessage('删除成功', 'success');
         fetchCrypts();
       } else {
@@ -144,12 +146,12 @@ const CryptConfig: React.FC = () => {
 
   const handleToggleStatus = async (crypt: CryptInfo) => {
     try {
-      const response = await apiService.post('/@crypt/status/none', {
+      const response = await apiService.post('/api/admin/crypt/status', {
         crypt_name: crypt.crypt_name,
         is_enabled: !crypt.is_enabled
       });
       
-      if (response.flag) {
+      if (response === null || response === undefined || (response && response.flag !== false)) {
         showMessage('状态更新成功', 'success');
         fetchCrypts();
       } else {
@@ -163,10 +165,10 @@ const CryptConfig: React.FC = () => {
 
   const handleSave = async () => {
     try {
-      const endpoint = editingCrypt ? '/@crypt/config/none' : '/@crypt/create/none';
+      const endpoint = editingCrypt ? '/api/admin/crypt/update' : '/api/admin/crypt/create';
       const response = await apiService.post(endpoint, formData);
       
-      if (response.flag) {
+      if (response === null || response === undefined || (response && response.flag !== false)) {
         showMessage(editingCrypt ? '更新成功' : '创建成功', 'success');
         setOpenDialog(false);
         fetchCrypts();

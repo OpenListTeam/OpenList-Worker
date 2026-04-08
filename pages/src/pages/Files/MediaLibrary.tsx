@@ -127,11 +127,12 @@ const MediaLibrary: React.FC = () => {
       });
       if (kw) params.set('keyword', kw);
 
-      const res: any = await apiService.get(`/@media/list/${mediaType}?${params.toString()}`);
-      if (res.flag && res.data) {
-        setFiles(res.data.files || []);
-        setTotal(res.data.total || 0);
-        setPage(res.data.page || p);
+      const res: any = await apiService.get(`/api/admin/media/list/${mediaType}?${params.toString()}`);
+      if (res && res.files !== undefined) {
+        // 拦截器解包后直接是 data 对象
+        setFiles(res.files || []);
+        setTotal(res.total || 0);
+        setPage(res.page || p);
       } else {
         setFiles([]);
         setTotal(0);
@@ -148,9 +149,9 @@ const MediaLibrary: React.FC = () => {
   // 获取统计信息
   const fetchStats = useCallback(async () => {
     try {
-      const res: any = await apiService.get('/@media/stats');
-      if (res.flag && res.data) {
-        setStats(res.data);
+      const res: any = await apiService.get('/api/admin/media/stats');
+      if (res) {
+        setStats(res);
       }
     } catch (error) {
       console.error('获取媒体统计失败:', error);

@@ -19,10 +19,11 @@ import sql from 'mssql';
  * 数据管理类，封装了对KV和D1数据库的操作
  */
 export class SavesManage {
-    public kv: KVNamespace
+    public kv!: KVNamespace          // KV 命名空间（可能未绑定）
     public db!: D1Database | PrismaClient
-    public cc!: PrismaTools | SavesServer 
+    public cc!: PrismaTools | SavesServer
     public c: Context
+    private kvAvailable: boolean = false  // KV 是否可用
 
     /**
      * 构造函数，初始化KV和D1数据库
@@ -30,34 +31,45 @@ export class SavesManage {
      */
     constructor(c: Context) {
         this.c = c
-        this.kv = c.env.KV_DATA
+
+        // 安全初始化 KV（未绑定时标记不可用，避免运行时崩溃）
+        if (c.env.KV_DATA) {
+            this.kv = c.env.KV_DATA
+            this.kvAvailable = true
+        }
+
         if (c.env.ENABLE_D1) {
-            if (c.env.REMOTE_D1 == "local://"
-                || c.env.REMOTE_D1 == "") {
-                this.db = c.env.D1_DATA;
-                this.cc = new SavesServer()
+            const remote = c.env.REMOTE_D1 || ''
+            if (remote === 'local://' || remote === '') {
+                // 使用 Cloudflare D1 本地绑定
+                if (c.env.D1_DATA) {
+                    this.db = c.env.D1_DATA
+                    this.cc = new SavesServer()
+                } else {
+                    console.warn('[SavesManage] ENABLE_D1=true 但 D1_DATA 未绑定，回退到 KV 模式')
+                    // 回退：若 KV 也不可用则保持 db 未定义，后续操作会返回错误
+                }
             } else {
                 this.cc = new PrismaTools()
-                if (c.env.REMOTE_D1.startsWith("mysql://") || c.env.REMOTE_D1.startsWith("maria://")) {
-                    const pool = mariadb.createPool(c.env.REMOTE_D1);
-                    this.db = new PrismaClient({adapter: new PrismaMariaDb(pool as any)});
-                }
-                if (c.env.REMOTE_D1.startsWith("pgsql://") || c.env.REMOTE_D1.startsWith("postgres://")) {
-                    const connectionString = c.env.REMOTE_D1.replace('pgsql://', 'postgres://');
-                    const pool = new pg.Pool({connectionString});
-                    this.db = new PrismaClient({adapter: new PrismaPg(pool as any)});
-                }
-                if (c.env.REMOTE_D1.startsWith("sqlserver://")) {
-                    // 解析连接字符串
-                    const connectionString = c.env.REMOTE_D1;
-                    this.db = new PrismaClient({adapter: new PrismaMssql(connectionString)});
+                if (remote.startsWith('mysql://') || remote.startsWith('maria://')) {
+                    const pool = mariadb.createPool(remote)
+                    this.db = new PrismaClient({adapter: new PrismaMariaDb(pool as any)})
+                } else if (remote.startsWith('pgsql://') || remote.startsWith('postgres://')) {
+                    const connectionString = remote.replace('pgsql://', 'postgres://')
+                    const pool = new pg.Pool({connectionString})
+                    this.db = new PrismaClient({adapter: new PrismaPg(pool as any)})
+                } else if (remote.startsWith('sqlserver://')) {
+                    this.db = new PrismaClient({adapter: new PrismaMssql(remote)})
+                } else {
+                    console.error(`[SavesManage] 无法识别的 REMOTE_D1 协议: ${remote}，回退到 D1_DATA`)
+                    if (c.env.D1_DATA) {
+                        this.db = c.env.D1_DATA
+                        this.cc = new SavesServer()
+                    }
                 }
             }
         }
-        else {
-            this.db = c.env.KV_DATA;
-        }
-
+        // ENABLE_D1=false 时纯 KV 模式，kv 已在上方初始化
     }
 
     /**
@@ -80,6 +92,7 @@ export class SavesManage {
      * @param acts 操作类型：false为写入，true为删除
      */
     async kv_maps(data: DBSelect, acts: boolean): Promise<void> {
+        if (!this.kvAvailable) return
         let item_keys: string = await this.kv_keys(data)
         let main_keys: string = `@${data.main}/@maps`
         let save_maps: any[] = await this.kv_find(data)
@@ -96,6 +109,7 @@ export class SavesManage {
      * @returns 索引数组
      */
     async kv_find(data: DBSelect): Promise<any[]> {
+        if (!this.kvAvailable) return []
         let main_keys: string = `@${data.main}/@maps`
         let find_maps: string | null = await this.kv.get(main_keys)
         if (!find_maps) return [];
@@ -125,6 +139,7 @@ export class SavesManage {
      */
     async save(data: DBSelect): Promise<DBResult> {
         if (!this.c.env.ENABLE_D1) {
+            if (!this.kvAvailable) return {flag: false, text: 'KV_DATA 未绑定，无法执行写入操作'}
             const save_keys: string = await this.kv_keys(data);
             let save_data: Record<string, string> = {}
             let load_data: string|null = await this.kv.get(save_keys)
@@ -167,6 +182,7 @@ export class SavesManage {
      */
     async find(data: DBSelect): Promise<DBResult> {
         if (!this.c.env.ENABLE_D1) {
+            if (!this.kvAvailable) return {flag: false, text: 'KV_DATA 未绑定，无法执行查询操作', data: []}
             const find_keys: string = await this.kv_keys(data)
             let find_list: string[] = [find_keys];
             if (data.find) {
@@ -202,6 +218,7 @@ export class SavesManage {
      */
     async kill(data: DBSelect): Promise<DBResult> {
         if (!this.c.env.ENABLE_D1) {
+            if (!this.kvAvailable) return {flag: false, text: 'KV_DATA 未绑定，无法执行删除操作'}
             const save_keys: string = await this.kv_keys(data);
             await this.kv.delete(save_keys)
             await this.kv_maps(data, true)

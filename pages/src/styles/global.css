@@ -62,7 +62,6 @@ html {
 
 body {
   font-family: 'Space Grotesk', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
-  overflow: hidden;
   height: 100vh;
   transition:
     background var(--transition-slow),
@@ -71,7 +70,6 @@ body {
 
 #root {
   height: 100vh;
-  overflow: hidden;
 }
 
 /* ═══════════ 浅色模式 ═══════════ */
@@ -272,10 +270,6 @@ code, pre, .mono {
 }
 
 /* ═══════════ Antd Modal 增强 ═══════════ */
-.ant-modal-content {
-  overflow: hidden;
-}
-
 .ant-modal {
   animation: modalSlideIn var(--transition-normal) ease-out !important;
 }

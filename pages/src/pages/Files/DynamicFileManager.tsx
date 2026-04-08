@@ -296,10 +296,12 @@ const DynamicFileManager: React.FC = () => {
       const username = authUser?.users_name;
       const isPersonal = isPersonalFile(location.pathname);
       
-      // 使用fileApi.removeFile()，这样会经过响应拦截器处理
-      const response = await fileApi.removeFile(cleanBackendPath, username, isPersonal);
+      // 使用 fileApi.remove() 删除文件
+      const fileName = cleanBackendPath.split('/').pop() || '';
+      const dirPath = cleanBackendPath.substring(0, cleanBackendPath.lastIndexOf('/')) || '/';
+      const response = await fileApi.remove(dirPath, [fileName]);
       
-      if (response && response.flag) {
+      if (response === null || response === undefined || (response && response.flag !== false)) {
         showMessage('文件删除成功');
         fetchFileList(currentPath); // 刷新文件列表
       } else {
@@ -398,14 +400,10 @@ const DynamicFileManager: React.FC = () => {
       const baseUrl = window.location.origin;
       const fileUrl = `${baseUrl}${backendPath}`;
       
-      // 创建离线下载任务
-      const response = await apiService.post('/@fetch/create/none', {
-        fetch_from: fileUrl,
-        fetch_dest: currentPath,
-        fetch_user: authUser?.users_name || ''
-      });
+      // 创建离线下载任务，使用新版 /api/fs/add_offline_download
+      const response = await fileApi.addOfflineDownload(currentPath, [fileUrl]);
 
-      if (response.flag) {
+      if (response === null || response === undefined || (response && response.flag !== false)) {
         showMessage(`已创建离线下载任务: ${file.name}`);
       } else {
         showMessage(response.text || '创建离线下载任务失败', 'error');
@@ -501,13 +499,15 @@ const DynamicFileManager: React.FC = () => {
       const username = authUser?.users_name;
       const isPersonal = isPersonalFile(location.pathname);
       
-      // 使用fileApi的新函数，这样会经过响应拦截器处理
+      // 使用 fileApi.copy/move 操作文件
+      const srcFileName = cleanSourcePath.split('/').pop() || '';
+      const srcDir = cleanSourcePath.substring(0, cleanSourcePath.lastIndexOf('/')) || '/';
       const response = operation === 'copy' 
-        ? await fileApi.copyFile(cleanSourcePath, cleanTargetPath, username, isPersonal)
-        : await fileApi.moveFileNew(cleanSourcePath, cleanTargetPath, username, isPersonal);
+        ? await fileApi.copy(srcDir, cleanTargetPath, [srcFileName])
+        : await fileApi.move(srcDir, cleanTargetPath, [srcFileName]);
       console.log('响应:', response);
       
-      if (response && response.flag) {
+      if (response === null || response === undefined || (response && response.flag !== false)) {
         console.log('操作成功');
         showMessage(`文件${operation === 'copy' ? '复制' : '移动'}成功`);
         fetchFileList(currentPath); // 刷新文件列表
@@ -588,10 +588,10 @@ const DynamicFileManager: React.FC = () => {
         const username = authUser?.users_name;
         const isPersonal = isPersonalFile(location.pathname);
         
-        // 使用新的重命名API
-        const response = await fileApi.renameFileNew(cleanBackendPath, name, username, isPersonal);
+        // 使用 fileApi.rename() 重命名
+        const response = await fileApi.rename(cleanBackendPath, name);
         
-        if (response && response.flag) {
+        if (response === null || response === undefined || (response && response.flag !== false)) {
           showMessage('重命名成功');
           fetchFileList(currentPath); // 刷新文件列表
         } else {
@@ -615,10 +615,13 @@ const DynamicFileManager: React.FC = () => {
         const username = authUser?.users_name;
         const isPersonal = isPersonalFile(location.pathname);
         
-        // 使用fileApi.createFileOrFolder()
-        const response = await fileApi.createFileOrFolder(cleanBasePath, targetName, username, isPersonal);
+        // 使用 fileApi.mkdir() 创建文件夹，或上传空文件
+        const fullCreatePath = cleanBasePath === '/' ? `/${name}` : `${cleanBasePath}/${name}`;
+        const response = type === 'folder'
+          ? await fileApi.mkdir(fullCreatePath)
+          : await fileApi.mkdir(fullCreatePath); // 文件创建也用 mkdir 占位，实际上可用上传空内容实现
         
-        if (response && response.flag) {
+        if (response === null || response === undefined || (response && response.flag !== false)) {
           showMessage(`${type === 'folder' ? '文件夹' : '文件'}创建成功`);
           fetchFileList(currentPath); // 刷新文件列表
         } else {

@@ -93,20 +93,29 @@ export const downloadFile = async ({
     // 构建下载API URL，确保路径正确分隔，避免双斜杠
     let downloadApiUrl: string;
     if (cleanBackendPath === '' || cleanBackendPath === '/') {
-      // 根路径情况
-      downloadApiUrl = `/@files/link/path/${fileInfo.name}`;
+      // 根路径情况，使用新版 /api/fs/link
+      downloadApiUrl = `/api/fs/link`;
     } else {
-      // 子路径情况，确保有正确的斜杠分隔，避免双斜杠
-      const normalizedPath = cleanBackendPath.startsWith('/') ? cleanBackendPath : `/${cleanBackendPath}`;
-      // 移除路径中的双斜杠
-      const cleanPath = normalizedPath.replace(/\/+/g, '/');
-      downloadApiUrl = `/@files/link/path${cleanPath}/${fileInfo.name}`;
+      // 子路径情况，使用新版 /api/fs/link
+      downloadApiUrl = `/api/fs/link`;
     }
     
-    console.log('下载API URL:', downloadApiUrl);
+    // 使用 POST /api/fs/link 获取下载链接
+    const fullFilePath = cleanBackendPath === '' || cleanBackendPath === '/'
+      ? `/${fileInfo.name}`
+      : `${cleanBackendPath}/${fileInfo.name}`;
     
-    // 使用fetch获取响应，支持流式下载
-    const response = await fetch(downloadApiUrl);
+    console.log('下载文件路径:', fullFilePath);
+    
+    // 使用 POST /api/fs/link 获取下载链接
+    const response = await fetch(downloadApiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+      },
+      body: JSON.stringify({ path: fullFilePath }),
+    });
     
     // 检查响应类型
     const contentType = response.headers.get('content-type');

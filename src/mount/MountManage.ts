@@ -271,8 +271,7 @@ export class MountManage {
      */
     async driver(): Promise<MountResult> {
         try {
-            const {getAvailableDrivers} = await import('../drive/DriveSelect');
-            const drivers = getAvailableDrivers();
+            const drivers = sys.getAvailableDrivers();
             return {
                 flag: true,
                 text: 'Driver list retrieved successfully',
