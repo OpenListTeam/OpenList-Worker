@@ -4,13 +4,14 @@
  * 美化：精致顶部栏、面包屑、内容区动画
  */
 import React, { useEffect, useState, useCallback } from 'react';
-import { Breadcrumb, Button, Drawer, Typography } from 'antd';
+import { Breadcrumb, Button, Drawer, Layout, Typography } from 'antd';
 import { MenuOutlined, HomeOutlined, RightOutlined } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import AppSidebar from './AppSidebar';
 import { useSidebarStore, useThemeStore } from '../store';
 
+const { Content } = Layout;
 const { Text } = Typography;
 
 // 路由 → 面包屑映射
@@ -136,8 +137,8 @@ const MainLayout: React.FC = () => {
     : '0 1px 0 rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06)';
 
   return (
-    <div style={{ minHeight: '100vh', height: '100vh', overflow: 'hidden' }}>
-      {/* 桌面端侧边栏（position: fixed，脱离文档流） */}
+    <Layout style={{ minHeight: '100vh', height: '100vh', overflow: 'hidden' }}>
+      {/* 桌面端侧边栏（Antd Layout 流式布局） */}
       {!isMobile && <AppSidebar />}
 
       {/* 移动端抽屉式侧边栏 */}
@@ -158,13 +159,12 @@ const MainLayout: React.FC = () => {
       )}
 
       {/* 主内容区域 */}
-      <div
+      <Layout
         style={{
-          paddingLeft: isMobile ? 0 : siderWidth,
-          transition: 'padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          height: '100vh',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           display: 'flex',
           flexDirection: 'column',
+          overflow: 'hidden',
         }}
       >
         {/* ── 顶部栏 ── */}
@@ -184,6 +184,7 @@ const MainLayout: React.FC = () => {
             borderBottom: headerBorder,
             boxShadow: headerShadow,
             transition: 'background 0.3s, border-color 0.3s, box-shadow 0.3s',
+            flexShrink: 0,
           }}
         >
           {/* 左侧：汉堡菜单（移动端）+ 面包屑 */}
@@ -220,7 +221,7 @@ const MainLayout: React.FC = () => {
         </header>
 
         {/* ── 内容区域 ── */}
-        <main
+        <Content
           key={contentKey}
           style={{
             padding: isMobile ? '16px 12px' : '24px 28px',
@@ -230,8 +231,8 @@ const MainLayout: React.FC = () => {
           }}
         >
           <Outlet />
-        </main>
-      </div>
+        </Content>
+      </Layout>
 
       {/* 内容区域进入动画 keyframes（注入到 head，避免依赖外部 CSS） */}
       <style>{`
@@ -240,7 +241,7 @@ const MainLayout: React.FC = () => {
           to   { opacity: 1; transform: translateY(0); }
         }
       `}</style>
-    </div>
+    </Layout>
   );
 };
 

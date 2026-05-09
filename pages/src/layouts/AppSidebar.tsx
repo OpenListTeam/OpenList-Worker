@@ -307,14 +307,11 @@ const AppSidebar: React.FC = () => {
       breakpoint="lg"
       onBreakpoint={(broken) => { if (broken) useSidebarStore.getState().setCollapsed(true); }}
       style={{
-        height: '100vh',
-        position: 'fixed',
-        left: 0, top: 0, bottom: 0,
-        zIndex: 100,
+        height: '100%',
         borderRight: `1px solid ${borderColor}`,
         backdropFilter: themeMode === 'transparent' ? 'blur(24px) saturate(200%)' : undefined,
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        overflow: 'hidden',
+        overflow: 'auto',
         display: 'flex',
         flexDirection: 'column',
       }}
@@ -456,7 +453,7 @@ const AppSidebar: React.FC = () => {
 
         {/* 用户信息卡片 */}
         {_isLoggedIn ? (
-          <Dropdown menu={{ items: userMenuItems }} trigger={['click']} placement="topRight">
+          <Dropdown menu={{ items: userMenuItems }} trigger={['click']} placement="topRight" getPopupContainer={() => document.body} overlayStyle={{ zIndex: 20000 }}>
             <div
               className="sidebar-user-card"
               style={{
