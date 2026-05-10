@@ -14,7 +14,7 @@
     "deploy:ci": "npm run build:page && wrangler deploy --minify",
     "prisma:generate": "prisma generate",
     "postinstall": "prisma generate",
-    "build": "echo 'No build step required'
+    "build": "echo 'No build step required'"
   },
   "dependencies": {
     "@edgeone/ef-types": "^1.0.5",
