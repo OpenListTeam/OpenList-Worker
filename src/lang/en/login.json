@@ -1,0 +1,13 @@
+{
+  "login_to": "Login to",
+  "username-tips": "Username",
+  "password-tips": "Password",
+  "otp-tips": "OTP Code",
+  "remember": "Remember me",
+  "forget": "Forget password?",
+  "forget_url": "https://alist.nn.ci/guide/install/script.html#manually-reset-password",
+  "clear": "Clear",
+  "login": "Login",
+  "use_guest": "Use Guest",
+  "success": "Login success"
+}

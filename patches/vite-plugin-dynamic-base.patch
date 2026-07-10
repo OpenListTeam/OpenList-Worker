@@ -1,0 +1,29 @@
+diff --git a/dist/core/utils.js b/dist/core/utils.js
+index d0e5538af0ecace66973352e5393675a195f2db5..d378e6f52d8c6620695222c0ccf66ecf501c7317 100644
+--- a/dist/core/utils.js
++++ b/dist/core/utils.js
+@@ -16,12 +16,14 @@ function replaceImport(placeholder, code) {
+ }
+ exports.replaceImport = replaceImport;
+ function replaceInStringLiteral(literal, base, placeholder) {
++    // Use raw content to preserve escaping and avoid breaking quoted strings.
++    const rawLiteral = literal.raw.slice(1, -1);
+     const quoteMark = literal.raw.charAt(0);
+     const regex = new RegExp(base, 'g');
+     // Keep track of whether we need to add quotation marks at the beginning of the
+     // final output
+     let withStartQuote = true;
+-    const transformedStr = literal.value.replace(regex, (match, index) => {
++    const transformedStr = rawLiteral.replace(regex, (match, index) => {
+         let prefix = `${quoteMark}+`;
+         if (index === 0) {
+             prefix = '';
+@@ -35,7 +37,7 @@ function replaceInStringLiteral(literal, base, placeholder) {
+ exports.replaceInStringLiteral = replaceInStringLiteral;
+ function replaceInTemplateElement(element, base, placeholder) {
+     const regex = new RegExp(base, 'g');
+-    return element.raw.replace(regex, () => '/${' + placeholder + '}/');
++    return element.raw.replace(regex, () => '${' + placeholder + '}/');
+ }
+ exports.replaceInTemplateElement = replaceInTemplateElement;
+ //# sourceMappingURL=utils.js.map

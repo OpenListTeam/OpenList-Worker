@@ -1,11 +1,25 @@
-<div align="center">
+# OpenList Node.js Edition
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+This is a customized full-stack version of OpenList powered by a lightweight Node.js (Hono + TypeScript) backend rather than Go. 
 
-  <h1>Built with AI Studio</h2>
+## Run the server
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+```bash
+npm run dev
+```
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+It will boot up the backend API and Vite frontend server concurrently.
 
-</div>
+## Mock / Local FS
+
+This backend runs natively in a container mapping file uploads, reads, and downloads directly into `public_data/`. 
+
+## Admin configuration
+
+Credentials to access backend:
+**User**: `admin`
+**Pass**: `admin`
+
+Settings and Storage configurations are persisted purely via JSON: `public_data/db.json`.
+
+Enjoy the modern React/Solid based file list.

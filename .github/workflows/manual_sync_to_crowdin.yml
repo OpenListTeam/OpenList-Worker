@@ -1,0 +1,21 @@
+name: Manual sync i18n to Crowdin
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run_sync:
+    name: Run sync
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout frontend codes
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Sync to Crowdin
+        uses: ./.github/actions/sync_to_crowdin
+        with:
+          crowdin_project_id: ${{ secrets.CROWDIN_PROJECT_ID }}
+          crowdin_personal_token: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}

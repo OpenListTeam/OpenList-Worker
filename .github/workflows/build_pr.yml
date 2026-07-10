@@ -1,0 +1,47 @@
+name: PR Build Check
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+jobs:
+  build-check:
+    name: Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.18.0"
+          registry-url: "https://registry.npmjs.org"
+
+      - uses: pnpm/action-setup@v6
+        name: Install pnpm
+        id: pnpm-install
+        with:
+          run_install: false
+
+      - name: Build and check
+        run: |
+          chmod +x build.sh
+          ./build.sh --dev --no-compress --skip-i18n
+        env:
+          CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
+          CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
+          # OPENLIST_FRONTEND_BUILD_MODE: dev
+          # OPENLIST_FRONTEND_BUILD_COMPRESS: false
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: openlist-frontend-dist-dev-${{ github.sha }}
+          path: dist/
+          retention-days: 7

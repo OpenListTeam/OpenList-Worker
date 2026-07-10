@@ -1,0 +1,30 @@
+{
+  "username": "Username",
+  "base_path": "Base Path",
+  "role": "Role",
+  "permission": "Permission",
+  "available": "Available",
+  "cancel_2fa": "Cancel 2FA",
+  "cancel_2fa_success": "Cancelled 2FA successfully",
+  "roles": {
+    "general": "General",
+    "guest": "Guest",
+    "admin": "Admin"
+  },
+  "permissions": {
+    "CanSeeHiddens": "Can See Hiddens",
+    "CanAccessWithoutPassword": "Can Access Without Password",
+    "CanAddStorage": "Can Add Storage",
+    "CanEditStorage": "Can Edit Storage",
+    "CanDeleteStorage": "Can Delete Storage",
+    "CanAddUser": "Can Add User",
+    "CanEditUser": "Can Edit User",
+    "CanDeleteUser": "Can Delete User",
+    "CanAddMeta": "Can Add Meta",
+    "CanEditMeta": "Can Edit Meta",
+    "CanDeleteMeta": "Can Delete Meta",
+    "CanAddShare": "Can Add Share",
+    "CanEditShare": "Can Edit Share",
+    "CanDeleteShare": "Can Delete Share"
+  }
+}

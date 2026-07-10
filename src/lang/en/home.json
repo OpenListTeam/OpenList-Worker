@@ -1,0 +1,24 @@
+{
+  "fetching_settings_failed": "Failed to fetch settings: ",
+  "success": "Success",
+  "failed": "Failed",
+  "obj": {
+    "name": "Name",
+    "size": "Size",
+    "modified": "Modified"
+  },
+  "toolbar": {
+    "rename": "Rename",
+    "move": "Move",
+    "copy": "Copy",
+    "delete": "Delete",
+    "decompress": "Decompress",
+    "share": "Share",
+    "cancel_select": "Cancel Selection",
+    "upload": "Upload",
+    "mkdir": "New Folder",
+    "new_file": "New File",
+    "input_dir_name": "Input Folder Name",
+    "input_filename": "Input Filename"
+  }
+}

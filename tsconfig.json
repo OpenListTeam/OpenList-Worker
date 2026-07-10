@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "types": ["vite/client"],
+    "noEmit": true,
+    "isolatedModules": false,
+    "paths": {
+      "@stitches/core/types/*": ["./node_modules/@stitches/core/types/*"],
+      "@hope-ui/solid": ["./node_modules/@hope-ui/solid/dist/index.d.ts"],
+      "solid-contextmenu": ["./node_modules/solid-contextmenu/dist/index.d.ts"],
+      "~/*": ["./src/*"]
+      // "@solidjs/router": ["./solid-router/src/index.tsx"]
+    },
+    "skipLibCheck": true,
+    "resolveJsonModule": true
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "drivers": {
+    "Local": "Local",
+    "S3": "S3",
+    "OneDrive": "OneDrive",
+    "GoogleDrive": "Google Drive",
+    "Aliyun": "Aliyun Drive",
+    "Baidu": "Baidu Netdisk",
+    "PikPak": "PikPak",
+    "WebDAV": "WebDAV",
+    "FTP": "FTP",
+    "SFTP": "SFTP"
+  }
+}

@@ -1,0 +1,79 @@
+# This workflow builds a rolling version of the OpenList frontend and publishes it on GitHub.
+#
+# This will:
+#
+# - Upload the release assets to GitHub (always git tagged `rolling`).
+#
+# This workflow can be triggered on pushes to the `main` branch, or manually via the GitHub Actions UI.
+
+name: Rolling Build
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: "Create draft release"
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  rolling:
+    name: Rolling Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.18.0"
+          registry-url: "https://registry.npmjs.org"
+
+      - uses: pnpm/action-setup@v6
+        name: Install pnpm
+        id: pnpm-install
+        with:
+          run_install: false
+
+      - name: Build Pre-release
+        run: |
+          chmod +x build.sh
+          ./build.sh --dev --compress
+        env:
+          CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
+          CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
+
+      - name: Read version and determine tag name
+        id: version
+        run: |
+          version=$(cat dist/VERSION)
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "tag_name=rolling" >> $GITHUB_OUTPUT
+
+      - name: Remove the existing pre-release
+        run: gh release delete ${{ steps.version.outputs.tag_name }} --cleanup-tag --yes || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish pre-release on GitHub
+        run: |
+          gh release create \
+            --title "Pre-release ${{ steps.version.outputs.version }}" \
+            --notes "Pre-release build for ${{ steps.version.outputs.version }}<br>This is a development build and not intended for production use." \
+            --prerelease \
+            --draft=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.draft || false }} \
+            ${{ steps.version.outputs.tag_name }} \
+            dist/openlist-frontend-dist-v*-*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+permissions:
+  contents: write
