@@ -91,13 +91,14 @@ function cleanSubPath(p: string): string {
 }
 
 export function buildUrl(api: string, reqPath: string, suffix?: string): string {
-  if (!reqPath || reqPath === "/") {
+  const normalized = reqPath.replace(/\\/g, "/");
+  if (!normalized || normalized === "/") {
     if (suffix) {
       return `${api}/drive/root/${suffix}`;
     }
     return `${api}/drive/root`;
   }
-  let trimmed = reqPath.startsWith("/") ? reqPath.slice(1) : reqPath;
+  let trimmed = normalized.startsWith("/") ? normalized.slice(1) : normalized;
   if (trimmed.endsWith("/")) {
     trimmed = trimmed.slice(0, -1);
   }
@@ -107,10 +108,11 @@ export function buildUrl(api: string, reqPath: string, suffix?: string): string 
     }
     return `${api}/drive/root`;
   }
+  const encoded = trimmed.split("/").map(encodeURIComponent).join("/");
   if (suffix) {
-    return `${api}/drive/root:/${trimmed}:/${suffix}`;
+    return `${api}/drive/root:/${encoded}:/${suffix}`;
   }
-  return `${api}/drive/root:/${trimmed}`;
+  return `${api}/drive/root:/${encoded}`;
 }
 
 export async function getFiles(d: Onedrive, reqPath: string): Promise<File[]> {

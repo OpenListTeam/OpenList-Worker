@@ -2,6 +2,7 @@
   "common": {
     "driver": "Driver",
     "mount_path": "Mount Path",
+    "mount_path-tips": "The mount path must be unique and cannot be repeated",
     "order": "Order",
     "remark": "Remark",
     "cache_expiration": "Cache Expiration (min)",

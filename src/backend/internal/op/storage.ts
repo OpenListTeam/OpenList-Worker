@@ -7,7 +7,7 @@ import { StorageDriver, FileItem } from "../driver/base"
 const localDriver = new LocalDriver()
 const s3Driver = new S3Driver()
 
-async function getDriver(driverName: string, storageConfig?: any): Promise<StorageDriver> {
+export async function getDriver(driverName: string, storageConfig?: any): Promise<StorageDriver> {
   if (driverName && driverName.toLowerCase() === "s3") {
     return s3Driver
   }

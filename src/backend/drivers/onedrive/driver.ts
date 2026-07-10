@@ -50,13 +50,14 @@ export class Onedrive implements StorageDriver {
       ? `${hostMap.api}/v1.0/sites/${this.site_id}`
       : `${hostMap.api}/v1.0/me`;
 
-    if (!reqPath || reqPath === "/") {
+    const normalized = reqPath.replace(/\\/g, "/");
+    if (!normalized || normalized === "/") {
       if (suffix) {
         return `${apiBase}/drive/root/${suffix}`;
       }
       return `${apiBase}/drive/root`;
     }
-    let trimmed = reqPath.startsWith("/") ? reqPath.slice(1) : reqPath;
+    let trimmed = normalized.startsWith("/") ? normalized.slice(1) : normalized;
     if (trimmed.endsWith("/")) {
       trimmed = trimmed.slice(0, -1);
     }
@@ -66,10 +67,11 @@ export class Onedrive implements StorageDriver {
       }
       return `${apiBase}/drive/root`;
     }
+    const encoded = trimmed.split("/").map(encodeURIComponent).join("/");
     if (suffix) {
-      return `${apiBase}/drive/root:/${trimmed}:/${suffix}`;
+      return `${apiBase}/drive/root:/${encoded}:/${suffix}`;
     }
-    return `${apiBase}/drive/root:/${trimmed}`;
+    return `${apiBase}/drive/root:/${encoded}`;
   }
 
   async list(virtualPath: string, physicalPath: string): Promise<FileItem[]> {

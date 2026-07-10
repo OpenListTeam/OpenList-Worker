@@ -34,6 +34,11 @@ adminRouter.get("/storage/list", async (c) => {
 adminRouter.post("/storage/create", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const db = await getDb()
+
+  if (db.storages.some((s: any) => s.mount_path === body.mount_path)) {
+    return c.json({ code: 400, message: "mount path already exists", data: null })
+  }
+
   const newStorage = {
     ...body,
     id: db.storages.length
@@ -50,6 +55,11 @@ adminRouter.post("/storage/create", async (c) => {
 adminRouter.post("/storage/update", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const db = await getDb()
+
+  if (db.storages.some((s: any) => s.id !== body.id && s.mount_path === body.mount_path)) {
+    return c.json({ code: 400, message: "mount path already exists", data: null })
+  }
+
   const idx = db.storages.findIndex((s: any) => s.id === body.id)
   if (idx !== -1) {
     db.storages[idx] = {
@@ -104,7 +114,11 @@ adminRouter.get("/driver/list", (c) => {
       Local: {
         name: "Local",
         default_mount_path: "/",
-        common: [],
+        common: [
+          { name: "mount_path", type: "string", default: "", required: true, help: "1" },
+          { name: "order", type: "number", default: "0", required: false, help: "" },
+          { name: "remark", type: "string", default: "", required: false, help: "" }
+        ],
         additional: [
           {
             name: "root_folder_path",
@@ -117,7 +131,11 @@ adminRouter.get("/driver/list", (c) => {
       S3: {
         name: "S3",
         default_mount_path: "/s3",
-        common: [],
+        common: [
+          { name: "mount_path", type: "string", default: "", required: true, help: "1" },
+          { name: "order", type: "number", default: "0", required: false, help: "" },
+          { name: "remark", type: "string", default: "", required: false, help: "" }
+        ],
         additional: [
           {
             name: "s3_bucket_name",
@@ -130,7 +148,11 @@ adminRouter.get("/driver/list", (c) => {
       Onedrive: {
         name: "Onedrive",
         default_mount_path: "/onedrive",
-        common: [],
+        common: [
+          { name: "mount_path", type: "string", default: "", required: true, help: "1" },
+          { name: "order", type: "number", default: "0", required: false, help: "" },
+          { name: "remark", type: "string", default: "", required: false, help: "" }
+        ],
         additional: [
           {
             name: "root_folder_path",

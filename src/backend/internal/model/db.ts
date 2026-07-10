@@ -270,11 +270,10 @@ export async function resolvePath(virtualPath: string) {
       let rootFolder = addition.root_folder_path !== undefined ? addition.root_folder_path : defaultRoot
 
       if (!isCloud) {
-        if (!rootFolder || rootFolder === "/") {
+        if (!rootFolder || rootFolder === "") {
           rootFolder = defaultRoot
-        } else if (!rootFolder.startsWith(defaultRoot)) {
-          const relFolder = rootFolder.startsWith("/") ? rootFolder.slice(1) : rootFolder
-          rootFolder = path.join(defaultRoot, relFolder)
+        } else {
+          rootFolder = path.resolve(process.cwd(), rootFolder)
         }
         try {
           await fs.mkdir(rootFolder, { recursive: true })

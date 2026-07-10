@@ -3,6 +3,9 @@ import fs from "fs/promises"
 import { createReadStream } from "fs"
 import { resolvePath } from "../internal/model/db"
 import { parseRangeHeader } from "../internal/stream/stream"
+import { getDriver } from "../internal/op/storage"
+import { getFile } from "../drivers/onedrive/util"
+import { Onedrive } from "../drivers/onedrive/driver"
 
 export const rawRouter = new Hono()
 
@@ -19,6 +22,15 @@ rawRouter.get("/*", async (c) => {
     const resolved = await resolvePath(reqPath)
     if (resolved.isVirtual || !resolved.physical) {
       return c.text("Cannot download virtual path", 400)
+    }
+
+    if (resolved.storage && resolved.storage.driver.toLowerCase() === "onedrive") {
+      const driver = await getDriver(resolved.storage.driver, resolved.storage) as Onedrive
+      const f = await getFile(driver, resolved.physical)
+      const downloadUrl = f["@microsoft.graph.downloadUrl"]
+      if (downloadUrl) {
+        return c.redirect(downloadUrl)
+      }
     }
     
     const stat = await fs.stat(resolved.physical)
