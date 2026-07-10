@@ -822,7 +822,16 @@
       "flag": 0
     }
   ],
-  "storages": [],
+  "storages": [
+    {
+      "driver": "Onedrive",
+      "mount_path": "/onedrive",
+      "addition": "{\"root_folder_path\":\"/dwa\",\"region\":\"global\",\"is_sharepoint\":false,\"use_online_api\":true,\"api_url_address\":\"https://api.oplist.org/onedrive/renewapi\",\"client_id\":\"\",\"client_secret\":\"\",\"redirect_uri\":\"https://api.oplist.org/onedrive/callback\",\"refresh_token\":\"M.C546_BL2.0.U.MsaArtifacts.-CiWVKR!xoaBPSCAw5bacd3ebNMKPoJEeDq4stbPGYjOdDPN1UuoSJKUM4V5shfFYT5cglOqY8BZC*gt5trT!Qjl0Cvi!D16BsX*U4vswAHo3rYIcujoC6qlprgfZnX7Kxvyh4JL25ZyTFqllXCjSMXRfZgIqir1wsUjSYKQ!dpAySAczngK3FU3Ec63BPqBUzTI2Mw7Jk96xnveipAwbF0dWwqx8195AYnvCXEkLc3VSjlsCX3uRon!mcFAZPziRMPkUN41U9D3L*ggm9YzB*TKp7VYbvy4bn!dxPKZQcqoqa0xKLKZzsM7fqIOmMWBp6PIm3eZ5Li7B08YxivNYnkkIGwqRPWJRedTngBgu85ugZabQ5QKsk8OjpFE6l04JOg$$\",\"site_id\":\"\",\"chunk_size\":5,\"custom_host\":\"\",\"disable_disk_usage\":false,\"enable_direct_upload\":false}",
+      "id": 1,
+      "status": "work",
+      "modified": "2026-07-10T08:22:08.028Z"
+    }
+  ],
   "users": [
     {
       "id": 1,

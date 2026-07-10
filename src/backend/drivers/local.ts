@@ -28,7 +28,7 @@ export class LocalDriver implements StorageDriver {
           is_dir: isDir,
           modified: mtime.toISOString(),
           sign: "",
-          type: isDir ? 0 : 1,
+          type: isDir ? 1 : 0,
         }
       })
     )
@@ -46,7 +46,7 @@ export class LocalDriver implements StorageDriver {
       is_dir: isDir,
       modified: stat.mtime.toISOString(),
       sign: "",
-      type: isDir ? 0 : 1,
+      type: isDir ? 1 : 0,
     }
   }
 

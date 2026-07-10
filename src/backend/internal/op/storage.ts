@@ -1,14 +1,21 @@
 import { getDb, resolvePath } from "../model/db"
 import { LocalDriver } from "../../drivers/local"
 import { S3Driver } from "../../drivers/s3"
+import { Onedrive } from "../../drivers/onedrive/driver"
 import { StorageDriver, FileItem } from "../driver/base"
 
 const localDriver = new LocalDriver()
 const s3Driver = new S3Driver()
 
-function getDriver(driverName: string): StorageDriver {
+async function getDriver(driverName: string, storageConfig?: any): Promise<StorageDriver> {
   if (driverName && driverName.toLowerCase() === "s3") {
     return s3Driver
+  }
+  if (driverName && driverName.toLowerCase() === "onedrive") {
+    const addition = storageConfig?.addition ? JSON.parse(storageConfig.addition) : {};
+    const driver = new Onedrive(addition);
+    await driver.init();
+    return driver;
   }
   return localDriver
 }
@@ -20,7 +27,7 @@ export async function listItems(virtualPath: string): Promise<{ content: FileIte
 
   if (resolved.storage) {
     driverName = resolved.storage.driver
-    const driver = getDriver(driverName)
+    const driver = await getDriver(driverName, resolved.storage)
     // Get raw items from driver
     items = await driver.list(virtualPath, resolved.physical!)
   } else if (!resolved.isVirtual) {
@@ -33,7 +40,7 @@ export async function listItems(virtualPath: string): Promise<{ content: FileIte
   const cleanListedPath = resolved.cleanPath
 
   const childMounts = activeStorages.filter((s: any) => {
-    const mount = "/" + s.mount_path.split("/").filter(Boolean).join("/")
+    const mount = "/" + (s.mount_path || "").split("/").filter(Boolean).join("/")
     if (mount === cleanListedPath || mount === "/") return false
     
     const prefix = cleanListedPath === "/" ? "/" : cleanListedPath + "/"
@@ -46,7 +53,7 @@ export async function listItems(virtualPath: string): Promise<{ content: FileIte
   })
 
   childMounts.forEach((s: any) => {
-    const name = s.mount_path.split("/").filter(Boolean).pop()
+    const name = (s.mount_path || "").split("/").filter(Boolean).pop()
     if (name && !items.some((f) => f.name === name)) {
       items.push({
         name,
@@ -54,7 +61,7 @@ export async function listItems(virtualPath: string): Promise<{ content: FileIte
         is_dir: true,
         modified: s.modified || new Date().toISOString(),
         sign: "",
-        type: 0,
+        type: 1,
       })
     }
   })
@@ -73,7 +80,7 @@ export async function getItem(virtualPath: string): Promise<{ item: FileItem; pr
         is_dir: true,
         modified: new Date().toISOString(),
         sign: "",
-        type: 0,
+        type: 1,
       },
       provider: "Virtual",
       rawUrl: "",
@@ -81,7 +88,7 @@ export async function getItem(virtualPath: string): Promise<{ item: FileItem; pr
   }
 
   const driverName = resolved.storage ? resolved.storage.driver : "Local"
-  const driver = getDriver(driverName)
+  const driver = await getDriver(driverName, resolved.storage)
   const item = await driver.get(virtualPath, resolved.physical!)
   return {
     item,
@@ -95,7 +102,7 @@ export async function makeDirectory(virtualPath: string): Promise<void> {
   if (resolved.isVirtual) {
     throw new Error("failed get storage: storage not found")
   }
-  const driver = getDriver(resolved.storage!.driver)
+  const driver = await getDriver(resolved.storage!.driver, resolved.storage)
   await driver.mkdir(virtualPath, resolved.physical!)
 }
 
@@ -104,7 +111,7 @@ export async function renameItem(virtualPath: string, newName: string): Promise<
   if (resolved.isVirtual) {
     throw new Error("failed get storage: storage not found")
   }
-  const driver = getDriver(resolved.storage!.driver)
+  const driver = await getDriver(resolved.storage!.driver, resolved.storage)
   await driver.rename(virtualPath, resolved.physical!, newName)
 }
 
@@ -115,7 +122,7 @@ export async function removeItems(dir: string, names: string[]): Promise<void> {
     if (resolved.isVirtual) {
       throw new Error("failed get storage: storage not found")
     }
-    const driver = getDriver(resolved.storage!.driver)
+    const driver = await getDriver(resolved.storage!.driver, resolved.storage)
     await driver.remove(itemVirtual, resolved.physical!, [name])
   }
 }
@@ -130,7 +137,7 @@ export async function moveItems(srcDir: string, dstDir: string, names: string[])
       throw new Error("failed get storage: storage not found")
     }
 
-    const driver = getDriver(srcResolved.storage!.driver)
+    const driver = await getDriver(srcResolved.storage!.driver, srcResolved.storage)
     await driver.move(srcDir, dstDir, [name], srcResolved.physical!, dstResolved.physical!)
   }
 }
@@ -145,7 +152,7 @@ export async function copyItems(srcDir: string, dstDir: string, names: string[])
       throw new Error("failed get storage: storage not found")
     }
 
-    const driver = getDriver(srcResolved.storage!.driver)
+    const driver = await getDriver(srcResolved.storage!.driver, srcResolved.storage)
     await driver.copy(srcDir, dstDir, [name], srcResolved.physical!, dstResolved.physical!)
   }
 }
@@ -155,6 +162,6 @@ export async function putItem(virtualPath: string, content: Buffer): Promise<voi
   if (resolved.isVirtual) {
     throw new Error("failed get storage: storage not found")
   }
-  const driver = getDriver(resolved.storage!.driver)
+  const driver = await getDriver(resolved.storage!.driver, resolved.storage)
   await driver.put(virtualPath, resolved.physical!, content)
 }

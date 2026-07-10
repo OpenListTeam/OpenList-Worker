@@ -7,7 +7,13 @@ import { parseRangeHeader } from "../internal/stream/stream"
 export const rawRouter = new Hono()
 
 rawRouter.get("/*", async (c) => {
-  const reqPath = decodeURIComponent(c.req.path.replace(/^\/api\/raw/, ""))
+  const reqPath = decodeURIComponent(
+    c.req.path
+      .replace(/^\/api\/raw/, "")
+      .replace(/^\/d/, "")
+      .replace(/^\/sd/, "")
+      .replace(/^\/p/, "")
+  )
 
   try {
     const resolved = await resolvePath(reqPath)

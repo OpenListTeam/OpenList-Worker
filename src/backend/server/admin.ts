@@ -93,7 +93,7 @@ adminRouter.post("/storage/disable", async (c) => {
 })
 
 adminRouter.get("/driver/names", (c) => {
-  return c.json({ code: 200, message: "success", data: ["Local", "S3"] })
+  return c.json({ code: 200, message: "success", data: ["Local", "S3", "Onedrive"] })
 })
 
 adminRouter.get("/driver/list", (c) => {
@@ -126,6 +126,110 @@ adminRouter.get("/driver/list", (c) => {
             required: true,
           }
         ]
+      },
+      Onedrive: {
+        name: "Onedrive",
+        default_mount_path: "/onedrive",
+        common: [],
+        additional: [
+          {
+            name: "root_folder_path",
+            type: "string",
+            default: "/",
+            required: true,
+          },
+          {
+            name: "region",
+            type: "select",
+            options: "global,cn,us,de",
+            default: "global",
+            required: true,
+          },
+          {
+            name: "is_sharepoint",
+            type: "bool",
+            default: "false",
+            required: false,
+          },
+          {
+            name: "use_online_api",
+            type: "bool",
+            default: "true",
+            required: false,
+          },
+          {
+            name: "api_url_address",
+            type: "string",
+            default: "https://api.oplist.org/onedrive/renewapi",
+            required: false,
+          },
+          {
+            name: "client_id",
+            type: "string",
+            default: "",
+            required: false,
+          },
+          {
+            name: "client_secret",
+            type: "string",
+            default: "",
+            required: false,
+          },
+          {
+            name: "redirect_uri",
+            type: "string",
+            default: "https://api.oplist.org/onedrive/callback",
+            required: true,
+          },
+          {
+            name: "refresh_token",
+            type: "string",
+            default: "",
+            required: true,
+          },
+          {
+            name: "site_id",
+            type: "string",
+            default: "",
+            required: false,
+          },
+          {
+            name: "chunk_size",
+            type: "number",
+            default: "5",
+            required: false,
+          },
+          {
+            name: "custom_host",
+            type: "string",
+            default: "",
+            required: false,
+            help: "true",
+          },
+          {
+            name: "disable_disk_usage",
+            type: "bool",
+            default: "false",
+            required: false,
+          },
+          {
+            name: "enable_direct_upload",
+            type: "bool",
+            default: "false",
+            required: false,
+            help: "true",
+          },
+        ],
+        config: {
+          name: "Onedrive",
+          local_sort: true,
+          only_local: false,
+          only_proxy: false,
+          no_cache: false,
+          no_upload: false,
+          need_ms: false,
+          default_root: "/",
+        },
       }
     },
   })

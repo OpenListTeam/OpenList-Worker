@@ -4,14 +4,14 @@ export class S3Driver implements StorageDriver {
   async list(virtualPath: string, physicalPath: string): Promise<FileItem[]> {
     // Simulated cloud S3 bucket items list
     return [
-      { name: "documents", size: 0, is_dir: true, modified: new Date().toISOString(), sign: "", type: 0 },
-      { name: "photos", size: 0, is_dir: true, modified: new Date().toISOString(), sign: "", type: 0 },
-      { name: "README.md", size: 1240, is_dir: false, modified: new Date().toISOString(), sign: "", type: 1 }
+      { name: "documents", size: 0, is_dir: true, modified: new Date().toISOString(), sign: "", type: 1 },
+      { name: "photos", size: 0, is_dir: true, modified: new Date().toISOString(), sign: "", type: 1 },
+      { name: "README.md", size: 1240, is_dir: false, modified: new Date().toISOString(), sign: "", type: 0 }
     ]
   }
 
   async get(virtualPath: string, physicalPath: string): Promise<FileItem> {
-    return { name: "README.md", size: 1240, is_dir: false, modified: new Date().toISOString(), sign: "", type: 1 }
+    return { name: "README.md", size: 1240, is_dir: false, modified: new Date().toISOString(), sign: "", type: 0 }
   }
 
   async mkdir(virtualPath: string, physicalPath: string): Promise<void> {

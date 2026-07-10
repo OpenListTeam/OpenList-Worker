@@ -2,6 +2,7 @@
   "drivers": {
     "Local": "Local",
     "S3": "S3",
+    "Onedrive": "OneDrive",
     "OneDrive": "OneDrive",
     "GoogleDrive": "Google Drive",
     "Aliyun": "Aliyun Drive",
@@ -10,5 +11,29 @@
     "WebDAV": "WebDAV",
     "FTP": "FTP",
     "SFTP": "SFTP"
+  },
+  "Onedrive": {
+    "root_folder_path": "Root Folder Path",
+    "region": "Region",
+    "regions": {
+      "global": "Global",
+      "cn": "21Vianet (CN)",
+      "us": "US Government",
+      "de": "Germany"
+    },
+    "is_sharepoint": "Is SharePoint",
+    "use_online_api": "Use Online API",
+    "api_url_address": "API Link Address",
+    "client_id": "Client ID",
+    "client_secret": "Client Secret",
+    "redirect_uri": "Redirect URI",
+    "refresh_token": "Refresh Token",
+    "site_id": "Site ID",
+    "chunk_size": "Chunk Size (MB)",
+    "custom_host": "Custom Host",
+    "custom_host-tips": "Custom host for OneDrive download links",
+    "disable_disk_usage": "Disable Disk Usage",
+    "enable_direct_upload": "Enable Direct Upload",
+    "enable_direct_upload-tips": "Enable direct upload from client to OneDrive"
   }
 }

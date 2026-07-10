@@ -18,6 +18,9 @@ export function setupRouter(app: Hono) {
 
   // Direct file delivery proxy route
   app.route("/api/raw", rawRouter)
+  app.route("/d", rawRouter)
+  app.route("/sd", rawRouter)
+  app.route("/p", rawRouter)
 
   // API core sub-routing
   app.route("/api/fs", fsRouter)

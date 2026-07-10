@@ -244,14 +244,14 @@ export async function resolvePath(virtualPath: string) {
   }
 
   const sortedStorages = [...activeStorages].sort((a: any, b: any) => {
-    const aMount = "/" + a.mount_path.split("/").filter(Boolean).join("/")
-    const bMount = "/" + b.mount_path.split("/").filter(Boolean).join("/")
+    const aMount = "/" + (a.mount_path || "").split("/").filter(Boolean).join("/")
+    const bMount = "/" + (b.mount_path || "").split("/").filter(Boolean).join("/")
     return bMount.length - aMount.length
   })
 
   // 1. Try to find a real storage matching cleanPath or its prefix
   for (const storage of sortedStorages) {
-    const mount = "/" + storage.mount_path.split("/").filter(Boolean).join("/")
+    const mount = "/" + (storage.mount_path || "").split("/").filter(Boolean).join("/")
     const isRootMount = mount === "/"
     const isMatch = isRootMount || cleanPath === mount || cleanPath.startsWith(mount + "/")
     
@@ -265,8 +265,31 @@ export async function resolvePath(virtualPath: string) {
       }
       
       const addition = JSON.parse(storage.addition || "{}")
-      const rootFolder = addition.root_folder_path || path.join(process.cwd(), "public_data")
-      const physicalPath = path.join(rootFolder, relPath)
+      const isCloud = ["onedrive", "s3"].includes(storage.driver.toLowerCase())
+      const defaultRoot = isCloud ? "/" : path.join(process.cwd(), "public_data")
+      let rootFolder = addition.root_folder_path !== undefined ? addition.root_folder_path : defaultRoot
+
+      if (!isCloud) {
+        if (!rootFolder || rootFolder === "/") {
+          rootFolder = defaultRoot
+        } else if (!rootFolder.startsWith(defaultRoot)) {
+          const relFolder = rootFolder.startsWith("/") ? rootFolder.slice(1) : rootFolder
+          rootFolder = path.join(defaultRoot, relFolder)
+        }
+        try {
+          await fs.mkdir(rootFolder, { recursive: true })
+        } catch (e) {
+          console.error("failed to create root folder:", rootFolder, e)
+        }
+      }
+
+      let physicalPath = ""
+      if (isCloud) {
+        const parts = [rootFolder, relPath].map(p => p.replace(/\\/g, "/")).filter(Boolean)
+        physicalPath = "/" + parts.join("/").split("/").filter(Boolean).join("/")
+      } else {
+        physicalPath = path.join(rootFolder, relPath)
+      }
       
       return {
         storage,
@@ -282,7 +305,7 @@ export async function resolvePath(virtualPath: string) {
   // 2. Check if cleanPath is a parent folder of any active storage mount_path (virtual directory)
   let isVirtual = false
   for (const storage of activeStorages) {
-    const mount = "/" + storage.mount_path.split("/").filter(Boolean).join("/")
+    const mount = "/" + (storage.mount_path || "").split("/").filter(Boolean).join("/")
     if (mount !== "/" && mount.startsWith(cleanPath === "/" ? "/" : cleanPath + "/")) {
       isVirtual = true
       break
