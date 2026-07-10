@@ -4,10 +4,11 @@ export interface FileItem {
   is_dir: boolean
   modified: string
   sign: string
-  type: number // 0 for dir, 1 for file
+  type: number // 1 for dir, 0 for file
 }
 
 export interface StorageDriver {
+  init?(): Promise<void>
   list(virtualPath: string, physicalPath: string): Promise<FileItem[]>
   get(virtualPath: string, physicalPath: string): Promise<FileItem>
   mkdir(virtualPath: string, physicalPath: string): Promise<void>

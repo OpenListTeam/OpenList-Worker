@@ -1,9 +1,8 @@
-import { Onedrive } from "./driver";
+import { Addition, onedriveHostMap } from "./meta";
 import { File, Files, Metadata, DriveResp, Host } from "./types";
-import { onedriveHostMap } from "./meta";
 import axios from "axios";
 
-export async function refreshToken(d: Onedrive): Promise<void> {
+export async function refreshToken(d: Addition & { accessToken?: string }): Promise<void> {
   // Use online API
   if (d.use_online_api && d.api_url_address) {
     const resp = await axios.get(d.api_url_address, {
@@ -58,7 +57,7 @@ export async function refreshToken(d: Onedrive): Promise<void> {
 }
 
 export async function requestApi<T>(
-  d: Onedrive,
+  d: Addition & { accessToken?: string },
   url: string,
   method: string,
   data?: any,
@@ -76,7 +75,8 @@ export async function requestApi<T>(
     return res.data;
   } catch (error: any) {
     const errData = error.response?.data?.error;
-    if (errData?.code === "InvalidAuthenticationToken" && !noRetry) {
+    const errCode = errData?.code;
+    if ((errCode === "InvalidAuthenticationToken" || errCode === "ExpiredAuthenticationToken" || error.response?.status === 401) && !noRetry) {
       await refreshToken(d);
       return requestApi(d, url, method, data, true);
     }
@@ -115,14 +115,14 @@ export function buildUrl(api: string, reqPath: string, suffix?: string): string 
   return `${api}/drive/root:/${encoded}`;
 }
 
-export async function getFiles(d: Onedrive, reqPath: string): Promise<File[]> {
+export async function getFiles(d: Addition & { accessToken?: string }, reqPath: string): Promise<File[]> {
   const hostMap = onedriveHostMap[d.region] || onedriveHostMap["global"];
   const apiBase = d.is_sharepoint
     ? `${hostMap.api}/v1.0/sites/${d.site_id}`
     : `${hostMap.api}/v1.0/me`;
   
   const childrenUrl = buildUrl(apiBase, reqPath, "children");
-  let nextLink: string | undefined = `${childrenUrl}?$top=1000&$expand=thumbnails($select=medium)&$select=id,name,size,fileSystemInfo,content.downloadUrl,file,parentReference`;
+  let nextLink: string | undefined = childrenUrl;
 
   const res: File[] = [];
   while (nextLink) {
@@ -135,7 +135,7 @@ export async function getFiles(d: Onedrive, reqPath: string): Promise<File[]> {
   return res;
 }
 
-export async function getFile(d: Onedrive, reqPath: string): Promise<File> {
+export async function getFile(d: Addition & { accessToken?: string }, reqPath: string): Promise<File> {
   const hostMap = onedriveHostMap[d.region] || onedriveHostMap["global"];
   const apiBase = d.is_sharepoint
     ? `${hostMap.api}/v1.0/sites/${d.site_id}`
@@ -161,7 +161,7 @@ export function toAPIMetadata(modTime: Date | null, createTime: Date | null): Me
   return metadata;
 }
 
-export async function updateMetadata(d: Onedrive, reqPath: string, metadata: Metadata): Promise<void> {
+export async function updateMetadata(d: Addition & { accessToken?: string }, reqPath: string, metadata: Metadata): Promise<void> {
   const hostMap = onedriveHostMap[d.region] || onedriveHostMap["global"];
   const apiBase = d.is_sharepoint
     ? `${hostMap.api}/v1.0/sites/${d.site_id}`
@@ -171,7 +171,7 @@ export async function updateMetadata(d: Onedrive, reqPath: string, metadata: Met
   await requestApi(d, url, "PATCH", metadata);
 }
 
-export async function getDrive(d: Onedrive): Promise<DriveResp> {
+export async function getDrive(d: Addition & { accessToken?: string }): Promise<DriveResp> {
   const hostMap = onedriveHostMap[d.region] || onedriveHostMap["global"];
   let api = "";
   if (d.is_sharepoint) {
@@ -182,7 +182,7 @@ export async function getDrive(d: Onedrive): Promise<DriveResp> {
   return requestApi<DriveResp>(d, api, "GET", undefined, true);
 }
 
-export async function getDirectUploadInfo(d: Onedrive, reqPath: string) {
+export async function getDirectUploadInfo(d: Addition & { accessToken?: string }, reqPath: string) {
   const hostMap = onedriveHostMap[d.region] || onedriveHostMap["global"];
   const apiBase = d.is_sharepoint
     ? `${hostMap.api}/v1.0/sites/${d.site_id}`

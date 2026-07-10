@@ -1,6 +1,7 @@
 import { StorageDriver, FileItem } from "../../internal/driver/base";
-import { Addition, onedriveHostMap } from "./meta";
+import { onedriveHostMap, Addition } from "./meta";
 import { fileToObj } from "./types";
+import axios from "axios";
 import {
   refreshToken,
   requestApi,
@@ -35,10 +36,29 @@ export class Onedrive implements StorageDriver {
   }
 
   async init(): Promise<void> {
+    // Normalize types from DB addition which might be strings
+    if (typeof this.is_sharepoint === "string") {
+      this.is_sharepoint = (this.is_sharepoint as string).toLowerCase() === "true";
+    }
+    if (typeof this.use_online_api === "string") {
+      this.use_online_api = (this.use_online_api as string).toLowerCase() === "true";
+    }
+    if (typeof this.chunk_size === "string") {
+      this.chunk_size = parseInt(this.chunk_size as string) || 5;
+    }
+    if (typeof this.disable_disk_usage === "string") {
+      this.disable_disk_usage = (this.disable_disk_usage as string).toLowerCase() === "true";
+    }
+    if (typeof this.enable_direct_upload === "string") {
+      this.enable_direct_upload = (this.enable_direct_upload as string).toLowerCase() === "true";
+    }
+    
     if (this.chunk_size < 1) {
       this.chunk_size = 5;
     }
-    await refreshToken(this);
+    if (this.refresh_token) {
+      await refreshToken(this);
+    }
   }
 
   private getMetaUrl(isAuth: boolean, reqPath: string, suffix?: string): string {
@@ -194,12 +214,12 @@ export class Onedrive implements StorageDriver {
         const byteSize = Math.min(left, DEFAULT);
         const chunk = content.slice(finish, finish + byteSize);
         
-        await import("axios").then((axios) => axios.default.put(uploadUrl, chunk, {
+        await axios.put(uploadUrl, chunk, {
           headers: {
             "Content-Length": byteSize,
             "Content-Range": `bytes ${finish}-${finish + byteSize - 1}/${size}`
           }
-        }));
+        });
         finish += byteSize;
       }
     }

@@ -24,7 +24,9 @@ export interface File {
   id: string;
   name: string;
   size: number;
+  lastModifiedDateTime?: string;
   fileSystemInfo?: FileSystemInfoFacet;
+  folder?: any;
   "@microsoft.graph.downloadUrl"?: string;
   file?: {
     mimeType: string;
@@ -59,8 +61,8 @@ export function fileToObj(f: File, parentID: string): ObjectItem {
     id: f.id,
     name: f.name,
     size: f.size,
-    modified: f.fileSystemInfo?.lastModifiedDateTime || "",
-    isFolder: !f.file,
+    modified: f.lastModifiedDateTime || f.fileSystemInfo?.lastModifiedDateTime || "",
+    isFolder: !!f.folder || !f.file,
     thumbnail: thumb,
     parentID,
   };

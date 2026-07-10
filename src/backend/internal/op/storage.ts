@@ -7,17 +7,37 @@ import { StorageDriver, FileItem } from "../driver/base"
 const localDriver = new LocalDriver()
 const s3Driver = new S3Driver()
 
+const driverCache = new Map<string, StorageDriver>()
+
 export async function getDriver(driverName: string, storageConfig?: any): Promise<StorageDriver> {
+  const cacheKey = storageConfig 
+    ? `${driverName}_${storageConfig.id || storageConfig.mount_path}` 
+    : driverName;
+
+  if (driverCache.has(cacheKey)) {
+    return driverCache.get(cacheKey)!;
+  }
+
+  let driver: StorageDriver;
   if (driverName && driverName.toLowerCase() === "s3") {
-    return s3Driver
+    driver = s3Driver
+  } else if (driverName && driverName.toLowerCase() === "onedrive") {
+    const additionStr = storageConfig?.addition;
+    const addition = additionStr ? (typeof additionStr === "string" ? JSON.parse(additionStr || "{}") : additionStr) : {};
+    driver = new Onedrive(addition);
+    if (driver.init) {
+      await driver.init();
+    }
+  } else {
+    driver = localDriver
   }
-  if (driverName && driverName.toLowerCase() === "onedrive") {
-    const addition = storageConfig?.addition ? JSON.parse(storageConfig.addition) : {};
-    const driver = new Onedrive(addition);
-    await driver.init();
-    return driver;
+
+  // Only cache OneDrive and S3 (stateful or expensive drivers)
+  if (driverName.toLowerCase() === "onedrive" || driverName.toLowerCase() === "s3") {
+    driverCache.set(cacheKey, driver);
   }
-  return localDriver
+
+  return driver;
 }
 
 export async function listItems(virtualPath: string): Promise<{ content: FileItem[]; provider: string }> {

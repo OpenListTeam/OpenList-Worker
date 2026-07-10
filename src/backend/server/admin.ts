@@ -233,6 +233,7 @@ adminRouter.get("/driver/list", (c) => {
             type: "bool",
             default: "false",
             required: false,
+            help: "true",
           },
           {
             name: "enable_direct_upload",

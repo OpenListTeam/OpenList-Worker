@@ -7,9 +7,9 @@ export const useT = () => {
     params?: i18n.BaseTemplateArgs | undefined,
     defaultValue?: string | undefined,
   ): string => {
-    const translatedValue = t(key, params)
+    const translatedValue = (t as any)(key, params)
 
-    if (translatedValue) return translatedValue
+    if (typeof translatedValue === "string") return translatedValue
     if (defaultValue) return defaultValue
     if (import.meta.env.DEV) return key
 

@@ -2,7 +2,7 @@ import { lazy } from "solid-js"
 import { Center, Heading } from "@hope-ui/solid"
 import { trimLeft } from "~/utils"
 import { SideMenuItem, side_menu_items } from "./sidemenu_items"
-import { useManageTitle } from "~/hooks"
+import { useManageTitle, useT } from "~/hooks"
 
 type Route = Pick<SideMenuItem, "to" | "component">
 
@@ -50,10 +50,11 @@ const hide_routes: Route[] = [
 ]
 
 const Placeholder = (props: { title: string; to: string }) => {
+  const t = useT()
   useManageTitle(props.title)
   return (
     <Center h="$full">
-      <Heading>{props.title}</Heading>
+      <Heading>{t(props.title)}</Heading>
     </Center>
   )
 }
