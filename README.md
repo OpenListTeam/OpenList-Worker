@@ -1,4 +1,4 @@
-# OpenList Node.js Edition
+# OpenListNext
 
 This is a customized full-stack version of OpenList powered by a lightweight Node.js (Hono + TypeScript) backend rather than Go. 
 

@@ -88,12 +88,6 @@ export const side_menu_items: SideMenuItem[] = [
         component: lazy(() => import("./settings/S3")),
       },
       {
-        title: "manage.sidemenu.ftp",
-        icon: BsHddNetwork,
-        to: "/@manage/settings/ftp",
-        component: () => <CommonSettings group={Group.FTP} />,
-      },
-      {
         title: "manage.sidemenu.traffic",
         icon: BsArrowLeftRight,
         to: "/@manage/settings/traffic",

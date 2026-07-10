@@ -1,23 +1,22 @@
 {
-  "name": "@openlist-frontend/openlist-frontend",
+  "name": "openlistnext",
   "version": "4.2.3",
   "type": "module",
   "author": {
-    "name": "The OpenList Projects Contributors",
-    "url": "https://github.com/OpenListTeam"
+    "name": "The OpenListNext Contributors"
   },
-  "description": "A new AList Fork to Anti Trust Crisis",
+  "description": "A new AList Fork",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OpenListTeam/OpenList-Frontend.git"
+    "url": "git+https://github.com/openlistnext/openlistnext.git"
   },
   "bugs": {
-    "url": "https://github.com/OpenListTeam/OpenList/issues"
+    "url": "https://github.com/openlistnext/openlistnext/issues"
   },
   "files": [
     "dist"
   ],
-  "homepage": "https://openlist.team/",
+  "homepage": "https://openlistnext.org/",
   "scripts": {
     "crowdin:upload": "crowdin upload sources --auto-update",
     "crowdin:download": "crowdin download --verbose",

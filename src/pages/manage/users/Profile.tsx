@@ -308,14 +308,6 @@ const Profile = () => {
           )}
         </For>
       </HStack>
-      <Show
-        when={UserMethods.can(
-          me(),
-          UserPermissions.findIndex((p) => p === "ftp_read"),
-        )}
-      >
-        <PublicKeys isMine={true} userId={me().id} />
-      </Show>
     </VStack>
   )
 }

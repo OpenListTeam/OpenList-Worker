@@ -5,10 +5,7 @@ import { authRouter, meHandler } from "./auth"
 import { adminRouter } from "./admin"
 import { rawRouter } from "./raw"
 import { publicRouter } from "./public"
-import { ftpRouter } from "./ftp"
 import { s3Router } from "./s3"
-import { sftpRouter } from "./sftp"
-import { webdavRouter } from "./webdav"
 import { mcpRouter } from "./mcp"
 import { debugRouter } from "./debug"
 
@@ -29,10 +26,7 @@ export function setupRouter(app: Hono) {
   app.route("/api/admin", adminRouter)
 
   // Service specific daemon APIs
-  app.route("/api/ftp", ftpRouter)
   app.route("/api/s3", s3Router)
-  app.route("/api/sftp", sftpRouter)
-  app.route("/api/webdav", webdavRouter)
   app.route("/api/mcp", mcpRouter)
   app.route("/api/debug", debugRouter)
 
