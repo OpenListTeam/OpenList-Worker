@@ -46,18 +46,33 @@ const App: Component = () => {
   const [loading, data] = useLoading(() =>
     Promise.all([
       (async () => {
-        handleRespWithoutAuthAndNotify(
-          (await r.get("/public/settings")) as Resp<Record<string, string>>,
-          setSettings,
-          (e) => setErr(err().concat(e)),
-        )
+        const resp = (await r.get("/public/settings")) as Resp<Record<string, string>>
+        if (resp && resp.code === 200) {
+          setSettings(resp.data)
+        } else {
+          console.warn("Using client-side fallback settings due to API failure:", resp?.message || "unknown")
+          const defaultSettings = {
+            site_title: "OpenList",
+            logo: "https://res.oplist.org/logo/logo.svg",
+            favicon: "https://res.oplist.org/logo/logo.svg",
+            announcement: "欢迎使用 OpenList! (运行于 Serverless 离线 fallback 模式)",
+            main_color: "#1890ff",
+            home_container: "hope_container",
+            home_icon: "openlist",
+            settings_layout: "simple",
+            version: "v4.2.3"
+          }
+          setSettings(defaultSettings)
+        }
       })(),
       (async () => {
-        handleRespWithoutAuthAndNotify(
-          (await r.get("/public/archive_extensions")) as Resp<string[]>,
-          setArchiveExtensions,
-          (e) => setErr(err().concat(e)),
-        )
+        const resp = (await r.get("/public/archive_extensions")) as Resp<string[]>
+        if (resp && resp.code === 200) {
+          setArchiveExtensions(resp.data)
+        } else {
+          console.warn("Using client-side fallback archive extensions due to API failure")
+          setArchiveExtensions(["zip", "tar", "gz", "rar", "7z"])
+        }
       })(),
     ]),
   )

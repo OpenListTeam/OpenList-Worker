@@ -11,7 +11,7 @@ const langs = import.meta.glob("../lang/*/index.json", {
 // all available languages
 export const languages = Object.keys(langs).length > 0
   ? Object.keys(langs).map((langPath) => {
-      const parts = langPath.split("/")
+      const parts = langPath.replace(/\\/g, "/").split("/")
       const langCode = parts[parts.length - 2] || "en"
       const langName = langs[langPath].lang
       return { code: langCode, lang: langName }
@@ -43,24 +43,41 @@ export type Dictionary = i18n.Flatten<RawDictionary>
 
 const dictImports = import.meta.glob("../lang/*/entry.ts")
 
-// Fetch and flatten the dictionary
+// Fetch and flatten the dictionary with high fault tolerance to prevent app crashes
 const fetchDictionary = async (locale: Lang): Promise<Dictionary> => {
-  if (locale === "en") {
-    return i18n.flatten(enDict as any)
-  }
   try {
-    const importKey = Object.keys(dictImports).find(key => key.endsWith(`/${locale}/entry.ts`))
+    if (locale === "en") {
+      if (!enDict || typeof enDict !== "object") {
+        throw new Error("enDict is undefined or invalid")
+      }
+      return i18n.flatten(enDict as any)
+    }
+
+    const importKey = Object.keys(dictImports).find(key => {
+      const normalized = key.replace(/\\/g, "/")
+      return normalized.endsWith(`/${locale}/entry.ts`)
+    })
     const importer = importKey ? dictImports[importKey] : undefined
     if (!importer) {
       console.warn(`Dictionary not found for locale: ${locale}. Falling back to English.`)
-      return i18n.flatten(enDict as any)
+      return enDict && typeof enDict === "object" ? i18n.flatten(enDict as any) : {} as any
     }
     const module = (await importer()) as { default: RawDictionary }
     const dict: RawDictionary = module.default
+    if (!dict || typeof dict !== "object") {
+      console.error(`Loaded dictionary for locale ${locale} is invalid. Falling back to English.`)
+      return enDict && typeof enDict === "object" ? i18n.flatten(enDict as any) : {} as any
+    }
     return i18n.flatten(dict) // Flatten dictionary for easier access to keys
   } catch (err) {
     console.error(`Error loading dictionary for locale: ${locale}`, err)
-    return i18n.flatten(enDict as any)
+    // Always fall back to English dictionary or empty object instead of throwing
+    try {
+      if (enDict && typeof enDict === "object") {
+        return i18n.flatten(enDict as any)
+      }
+    } catch (_) {}
+    return {} as any
   }
 }
 

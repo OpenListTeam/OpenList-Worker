@@ -1,7 +1,8 @@
 const jsons = import.meta.glob("./*.json", { eager: true, import: "default" })
 const langs: any = {}
 for (const path in jsons) {
-  const filename = path.split("/").pop() || ""
+  const normalizedPath = path.replace(/\\/g, "/")
+  const filename = normalizedPath.split("/").pop() || ""
   const name = filename.split(".")[0]
   langs[name] = jsons[path]
 }
