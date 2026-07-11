@@ -9,8 +9,18 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import backendApp from "./src/backend/index";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Handle __filename and __dirname for both ESM and CJS environments
+let _filename = "";
+let _dirname = "";
+try {
+  _filename = fileURLToPath(import.meta.url);
+  _dirname = path.dirname(_filename);
+} catch (e) {
+  // @ts-ignore
+  _filename = typeof __filename !== "undefined" ? __filename : "";
+  // @ts-ignore
+  _dirname = typeof __dirname !== "undefined" ? __dirname : "";
+}
 
 const app = new Hono();
 
@@ -18,7 +28,6 @@ const app = new Hono();
 app.route("/", backendApp);
 
 // Mount frontend static files
-const distPath = path.join(__dirname, "dist");
 app.use(
   "/*",
   serveStatic({
