@@ -1,18 +1,32 @@
 import { Hono } from "hono"
-import * as fs from "fs/promises"
-import { createReadStream } from "fs"
 import { resolvePath } from "../internal/model/db"
 import { parseRangeHeader } from "../internal/stream/stream"
 import { getDriver } from "../internal/op/storage"
 import { getFile } from "../drivers/onedrive/util"
 import { Onedrive } from "../drivers/onedrive/driver"
 
+let fsPromises: any = null;
+let createReadStream: any = null;
+
+async function initNodeModules() {
+  if (typeof process !== 'undefined' && process.release?.name === 'node' && !fsPromises) {
+    try {
+      fsPromises = await import('fs/promises');
+      createReadStream = (await import('fs')).createReadStream;
+    } catch(e) {}
+  }
+}
+
 export const rawRouter = new Hono()
 
 rawRouter.get("/*", async (c) => {
+  await initNodeModules();
   const reqPath = decodeURIComponent(
     c.req.path
       .replace(/^\/api\/raw/, "")
+      .replace(/^\/api\/d/, "")
+      .replace(/^\/api\/sd/, "")
+      .replace(/^\/api\/p/, "")
       .replace(/^\/d/, "")
       .replace(/^\/sd/, "")
       .replace(/^\/p/, "")
@@ -20,6 +34,7 @@ rawRouter.get("/*", async (c) => {
 
   try {
     const resolved = await resolvePath(reqPath)
+
     if (resolved.isVirtual || !resolved.physical) {
       return c.text("Cannot download virtual path", 400)
     }
@@ -33,7 +48,11 @@ rawRouter.get("/*", async (c) => {
       }
     }
     
-    const stat = await fs.stat(resolved.physical)
+    if (!fsPromises || !createReadStream) {
+       return c.text("Local file streaming not supported in Edge Runtime", 500);
+    }
+    
+    const stat = await fsPromises.stat(resolved.physical)
     if (stat.isDirectory()) {
       return c.text("Cannot download directory", 400)
     }
@@ -47,7 +66,6 @@ rawRouter.get("/*", async (c) => {
       c.header("Accept-Ranges", "bytes")
       c.header("Content-Length", chunksize.toString())
       c.header("Content-Type", "application/octet-stream")
-
       return c.body(stream as any, 206)
     } else {
       c.header("Content-Length", stat.size.toString())

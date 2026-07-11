@@ -35,7 +35,7 @@ export class CronManager {
   }
 
   public stopAll() {
-    for (const name of this.jobs.keys()) {
+    for (const name of Array.from(this.jobs.keys())) {
       this.stop(name);
     }
   }

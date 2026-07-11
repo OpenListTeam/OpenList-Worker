@@ -1,6 +1,3 @@
-import * as fs from "fs/promises"
-import { createReadStream } from "fs"
-import * as path from "path"
 import { resolvePath } from "../model/db"
 
 export interface RangeParams {
@@ -18,18 +15,35 @@ export function parseRangeHeader(rangeHeader: string, fileSize: number): RangePa
   return { start, end, chunksize }
 }
 
+let fs: any = null;
+let path: any = null;
+
+async function initNodeModules() {
+  if (typeof process !== 'undefined' && process.release?.name === 'node' && !fs) {
+    try {
+      fs = await import('fs/promises');
+      path = await import('path');
+    } catch(e) {}
+  }
+}
+
 // Downloads background offline file stream downloads
 export async function downloadOfflineFile(urls: string[], virtualDir: string): Promise<void> {
+  await initNodeModules();
+  if (!fs || !path) {
+    console.warn("downloadOfflineFile requires Node.js filesystem access");
+    return;
+  }
+  
   if (!urls || urls.length === 0) return
-
   for (const urlStr of urls) {
     try {
       const parsed = new URL(urlStr)
       let filename = parsed.pathname.split("/").pop() || "downloaded_file"
       if (!filename) filename = "downloaded_file"
-
       const fileVirtualPath = path.join(virtualDir, filename)
       const resolved = await resolvePath(fileVirtualPath)
+      
       if (resolved.isVirtual || !resolved.physical) {
         throw new Error("Cannot download to a virtual path")
       }

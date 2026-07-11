@@ -1,139 +1,32 @@
-import * as fs from "fs/promises"
-import * as path from "path"
 import { createClient } from "@supabase/supabase-js"
 
-const DB_PATH = path.join(process.cwd(), "public_data", "db.json")
+let fs: any = null;
+let path: any = null;
+let DB_PATH = "";
+
+// Dynamic import for Node.js environments
+async function initNodeModules() {
+  if (typeof process !== 'undefined' && process.release?.name === 'node') {
+    try {
+      fs = await import('fs/promises');
+      path = await import('path');
+      DB_PATH = path.join(process.cwd(), "public_data", "db.json");
+    } catch(e) {}
+  }
+}
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-
 let supabase: any = null
 if (supabaseUrl && supabaseKey) {
-  try {
-    supabase = createClient(supabaseUrl, supabaseKey)
-  } catch (err) {
-    console.error("Failed to initialize Supabase client:", err)
-  }
+  supabase = createClient(supabaseUrl, supabaseKey)
 }
 
 export const defaultDb = {
   settings: [
-    // Group 1: SITE
-    { key: "site_title", value: "OpenList", type: "string", help: "The title of the site", group: 1, flag: 0 },
-    { key: "logo", value: "https://res.oplist.org/logo/logo.svg", type: "string", help: "The logo URL of the site", group: 1, flag: 0 },
-    { key: "favicon", value: "https://res.oplist.org/logo/logo.svg", type: "string", help: "The favicon URL of the site", group: 1, flag: 0 },
-    { key: "announcement", value: "欢迎使用 OpenList!", type: "text", help: "Announcement shown on the homepage", group: 1, flag: 0 },
-    { key: "robots_txt", value: "User-agent: *\nAllow: /", type: "text", help: "robots.txt content", group: 1, flag: 0 },
-    { key: "version", value: "v4.2.3", type: "string", help: "Current version", group: 1, flag: 2 },
-
-    // Group 2: STYLE
-    { key: "main_color", value: "#1890ff", type: "string", help: "Main accent color", group: 2, flag: 0 },
-    { key: "home_container", value: "hope_container", type: "select", options: "hope_container,max_980px", help: "Style of the home page container", group: 2, flag: 0 },
-    { key: "home_icon", value: "openlist", type: "string", help: "Home icon styling", group: 2, flag: 0 },
-    { key: "settings_layout", value: "simple", type: "select", options: "simple,comprehensive", help: "Layout of the settings page", group: 2, flag: 0 },
-    { key: "hide_files", value: "", type: "text", help: "Regular expressions to hide files, one per line", group: 2, flag: 0 },
-    { key: "privacy_regs", value: "", type: "text", help: "Regular expressions to hide private details", group: 2, flag: 0 },
-
-    // Group 3: PREVIEW
-    { key: "audio_autoplay", value: "false", type: "bool", help: "Autoplay audio", group: 3, flag: 0 },
-    { key: "audio_cover", value: "", type: "string", help: "Default audio cover image", group: 3, flag: 0 },
-    { key: "audio_types", value: "mp3,m4a,wav,ogg,flac", type: "string", help: "Supported audio extensions", group: 3, flag: 0 },
-    { key: "image_types", value: "jpg,jpeg,png,gif,webp,bmp,svg", type: "string", help: "Supported image extensions", group: 3, flag: 0 },
-    { key: "video_autoplay", value: "false", type: "bool", help: "Autoplay video", group: 3, flag: 0 },
-    { key: "video_types", value: "mp4,mkv,webm,avi,mov,flv", type: "string", help: "Supported video extensions", group: 3, flag: 0 },
-    { key: "text_types", value: "txt,md,js,ts,css,json,html,xml,yaml,yml,ini,conf,log", type: "string", help: "Supported text extensions", group: 3, flag: 0 },
-    { key: "preview_archives_by_default", value: "true", type: "bool", help: "Preview archive files directly", group: 3, flag: 0 },
-    { key: "preview_download_by_default", value: "false", type: "bool", help: "Download file instead of previewing by default", group: 3, flag: 0 },
-    { key: "share_archive_preview", value: "true", type: "bool", help: "Allow previewing archives in shares", group: 3, flag: 0 },
-    { key: "share_preview", value: "true", type: "bool", help: "Allow previewing files in shares", group: 3, flag: 0 },
-    { key: "share_preview_archives_by_default", value: "true", type: "bool", help: "Preview archives in shares by default", group: 3, flag: 0 },
-    { key: "share_preview_download_by_default", value: "false", type: "bool", help: "Download in shares by default", group: 3, flag: 0 },
-    { key: "share_force_proxy", value: "false", type: "bool", help: "Force proxy for share downloads", group: 3, flag: 0 },
-    { key: "share_summary_content", value: "true", type: "bool", help: "Show file summary in shares", group: 3, flag: 0 },
-    { key: "share_icon", value: "", type: "string", help: "Custom share icon", group: 3, flag: 0 },
-
-    // Group 4: GLOBAL
-    { key: "package_download", value: "true", type: "bool", help: "Allow packing files for downloading", group: 4, flag: 0 },
-    { key: "offline_download", value: "true", type: "bool", help: "Allow offline downloading", group: 4, flag: 0 },
-    { key: "copy_task_threads_num", value: "4", type: "number", help: "Number of copy task threads", group: 4, flag: 0 },
-    { key: "upload_task_threads_num", value: "4", type: "number", help: "Number of upload task threads", group: 4, flag: 0 },
-    { key: "decompress_download_task_threads_num", value: "4", type: "number", help: "Number of download threads during decompression", group: 4, flag: 0 },
-    { key: "decompress_upload_task_threads_num", value: "4", type: "number", help: "Number of upload threads during decompression", group: 4, flag: 0 },
-    { key: "offline_download_task_threads_num", value: "4", type: "number", help: "Number of offline download task threads", group: 4, flag: 0 },
-    { key: "offline_download_transfer_task_threads_num", value: "4", type: "number", help: "Number of transfer threads for offline downloads", group: 4, flag: 0 },
-    { key: "hide_storage_details", value: "false", type: "bool", help: "Hide storage details on homepage", group: 4, flag: 0 },
-    { key: "hide_storage_details_in_manage_page", value: "false", type: "bool", help: "Hide storage details in manage pages", group: 4, flag: 0 },
-    { key: "default_page_size", value: "30", type: "number", help: "Default items per page", group: 4, flag: 0 },
-    { key: "pagination_type", value: "pagination", type: "select", options: "all,auto_load_more,load_more,pagination", help: "Style of list pagination", group: 4, flag: 0 },
-    { key: "ignore_system_files", value: "true", type: "bool", help: "Ignore system garbage files", group: 4, flag: 0 },
-    { key: "ignore_paths", value: "", type: "text", help: "Paths to ignore, one per line", group: 4, flag: 0 },
-    { key: "non_efs_zip_encoding", value: "GBK", type: "string", help: "Alternative ZIP file text encoding", group: 4, flag: 0 },
-    { key: "filename_char_mapping", value: "", type: "string", help: "Filename character mapping", group: 4, flag: 0 },
-    { key: "forward_direct_link_params", value: "false", type: "bool", help: "Forward query parameters on direct links", group: 4, flag: 0 },
-    { key: "ignore_direct_link_params", value: "false", type: "bool", help: "Ignore direct link query parameters", group: 4, flag: 0 },
-    { key: "link_expiration", value: "1440", type: "number", help: "Expiration time of direct links (minutes)", group: 4, flag: 0 },
-    { key: "proxy_types", value: "", type: "string", help: "Proxy types", group: 4, flag: 0 },
-    { key: "proxy_ignore_headers", value: "", type: "string", help: "Headers ignored by proxy", group: 4, flag: 0 },
-    { key: "handle_hook_after_writing", value: "false", type: "bool", help: "Execute hook after writing files", group: 4, flag: 0 },
-    { key: "handle_hook_rate_limit", value: "60", type: "number", help: "Hook rate limit (seconds)", group: 4, flag: 0 },
-
-    // Group 5: ARIA2
-    { key: "aria2_uri", value: "http://localhost:6800/jsonrpc", type: "string", help: "Aria2 JSON-RPC endpoint", group: 5, flag: 0 },
-    { key: "aria2_secret", value: "", type: "string", help: "Aria2 RPC secret token", group: 5, flag: 0 },
-    { key: "qbittorrent_url", value: "http://localhost:8080", type: "string", help: "qBittorrent Web UI URL", group: 5, flag: 0 },
-    { key: "qbittorrent_seedtime", value: "0", type: "number", help: "qBittorrent seeding time", group: 5, flag: 0 },
-    { key: "transmission_uri", value: "http://localhost:9091/transmission/rpc", type: "string", help: "Transmission RPC endpoint", group: 5, flag: 0 },
-    { key: "transmission_seedtime", value: "0", type: "number", help: "Transmission seeding time", group: 5, flag: 0 },
-
-    // Group 6: INDEX
-    { key: "auto_update_index", value: "false", type: "bool", help: "Enable auto update of search indexes", group: 6, flag: 0 },
-    { key: "max_index_depth", value: "20", type: "number", help: "Max scanning depth of index", group: 6, flag: 0 },
-    { key: "search_index", value: "none", type: "select", options: "none,database,database_non_full_text,bleve,meilisearch", help: "Selected search indexing engine", group: 6, flag: 0 },
-    { key: "index_progress", value: "idle", type: "string", help: "Current indexing progress", group: 6, flag: 2 },
-
-    // Group 7: SSO
-    { key: "sso_login_enabled", value: "false", type: "bool", help: "Enable Single Sign-On (SSO) logins", group: 7, flag: 0 },
-    { key: "sso_login_platform", value: "Github", type: "select", options: "Casdoor,Dingtalk,Github,Google,Microsoft,OIDC", help: "Selected SSO identity platform", group: 7, flag: 0 },
-    { key: "sso_client_id", value: "", type: "string", help: "SSO application Client ID", group: 7, flag: 0 },
-    { key: "sso_client_secret", value: "", type: "string", help: "SSO application Client Secret", group: 7, flag: 0 },
-    { key: "sso_organization_name", value: "", type: "string", help: "SSO organization name (if required)", group: 7, flag: 0 },
-    { key: "sso_application_name", value: "", type: "string", help: "SSO application registration name", group: 7, flag: 0 },
-    { key: "sso_endpoint_name", value: "", type: "string", help: "SSO server base URL or endpoint", group: 7, flag: 0 },
-    { key: "sso_auto_register", value: "true", type: "bool", help: "Auto-create a user on successful SSO", group: 7, flag: 0 },
-    { key: "sso_compatibility_mode", value: "false", type: "bool", help: "Enable SSO compatibility mode", group: 7, flag: 0 },
-    { key: "sso_default_dir", value: "/", type: "string", help: "Default root directory path for SSO users", group: 7, flag: 0 },
-    { key: "sso_default_permission", value: "0", type: "number", help: "Default permissions flag for auto-created users", group: 7, flag: 0 },
-    { key: "sso_jwt_public_key", value: "", type: "text", help: "SSO JWT public signing key", group: 7, flag: 0 },
-    { key: "sso_oidc_username_key", value: "preferred_username", type: "string", help: "The attribute key in OIDC token representing username", group: 7, flag: 0 },
-    { key: "sso_extra_scopes", value: "", type: "string", help: "Comma-separated extra OAuth scope requests", group: 7, flag: 0 },
-
-    // Group 8: LDAP
-    { key: "ldap_login_enabled", value: "false", type: "bool", help: "Enable LDAP user authentication logins", group: 8, flag: 0 },
-    { key: "ldap_server", value: "ldap://localhost:389", type: "string", help: "LDAP Server URL", group: 8, flag: 0 },
-    { key: "ldap_manager_dn", value: "", type: "string", help: "Manager DN used for searching directory", group: 8, flag: 0 },
-    { key: "ldap_manager_password", value: "", type: "string", help: "Manager password used for searching", group: 8, flag: 0 },
-    { key: "ldap_user_search_base", value: "", type: "string", help: "The DN branch from which user search begins", group: 8, flag: 0 },
-    { key: "ldap_user_search_filter", value: "(uid={username})", type: "string", help: "Search filter used for users", group: 8, flag: 0 },
-    { key: "ldap_default_dir", value: "/", type: "string", help: "Default root directory path for LDAP users", group: 8, flag: 0 },
-    { key: "ldap_default_permission", value: "0", type: "number", help: "Default permissions flag for auto-created users", group: 8, flag: 0 },
-    { key: "ldap_skip_tls_verify", value: "false", type: "bool", help: "Skip TLS validation of LDAP connection", group: 8, flag: 0 },
-    { key: "ldap_login_tips", value: "使用企业账号登录", type: "string", help: "Tips displayed on LDAP login input", group: 8, flag: 0 },
-
-    // Group 9: S3
-    { key: "s3_access_key_id", value: "", type: "string", help: "AWS S3 Access Key ID", group: 9, flag: 0 },
-    { key: "s3_secret_access_key", value: "", type: "string", help: "AWS S3 Secret Access Key", group: 9, flag: 0 },
-    { key: "s3_buckets", value: "[]", type: "text", help: "S3 config buckets array (JSON)", group: 9, flag: 0 },
-
-    // Group 11: TRAFFIC
-    { key: "max_client_download_speed", value: "0", type: "number", help: "Max download speed for clients (0 is unlimited)", group: 11, flag: 0 },
-    { key: "max_client_upload_speed", value: "0", type: "number", help: "Max upload speed for clients (0 is unlimited)", group: 11, flag: 0 },
-    { key: "max_server_download_speed", value: "0", type: "number", help: "Max download speed for server (0 is unlimited)", group: 11, flag: 0 },
-    { key: "max_server_upload_speed", value: "0", type: "number", help: "Max upload speed for server (0 is unlimited)", group: 11, flag: 0 },
-
-    // Group 0: SINGLE
-    { key: "token", value: "", type: "string", help: "API access authorization token", group: 0, flag: 0 },
-    { key: "ocr_api", value: "", type: "string", help: "Endpoint URL for OCR image scanning", group: 0, flag: 0 },
-    { key: "webauthn_login_enabled", value: "false", type: "bool", help: "Allow users to log in using biometric WebAuthn credentials", group: 0, flag: 0 },
+    { key: "site_title", value: "OpenList", type: "string", help: "Site Title", group: 1, flag: 0 },
+    { key: "home_icon", value: "openlist", type: "string", help: "Home icon name", group: 1, flag: 0 },
+    { key: "auto_update_index", value: "false", type: "bool", help: "Auto update search index", group: 5, flag: 0 },
   ],
   storages: [],
   users: [
@@ -189,6 +82,8 @@ const ensureDefaultStorages = (db: any) => {
 }
 
 export const getDb = async () => {
+  await initNodeModules();
+  
   if (memoryDb) {
     ensureDefaultSettings(memoryDb)
     ensureDefaultStorages(memoryDb)
@@ -207,17 +102,16 @@ export const getDb = async () => {
         memoryDb = data.data
         ensureDefaultSettings(memoryDb)
         ensureDefaultStorages(memoryDb)
-        try {
-          await fs.mkdir(path.dirname(DB_PATH), { recursive: true })
-          await fs.writeFile(DB_PATH, JSON.stringify(memoryDb, null, 2))
-        } catch (_) {}
+        
+        if (fs && path) {
+            try {
+              await fs.mkdir(path.dirname(DB_PATH), { recursive: true })
+              await fs.writeFile(DB_PATH, JSON.stringify(memoryDb, null, 2))
+            } catch (_) {}
+        }
         return memoryDb
       } else if (error) {
-        if (error.code === 'PGRST205' || (error.message && error.message.includes("schema cache"))) {
-          console.log("[Supabase Config] Info: table 'openlist_config' not found. Will use local database fallback.")
-        } else {
-          console.log("[Supabase Config] Info: load from Supabase skipped.", error.message || error)
-        }
+        console.log("[Supabase Config] Info: load from Supabase skipped.", error.message || error)
       }
     } catch (err) {
       console.error("Failed to load from Supabase:", err)
@@ -235,58 +129,35 @@ export const getDb = async () => {
     }
   }
 
-  try {
-    const data = await fs.readFile(DB_PATH, "utf-8")
-    memoryDb = JSON.parse(data)
-    ensureDefaultSettings(memoryDb)
-    ensureDefaultStorages(memoryDb)
-
-    if (supabase) {
-      supabase.from("openlist_config").upsert({ id: 1, data: memoryDb }).catch((err: any) => {
-        console.log("[Supabase Config] Info: Auto-sync local data to Supabase skipped:", err.message || err)
-      })
-    }
-
-    return memoryDb
-  } catch (e) {
-    try {
-      await fs.mkdir(path.dirname(DB_PATH), { recursive: true })
-      await fs.writeFile(DB_PATH, JSON.stringify(defaultDb, null, 2))
-      memoryDb = JSON.parse(JSON.stringify(defaultDb))
-      ensureDefaultStorages(memoryDb)
-
-      if (supabase) {
-        supabase.from("openlist_config").upsert({ id: 1, data: memoryDb }).catch((err: any) => {
-          console.log("[Supabase Config] Info: Auto-sync default data to Supabase skipped:", err.message || err)
-        })
-      }
-
-      return memoryDb
-    } catch (writeErr) {
-      const tmpDbPath = path.join("/tmp", "db.json")
+  if (fs && path) {
       try {
-        const tmpData = await fs.readFile(tmpDbPath, "utf-8")
-        memoryDb = JSON.parse(tmpData)
+        const data = await fs.readFile(DB_PATH, "utf-8")
+        memoryDb = JSON.parse(data)
         ensureDefaultSettings(memoryDb)
         ensureDefaultStorages(memoryDb)
         return memoryDb
-      } catch (tmpReadErr) {
+      } catch (e) {
         try {
-          await fs.writeFile(tmpDbPath, JSON.stringify(defaultDb, null, 2))
+          await fs.mkdir(path.dirname(DB_PATH), { recursive: true })
+          await fs.writeFile(DB_PATH, JSON.stringify(defaultDb, null, 2))
           memoryDb = JSON.parse(JSON.stringify(defaultDb))
           ensureDefaultStorages(memoryDb)
           return memoryDb
-        } catch (tmpWriteErr) {
+        } catch (writeErr) {
           memoryDb = JSON.parse(JSON.stringify(defaultDb))
           ensureDefaultStorages(memoryDb)
           return memoryDb
         }
       }
-    }
+  } else {
+      memoryDb = JSON.parse(JSON.stringify(defaultDb))
+      ensureDefaultStorages(memoryDb)
+      return memoryDb
   }
 }
 
 export const saveDb = async (data: any) => {
+  await initNodeModules();
   memoryDb = data
 
   if (supabase) {
@@ -295,30 +166,24 @@ export const saveDb = async (data: any) => {
         .from("openlist_config")
         .upsert({ id: 1, data: data })
       if (error) {
-        if (error.code === 'PGRST205' || (error.message && error.message.includes("schema cache"))) {
-          console.log("[Supabase Config] Info: Saving to Supabase skipped because 'openlist_config' table does not exist yet.")
-        } else {
-          console.log("[Supabase Config] Info: Saving to Supabase skipped:", error.message || error)
-        }
+        console.log("[Supabase Config] Info: Saving to Supabase skipped:", error.message || error)
       }
     } catch (err) {
       console.log("[Supabase Config] Error during Supabase save:", err)
     }
   }
 
-  try {
-    await fs.writeFile(DB_PATH, JSON.stringify(data, null, 2))
-  } catch (e) {
-    try {
-      const tmpDbPath = path.join("/tmp", "db.json")
-      await fs.writeFile(tmpDbPath, JSON.stringify(data, null, 2))
-    } catch (tmpErr) {
-      // ignore
-    }
+  if (fs && path) {
+      try {
+        await fs.writeFile(DB_PATH, JSON.stringify(data, null, 2))
+      } catch (e) {
+        // ignore
+      }
   }
 }
 
 export async function resolvePath(virtualPath: string) {
+  await initNodeModules();
   const db = await getDb()
   console.log("resolvePath: virtualPath=", virtualPath, "storages=", db.storages ? db.storages.length : 0)
   
@@ -340,7 +205,6 @@ export async function resolvePath(virtualPath: string) {
     return bMount.length - aMount.length
   })
 
-  // 1. Try to find a real storage matching cleanPath or its prefix
   for (const storage of sortedStorages) {
     const mount = "/" + (storage.mount_path || "").split("/").filter(Boolean).join("/")
     const isRootMount = mount === "/"
@@ -357,10 +221,11 @@ export async function resolvePath(virtualPath: string) {
       
       const addition = JSON.parse(storage.addition || "{}")
       const isCloud = ["onedrive", "s3"].includes(storage.driver.toLowerCase())
-      const defaultRoot = isCloud ? "/" : path.join(process.cwd(), "public_data")
+      
+      const defaultRoot = isCloud || !path ? "/" : path.join(process.cwd(), "public_data")
       let rootFolder = addition.root_folder_path !== undefined ? addition.root_folder_path : defaultRoot
 
-      if (!isCloud) {
+      if (!isCloud && fs && path) {
         if (!rootFolder || rootFolder === "") {
           rootFolder = defaultRoot
         } else {
@@ -374,7 +239,7 @@ export async function resolvePath(virtualPath: string) {
       }
 
       let physicalPath = ""
-      if (isCloud) {
+      if (isCloud || !path) {
         const parts = [rootFolder, relPath].map(p => p.replace(/\\/g, "/")).filter(Boolean)
         physicalPath = "/" + parts.join("/").split("/").filter(Boolean).join("/")
       } else {
@@ -392,7 +257,6 @@ export async function resolvePath(virtualPath: string) {
     }
   }
 
-  // 2. Check if cleanPath is a parent folder of any active storage mount_path (virtual directory)
   let isVirtual = false
   for (const storage of activeStorages) {
     const mount = "/" + (storage.mount_path || "").split("/").filter(Boolean).join("/")
@@ -413,6 +277,5 @@ export async function resolvePath(virtualPath: string) {
     }
   }
 
-  // 3. Neither matches real storage nor a virtual path parent
   throw new Error("failed get storage: storage not found")
 }

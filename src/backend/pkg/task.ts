@@ -87,7 +87,7 @@ export class TaskManager {
   }
 
   public clearFinished() {
-    for (const [id, task] of this.tasks.entries()) {
+    for (const [id, task] of Array.from(this.tasks.entries())) {
       if (task.status === TaskStatus.Success || task.status === TaskStatus.Failed || task.status === TaskStatus.Canceled) {
         this.tasks.delete(id);
       }

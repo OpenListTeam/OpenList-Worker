@@ -2,16 +2,20 @@
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/d/:path*",
-      "destination": "/api/d/:path*"
+      "source": "/d/(.*)",
+      "destination": "/api/[...route]"
     },
     {
-      "source": "/sd/:path*",
-      "destination": "/api/sd/:path*"
+      "source": "/sd/(.*)",
+      "destination": "/api/[...route]"
     },
     {
-      "source": "/p/:path*",
-      "destination": "/api/p/:path*"
+      "source": "/p/(.*)",
+      "destination": "/api/[...route]"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/[...route]"
     },
     {
       "source": "/((?!api/|d/|sd/|p/).*)",
