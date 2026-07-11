@@ -34,6 +34,13 @@ const CommonSettings = lazy(() => import("./settings/Common"))
 
 export const side_menu_items: SideMenuItem[] = [
   {
+    title: "Supabase Status",
+    icon: BsHddNetwork,
+    to: "/@manage/dashboard",
+    role: UserRole.GUEST,
+    component: lazy(() => import("./Dashboard")),
+  },
+  {
     title: "manage.sidemenu.profile",
     icon: BsFingerprint,
     to: "/@manage",

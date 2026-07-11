@@ -212,7 +212,7 @@ const AddOrEdit = () => {
                 back()
               },
               (msg, code) => {
-                if (resp.data.id) {
+                if (resp.data && resp.data.id) {
                   to(`/@manage/storages/edit/${resp.data.id}`)
                 }
               },

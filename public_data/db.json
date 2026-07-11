@@ -710,54 +710,6 @@
       "flag": 0
     },
     {
-      "key": "ftp_public_host",
-      "value": "",
-      "type": "string",
-      "help": "Public hostname/IP address of FTP server",
-      "group": 10,
-      "flag": 0
-    },
-    {
-      "key": "ftp_pasv_port_map",
-      "value": "",
-      "type": "string",
-      "help": "FTP passive port maps",
-      "group": 10,
-      "flag": 0
-    },
-    {
-      "key": "ftp_mandatory_tls",
-      "value": "false",
-      "type": "bool",
-      "help": "Require SSL/TLS encryption for all FTP connections",
-      "group": 10,
-      "flag": 0
-    },
-    {
-      "key": "ftp_implicit_tls",
-      "value": "false",
-      "type": "bool",
-      "help": "Use implicit SSL/TLS instead of explicit",
-      "group": 10,
-      "flag": 0
-    },
-    {
-      "key": "ftp_tls_private_key_path",
-      "value": "",
-      "type": "string",
-      "help": "Path to Private Key file for TLS",
-      "group": 10,
-      "flag": 0
-    },
-    {
-      "key": "ftp_tls_public_cert_path",
-      "value": "",
-      "type": "string",
-      "help": "Path to Public Certificate file for TLS",
-      "group": 10,
-      "flag": 0
-    },
-    {
       "key": "max_client_download_speed",
       "value": "0",
       "type": "number",
@@ -812,24 +764,24 @@
       "help": "Allow users to log in using biometric WebAuthn credentials",
       "group": 0,
       "flag": 0
-    },
-    {
-      "key": "sftp_disable_password_login",
-      "value": "false",
-      "type": "bool",
-      "help": "Disable standard password login for SFTP",
-      "group": 0,
-      "flag": 0
     }
   ],
   "storages": [
     {
-      "driver": "Onedrive",
-      "mount_path": "/onedrive",
-      "addition": "{\"root_folder_path\":\"/dwa\",\"region\":\"global\",\"is_sharepoint\":false,\"use_online_api\":true,\"api_url_address\":\"https://api.oplist.org/onedrive/renewapi\",\"client_id\":\"\",\"client_secret\":\"\",\"redirect_uri\":\"https://api.oplist.org/onedrive/callback\",\"refresh_token\":\"M.C546_BL2.0.U.MsaArtifacts.-CiWVKR!xoaBPSCAw5bacd3ebNMKPoJEeDq4stbPGYjOdDPN1UuoSJKUM4V5shfFYT5cglOqY8BZC*gt5trT!Qjl0Cvi!D16BsX*U4vswAHo3rYIcujoC6qlprgfZnX7Kxvyh4JL25ZyTFqllXCjSMXRfZgIqir1wsUjSYKQ!dpAySAczngK3FU3Ec63BPqBUzTI2Mw7Jk96xnveipAwbF0dWwqx8195AYnvCXEkLc3VSjlsCX3uRon!mcFAZPziRMPkUN41U9D3L*ggm9YzB*TKp7VYbvy4bn!dxPKZQcqoqa0xKLKZzsM7fqIOmMWBp6PIm3eZ5Li7B08YxivNYnkkIGwqRPWJRedTngBgu85ugZabQ5QKsk8OjpFE6l04JOg$$\",\"site_id\":\"\",\"chunk_size\":5,\"custom_host\":\"\",\"disable_disk_usage\":false,\"enable_direct_upload\":false}",
       "id": 1,
+      "mount_path": "/",
+      "driver": "Local",
+      "addition": "{\"root_folder_path\":\"/data\"}",
+      "disabled": false,
+      "modified": "2026-07-11T04:59:02.957Z"
+    },
+    {
+      "mount_path": "/test2",
+      "driver": "Local",
+      "addition": "{\"root_folder_path\":\"/tmp\"}",
+      "id": 2,
       "status": "work",
-      "modified": "2026-07-10T08:22:08.028Z"
+      "modified": "2026-07-11T05:01:35.477Z"
     }
   ],
   "users": [
@@ -840,7 +792,7 @@
       "permission": 0,
       "disabled": false,
       "sso_id": "",
-      "pwd_update_at": "2026-07-09T17:31:42.332Z"
+      "pwd_update_at": "2026-07-11T04:53:36.638Z"
     }
   ],
   "metas": []

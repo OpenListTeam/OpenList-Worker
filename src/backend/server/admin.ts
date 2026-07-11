@@ -35,12 +35,14 @@ adminRouter.post("/storage/create", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const db = await getDb()
 
-  if (db.storages.some((s: any) => s.mount_path === body.mount_path)) {
+  const mountPath = "/" + (body.mount_path || "").split("/").filter(Boolean).join("/")
+  if (db.storages.some((s: any) => "/" + (s.mount_path || "").split("/").filter(Boolean).join("/") === mountPath)) {
     return c.json({ code: 400, message: "mount path already exists", data: null })
   }
 
   const newStorage = {
     ...body,
+    mount_path: mountPath,
     id: db.storages.length
       ? Math.max(...db.storages.map((s: any) => s.id)) + 1
       : 1,
@@ -56,7 +58,8 @@ adminRouter.post("/storage/update", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const db = await getDb()
 
-  if (db.storages.some((s: any) => s.id !== body.id && s.mount_path === body.mount_path)) {
+  const mountPath = "/" + (body.mount_path || "").split("/").filter(Boolean).join("/")
+  if (db.storages.some((s: any) => s.id !== body.id && "/" + (s.mount_path || "").split("/").filter(Boolean).join("/") === mountPath)) {
     return c.json({ code: 400, message: "mount path already exists", data: null })
   }
 
@@ -65,6 +68,7 @@ adminRouter.post("/storage/update", async (c) => {
     db.storages[idx] = {
       ...db.storages[idx],
       ...body,
+      mount_path: mountPath,
       modified: new Date().toISOString(),
     }
     await saveDb(db)
@@ -334,4 +338,61 @@ adminRouter.get("/user/list", async (c) => {
     message: "success",
     data: { content: db.users, total: db.users.length },
   })
+})
+
+adminRouter.get("/supabase/status", async (c) => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+
+  if (!supabaseUrl || !supabaseKey) {
+    return c.json({
+      code: 200,
+      message: "success",
+      data: {
+        configured: false,
+        tableExists: false,
+        error: null,
+        url: null
+      }
+    })
+  }
+
+  try {
+    const { createClient } = await import("@supabase/supabase-js")
+    const client = createClient(supabaseUrl, supabaseKey)
+    const { error } = await client.from("openlist_config").select("id").eq("id", 1).maybeSingle()
+    if (error) {
+      return c.json({
+        code: 200,
+        message: "success",
+        data: {
+          configured: true,
+          tableExists: false,
+          error: error.message || String(error),
+          url: supabaseUrl
+        }
+      })
+    }
+    return c.json({
+      code: 200,
+      message: "success",
+      data: {
+        configured: true,
+        tableExists: true,
+        error: null,
+        url: supabaseUrl
+      }
+    })
+  } catch (err: any) {
+    return c.json({
+      code: 200,
+      message: "success",
+      data: {
+        configured: true,
+        tableExists: false,
+        error: err.message || String(err),
+        url: supabaseUrl
+      }
+    })
+  }
 })

@@ -19,6 +19,7 @@ export async function getDriver(driverName: string, storageConfig?: any): Promis
   }
 
   let driver: StorageDriver;
+  console.log("getDriver: driverName=", driverName)
   if (driverName && driverName.toLowerCase() === "s3") {
     driver = s3Driver
   } else if (driverName && driverName.toLowerCase() === "onedrive") {
@@ -26,7 +27,12 @@ export async function getDriver(driverName: string, storageConfig?: any): Promis
     const addition = additionStr ? (typeof additionStr === "string" ? JSON.parse(additionStr || "{}") : additionStr) : {};
     driver = new Onedrive(addition);
     if (driver.init) {
-      await driver.init();
+      try {
+        await driver.init();
+      } catch (e) {
+        console.error("onedrive init failed:", e)
+        throw e
+      }
     }
   } else {
     driver = localDriver
@@ -59,30 +65,24 @@ export async function listItems(virtualPath: string): Promise<{ content: FileIte
   const activeStorages = (db.storages || []).filter((s: any) => !s.disabled)
   const cleanListedPath = resolved.cleanPath
 
-  const childMounts = activeStorages.filter((s: any) => {
+  activeStorages.forEach((s: any) => {
     const mount = "/" + (s.mount_path || "").split("/").filter(Boolean).join("/")
-    if (mount === cleanListedPath || mount === "/") return false
+    if (mount === cleanListedPath || mount === "/") return
     
     const prefix = cleanListedPath === "/" ? "/" : cleanListedPath + "/"
     if (mount.startsWith(prefix)) {
       const relative = mount.slice(prefix.length)
-      const segments = relative.split("/").filter(Boolean)
-      return segments.length === 1
-    }
-    return false
-  })
-
-  childMounts.forEach((s: any) => {
-    const name = (s.mount_path || "").split("/").filter(Boolean).pop()
-    if (name && !items.some((f) => f.name === name)) {
-      items.push({
-        name,
-        size: 0,
-        is_dir: true,
-        modified: s.modified || new Date().toISOString(),
-        sign: "",
-        type: 1,
-      })
+      const name = relative.split("/").filter(Boolean)[0]
+      if (name && !items.some((f) => f.name === name)) {
+        items.push({
+          name,
+          size: 0,
+          is_dir: true,
+          modified: s.modified || new Date().toISOString(),
+          sign: "",
+          type: 1,
+        })
+      }
     }
   })
 

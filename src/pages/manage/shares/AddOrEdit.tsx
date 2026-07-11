@@ -195,7 +195,7 @@ const AddOrEdit = () => {
               back()
             },
             (_msg, _code) => {
-              if (resp.data.id) {
+              if (resp.data && resp.data.id) {
                 to(`/@manage/shares/edit/${resp.data.id}`)
               }
             },

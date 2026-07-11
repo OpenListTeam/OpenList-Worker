@@ -1,7 +1,20 @@
 import fs from "fs/promises"
 import path from "path"
+import { createClient } from "@supabase/supabase-js"
 
 const DB_PATH = path.join(process.cwd(), "public_data", "db.json")
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+
+let supabase: any = null
+if (supabaseUrl && supabaseKey) {
+  try {
+    supabase = createClient(supabaseUrl, supabaseKey)
+  } catch (err) {
+    console.error("Failed to initialize Supabase client:", err)
+  }
+}
 
 export const defaultDb = {
   settings: [
@@ -111,14 +124,6 @@ export const defaultDb = {
     { key: "s3_secret_access_key", value: "", type: "string", help: "AWS S3 Secret Access Key", group: 9, flag: 0 },
     { key: "s3_buckets", value: "[]", type: "text", help: "S3 config buckets array (JSON)", group: 9, flag: 0 },
 
-    // Group 10: FTP
-    { key: "ftp_public_host", value: "", type: "string", help: "Public hostname/IP address of FTP server", group: 10, flag: 0 },
-    { key: "ftp_pasv_port_map", value: "", type: "string", help: "FTP passive port maps", group: 10, flag: 0 },
-    { key: "ftp_mandatory_tls", value: "false", type: "bool", help: "Require SSL/TLS encryption for all FTP connections", group: 10, flag: 0 },
-    { key: "ftp_implicit_tls", value: "false", type: "bool", help: "Use implicit SSL/TLS instead of explicit", group: 10, flag: 0 },
-    { key: "ftp_tls_private_key_path", value: "", type: "string", help: "Path to Private Key file for TLS", group: 10, flag: 0 },
-    { key: "ftp_tls_public_cert_path", value: "", type: "string", help: "Path to Public Certificate file for TLS", group: 10, flag: 0 },
-
     // Group 11: TRAFFIC
     { key: "max_client_download_speed", value: "0", type: "number", help: "Max download speed for clients (0 is unlimited)", group: 11, flag: 0 },
     { key: "max_client_upload_speed", value: "0", type: "number", help: "Max upload speed for clients (0 is unlimited)", group: 11, flag: 0 },
@@ -129,7 +134,6 @@ export const defaultDb = {
     { key: "token", value: "", type: "string", help: "API access authorization token", group: 0, flag: 0 },
     { key: "ocr_api", value: "", type: "string", help: "Endpoint URL for OCR image scanning", group: 0, flag: 0 },
     { key: "webauthn_login_enabled", value: "false", type: "bool", help: "Allow users to log in using biometric WebAuthn credentials", group: 0, flag: 0 },
-    { key: "sftp_disable_password_login", value: "false", type: "bool", help: "Disable standard password login for SFTP", group: 0, flag: 0 },
   ],
   storages: [],
   users: [
@@ -166,16 +170,65 @@ const ensureDefaultSettings = (db: any) => {
   }
 }
 
+const ensureDefaultStorages = (db: any) => {
+  if (!db) return
+  if (!db.storages) {
+    db.storages = []
+  }
+  if (db.storages.length === 0) {
+    db.storages.push({
+      id: 1,
+      mount_path: "/",
+      driver: "Local",
+      addition: "{\"root_folder_path\":\"/data\"}",
+      disabled: false,
+      modified: new Date().toISOString()
+    })
+    saveDb(db).catch(() => {})
+  }
+}
+
 export const getDb = async () => {
   if (memoryDb) {
     ensureDefaultSettings(memoryDb)
+    ensureDefaultStorages(memoryDb)
     return memoryDb
+  }
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("openlist_config")
+        .select("data")
+        .eq("id", 1)
+        .maybeSingle()
+
+      if (!error && data && data.data) {
+        memoryDb = data.data
+        ensureDefaultSettings(memoryDb)
+        ensureDefaultStorages(memoryDb)
+        try {
+          await fs.mkdir(path.dirname(DB_PATH), { recursive: true })
+          await fs.writeFile(DB_PATH, JSON.stringify(memoryDb, null, 2))
+        } catch (_) {}
+        return memoryDb
+      } else if (error) {
+        if (error.code === 'PGRST205' || (error.message && error.message.includes("schema cache"))) {
+          console.log("[Supabase Config] Info: table 'openlist_config' not found. Will use local database fallback.")
+        } else {
+          console.log("[Supabase Config] Info: load from Supabase skipped.", error.message || error)
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load from Supabase:", err)
+    }
   }
 
   if (process.env.DATABASE_JSON) {
     try {
       memoryDb = JSON.parse(process.env.DATABASE_JSON)
       ensureDefaultSettings(memoryDb)
+      ensureDefaultStorages(memoryDb)
       return memoryDb
     } catch (err) {
       console.error("Failed to parse DATABASE_JSON env variable:", err)
@@ -186,12 +239,28 @@ export const getDb = async () => {
     const data = await fs.readFile(DB_PATH, "utf-8")
     memoryDb = JSON.parse(data)
     ensureDefaultSettings(memoryDb)
+    ensureDefaultStorages(memoryDb)
+
+    if (supabase) {
+      supabase.from("openlist_config").upsert({ id: 1, data: memoryDb }).catch((err: any) => {
+        console.log("[Supabase Config] Info: Auto-sync local data to Supabase skipped:", err.message || err)
+      })
+    }
+
     return memoryDb
   } catch (e) {
     try {
       await fs.mkdir(path.dirname(DB_PATH), { recursive: true })
       await fs.writeFile(DB_PATH, JSON.stringify(defaultDb, null, 2))
       memoryDb = JSON.parse(JSON.stringify(defaultDb))
+      ensureDefaultStorages(memoryDb)
+
+      if (supabase) {
+        supabase.from("openlist_config").upsert({ id: 1, data: memoryDb }).catch((err: any) => {
+          console.log("[Supabase Config] Info: Auto-sync default data to Supabase skipped:", err.message || err)
+        })
+      }
+
       return memoryDb
     } catch (writeErr) {
       const tmpDbPath = path.join("/tmp", "db.json")
@@ -199,14 +268,17 @@ export const getDb = async () => {
         const tmpData = await fs.readFile(tmpDbPath, "utf-8")
         memoryDb = JSON.parse(tmpData)
         ensureDefaultSettings(memoryDb)
+        ensureDefaultStorages(memoryDb)
         return memoryDb
       } catch (tmpReadErr) {
         try {
           await fs.writeFile(tmpDbPath, JSON.stringify(defaultDb, null, 2))
           memoryDb = JSON.parse(JSON.stringify(defaultDb))
+          ensureDefaultStorages(memoryDb)
           return memoryDb
         } catch (tmpWriteErr) {
           memoryDb = JSON.parse(JSON.stringify(defaultDb))
+          ensureDefaultStorages(memoryDb)
           return memoryDb
         }
       }
@@ -216,6 +288,24 @@ export const getDb = async () => {
 
 export const saveDb = async (data: any) => {
   memoryDb = data
+
+  if (supabase) {
+    try {
+      const { error } = await supabase
+        .from("openlist_config")
+        .upsert({ id: 1, data: data })
+      if (error) {
+        if (error.code === 'PGRST205' || (error.message && error.message.includes("schema cache"))) {
+          console.log("[Supabase Config] Info: Saving to Supabase skipped because 'openlist_config' table does not exist yet.")
+        } else {
+          console.log("[Supabase Config] Info: Saving to Supabase skipped:", error.message || error)
+        }
+      }
+    } catch (err) {
+      console.log("[Supabase Config] Error during Supabase save:", err)
+    }
+  }
+
   try {
     await fs.writeFile(DB_PATH, JSON.stringify(data, null, 2))
   } catch (e) {
@@ -230,6 +320,7 @@ export const saveDb = async (data: any) => {
 
 export async function resolvePath(virtualPath: string) {
   const db = await getDb()
+  console.log("resolvePath: virtualPath=", virtualPath, "storages=", db.storages ? db.storages.length : 0)
   
   let cleanPath = "/" + virtualPath.split("/").filter(Boolean).join("/")
   if (cleanPath === "") {
