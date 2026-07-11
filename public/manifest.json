@@ -1,0 +1,13 @@
+{
+  "display": "standalone",
+  "scope": "/",
+  "start_url": "/",
+  "name": "OpenList",
+  "icons": [
+    {
+      "src": "https://res.oplist.org/logo/512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
