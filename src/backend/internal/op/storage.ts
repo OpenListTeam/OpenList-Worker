@@ -9,33 +9,26 @@ const s3Driver = new S3Driver()
 
 const driverCache = new Map<string, StorageDriver>()
 
-export async function getDriver(
-  driverName: string,
-  storageConfig?: any,
-): Promise<StorageDriver> {
-  const cacheKey = storageConfig
-    ? `${driverName}_${storageConfig.id || storageConfig.mount_path}`
-    : driverName
+export async function getDriver(driverName: string, storageConfig?: any): Promise<StorageDriver> {
+  const cacheKey = storageConfig 
+    ? `${driverName}_${storageConfig.id || storageConfig.mount_path}` 
+    : driverName;
 
   if (driverCache.has(cacheKey)) {
-    return driverCache.get(cacheKey)!
+    return driverCache.get(cacheKey)!;
   }
 
-  let driver: StorageDriver
+  let driver: StorageDriver;
   console.log("getDriver: driverName=", driverName)
   if (driverName && driverName.toLowerCase() === "s3") {
     driver = s3Driver
   } else if (driverName && driverName.toLowerCase() === "onedrive") {
-    const additionStr = storageConfig?.addition
-    const addition = additionStr
-      ? typeof additionStr === "string"
-        ? JSON.parse(additionStr || "{}")
-        : additionStr
-      : {}
-    driver = new Onedrive(addition)
+    const additionStr = storageConfig?.addition;
+    const addition = additionStr ? (typeof additionStr === "string" ? JSON.parse(additionStr || "{}") : additionStr) : {};
+    driver = new Onedrive(addition);
     if (driver.init) {
       try {
-        await driver.init()
+        await driver.init();
       } catch (e) {
         console.error("onedrive init failed:", e)
         throw e
@@ -46,19 +39,14 @@ export async function getDriver(
   }
 
   // Only cache OneDrive and S3 (stateful or expensive drivers)
-  if (
-    driverName.toLowerCase() === "onedrive" ||
-    driverName.toLowerCase() === "s3"
-  ) {
-    driverCache.set(cacheKey, driver)
+  if (driverName.toLowerCase() === "onedrive" || driverName.toLowerCase() === "s3") {
+    driverCache.set(cacheKey, driver);
   }
 
-  return driver
+  return driver;
 }
 
-export async function listItems(
-  virtualPath: string,
-): Promise<{ content: FileItem[]; provider: string }> {
+export async function listItems(virtualPath: string): Promise<{ content: FileItem[]; provider: string }> {
   const resolved = await resolvePath(virtualPath)
   let items: FileItem[] = []
   let driverName = "Virtual"
@@ -78,10 +66,9 @@ export async function listItems(
   const cleanListedPath = resolved.cleanPath
 
   activeStorages.forEach((s: any) => {
-    const mount =
-      "/" + (s.mount_path || "").split("/").filter(Boolean).join("/")
+    const mount = "/" + (s.mount_path || "").split("/").filter(Boolean).join("/")
     if (mount === cleanListedPath || mount === "/") return
-
+    
     const prefix = cleanListedPath === "/" ? "/" : cleanListedPath + "/"
     if (mount.startsWith(prefix)) {
       const relative = mount.slice(prefix.length)
@@ -102,9 +89,7 @@ export async function listItems(
   return { content: items, provider: driverName }
 }
 
-export async function getItem(
-  virtualPath: string,
-): Promise<{ item: FileItem; provider: string; rawUrl: string }> {
+export async function getItem(virtualPath: string): Promise<{ item: FileItem; provider: string; rawUrl: string }> {
   const resolved = await resolvePath(virtualPath)
   if (resolved.isVirtual) {
     const name = resolved.cleanPath.split("/").filter(Boolean).pop() || "root"
@@ -141,10 +126,7 @@ export async function makeDirectory(virtualPath: string): Promise<void> {
   await driver.mkdir(virtualPath, resolved.physical!)
 }
 
-export async function renameItem(
-  virtualPath: string,
-  newName: string,
-): Promise<void> {
+export async function renameItem(virtualPath: string, newName: string): Promise<void> {
   const resolved = await resolvePath(virtualPath)
   if (resolved.isVirtual) {
     throw new Error("failed get storage: storage not found")
@@ -165,11 +147,7 @@ export async function removeItems(dir: string, names: string[]): Promise<void> {
   }
 }
 
-export async function moveItems(
-  srcDir: string,
-  dstDir: string,
-  names: string[],
-): Promise<void> {
+export async function moveItems(srcDir: string, dstDir: string, names: string[]): Promise<void> {
   for (const name of names) {
     const srcVirtual = `${srcDir}/${name}`
     const dstVirtual = `${dstDir}/${name}`
@@ -179,25 +157,12 @@ export async function moveItems(
       throw new Error("failed get storage: storage not found")
     }
 
-    const driver = await getDriver(
-      srcResolved.storage!.driver,
-      srcResolved.storage,
-    )
-    await driver.move(
-      srcDir,
-      dstDir,
-      [name],
-      srcResolved.physical!,
-      dstResolved.physical!,
-    )
+    const driver = await getDriver(srcResolved.storage!.driver, srcResolved.storage)
+    await driver.move(srcDir, dstDir, [name], srcResolved.physical!, dstResolved.physical!)
   }
 }
 
-export async function copyItems(
-  srcDir: string,
-  dstDir: string,
-  names: string[],
-): Promise<void> {
+export async function copyItems(srcDir: string, dstDir: string, names: string[]): Promise<void> {
   for (const name of names) {
     const srcVirtual = `${srcDir}/${name}`
     const dstVirtual = `${dstDir}/${name}`
@@ -207,24 +172,12 @@ export async function copyItems(
       throw new Error("failed get storage: storage not found")
     }
 
-    const driver = await getDriver(
-      srcResolved.storage!.driver,
-      srcResolved.storage,
-    )
-    await driver.copy(
-      srcDir,
-      dstDir,
-      [name],
-      srcResolved.physical!,
-      dstResolved.physical!,
-    )
+    const driver = await getDriver(srcResolved.storage!.driver, srcResolved.storage)
+    await driver.copy(srcDir, dstDir, [name], srcResolved.physical!, dstResolved.physical!)
   }
 }
 
-export async function putItem(
-  virtualPath: string,
-  content: Buffer,
-): Promise<void> {
+export async function putItem(virtualPath: string, content: Buffer): Promise<void> {
   const resolved = await resolvePath(virtualPath)
   if (resolved.isVirtual) {
     throw new Error("failed get storage: storage not found")

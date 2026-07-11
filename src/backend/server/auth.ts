@@ -6,21 +6,15 @@ export const authRouter = new Hono()
 
 authRouter.post("/login/hash", async (c) => {
   const body = await c.req.json().catch(() => ({}))
-
+  
   const expectedUsername = process.env.ADMIN_USERNAME || "admin"
   const expectedPasswordPlain = process.env.ADMIN_PASSWORD || "admin"
+  
+  const crypto = await import("crypto");
+  const hash_salt = "https://github.com/alist-org/alist";
+  const expectedPassword = crypto.createHash("sha256").update(`${expectedPasswordPlain}-${hash_salt}`).digest("hex");
 
-  const crypto = await import("crypto")
-  const hash_salt = "https://github.com/alist-org/alist"
-  const expectedPassword = crypto
-    .createHash("sha256")
-    .update(`${expectedPasswordPlain}-${hash_salt}`)
-    .digest("hex")
-
-  if (
-    body.username === expectedUsername &&
-    body.password === expectedPassword
-  ) {
+  if (body.username === expectedUsername && body.password === expectedPassword) {
     const payload = {
       username: expectedUsername,
       id: 1,
@@ -46,9 +40,7 @@ export const meHandler = async (c: any) => {
   if (!authHeader) {
     return c.json({ code: 401, message: "Unauthorized", data: null })
   }
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.substring(7)
-    : authHeader
+  const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader
   try {
     const payload = await verify(token, JWT_SECRET, "HS256")
     return c.json({

@@ -26,15 +26,8 @@ export const SwitchLanguage = <C extends ElementType = "button">(
   }
 
   if (!localStorage.getItem("lang")) {
-    const defaultCode =
-      languages.find(
-        (l) => l.code.toLowerCase() === navigator.language.toLowerCase(),
-      )?.code ||
-      languages.find(
-        (l) =>
-          l.code.toLowerCase().split("-")[0] ===
-          navigator.language.toLowerCase().split("-")[0],
-      )?.code ||
+    const defaultCode = languages.find((l) => l.code.toLowerCase() === navigator.language.toLowerCase())?.code ||
+      languages.find((l) => l.code.toLowerCase().split("-")[0] === navigator.language.toLowerCase().split("-")[0])?.code ||
       "en"
     switchLang(defaultCode)
   }

@@ -15,7 +15,7 @@ rawRouter.get("/*", async (c) => {
       .replace(/^\/api\/raw/, "")
       .replace(/^\/d/, "")
       .replace(/^\/sd/, "")
-      .replace(/^\/p/, ""),
+      .replace(/^\/p/, "")
   )
 
   try {
@@ -24,21 +24,15 @@ rawRouter.get("/*", async (c) => {
       return c.text("Cannot download virtual path", 400)
     }
 
-    if (
-      resolved.storage &&
-      resolved.storage.driver.toLowerCase() === "onedrive"
-    ) {
-      const driver = (await getDriver(
-        resolved.storage.driver,
-        resolved.storage,
-      )) as Onedrive
+    if (resolved.storage && resolved.storage.driver.toLowerCase() === "onedrive") {
+      const driver = await getDriver(resolved.storage.driver, resolved.storage) as Onedrive
       const f = await getFile(driver, resolved.physical)
       const downloadUrl = f["@microsoft.graph.downloadUrl"]
       if (downloadUrl) {
         return c.redirect(downloadUrl)
       }
     }
-
+    
     const stat = await fs.stat(resolved.physical)
     if (stat.isDirectory()) {
       return c.text("Cannot download directory", 400)
@@ -48,7 +42,7 @@ rawRouter.get("/*", async (c) => {
     if (rangeHeader) {
       const { start, end, chunksize } = parseRangeHeader(rangeHeader, stat.size)
       const stream = createReadStream(resolved.physical, { start, end })
-
+      
       c.header("Content-Range", `bytes ${start}-${end}/${stat.size}`)
       c.header("Accept-Ranges", "bytes")
       c.header("Content-Length", chunksize.toString())

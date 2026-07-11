@@ -1,25 +1,25 @@
 export interface Addition {
-  root_folder_path: string
-  region: string
-  is_sharepoint: boolean
-  use_online_api: boolean
-  api_url_address: string
-  client_id: string
-  client_secret: string
-  redirect_uri: string
-  refresh_token: string
-  site_id: string
-  chunk_size: number
-  custom_host: string
-  disable_disk_usage: boolean
-  enable_direct_upload: boolean
+  root_folder_path: string;
+  region: string;
+  is_sharepoint: boolean;
+  use_online_api: boolean;
+  api_url_address: string;
+  client_id: string;
+  client_secret: string;
+  redirect_uri: string;
+  refresh_token: string;
+  site_id: string;
+  chunk_size: number;
+  custom_host: string;
+  disable_disk_usage: boolean;
+  enable_direct_upload: boolean;
 }
 
 export const config = {
   name: "Onedrive",
   localSort: true,
   defaultRoot: "/",
-}
+};
 
 export const onedriveHostMap: Record<string, { oauth: string; api: string }> = {
   global: {
@@ -38,4 +38,4 @@ export const onedriveHostMap: Record<string, { oauth: string; api: string }> = {
     oauth: "https://login.microsoftonline.de",
     api: "https://graph.microsoft.de",
   },
-}
+};

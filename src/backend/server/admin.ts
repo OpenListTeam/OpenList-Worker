@@ -10,9 +10,7 @@ adminRouter.use("*", async (c, next) => {
   if (!authHeader) {
     return c.json({ code: 401, message: "Unauthorized", data: null })
   }
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.substring(7)
-    : authHeader
+  const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader
   try {
     const payload = await verify(token, JWT_SECRET, "HS256")
     if (payload.role !== 2) {
@@ -37,20 +35,9 @@ adminRouter.post("/storage/create", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const db = await getDb()
 
-  const mountPath =
-    "/" + (body.mount_path || "").split("/").filter(Boolean).join("/")
-  if (
-    db.storages.some(
-      (s: any) =>
-        "/" + (s.mount_path || "").split("/").filter(Boolean).join("/") ===
-        mountPath,
-    )
-  ) {
-    return c.json({
-      code: 400,
-      message: "mount path already exists",
-      data: null,
-    })
+  const mountPath = "/" + (body.mount_path || "").split("/").filter(Boolean).join("/")
+  if (db.storages.some((s: any) => "/" + (s.mount_path || "").split("/").filter(Boolean).join("/") === mountPath)) {
+    return c.json({ code: 400, message: "mount path already exists", data: null })
   }
 
   const newStorage = {
@@ -71,21 +58,9 @@ adminRouter.post("/storage/update", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const db = await getDb()
 
-  const mountPath =
-    "/" + (body.mount_path || "").split("/").filter(Boolean).join("/")
-  if (
-    db.storages.some(
-      (s: any) =>
-        s.id !== body.id &&
-        "/" + (s.mount_path || "").split("/").filter(Boolean).join("/") ===
-          mountPath,
-    )
-  ) {
-    return c.json({
-      code: 400,
-      message: "mount path already exists",
-      data: null,
-    })
+  const mountPath = "/" + (body.mount_path || "").split("/").filter(Boolean).join("/")
+  if (db.storages.some((s: any) => s.id !== body.id && "/" + (s.mount_path || "").split("/").filter(Boolean).join("/") === mountPath)) {
+    return c.json({ code: 400, message: "mount path already exists", data: null })
   }
 
   const idx = db.storages.findIndex((s: any) => s.id === body.id)
@@ -132,11 +107,7 @@ adminRouter.post("/storage/disable", async (c) => {
 })
 
 adminRouter.get("/driver/names", (c) => {
-  return c.json({
-    code: 200,
-    message: "success",
-    data: ["Local", "S3", "Onedrive"],
-  })
+  return c.json({ code: 200, message: "success", data: ["Local", "S3", "Onedrive"] })
 })
 
 adminRouter.get("/driver/list", (c) => {
@@ -148,27 +119,9 @@ adminRouter.get("/driver/list", (c) => {
         name: "Local",
         default_mount_path: "/",
         common: [
-          {
-            name: "mount_path",
-            type: "string",
-            default: "",
-            required: true,
-            help: "1",
-          },
-          {
-            name: "order",
-            type: "number",
-            default: "0",
-            required: false,
-            help: "",
-          },
-          {
-            name: "remark",
-            type: "string",
-            default: "",
-            required: false,
-            help: "",
-          },
+          { name: "mount_path", type: "string", default: "", required: true, help: "1" },
+          { name: "order", type: "number", default: "0", required: false, help: "" },
+          { name: "remark", type: "string", default: "", required: false, help: "" }
         ],
         additional: [
           {
@@ -183,27 +136,9 @@ adminRouter.get("/driver/list", (c) => {
         name: "S3",
         default_mount_path: "/s3",
         common: [
-          {
-            name: "mount_path",
-            type: "string",
-            default: "",
-            required: true,
-            help: "1",
-          },
-          {
-            name: "order",
-            type: "number",
-            default: "0",
-            required: false,
-            help: "",
-          },
-          {
-            name: "remark",
-            type: "string",
-            default: "",
-            required: false,
-            help: "",
-          },
+          { name: "mount_path", type: "string", default: "", required: true, help: "1" },
+          { name: "order", type: "number", default: "0", required: false, help: "" },
+          { name: "remark", type: "string", default: "", required: false, help: "" }
         ],
         additional: [
           {
@@ -211,34 +146,16 @@ adminRouter.get("/driver/list", (c) => {
             type: "string",
             default: "",
             required: true,
-          },
-        ],
+          }
+        ]
       },
       Onedrive: {
         name: "Onedrive",
         default_mount_path: "/onedrive",
         common: [
-          {
-            name: "mount_path",
-            type: "string",
-            default: "",
-            required: true,
-            help: "1",
-          },
-          {
-            name: "order",
-            type: "number",
-            default: "0",
-            required: false,
-            help: "",
-          },
-          {
-            name: "remark",
-            type: "string",
-            default: "",
-            required: false,
-            help: "",
-          },
+          { name: "mount_path", type: "string", default: "", required: true, help: "1" },
+          { name: "order", type: "number", default: "0", required: false, help: "" },
+          { name: "remark", type: "string", default: "", required: false, help: "" }
         ],
         additional: [
           {
@@ -340,7 +257,7 @@ adminRouter.get("/driver/list", (c) => {
           need_ms: false,
           default_root: "/",
         },
-      },
+      }
     },
   })
 })
@@ -385,13 +302,11 @@ adminRouter.post("/setting/default", async (c) => {
   }
   const groupNum = parseInt(groupQuery, 10)
   const db = await getDb()
-
+  
   db.settings = (db.settings || []).filter((s: any) => s.group !== groupNum)
-  const groupDefaults = defaultDb.settings.filter(
-    (s: any) => s.group === groupNum,
-  )
+  const groupDefaults = defaultDb.settings.filter((s: any) => s.group === groupNum)
   db.settings.push(...JSON.parse(JSON.stringify(groupDefaults)))
-
+  
   await saveDb(db)
   return c.json({ code: 200, message: "success", data: groupDefaults })
 })
@@ -437,19 +352,15 @@ adminRouter.get("/supabase/status", async (c) => {
         configured: false,
         tableExists: false,
         error: null,
-        url: null,
-      },
+        url: null
+      }
     })
   }
 
   try {
     const { createClient } = await import("@supabase/supabase-js")
     const client = createClient(supabaseUrl, supabaseKey)
-    const { error } = await client
-      .from("openlist_config")
-      .select("id")
-      .eq("id", 1)
-      .maybeSingle()
+    const { error } = await client.from("openlist_config").select("id").eq("id", 1).maybeSingle()
     if (error) {
       return c.json({
         code: 200,
@@ -458,8 +369,8 @@ adminRouter.get("/supabase/status", async (c) => {
           configured: true,
           tableExists: false,
           error: error.message || String(error),
-          url: supabaseUrl,
-        },
+          url: supabaseUrl
+        }
       })
     }
     return c.json({
@@ -469,8 +380,8 @@ adminRouter.get("/supabase/status", async (c) => {
         configured: true,
         tableExists: true,
         error: null,
-        url: supabaseUrl,
-      },
+        url: supabaseUrl
+      }
     })
   } catch (err: any) {
     return c.json({
@@ -480,8 +391,8 @@ adminRouter.get("/supabase/status", async (c) => {
         configured: true,
         tableExists: false,
         error: err.message || String(err),
-        url: supabaseUrl,
-      },
+        url: supabaseUrl
+      }
     })
   }
 })

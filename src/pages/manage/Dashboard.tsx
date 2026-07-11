@@ -34,18 +34,16 @@ const Dashboard = () => {
 
   const [loading, setLoading] = createSignal(true)
   const [status, setStatus] = createSignal<SupabaseStatus | null>(null)
-  const [storageStatus, setStorageStatus] = createSignal<StorageStatus | null>(
-    null,
-  )
+  const [storageStatus, setStorageStatus] = createSignal<StorageStatus | null>(null)
 
   const fetchStatus = async () => {
     setLoading(true)
     try {
       const [resp, storageResp] = await Promise.all([
         r.get("/admin/supabase/status"),
-        r.get("/admin/storage/list"),
+        r.get("/admin/storage/list")
       ])
-
+      
       if (resp && resp.data) {
         setStatus(resp.data)
       }
@@ -92,8 +90,7 @@ CREATE POLICY "Allow public read and write" ON public.openlist_config
             {t("manage.title")} Console
           </Heading>
           <Text color="$neutral11" mt="$1">
-            Welcome to your administrator space. Manage configurations, storage
-            drives, and settings.
+            Welcome to your administrator space. Manage configurations, storage drives, and settings.
           </Text>
         </Box>
 
@@ -135,17 +132,12 @@ CREATE POLICY "Allow public read and write" ON public.openlist_config
                     </svg>
                   </Box>
                   <Box>
-                    <Heading
-                      size="base"
-                      color="$warning11"
-                      fontWeight="$semibold"
-                    >
+                    <Heading size="base" color="$warning11" fontWeight="$semibold">
                       Supabase Setup Required: Missing 'openlist_config' Table
                     </Heading>
                     <Text size="sm" mt="$1" color="$neutral12">
-                      The application is successfully connected to your Supabase
-                      instance at <strong>{status()?.url}</strong>, but the
-                      required table is missing in the database.
+                      The application is successfully connected to your Supabase instance at{" "}
+                      <strong>{status()?.url}</strong>, but the required table is missing in the database.
                     </Text>
                   </Box>
                 </HStack>
@@ -154,22 +146,15 @@ CREATE POLICY "Allow public read and write" ON public.openlist_config
                   <Text size="sm" fontWeight="$medium">
                     Please follow these quick steps to set it up:
                   </Text>
-                  <Box
-                    as="ol"
-                    style={{ "padding-left": "20px" }}
-                    class="space-y-2 text-sm text-neutral11"
-                  >
+                  <Box as="ol" style={{ "padding-left": "20px" }} class="space-y-2 text-sm text-neutral11">
                     <li>
                       Log in to your <strong>Supabase Dashboard</strong>.
                     </li>
                     <li>
-                      Select your project and click on the{" "}
-                      <strong>SQL Editor</strong> in the left sidebar (the
-                      console icon <code>&gt;_</code>).
+                      Select your project and click on the <strong>SQL Editor</strong> in the left sidebar (the console icon <code>&gt;_</code>).
                     </li>
                     <li>
-                      Click <strong>New query</strong>, paste the SQL snippet
-                      below, and click <strong>Run</strong>.
+                      Click <strong>New query</strong>, paste the SQL snippet below, and click <strong>Run</strong>.
                     </li>
                   </Box>
 
@@ -178,11 +163,7 @@ CREATE POLICY "Allow public read and write" ON public.openlist_config
                       <Text size="xs" color="$neutral11" fontWeight="$semibold">
                         SQL SCHEMA SETUP
                       </Text>
-                      <Button
-                        size="xs"
-                        colorScheme="warning"
-                        onClick={() => copy(sqlCode)}
-                      >
+                      <Button size="xs" colorScheme="warning" onClick={() => copy(sqlCode)}>
                         Copy SQL
                       </Button>
                     </HStack>
@@ -203,16 +184,11 @@ CREATE POLICY "Allow public read and write" ON public.openlist_config
                   </Box>
 
                   <HStack spacing="$2" mt="$3">
-                    <Button
-                      size="sm"
-                      colorScheme="warning"
-                      onClick={fetchStatus}
-                    >
+                    <Button size="sm" colorScheme="warning" onClick={fetchStatus}>
                       Check Status Again
                     </Button>
                     <Text size="xs" color="$neutral10">
-                      Currently using local backup JSON storage. Data will sync
-                      once the table is online.
+                      Currently using local backup JSON storage. Data will sync once the table is online.
                     </Text>
                   </HStack>
                 </VStack>
@@ -246,17 +222,11 @@ CREATE POLICY "Allow public read and write" ON public.openlist_config
                     </svg>
                   </Box>
                   <Box>
-                    <Heading
-                      size="base"
-                      color="$success11"
-                      fontWeight="$semibold"
-                    >
+                    <Heading size="base" color="$success11" fontWeight="$semibold">
                       Supabase Cloud Sync: Connected & Active
                     </Heading>
                     <Text size="sm" mt="$0.5" color="$neutral12">
-                      Your database configuration and drive list are being
-                      securely backed up and synced to your remote Supabase
-                      instance.
+                      Your database configuration and drive list are being securely backed up and synced to your remote Supabase instance.
                     </Text>
                   </Box>
                 </HStack>
@@ -296,8 +266,7 @@ CREATE POLICY "Allow public read and write" ON public.openlist_config
                       Local JSON Database Active
                     </Heading>
                     <Text size="sm" mt="$0.5" color="$neutral12">
-                      The application is running in local mode. All settings and
-                      storages are saved to the local file system.
+                      The application is running in local mode. All settings and storages are saved to the local file system.
                     </Text>
                   </Box>
                 </HStack>
@@ -322,12 +291,8 @@ CREATE POLICY "Allow public read and write" ON public.openlist_config
                   bgColor={useColorModeValue("$neutral2", "$neutral3")()}
                   textAlign="center"
                 >
-                  <Text size="sm" color="$neutral11" mb="$1">
-                    Total Storages
-                  </Text>
-                  <Heading size="lg" color="$neutral12">
-                    {storageStatus()?.total}
-                  </Heading>
+                  <Text size="sm" color="$neutral11" mb="$1">Total Storages</Text>
+                  <Heading size="lg" color="$neutral12">{storageStatus()?.total}</Heading>
                 </Box>
                 <Box
                   flex="1"
@@ -339,12 +304,8 @@ CREATE POLICY "Allow public read and write" ON public.openlist_config
                   bgColor={useColorModeValue("$success2", "$success3")()}
                   textAlign="center"
                 >
-                  <Text size="sm" color="$success11" mb="$1">
-                    Active
-                  </Text>
-                  <Heading size="lg" color="$success11">
-                    {storageStatus()?.active}
-                  </Heading>
+                  <Text size="sm" color="$success11" mb="$1">Active</Text>
+                  <Heading size="lg" color="$success11">{storageStatus()?.active}</Heading>
                 </Box>
                 <Box
                   flex="1"
@@ -356,12 +317,8 @@ CREATE POLICY "Allow public read and write" ON public.openlist_config
                   bgColor={useColorModeValue("$danger2", "$danger3")()}
                   textAlign="center"
                 >
-                  <Text size="sm" color="$danger11" mb="$1">
-                    Disabled
-                  </Text>
-                  <Heading size="lg" color="$danger11">
-                    {storageStatus()?.disabled}
-                  </Heading>
+                  <Text size="sm" color="$danger11" mb="$1">Disabled</Text>
+                  <Heading size="lg" color="$danger11">{storageStatus()?.disabled}</Heading>
                 </Box>
               </HStack>
             </Box>
@@ -374,25 +331,13 @@ CREATE POLICY "Allow public read and write" ON public.openlist_config
             Quick Navigation
           </Heading>
           <HStack spacing="$4" wrap="wrap">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => to("/@manage/settings/common")}
-            >
+            <Button variant="outline" size="sm" onClick={() => to("/@manage/settings/common")}>
               General Settings
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => to("/@manage/storages")}
-            >
+            <Button variant="outline" size="sm" onClick={() => to("/@manage/storages")}>
               Manage Storages
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => to("/@manage/users")}
-            >
+            <Button variant="outline" size="sm" onClick={() => to("/@manage/users")}>
               User Accounts
             </Button>
           </HStack>

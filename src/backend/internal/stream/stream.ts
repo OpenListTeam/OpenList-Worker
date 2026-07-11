@@ -10,10 +10,7 @@ export interface RangeParams {
 }
 
 // Parses the standard Range header
-export function parseRangeHeader(
-  rangeHeader: string,
-  fileSize: number,
-): RangeParams {
+export function parseRangeHeader(rangeHeader: string, fileSize: number): RangeParams {
   const parts = rangeHeader.replace(/bytes=/, "").split("-")
   const start = parseInt(parts[0], 10)
   const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1
@@ -22,10 +19,7 @@ export function parseRangeHeader(
 }
 
 // Downloads background offline file stream downloads
-export async function downloadOfflineFile(
-  urls: string[],
-  virtualDir: string,
-): Promise<void> {
+export async function downloadOfflineFile(urls: string[], virtualDir: string): Promise<void> {
   if (!urls || urls.length === 0) return
 
   for (const urlStr of urls) {
@@ -40,7 +34,7 @@ export async function downloadOfflineFile(
         throw new Error("Cannot download to a virtual path")
       }
       const targetPath = resolved.physical
-
+      
       const res = await fetch(urlStr)
       if (res.ok && res.body) {
         const buffer = await res.arrayBuffer()

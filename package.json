@@ -2,10 +2,7 @@
   "name": "openlistnext",
   "version": "4.2.3",
   "type": "module",
-  "packageManager": "pnpm@9.5.0",
-  "engines": {
-    "node": ">=20.0.0"
-  },
+  "packageManager": "pnpm@9.15.4",
   "author": {
     "name": "The OpenListNext Contributors"
   },
@@ -32,7 +29,7 @@
     "build": "vite build",
     "build:lite": "cross-env VITE_LITE=true vite build",
     "serve": "vite preview",
-    "prepare": "husky",
+    "prepare": "node -e \"if (require('fs').existsSync('.git')) { try { require('child_process').execSync('husky'); } catch(e) {} }\"",
     "lint": "tsc -p tsconfig.json --noEmit",
     "format": "prettier --ignore-path .gitignore -w \"src/**/*.{js,ts,json,css,tsx,jsx}\""
   },
