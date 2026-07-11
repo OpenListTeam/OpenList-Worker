@@ -1,8 +1,30 @@
-import fs from "fs/promises"
-import path from "path"
+const fsModule = "node:fs/promises"
+const pathModule = "node:path"
+
+let fs: any = null
+let path: any = null
+
+try {
+  fs = await import(fsModule)
+  if (fs && fs.default) {
+    fs = fs.default
+  }
+} catch (e) {
+  console.log("[db.ts] node:fs/promises is not available in this environment.")
+}
+
+try {
+  path = await import(pathModule)
+  if (path && path.default) {
+    path = path.default
+  }
+} catch (e) {
+  console.log("[db.ts] node:path is not available in this environment.")
+}
+
 import { createClient } from "@supabase/supabase-js"
 
-const DB_PATH = path.join(process.cwd(), "public_data", "db.json")
+const DB_PATH = path ? path.join(process.cwd(), "public_data", "db.json") : ""
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
@@ -207,10 +229,12 @@ export const getDb = async () => {
         memoryDb = data.data
         ensureDefaultSettings(memoryDb)
         ensureDefaultStorages(memoryDb)
-        try {
-          await fs.mkdir(path.dirname(DB_PATH), { recursive: true })
-          await fs.writeFile(DB_PATH, JSON.stringify(memoryDb, null, 2))
-        } catch (_) {}
+        if (fs && path && DB_PATH) {
+          try {
+            await fs.mkdir(path.dirname(DB_PATH), { recursive: true })
+            await fs.writeFile(DB_PATH, JSON.stringify(memoryDb, null, 2))
+          } catch (_) {}
+        }
         return memoryDb
       } else if (error) {
         if (error.code === 'PGRST205' || (error.message && error.message.includes("schema cache"))) {
@@ -235,55 +259,65 @@ export const getDb = async () => {
     }
   }
 
-  try {
-    const data = await fs.readFile(DB_PATH, "utf-8")
-    memoryDb = JSON.parse(data)
-    ensureDefaultSettings(memoryDb)
-    ensureDefaultStorages(memoryDb)
-
-    if (supabase) {
-      supabase.from("openlist_config").upsert({ id: 1, data: memoryDb }).catch((err: any) => {
-        console.log("[Supabase Config] Info: Auto-sync local data to Supabase skipped:", err.message || err)
-      })
-    }
-
-    return memoryDb
-  } catch (e) {
+  if (fs && DB_PATH) {
     try {
-      await fs.mkdir(path.dirname(DB_PATH), { recursive: true })
-      await fs.writeFile(DB_PATH, JSON.stringify(defaultDb, null, 2))
-      memoryDb = JSON.parse(JSON.stringify(defaultDb))
+      const data = await fs.readFile(DB_PATH, "utf-8")
+      memoryDb = JSON.parse(data)
+      ensureDefaultSettings(memoryDb)
       ensureDefaultStorages(memoryDb)
 
       if (supabase) {
         supabase.from("openlist_config").upsert({ id: 1, data: memoryDb }).catch((err: any) => {
-          console.log("[Supabase Config] Info: Auto-sync default data to Supabase skipped:", err.message || err)
+          console.log("[Supabase Config] Info: Auto-sync local data to Supabase skipped:", err.message || err)
         })
       }
 
       return memoryDb
-    } catch (writeErr) {
-      const tmpDbPath = path.join("/tmp", "db.json")
+    } catch (e) {
       try {
-        const tmpData = await fs.readFile(tmpDbPath, "utf-8")
-        memoryDb = JSON.parse(tmpData)
-        ensureDefaultSettings(memoryDb)
+        if (path) {
+          await fs.mkdir(path.dirname(DB_PATH), { recursive: true })
+          await fs.writeFile(DB_PATH, JSON.stringify(defaultDb, null, 2))
+        }
+        memoryDb = JSON.parse(JSON.stringify(defaultDb))
         ensureDefaultStorages(memoryDb)
+
+        if (supabase) {
+          supabase.from("openlist_config").upsert({ id: 1, data: memoryDb }).catch((err: any) => {
+            console.log("[Supabase Config] Info: Auto-sync default data to Supabase skipped:", err.message || err)
+          })
+        }
+
         return memoryDb
-      } catch (tmpReadErr) {
-        try {
-          await fs.writeFile(tmpDbPath, JSON.stringify(defaultDb, null, 2))
-          memoryDb = JSON.parse(JSON.stringify(defaultDb))
-          ensureDefaultStorages(memoryDb)
-          return memoryDb
-        } catch (tmpWriteErr) {
-          memoryDb = JSON.parse(JSON.stringify(defaultDb))
-          ensureDefaultStorages(memoryDb)
-          return memoryDb
+      } catch (writeErr) {
+        const tmpDbPath = path ? path.join("/tmp", "db.json") : ""
+        if (tmpDbPath) {
+          try {
+            const tmpData = await fs.readFile(tmpDbPath, "utf-8")
+            memoryDb = JSON.parse(tmpData)
+            ensureDefaultSettings(memoryDb)
+            ensureDefaultStorages(memoryDb)
+            return memoryDb
+          } catch (tmpReadErr) {
+            try {
+              await fs.writeFile(tmpDbPath, JSON.stringify(defaultDb, null, 2))
+              memoryDb = JSON.parse(JSON.stringify(defaultDb))
+              ensureDefaultStorages(memoryDb)
+              return memoryDb
+            } catch (tmpWriteErr) {
+              memoryDb = JSON.parse(JSON.stringify(defaultDb))
+              ensureDefaultStorages(memoryDb)
+              return memoryDb
+            }
+          }
         }
       }
     }
   }
+
+  memoryDb = JSON.parse(JSON.stringify(defaultDb))
+  ensureDefaultStorages(memoryDb)
+  return memoryDb
 }
 
 export const saveDb = async (data: any) => {
@@ -306,14 +340,18 @@ export const saveDb = async (data: any) => {
     }
   }
 
-  try {
-    await fs.writeFile(DB_PATH, JSON.stringify(data, null, 2))
-  } catch (e) {
+  if (fs && DB_PATH) {
     try {
-      const tmpDbPath = path.join("/tmp", "db.json")
-      await fs.writeFile(tmpDbPath, JSON.stringify(data, null, 2))
-    } catch (tmpErr) {
-      // ignore
+      await fs.writeFile(DB_PATH, JSON.stringify(data, null, 2))
+    } catch (e) {
+      if (path) {
+        try {
+          const tmpDbPath = path.join("/tmp", "db.json")
+          await fs.writeFile(tmpDbPath, JSON.stringify(data, null, 2))
+        } catch (tmpErr) {
+          // ignore
+        }
+      }
     }
   }
 }
@@ -357,10 +395,13 @@ export async function resolvePath(virtualPath: string) {
       
       const addition = JSON.parse(storage.addition || "{}")
       const isCloud = ["onedrive", "s3"].includes(storage.driver.toLowerCase())
-      const defaultRoot = isCloud ? "/" : path.join(process.cwd(), "public_data")
+      const defaultRoot = isCloud ? "/" : (path ? path.join(process.cwd(), "public_data") : "/public_data")
       let rootFolder = addition.root_folder_path !== undefined ? addition.root_folder_path : defaultRoot
 
       if (!isCloud) {
+        if (!fs || !path) {
+          throw new Error("Local filesystem storage is not supported in this serverless environment.")
+        }
         if (!rootFolder || rootFolder === "") {
           rootFolder = defaultRoot
         } else {
@@ -378,7 +419,11 @@ export async function resolvePath(virtualPath: string) {
         const parts = [rootFolder, relPath].map(p => p.replace(/\\/g, "/")).filter(Boolean)
         physicalPath = "/" + parts.join("/").split("/").filter(Boolean).join("/")
       } else {
-        physicalPath = path.join(rootFolder, relPath)
+        if (path) {
+          physicalPath = path.join(rootFolder, relPath)
+        } else {
+          physicalPath = rootFolder + relPath
+        }
       }
       
       return {
