@@ -11,7 +11,8 @@ const langs = import.meta.glob("../lang/*/index.json", {
 // all available languages
 export const languages = Object.keys(langs).length > 0
   ? Object.keys(langs).map((langPath) => {
-      const langCode = langPath.split("/").slice(-2, -1)[0]
+      const parts = langPath.split("/")
+      const langCode = parts[parts.length - 2] || "en"
       const langName = langs[langPath].lang
       return { code: langCode, lang: langName }
     })
