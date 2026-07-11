@@ -10,7 +10,6 @@
     "jsxImportSource": "solid-js",
     "types": ["vite/client"],
     "noEmit": true,
-    "allowImportingTsExtensions": true,
     "isolatedModules": false,
     "paths": {
       "@stitches/core/types/*": ["./node_modules/@stitches/core/types/*"],
