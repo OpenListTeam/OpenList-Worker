@@ -31,7 +31,13 @@ if (!languages.some((lang) => lang.code === initialLang)) {
   initialLang = defaultLang
 }
 
-import { dict as enDict } from "~/lang/en/entry"
+import { dict as enDict } from "../lang/en/entry"
+import { dict as zhDict } from "../lang/zh-CN/entry"
+
+const dictionaries: Record<string, typeof enDict> = {
+  en: enDict,
+  "zh-CN": zhDict,
+}
 
 export type Lang = string
 export type RawDictionary = typeof enDict
@@ -39,16 +45,8 @@ export type Dictionary = i18n.Flatten<RawDictionary>
 
 // Fetch and flatten the dictionary
 const fetchDictionary = async (locale: Lang): Promise<Dictionary> => {
-  if (locale === "en") {
-    return i18n.flatten(enDict)
-  }
-  try {
-    const dict: RawDictionary = (await import(`~/lang/${locale}/entry.ts`)).dict
-    return i18n.flatten(dict) // Flatten dictionary for easier access to keys
-  } catch (err) {
-    console.error(`Error loading dictionary for locale: ${locale}, falling back to English`, err)
-    return i18n.flatten(enDict)
-  }
+  const dict = dictionaries[locale] || enDict
+  return i18n.flatten(dict)
 }
 
 // Signals to track current language and dictionary state
