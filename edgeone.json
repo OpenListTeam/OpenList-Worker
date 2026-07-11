@@ -1,0 +1,21 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/d/:path*",
+      "destination": "/api/d/:path*"
+    },
+    {
+      "source": "/sd/:path*",
+      "destination": "/api/sd/:path*"
+    },
+    {
+      "source": "/p/:path*",
+      "destination": "/api/p/:path*"
+    },
+    {
+      "source": "/((?!api/|d/|sd/|p/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
