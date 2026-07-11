@@ -1,5 +1,5 @@
 import { ShareInfo } from "~/types"
-import { base_path } from "."
+import { base_path } from "./config"
 
 const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 

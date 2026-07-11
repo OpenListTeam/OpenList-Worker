@@ -1,4 +1,4 @@
-import { base_path } from "."
+import { base_path } from "./config"
 
 export const standardizePath = (path: string, noRootSlash?: boolean) => {
   if (path.endsWith("/")) {

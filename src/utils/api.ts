@@ -13,7 +13,7 @@ import {
   TorrentUploadParseResult,
   TorrentRapidUploadResult,
 } from "~/types"
-import { r } from "."
+import { r } from "./request"
 
 export const fsGet = (
   path: string = "/",

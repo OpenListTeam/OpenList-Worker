@@ -18,9 +18,14 @@ export let api = import.meta.env.VITE_API_URL as string
 if (window.OPENLIST_CONFIG.api) {
   api = window.OPENLIST_CONFIG.api
 }
-if (api === "/") {
-  api = location.origin + base_path
-}
+
+api = (api || "").trim()
+
 if (api.endsWith("/")) {
   api = api.slice(0, -1)
 }
+
+if (api === "" || api === "/" || api === "/api" || api === "./api") {
+  api = location.origin + base_path
+}
+

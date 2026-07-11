@@ -1,5 +1,6 @@
 import axios from "axios"
-import { api, log } from "."
+import { api } from "./config"
+import { log } from "./log"
 
 const instance = axios.create({
   baseURL: api + "/api",
