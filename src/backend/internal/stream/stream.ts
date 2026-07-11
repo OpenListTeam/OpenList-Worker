@@ -1,6 +1,6 @@
-import fs from "fs/promises"
+import * as fs from "fs/promises"
 import { createReadStream } from "fs"
-import path from "path"
+import * as path from "path"
 import { resolvePath } from "../model/db"
 
 export interface RangeParams {

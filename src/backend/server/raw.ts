@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import fs from "fs/promises"
+import * as fs from "fs/promises"
 import { createReadStream } from "fs"
 import { resolvePath } from "../internal/model/db"
 import { parseRangeHeader } from "../internal/stream/stream"

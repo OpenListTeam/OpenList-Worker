@@ -1,5 +1,5 @@
-import fs from "fs/promises"
-import path from "path"
+import * as fs from "fs/promises"
+import * as path from "path"
 import { createClient } from "@supabase/supabase-js"
 
 const DB_PATH = path.join(process.cwd(), "public_data", "db.json")
