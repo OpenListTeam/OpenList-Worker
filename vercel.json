@@ -1,17 +1,16 @@
 {
-  "version": 2,
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/d/:path*",
+      "source": "/d/(.*)",
       "destination": "/api/[...route]"
     },
     {
-      "source": "/sd/:path*",
+      "source": "/sd/(.*)",
       "destination": "/api/[...route]"
     },
     {
-      "source": "/p/:path*",
+      "source": "/p/(.*)",
       "destination": "/api/[...route]"
     },
     {
