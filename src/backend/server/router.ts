@@ -11,7 +11,14 @@ import { debugRouter } from "./debug"
 
 export function setupRouter(app: Hono) {
   // CORS Middleware
-  app.use("*", cors())
+  app.use("*", cors({
+    origin: (origin) => origin,
+    allowHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    exposeHeaders: ["Content-Length", "Content-Type"],
+    maxAge: 600,
+    credentials: true,
+  }))
 
   // Direct file delivery proxy route
   app.route("/api/raw", rawRouter)

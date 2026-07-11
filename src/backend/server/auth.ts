@@ -5,14 +5,29 @@ import { JWT_SECRET } from "./middlewares"
 export const authRouter = new Hono()
 
 authRouter.post("/login/hash", async (c) => {
-  const body = await c.req.json().catch(() => ({}))
+  let body: any = {};
+  try {
+    body = await c.req.json();
+  } catch (err) {
+    const text = await c.req.text().catch(() => "");
+    console.error("[Auth] Failed to parse JSON body, raw text:", text, err);
+    try {
+      body = JSON.parse(text);
+    } catch (e) {
+      return c.json({ code: 400, message: "Invalid JSON body", data: null }, 400);
+    }
+  }
   
   const expectedUsername = process.env.ADMIN_USERNAME || "admin"
   const expectedPasswordPlain = process.env.ADMIN_PASSWORD || "admin"
   
-  const crypto = await import("crypto");
+  if (!process.env.ADMIN_PASSWORD) {
+    console.warn("[Auth] ADMIN_PASSWORD not set, defaulting to 'admin'");
+  }
+  
+  const CryptoJS = (await import("crypto-js")).default;
   const hash_salt = "https://github.com/alist-org/alist";
-  const expectedPassword = crypto.createHash("sha256").update(`${expectedPasswordPlain}-${hash_salt}`).digest("hex");
+  const expectedPassword = CryptoJS.SHA256(`${expectedPasswordPlain}-${hash_salt}`).toString();
 
   if (body.username === expectedUsername && body.password === expectedPassword) {
     const payload = {
@@ -38,7 +53,8 @@ authRouter.post("/login/hash", async (c) => {
 export const meHandler = async (c: any) => {
   const authHeader = c.req.header("Authorization")
   if (!authHeader) {
-    return c.json({ code: 401, message: "Unauthorized", data: null })
+    console.warn("[Auth] /me request missing Authorization header");
+    return c.json({ code: 401, message: "Unauthorized: Missing Authorization header", data: null })
   }
   const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader
   try {
@@ -53,8 +69,9 @@ export const meHandler = async (c: any) => {
         permission: 0,
       },
     })
-  } catch (e) {
-    return c.json({ code: 401, message: "Unauthorized", data: null })
+  } catch (e: any) {
+    console.error("[Auth] Token verification failed:", e.message || e);
+    return c.json({ code: 401, message: `Unauthorized: ${e.message || "Invalid token"}`, data: null })
   }
 }
 

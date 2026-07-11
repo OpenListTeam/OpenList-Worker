@@ -3,6 +3,12 @@ import { setupRouter } from "./server/router"
 
 const app = new Hono()
 
+// Simple logger middleware
+app.use("*", async (c, next) => {
+  console.log(`[${c.req.method}] ${c.req.url}`);
+  await next();
+});
+
 // Apply full modular router setup mapping the Go server architecture
 setupRouter(app)
 
