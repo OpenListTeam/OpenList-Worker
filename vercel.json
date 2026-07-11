@@ -3,11 +3,19 @@
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "/api"
+      "source": "/d/:path*",
+      "destination": "/api/d/:path*"
     },
     {
-      "source": "/((?!api/).*)",
+      "source": "/sd/:path*",
+      "destination": "/api/sd/:path*"
+    },
+    {
+      "source": "/p/:path*",
+      "destination": "/api/p/:path*"
+    },
+    {
+      "source": "/((?!api/|d/|sd/|p/).*)",
       "destination": "/index.html"
     }
   ]
