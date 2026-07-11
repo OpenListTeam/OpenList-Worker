@@ -25,9 +25,9 @@ authRouter.post("/login/hash", async (c) => {
     console.warn("[Auth] ADMIN_PASSWORD not set, defaulting to 'admin'");
   }
   
-  const CryptoJS = (await import("crypto-js")).default;
+  const sha256 = (await import("sha256")).default;
   const hash_salt = "https://github.com/alist-org/alist";
-  const expectedPassword = CryptoJS.SHA256(`${expectedPasswordPlain}-${hash_salt}`).toString();
+  const expectedPassword = sha256(`${expectedPasswordPlain}-${hash_salt}`);
 
   if (body.username === expectedUsername && body.password === expectedPassword) {
     const payload = {
