@@ -39,10 +39,17 @@ export type Lang = string
 export type RawDictionary = typeof en.default
 export type Dictionary = i18n.Flatten<RawDictionary>
 
+const dictImports = import.meta.glob("../lang/*/entry.ts")
+
 // Fetch and flatten the dictionary
 const fetchDictionary = async (locale: Lang): Promise<Dictionary> => {
   try {
-    const dict: RawDictionary = (await import(`~/lang/${locale}/entry.ts`)).default
+    const importer = dictImports[`../lang/${locale}/entry.ts`]
+    if (!importer) {
+      throw new Error(`Dictionary not found for locale: ${locale}`)
+    }
+    const module = (await importer()) as { default: RawDictionary }
+    const dict: RawDictionary = module.default
     return i18n.flatten(dict) // Flatten dictionary for easier access to keys
   } catch (err) {
     console.error(`Error loading dictionary for locale: ${locale}`, err)
