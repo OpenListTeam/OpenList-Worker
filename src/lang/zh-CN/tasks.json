@@ -1,0 +1,66 @@
+{
+  "offline_download": "下载文件到本地设备",
+  "offline_download_transfer": "将下载的文件传输到相应的存储",
+  "upload": "上传文件到相应的存储",
+  "copy": "将文件从一个存储复制到另一个存储",
+  "move": "将文件从一个存储移动到另一个存储",
+  "decompress": "下载并解压压缩包文件",
+  "decompress_upload": "将解压后的文件上传到目标存储",
+  "done": "已完成",
+  "undone": "运行中",
+  "clear_succeeded": "清除已成功任务",
+  "retry": "重试",
+  "retry_failed": "重试失败任务",
+  "state": {
+    "0": "排队中",
+    "1": "运行中",
+    "2": "已成功",
+    "3": "取消中",
+    "4": "已取消",
+    "5": "错误",
+    "6": "失败中",
+    "7": "已失败",
+    "8": "等待重试",
+    "9": "准备重试"
+  },
+  "retry_selected": "重试所选",
+  "cancel_selected": "取消所选",
+  "delete_selected": "删除所选",
+  "filter": "筛选",
+  "expand": "展开",
+  "fold": "折叠",
+  "expand_all": "全部展开",
+  "fold_all": "全部折叠",
+  "attr": {
+    "name": "名称",
+    "creator": "创建者",
+    "state": "状态",
+    "progress": "进度",
+    "speed": "速度",
+    "operation": "操作",
+    "copy": {
+      "src": "源路径",
+      "dst": "目标路径"
+    },
+    "upload": {
+      "path": "路径"
+    },
+    "offline_download": {
+      "url": "URL",
+      "path": "目标路径",
+      "transfer_src": "源路径",
+      "transfer_src_local": "源路径 (本地)",
+      "transfer_dst": "目标路径"
+    },
+    "decompress": {
+      "src": "源路径",
+      "dst": "目标路径",
+      "inner": "内部路径",
+      "password": "解压密码"
+    },
+    "time_elapsed": "已用时间",
+    "status": "状态",
+    "err": "错误"
+  },
+  "show_only_mine": "仅显示我的任务"
+}

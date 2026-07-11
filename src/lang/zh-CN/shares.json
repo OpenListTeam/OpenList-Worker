@@ -1,0 +1,42 @@
+{
+  "expires": "过期时间",
+  "id": "ID",
+  "id_placeholder": "自定义 ID (可选，留空则随机)",
+  "accessed": "访问次数",
+  "max_accessed": "最大访问次数",
+  "pwd": "提取码",
+  "files": "分享路径",
+  "files_etc": " 等其他 {{more}} 个",
+  "files_placeholder": "输入文件或文件夹路径，每行一个",
+  "add_path": "添加路径",
+  "creator": "创建者",
+  "status": "状态",
+  "status_list": {
+    "disabled": "已禁用",
+    "invalid": "无效",
+    "work": "正常",
+    "denied": "无权限"
+  },
+  "remark": "备注",
+  "readme": "说明",
+  "header": "顶部说明",
+  "order_by": "排序依据",
+  "order_bys": {
+    "name": "名称",
+    "size": "大小",
+    "modified": "修改时间"
+  },
+  "order_direction": "排序方向",
+  "order_directions": {
+    "asc": "升序",
+    "desc": "降序"
+  },
+  "extract_folder": "文件夹位置",
+  "extract_folders": {
+    "front": "文件夹置顶",
+    "back": "文件夹置底"
+  },
+  "input_password": "请输入提取码",
+  "copy_msg": "复制链接",
+  "no_permission_tip": "要创建分享，您需要 \"分享\" 权限。"
+}

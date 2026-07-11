@@ -1,0 +1,17 @@
+{
+  "backup": "Backup",
+  "restore": "Restore",
+  "start_backup": "Start Backup",
+  "finish_backup": "Finish Backup",
+  "success_backup_item": "[ {{item}} ] Backup was successful",
+  "failed_backup_item": "[ {{item}} ] Backup failed",
+  "no_file": "No file selected",
+  "start_restore": "Start Restore",
+  "finish_restore": "Finish Restore",
+  "success_restore_item": "[ {{item}} ] Restore was successful",
+  "failed_restore_item": "[ {{item}} ] Restore failed",
+  "override": "Override",
+  "encrypt_password_placeholder": "Leave empty if you don't need encryption",
+  "encrypt_password": "Encryption Password",
+  "wrong_encrypt_password": "Wrong encryption password"
+}

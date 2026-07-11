@@ -1,0 +1,23 @@
+{
+  "index_header": "Search index settings",
+  "search_index": "Search index",
+  "current": "Current indexes",
+  "build": "Build indexes",
+  "rebuild": "Rebuild indexes",
+  "paths_to_update": "Paths to update",
+  "max_depth": "Max depth",
+  "update": "Update indexes",
+  "obj_count": "Object count",
+  "last_done_time": "Last done time",
+  "unknown": "Unknown",
+  "stop": "Stop",
+  "clear": "Clear",
+  "error": "Error",
+  "scan_header": "Manually Scan",
+  "task_status": "Task status",
+  "running": "Running",
+  "idle": "Idle",
+  "path_to_scan": "Path to scan",
+  "rate_limit": "Rate limit",
+  "start": "Start"
+}

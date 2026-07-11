@@ -1,0 +1,18 @@
+{
+  "path": "Path",
+  "password": "Password",
+  "read_users": "Read Users",
+  "read_users_help": "Only selected users with the required permission can read this path.",
+  "write_users": "Write Users",
+  "write_users_help": "Only selected users with the required permission can write this path.",
+  "all_permitted_users": "All Permitted Users",
+  "write": "Write Content Bypass",
+  "write_help": "Bypasses user permission checks for content writes (create/upload/modify). USE WITH CAUTION.",
+  "hide": "Hide",
+  "readme": "Readme",
+  "readme_help": "Render a markdown at the bottom, support content or link",
+  "header": "Header",
+  "header_help": "Render a markdown at the top, support content or link",
+  "apply_sub": "Apply to sub folder",
+  "hide_help": "One regular expression per line"
+}

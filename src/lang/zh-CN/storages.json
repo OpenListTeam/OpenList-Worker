@@ -1,0 +1,65 @@
+{
+  "common": {
+    "export": "导出",
+    "export_title": "导出存储到 JSON",
+    "export_tips": "请复制上方的存储 JSON。",
+    "import": "导入",
+    "import_title": "从 JSON 导入存储",
+    "import_success": "导入成功！",
+    "import_tips": "粘贴已导出的存储 JSON 以进行导入。",
+    "mount_path": "挂载路径",
+    "mount_path-tips": "想要挂载到的路径，必须唯一且不能重复",
+    "driver": "驱动",
+    "order": "排序",
+    "order-tips": "用于排序",
+    "usage": "使用情况",
+    "status": "状态",
+    "remark": "备注",
+    "cache_expiration": "缓存过期时间",
+    "cache_expiration-tips": "此存储的缓存过期时间（分钟）",
+    "custom_cache_policies": "自定义缓存策略",
+    "custom_cache_policies-tips": "此存储的缓存过期规则（分钟）",
+    "down_proxy_url": "下载代理 URL",
+    "disable_proxy_sign": "禁用代理签名",
+    "disable_proxy_sign-tips": "禁用下载代理 URL 的签名",
+    "web_proxy": "网页代理",
+    "webdav_policy": "WebDAV 策略",
+    "proxy_range": "代理范围",
+    "proxy_range-tips": "需要启用代理",
+    "webdav_policys": {
+      "302_redirect": "302 重定向",
+      "use_proxy_url": "使用代理 URL",
+      "native_proxy": "本机代理"
+    },
+    "order_by": "排序依据",
+    "order_bys": {
+      "name": "名称",
+      "size": "大小",
+      "modified": "修改时间"
+    },
+    "order_direction": "排序方向",
+    "order_directions": {
+      "asc": "升序",
+      "desc": "降序"
+    },
+    "extract_folder": "文件夹位置",
+    "extract_folders": {
+      "front": " 文件夹置顶",
+      "back": "文件夹置底"
+    },
+    "enable_sign": "启用签名",
+    "disable_index": "禁用索引"
+  },
+  "table_fields": {
+    "status": {
+      "work": "工作正常",
+      "disabled": "已禁用"
+    }
+  },
+  "other": {
+    "start_load_success": "开始加载成功",
+    "load_all": "重新加载全部",
+    "filter_by_driver": "按驱动过滤",
+    "table_layout": "表格布局"
+  }
+}
