@@ -31,8 +31,8 @@ if (!languages.some((lang) => lang.code === initialLang)) {
   initialLang = defaultLang
 }
 
-import { dict as enDict } from "../lang/en/entry"
-import { dict as zhDict } from "../lang/zh-CN/entry"
+import { dict as enDict } from "~/lang/en/entry.ts"
+import { dict as zhDict } from "~/lang/zh-CN/entry.ts"
 
 const dictionaries: Record<string, typeof enDict> = {
   en: enDict,
