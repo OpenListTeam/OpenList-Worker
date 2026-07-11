@@ -1,3 +1,5 @@
+packages:
+  - "."
 allowBuilds:
   "@swc/core": true
   core-js: true
