@@ -31,22 +31,23 @@ if (!languages.some((lang) => lang.code === initialLang)) {
   initialLang = defaultLang
 }
 
-// Type imports
-// use `type` to not include the actual dictionary in the bundle
-import type * as en from "~/lang/en/entry"
+import { dict as enDict } from "~/lang/en/entry"
 
 export type Lang = string
-export type RawDictionary = typeof en.dict
+export type RawDictionary = typeof enDict
 export type Dictionary = i18n.Flatten<RawDictionary>
 
 // Fetch and flatten the dictionary
 const fetchDictionary = async (locale: Lang): Promise<Dictionary> => {
+  if (locale === "en") {
+    return i18n.flatten(enDict)
+  }
   try {
     const dict: RawDictionary = (await import(`~/lang/${locale}/entry.ts`)).dict
     return i18n.flatten(dict) // Flatten dictionary for easier access to keys
   } catch (err) {
-    console.error(`Error loading dictionary for locale: ${locale}`, err)
-    throw new Error(`Failed to load dictionary for ${locale}`)
+    console.error(`Error loading dictionary for locale: ${locale}, falling back to English`, err)
+    return i18n.flatten(enDict)
   }
 }
 
