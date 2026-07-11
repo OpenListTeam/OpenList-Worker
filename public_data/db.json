@@ -1,799 +1,793 @@
 {
+  "metas": [],
+  "users": [
+    {
+      "id": 1,
+      "role": 2,
+      "sso_id": "",
+      "disabled": false,
+      "username": "admin",
+      "permission": 0,
+      "pwd_update_at": "2026-07-11T04:53:36.638Z"
+    }
+  ],
   "settings": [
     {
       "key": "site_title",
-      "value": "OpenList",
-      "type": "string",
+      "flag": 0,
       "help": "The title of the site",
+      "type": "string",
       "group": 1,
-      "flag": 0
+      "value": "OpenList"
     },
     {
       "key": "logo",
-      "value": "https://res.oplist.org/logo/logo.svg",
-      "type": "string",
+      "flag": 0,
       "help": "The logo URL of the site",
+      "type": "string",
       "group": 1,
-      "flag": 0
+      "value": "https://res.oplist.org/logo/logo.svg"
     },
     {
       "key": "favicon",
-      "value": "https://res.oplist.org/logo/logo.svg",
-      "type": "string",
+      "flag": 0,
       "help": "The favicon URL of the site",
+      "type": "string",
       "group": 1,
-      "flag": 0
+      "value": "https://res.oplist.org/logo/logo.svg"
     },
     {
       "key": "announcement",
-      "value": "欢迎使用 OpenList!",
-      "type": "text",
+      "flag": 0,
       "help": "Announcement shown on the homepage",
+      "type": "text",
       "group": 1,
-      "flag": 0
+      "value": "欢迎使用 OpenList!"
     },
     {
       "key": "robots_txt",
-      "value": "User-agent: *\nAllow: /",
-      "type": "text",
+      "flag": 0,
       "help": "robots.txt content",
+      "type": "text",
       "group": 1,
-      "flag": 0
+      "value": "User-agent: *\nAllow: /"
     },
     {
       "key": "version",
-      "value": "v4.2.3",
-      "type": "string",
+      "flag": 2,
       "help": "Current version",
+      "type": "string",
       "group": 1,
-      "flag": 2
+      "value": "v4.2.3"
     },
     {
       "key": "main_color",
-      "value": "#1890ff",
-      "type": "string",
+      "flag": 0,
       "help": "Main accent color",
+      "type": "string",
       "group": 2,
-      "flag": 0
+      "value": "#1890ff"
     },
     {
       "key": "home_container",
-      "value": "hope_container",
-      "type": "select",
-      "options": "hope_container,max_980px",
+      "flag": 0,
       "help": "Style of the home page container",
+      "type": "select",
       "group": 2,
-      "flag": 0
+      "value": "hope_container",
+      "options": "hope_container,max_980px"
     },
     {
       "key": "home_icon",
-      "value": "openlist",
-      "type": "string",
+      "flag": 0,
       "help": "Home icon styling",
+      "type": "string",
       "group": 2,
-      "flag": 0
+      "value": "openlist"
     },
     {
       "key": "settings_layout",
-      "value": "simple",
-      "type": "select",
-      "options": "simple,comprehensive",
+      "flag": 0,
       "help": "Layout of the settings page",
+      "type": "select",
       "group": 2,
-      "flag": 0
+      "value": "simple",
+      "options": "simple,comprehensive"
     },
     {
       "key": "hide_files",
-      "value": "",
-      "type": "text",
+      "flag": 0,
       "help": "Regular expressions to hide files, one per line",
+      "type": "text",
       "group": 2,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "privacy_regs",
-      "value": "",
-      "type": "text",
+      "flag": 0,
       "help": "Regular expressions to hide private details",
+      "type": "text",
       "group": 2,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "audio_autoplay",
-      "value": "false",
-      "type": "bool",
+      "flag": 0,
       "help": "Autoplay audio",
+      "type": "bool",
       "group": 3,
-      "flag": 0
+      "value": "false"
     },
     {
       "key": "audio_cover",
-      "value": "",
-      "type": "string",
+      "flag": 0,
       "help": "Default audio cover image",
+      "type": "string",
       "group": 3,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "audio_types",
-      "value": "mp3,m4a,wav,ogg,flac",
-      "type": "string",
+      "flag": 0,
       "help": "Supported audio extensions",
+      "type": "string",
       "group": 3,
-      "flag": 0
+      "value": "mp3,m4a,wav,ogg,flac"
     },
     {
       "key": "image_types",
-      "value": "jpg,jpeg,png,gif,webp,bmp,svg",
-      "type": "string",
+      "flag": 0,
       "help": "Supported image extensions",
+      "type": "string",
       "group": 3,
-      "flag": 0
+      "value": "jpg,jpeg,png,gif,webp,bmp,svg"
     },
     {
       "key": "video_autoplay",
-      "value": "false",
-      "type": "bool",
+      "flag": 0,
       "help": "Autoplay video",
+      "type": "bool",
       "group": 3,
-      "flag": 0
+      "value": "false"
     },
     {
       "key": "video_types",
-      "value": "mp4,mkv,webm,avi,mov,flv",
-      "type": "string",
+      "flag": 0,
       "help": "Supported video extensions",
+      "type": "string",
       "group": 3,
-      "flag": 0
+      "value": "mp4,mkv,webm,avi,mov,flv"
     },
     {
       "key": "text_types",
-      "value": "txt,md,js,ts,css,json,html,xml,yaml,yml,ini,conf,log",
-      "type": "string",
+      "flag": 0,
       "help": "Supported text extensions",
+      "type": "string",
       "group": 3,
-      "flag": 0
+      "value": "txt,md,js,ts,css,json,html,xml,yaml,yml,ini,conf,log"
     },
     {
       "key": "preview_archives_by_default",
-      "value": "true",
-      "type": "bool",
+      "flag": 0,
       "help": "Preview archive files directly",
+      "type": "bool",
       "group": 3,
-      "flag": 0
+      "value": "true"
     },
     {
       "key": "preview_download_by_default",
-      "value": "false",
-      "type": "bool",
+      "flag": 0,
       "help": "Download file instead of previewing by default",
+      "type": "bool",
       "group": 3,
-      "flag": 0
+      "value": "false"
     },
     {
       "key": "share_archive_preview",
-      "value": "true",
-      "type": "bool",
+      "flag": 0,
       "help": "Allow previewing archives in shares",
+      "type": "bool",
       "group": 3,
-      "flag": 0
+      "value": "true"
     },
     {
       "key": "share_preview",
-      "value": "true",
-      "type": "bool",
+      "flag": 0,
       "help": "Allow previewing files in shares",
+      "type": "bool",
       "group": 3,
-      "flag": 0
+      "value": "true"
     },
     {
       "key": "share_preview_archives_by_default",
-      "value": "true",
-      "type": "bool",
+      "flag": 0,
       "help": "Preview archives in shares by default",
+      "type": "bool",
       "group": 3,
-      "flag": 0
+      "value": "true"
     },
     {
       "key": "share_preview_download_by_default",
-      "value": "false",
-      "type": "bool",
+      "flag": 0,
       "help": "Download in shares by default",
+      "type": "bool",
       "group": 3,
-      "flag": 0
+      "value": "false"
     },
     {
       "key": "share_force_proxy",
-      "value": "false",
-      "type": "bool",
+      "flag": 0,
       "help": "Force proxy for share downloads",
+      "type": "bool",
       "group": 3,
-      "flag": 0
+      "value": "false"
     },
     {
       "key": "share_summary_content",
-      "value": "true",
-      "type": "bool",
+      "flag": 0,
       "help": "Show file summary in shares",
+      "type": "bool",
       "group": 3,
-      "flag": 0
+      "value": "true"
     },
     {
       "key": "share_icon",
-      "value": "",
-      "type": "string",
+      "flag": 0,
       "help": "Custom share icon",
+      "type": "string",
       "group": 3,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "package_download",
-      "value": "true",
-      "type": "bool",
+      "flag": 0,
       "help": "Allow packing files for downloading",
+      "type": "bool",
       "group": 4,
-      "flag": 0
+      "value": "true"
     },
     {
       "key": "offline_download",
-      "value": "true",
-      "type": "bool",
+      "flag": 0,
       "help": "Allow offline downloading",
+      "type": "bool",
       "group": 4,
-      "flag": 0
+      "value": "true"
     },
     {
       "key": "copy_task_threads_num",
-      "value": "4",
-      "type": "number",
+      "flag": 0,
       "help": "Number of copy task threads",
+      "type": "number",
       "group": 4,
-      "flag": 0
+      "value": "4"
     },
     {
       "key": "upload_task_threads_num",
-      "value": "4",
-      "type": "number",
+      "flag": 0,
       "help": "Number of upload task threads",
+      "type": "number",
       "group": 4,
-      "flag": 0
+      "value": "4"
     },
     {
       "key": "decompress_download_task_threads_num",
-      "value": "4",
-      "type": "number",
+      "flag": 0,
       "help": "Number of download threads during decompression",
+      "type": "number",
       "group": 4,
-      "flag": 0
+      "value": "4"
     },
     {
       "key": "decompress_upload_task_threads_num",
-      "value": "4",
-      "type": "number",
+      "flag": 0,
       "help": "Number of upload threads during decompression",
+      "type": "number",
       "group": 4,
-      "flag": 0
+      "value": "4"
     },
     {
       "key": "offline_download_task_threads_num",
-      "value": "4",
-      "type": "number",
+      "flag": 0,
       "help": "Number of offline download task threads",
+      "type": "number",
       "group": 4,
-      "flag": 0
+      "value": "4"
     },
     {
       "key": "offline_download_transfer_task_threads_num",
-      "value": "4",
-      "type": "number",
+      "flag": 0,
       "help": "Number of transfer threads for offline downloads",
+      "type": "number",
       "group": 4,
-      "flag": 0
+      "value": "4"
     },
     {
       "key": "hide_storage_details",
-      "value": "false",
-      "type": "bool",
+      "flag": 0,
       "help": "Hide storage details on homepage",
+      "type": "bool",
       "group": 4,
-      "flag": 0
+      "value": "false"
     },
     {
       "key": "hide_storage_details_in_manage_page",
-      "value": "false",
-      "type": "bool",
+      "flag": 0,
       "help": "Hide storage details in manage pages",
+      "type": "bool",
       "group": 4,
-      "flag": 0
+      "value": "false"
     },
     {
       "key": "default_page_size",
-      "value": "30",
-      "type": "number",
+      "flag": 0,
       "help": "Default items per page",
+      "type": "number",
       "group": 4,
-      "flag": 0
+      "value": "30"
     },
     {
       "key": "pagination_type",
-      "value": "pagination",
-      "type": "select",
-      "options": "all,auto_load_more,load_more,pagination",
+      "flag": 0,
       "help": "Style of list pagination",
+      "type": "select",
       "group": 4,
-      "flag": 0
+      "value": "pagination",
+      "options": "all,auto_load_more,load_more,pagination"
     },
     {
       "key": "ignore_system_files",
-      "value": "true",
-      "type": "bool",
+      "flag": 0,
       "help": "Ignore system garbage files",
+      "type": "bool",
       "group": 4,
-      "flag": 0
+      "value": "true"
     },
     {
       "key": "ignore_paths",
-      "value": "",
-      "type": "text",
+      "flag": 0,
       "help": "Paths to ignore, one per line",
+      "type": "text",
       "group": 4,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "non_efs_zip_encoding",
-      "value": "GBK",
-      "type": "string",
+      "flag": 0,
       "help": "Alternative ZIP file text encoding",
+      "type": "string",
       "group": 4,
-      "flag": 0
+      "value": "GBK"
     },
     {
       "key": "filename_char_mapping",
-      "value": "",
-      "type": "string",
+      "flag": 0,
       "help": "Filename character mapping",
+      "type": "string",
       "group": 4,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "forward_direct_link_params",
-      "value": "false",
-      "type": "bool",
+      "flag": 0,
       "help": "Forward query parameters on direct links",
+      "type": "bool",
       "group": 4,
-      "flag": 0
+      "value": "false"
     },
     {
       "key": "ignore_direct_link_params",
-      "value": "false",
-      "type": "bool",
+      "flag": 0,
       "help": "Ignore direct link query parameters",
+      "type": "bool",
       "group": 4,
-      "flag": 0
+      "value": "false"
     },
     {
       "key": "link_expiration",
-      "value": "1440",
-      "type": "number",
+      "flag": 0,
       "help": "Expiration time of direct links (minutes)",
+      "type": "number",
       "group": 4,
-      "flag": 0
+      "value": "1440"
     },
     {
       "key": "proxy_types",
-      "value": "",
-      "type": "string",
+      "flag": 0,
       "help": "Proxy types",
+      "type": "string",
       "group": 4,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "proxy_ignore_headers",
-      "value": "",
-      "type": "string",
+      "flag": 0,
       "help": "Headers ignored by proxy",
+      "type": "string",
       "group": 4,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "handle_hook_after_writing",
-      "value": "false",
-      "type": "bool",
+      "flag": 0,
       "help": "Execute hook after writing files",
+      "type": "bool",
       "group": 4,
-      "flag": 0
+      "value": "false"
     },
     {
       "key": "handle_hook_rate_limit",
-      "value": "60",
-      "type": "number",
+      "flag": 0,
       "help": "Hook rate limit (seconds)",
+      "type": "number",
       "group": 4,
-      "flag": 0
+      "value": "60"
     },
     {
       "key": "aria2_uri",
-      "value": "http://localhost:6800/jsonrpc",
-      "type": "string",
+      "flag": 0,
       "help": "Aria2 JSON-RPC endpoint",
+      "type": "string",
       "group": 5,
-      "flag": 0
+      "value": "http://localhost:6800/jsonrpc"
     },
     {
       "key": "aria2_secret",
-      "value": "",
-      "type": "string",
+      "flag": 0,
       "help": "Aria2 RPC secret token",
+      "type": "string",
       "group": 5,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "qbittorrent_url",
-      "value": "http://localhost:8080",
-      "type": "string",
+      "flag": 0,
       "help": "qBittorrent Web UI URL",
+      "type": "string",
       "group": 5,
-      "flag": 0
+      "value": "http://localhost:8080"
     },
     {
       "key": "qbittorrent_seedtime",
-      "value": "0",
-      "type": "number",
+      "flag": 0,
       "help": "qBittorrent seeding time",
+      "type": "number",
       "group": 5,
-      "flag": 0
+      "value": "0"
     },
     {
       "key": "transmission_uri",
-      "value": "http://localhost:9091/transmission/rpc",
-      "type": "string",
+      "flag": 0,
       "help": "Transmission RPC endpoint",
+      "type": "string",
       "group": 5,
-      "flag": 0
+      "value": "http://localhost:9091/transmission/rpc"
     },
     {
       "key": "transmission_seedtime",
-      "value": "0",
-      "type": "number",
+      "flag": 0,
       "help": "Transmission seeding time",
+      "type": "number",
       "group": 5,
-      "flag": 0
+      "value": "0"
     },
     {
       "key": "auto_update_index",
-      "value": "false",
-      "type": "bool",
+      "flag": 0,
       "help": "Enable auto update of search indexes",
+      "type": "bool",
       "group": 6,
-      "flag": 0
+      "value": "false"
     },
     {
       "key": "max_index_depth",
-      "value": "20",
-      "type": "number",
+      "flag": 0,
       "help": "Max scanning depth of index",
+      "type": "number",
       "group": 6,
-      "flag": 0
+      "value": "20"
     },
     {
       "key": "search_index",
-      "value": "none",
-      "type": "select",
-      "options": "none,database,database_non_full_text,bleve,meilisearch",
+      "flag": 0,
       "help": "Selected search indexing engine",
+      "type": "select",
       "group": 6,
-      "flag": 0
+      "value": "none",
+      "options": "none,database,database_non_full_text,bleve,meilisearch"
     },
     {
       "key": "index_progress",
-      "value": "idle",
-      "type": "string",
+      "flag": 2,
       "help": "Current indexing progress",
+      "type": "string",
       "group": 6,
-      "flag": 2
+      "value": "idle"
     },
     {
       "key": "sso_login_enabled",
-      "value": "false",
-      "type": "bool",
+      "flag": 0,
       "help": "Enable Single Sign-On (SSO) logins",
+      "type": "bool",
       "group": 7,
-      "flag": 0
+      "value": "false"
     },
     {
       "key": "sso_login_platform",
-      "value": "Github",
-      "type": "select",
-      "options": "Casdoor,Dingtalk,Github,Google,Microsoft,OIDC",
+      "flag": 0,
       "help": "Selected SSO identity platform",
+      "type": "select",
       "group": 7,
-      "flag": 0
+      "value": "Github",
+      "options": "Casdoor,Dingtalk,Github,Google,Microsoft,OIDC"
     },
     {
       "key": "sso_client_id",
-      "value": "",
-      "type": "string",
+      "flag": 0,
       "help": "SSO application Client ID",
+      "type": "string",
       "group": 7,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "sso_client_secret",
-      "value": "",
-      "type": "string",
+      "flag": 0,
       "help": "SSO application Client Secret",
+      "type": "string",
       "group": 7,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "sso_organization_name",
-      "value": "",
-      "type": "string",
+      "flag": 0,
       "help": "SSO organization name (if required)",
+      "type": "string",
       "group": 7,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "sso_application_name",
-      "value": "",
-      "type": "string",
+      "flag": 0,
       "help": "SSO application registration name",
+      "type": "string",
       "group": 7,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "sso_endpoint_name",
-      "value": "",
-      "type": "string",
+      "flag": 0,
       "help": "SSO server base URL or endpoint",
+      "type": "string",
       "group": 7,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "sso_auto_register",
-      "value": "true",
-      "type": "bool",
+      "flag": 0,
       "help": "Auto-create a user on successful SSO",
+      "type": "bool",
       "group": 7,
-      "flag": 0
+      "value": "true"
     },
     {
       "key": "sso_compatibility_mode",
-      "value": "false",
-      "type": "bool",
+      "flag": 0,
       "help": "Enable SSO compatibility mode",
+      "type": "bool",
       "group": 7,
-      "flag": 0
+      "value": "false"
     },
     {
       "key": "sso_default_dir",
-      "value": "/",
-      "type": "string",
+      "flag": 0,
       "help": "Default root directory path for SSO users",
+      "type": "string",
       "group": 7,
-      "flag": 0
+      "value": "/"
     },
     {
       "key": "sso_default_permission",
-      "value": "0",
-      "type": "number",
+      "flag": 0,
       "help": "Default permissions flag for auto-created users",
+      "type": "number",
       "group": 7,
-      "flag": 0
+      "value": "0"
     },
     {
       "key": "sso_jwt_public_key",
-      "value": "",
-      "type": "text",
+      "flag": 0,
       "help": "SSO JWT public signing key",
+      "type": "text",
       "group": 7,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "sso_oidc_username_key",
-      "value": "preferred_username",
-      "type": "string",
+      "flag": 0,
       "help": "The attribute key in OIDC token representing username",
+      "type": "string",
       "group": 7,
-      "flag": 0
+      "value": "preferred_username"
     },
     {
       "key": "sso_extra_scopes",
-      "value": "",
-      "type": "string",
+      "flag": 0,
       "help": "Comma-separated extra OAuth scope requests",
+      "type": "string",
       "group": 7,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "ldap_login_enabled",
-      "value": "false",
-      "type": "bool",
+      "flag": 0,
       "help": "Enable LDAP user authentication logins",
+      "type": "bool",
       "group": 8,
-      "flag": 0
+      "value": "false"
     },
     {
       "key": "ldap_server",
-      "value": "ldap://localhost:389",
-      "type": "string",
+      "flag": 0,
       "help": "LDAP Server URL",
+      "type": "string",
       "group": 8,
-      "flag": 0
+      "value": "ldap://localhost:389"
     },
     {
       "key": "ldap_manager_dn",
-      "value": "",
-      "type": "string",
+      "flag": 0,
       "help": "Manager DN used for searching directory",
+      "type": "string",
       "group": 8,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "ldap_manager_password",
-      "value": "",
-      "type": "string",
+      "flag": 0,
       "help": "Manager password used for searching",
+      "type": "string",
       "group": 8,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "ldap_user_search_base",
-      "value": "",
-      "type": "string",
+      "flag": 0,
       "help": "The DN branch from which user search begins",
+      "type": "string",
       "group": 8,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "ldap_user_search_filter",
-      "value": "(uid={username})",
-      "type": "string",
+      "flag": 0,
       "help": "Search filter used for users",
+      "type": "string",
       "group": 8,
-      "flag": 0
+      "value": "(uid={username})"
     },
     {
       "key": "ldap_default_dir",
-      "value": "/",
-      "type": "string",
+      "flag": 0,
       "help": "Default root directory path for LDAP users",
+      "type": "string",
       "group": 8,
-      "flag": 0
+      "value": "/"
     },
     {
       "key": "ldap_default_permission",
-      "value": "0",
-      "type": "number",
+      "flag": 0,
       "help": "Default permissions flag for auto-created users",
+      "type": "number",
       "group": 8,
-      "flag": 0
+      "value": "0"
     },
     {
       "key": "ldap_skip_tls_verify",
-      "value": "false",
-      "type": "bool",
+      "flag": 0,
       "help": "Skip TLS validation of LDAP connection",
+      "type": "bool",
       "group": 8,
-      "flag": 0
+      "value": "false"
     },
     {
       "key": "ldap_login_tips",
-      "value": "使用企业账号登录",
-      "type": "string",
+      "flag": 0,
       "help": "Tips displayed on LDAP login input",
+      "type": "string",
       "group": 8,
-      "flag": 0
+      "value": "使用企业账号登录"
     },
     {
       "key": "s3_access_key_id",
-      "value": "",
-      "type": "string",
+      "flag": 0,
       "help": "AWS S3 Access Key ID",
+      "type": "string",
       "group": 9,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "s3_secret_access_key",
-      "value": "",
-      "type": "string",
+      "flag": 0,
       "help": "AWS S3 Secret Access Key",
+      "type": "string",
       "group": 9,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "s3_buckets",
-      "value": "[]",
-      "type": "text",
+      "flag": 0,
       "help": "S3 config buckets array (JSON)",
+      "type": "text",
       "group": 9,
-      "flag": 0
+      "value": "[]"
     },
     {
       "key": "max_client_download_speed",
-      "value": "0",
-      "type": "number",
+      "flag": 0,
       "help": "Max download speed for clients (0 is unlimited)",
+      "type": "number",
       "group": 11,
-      "flag": 0
+      "value": "0"
     },
     {
       "key": "max_client_upload_speed",
-      "value": "0",
-      "type": "number",
+      "flag": 0,
       "help": "Max upload speed for clients (0 is unlimited)",
+      "type": "number",
       "group": 11,
-      "flag": 0
+      "value": "0"
     },
     {
       "key": "max_server_download_speed",
-      "value": "0",
-      "type": "number",
+      "flag": 0,
       "help": "Max download speed for server (0 is unlimited)",
+      "type": "number",
       "group": 11,
-      "flag": 0
+      "value": "0"
     },
     {
       "key": "max_server_upload_speed",
-      "value": "0",
-      "type": "number",
+      "flag": 0,
       "help": "Max upload speed for server (0 is unlimited)",
+      "type": "number",
       "group": 11,
-      "flag": 0
+      "value": "0"
     },
     {
       "key": "token",
-      "value": "",
-      "type": "string",
+      "flag": 0,
       "help": "API access authorization token",
+      "type": "string",
       "group": 0,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "ocr_api",
-      "value": "",
-      "type": "string",
+      "flag": 0,
       "help": "Endpoint URL for OCR image scanning",
+      "type": "string",
       "group": 0,
-      "flag": 0
+      "value": ""
     },
     {
       "key": "webauthn_login_enabled",
-      "value": "false",
-      "type": "bool",
+      "flag": 0,
       "help": "Allow users to log in using biometric WebAuthn credentials",
+      "type": "bool",
       "group": 0,
-      "flag": 0
+      "value": "false"
     }
   ],
   "storages": [
     {
-      "id": 1,
-      "mount_path": "/",
-      "driver": "Local",
-      "addition": "{\"root_folder_path\":\"/data\"}",
-      "disabled": false,
-      "modified": "2026-07-11T04:59:02.957Z"
-    },
-    {
-      "mount_path": "/test2",
-      "driver": "Local",
-      "addition": "{\"root_folder_path\":\"/tmp\"}",
       "id": 2,
+      "order": 0,
+      "driver": "Onedrive",
+      "remark": "",
       "status": "work",
-      "modified": "2026-07-11T05:01:35.477Z"
+      "addition": "{\"root_folder_path\":\"/\",\"region\":\"global\",\"is_sharepoint\":false,\"use_online_api\":true,\"api_url_address\":\"https://api.oplist.org/onedrive/renewapi\",\"client_id\":\"\",\"client_secret\":\"\",\"redirect_uri\":\"https://api.oplist.org/onedrive/callback\",\"refresh_token\":\"M.C546_SN1.0.U.MsaArtifacts.-Cn2rS37op6jmOH9EXoENXMZJnjib*J8gvGSyWskUHgFcbiszg*5FCMtSYSKfguZ99cGBLcfOEaC24VN*Gm2aC5uynioCD3piWChIqt1qAnijv48EKu1n4GgSrMuH!cSjH1PrMcnRQq!YsYQ7kKtD5XR4nk7hjDIs8MizNl!m2tQnFq95Wanvexji*Xf6xYVWOUHozd6B9zAUUks4kGgRKhtUQKlDh!SPZrbNW2AhcU2osIKr3fomfk4m0Wsj1kFea0wUkyaKzSN2oQ2SwIj9CEpRp1z1pV4HPD4AZiMeLS1J2whFtzsmI7GrYOGFg5GjktrpR0W28d6vjvdhlm33A4XVDF0Ltbb1JKW9xlhcDlw4TMziSrJfPpW77vGm60242w$$\",\"site_id\":\"\",\"chunk_size\":5,\"custom_host\":\"\",\"disable_disk_usage\":false,\"enable_direct_upload\":false}",
+      "modified": "2026-07-11T05:23:04.972Z",
+      "mount_path": "/onedrive"
     }
-  ],
-  "users": [
-    {
-      "id": 1,
-      "username": "admin",
-      "role": 2,
-      "permission": 0,
-      "disabled": false,
-      "sso_id": "",
-      "pwd_update_at": "2026-07-11T04:53:36.638Z"
-    }
-  ],
-  "metas": []
+  ]
 }

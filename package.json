@@ -24,7 +24,7 @@
     "crowdin": "npm run crowdin:upload && npm run crowdin:download",
     "i18n:build": "npm run crowdin && node ./scripts/i18n.mjs",
     "i18n:release": "npm run crowdin:download && node ./scripts/i18n.mjs",
-    "start": "tsx server.ts",
+    "start": "node --import tsx server.ts",
     "dev": "concurrently \"vite --port 3000 --host 0.0.0.0\" \"PORT=5244 tsx server.ts\"",
     "build": "vite build",
     "build:lite": "cross-env VITE_LITE=true vite build",
