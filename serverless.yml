@@ -1,0 +1,36 @@
+service: openlistnext
+
+frameworkVersion: '4'
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: us-east-1
+  stage: dev
+  memorySize: 1024
+  timeout: 29 # API Gateway has a max 30s timeout
+  environment:
+    VITE_API_URL: /api
+    ADMIN_USERNAME: ${env:ADMIN_USERNAME, 'admin'}
+    ADMIN_PASSWORD: ${env:ADMIN_PASSWORD, 'admin'}
+    DATABASE_JSON: ${env:DATABASE_JSON, ''}
+    NEXT_PUBLIC_SUPABASE_URL: ${env:NEXT_PUBLIC_SUPABASE_URL, ''}
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${env:NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, ''}
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1' # Performance optimization for keep-alive
+
+build:
+  esbuild:
+    bundle: true
+    minify: true
+    sourcemap: true
+    target: node20
+    platform: node
+    format: esm
+    exclude:
+      - '@aws-sdk/*'
+
+functions:
+  api:
+    handler: handler.handler
+    events:
+      - httpApi: '*'

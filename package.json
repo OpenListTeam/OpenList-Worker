@@ -29,6 +29,10 @@
     "build": "vite build",
     "build:lite": "cross-env VITE_LITE=true vite build",
     "serve": "vite preview",
+    "sls:deploy": "serverless deploy",
+    "sls:package": "serverless package",
+    "sls:info": "serverless info",
+    "sls:remove": "serverless remove",
     "prepare": "node -e \"if (require('fs').existsSync('.git')) { try { require('child_process').execSync('husky'); } catch(e) {} }\"",
     "lint": "tsc -p tsconfig.json --noEmit",
     "format": "prettier --ignore-path .gitignore -w \"src/**/*.{js,ts,json,css,tsx,jsx}\""
