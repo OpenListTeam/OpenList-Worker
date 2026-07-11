@@ -22,20 +22,29 @@ export function setupRouter(app: Hono) {
   app.route("/p", rawRouter)
   app.route("/api/p", rawRouter)
 
-  // API core sub-routing
+  // API core sub-routing (registered both with and without /api prefix for serverless compatibility)
   app.route("/api/fs", fsRouter)
+  app.route("/fs", fsRouter)
   app.route("/api/auth", authRouter)
+  app.route("/auth", authRouter)
   app.route("/api/public", publicRouter)
+  app.route("/public", publicRouter)
   app.route("/api/admin", adminRouter)
+  app.route("/admin", adminRouter)
 
   // Service specific daemon APIs
   app.route("/api/s3", s3Router)
+  app.route("/s3", s3Router)
   app.route("/api/mcp", mcpRouter)
+  app.route("/mcp", mcpRouter)
   app.route("/api/debug", debugRouter)
+  app.route("/debug", debugRouter)
 
   // Current user handler queried directly by the frontend
   app.get("/api/me", meHandler)
+  app.get("/me", meHandler)
 
   // Simple service health check
   app.get("/api/health", (c) => c.text("OK"))
+  app.get("/health", (c) => c.text("OK"))
 }
