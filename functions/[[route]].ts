@@ -1,5 +1,4 @@
-import { handle } from 'hono/cloudflare-pages'
-import app from '../src/backend/index.js'
+import { handle } from "hono/cloudflare-pages"
+import app from "../src/backend/index"
 
-// Cloudflare Pages Function entry point
 export const onRequest = handle(app)
