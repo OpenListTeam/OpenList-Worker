@@ -30,7 +30,7 @@ export class LocalDriver implements StorageDriver {
           sign: "",
           type: isDir ? 1 : 0,
         }
-      })
+      }),
     )
 
     return items
@@ -54,19 +54,33 @@ export class LocalDriver implements StorageDriver {
     await fs.mkdir(physicalPath, { recursive: true })
   }
 
-  async rename(virtualPath: string, physicalPath: string, newName: string): Promise<void> {
+  async rename(
+    virtualPath: string,
+    physicalPath: string,
+    newName: string,
+  ): Promise<void> {
     const dst = path.join(path.dirname(physicalPath), newName)
     await fs.rename(physicalPath, dst)
   }
 
-  async remove(virtualPath: string, physicalPath: string, names: string[]): Promise<void> {
+  async remove(
+    virtualPath: string,
+    physicalPath: string,
+    names: string[],
+  ): Promise<void> {
     for (const name of names) {
       const itemPath = path.join(physicalPath, name)
       await fs.rm(itemPath, { recursive: true, force: true })
     }
   }
 
-  async move(srcDir: string, dstDir: string, names: string[], srcPhys: string, dstPhys: string): Promise<void> {
+  async move(
+    srcDir: string,
+    dstDir: string,
+    names: string[],
+    srcPhys: string,
+    dstPhys: string,
+  ): Promise<void> {
     for (const name of names) {
       const src = path.join(srcPhys, name)
       const dst = path.join(dstPhys, name)
@@ -75,7 +89,13 @@ export class LocalDriver implements StorageDriver {
     }
   }
 
-  async copy(srcDir: string, dstDir: string, names: string[], srcPhys: string, dstPhys: string): Promise<void> {
+  async copy(
+    srcDir: string,
+    dstDir: string,
+    names: string[],
+    srcPhys: string,
+    dstPhys: string,
+  ): Promise<void> {
     for (const name of names) {
       const src = path.join(srcPhys, name)
       const dst = path.join(dstPhys, name)
@@ -84,7 +104,11 @@ export class LocalDriver implements StorageDriver {
     }
   }
 
-  async put(virtualPath: string, physicalPath: string, content: Buffer): Promise<void> {
+  async put(
+    virtualPath: string,
+    physicalPath: string,
+    content: Buffer,
+  ): Promise<void> {
     await fs.mkdir(path.dirname(physicalPath), { recursive: true })
     await fs.writeFile(physicalPath, content)
   }

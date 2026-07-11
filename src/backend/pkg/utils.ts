@@ -28,7 +28,9 @@ export function formatBytes(bytes: number, decimals = 2): string {
 export async function checkAdminAuth(c: Context): Promise<boolean> {
   const authHeader = c.req.header("Authorization")
   if (!authHeader) return false
-  const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.substring(7)
+    : authHeader
   const db = await getDb()
   const tokenSetting = db.settings.find((s: any) => s.key === "token")
   if (tokenSetting && tokenSetting.value && token === tokenSetting.value) {

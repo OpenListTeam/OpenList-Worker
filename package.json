@@ -2,6 +2,10 @@
   "name": "openlistnext",
   "version": "4.2.3",
   "type": "module",
+  "packageManager": "pnpm@9.5.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "author": {
     "name": "The OpenListNext Contributors"
   },

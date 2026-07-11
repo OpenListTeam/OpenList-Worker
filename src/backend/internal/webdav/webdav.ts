@@ -7,6 +7,9 @@ export interface WebDavItem {
   modified: string
 }
 
-export function buildWebDavPropfindResponse(reqPath: string, items: WebDavItem[]): string {
+export function buildWebDavPropfindResponse(
+  reqPath: string,
+  items: WebDavItem[],
+): string {
   return generateWebDavXml(reqPath, items)
 }

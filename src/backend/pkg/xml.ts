@@ -1,9 +1,16 @@
-
 /**
  * XML generation utilities for OpenList protocols (WebDAV, S3).
  */
 
-export function generateWebDavXml(path: string, items: Array<{ name: string; size: number; isFolder: boolean; modified: string }>): string {
+export function generateWebDavXml(
+  path: string,
+  items: Array<{
+    name: string
+    size: number
+    isFolder: boolean
+    modified: string
+  }>,
+): string {
   let xml = `<?xml version="1.0" encoding="utf-8" ?>\n`
   xml += `<d:multistatus xmlns:d="DAV:">\n`
 
@@ -33,7 +40,9 @@ export function generateWebDavXml(path: string, items: Array<{ name: string; siz
       xml += `        <d:getcontentlength>${item.size}</d:getcontentlength>\n`
       xml += `        <d:getcontenttype>application/octet-stream</d:getcontenttype>\n`
     }
-    const dateStr = item.modified ? new Date(item.modified).toUTCString() : new Date().toUTCString()
+    const dateStr = item.modified
+      ? new Date(item.modified).toUTCString()
+      : new Date().toUTCString()
     xml += `        <d:getlastmodified>${dateStr}</d:getlastmodified>\n`
     xml += `      </d:prop>\n`
     xml += `      <d:status>HTTP/1.1 200 OK</d:status>\n`
@@ -45,7 +54,15 @@ export function generateWebDavXml(path: string, items: Array<{ name: string; siz
   return xml
 }
 
-export function generateS3BucketListingXml(bucketName: string, items: Array<{ name: string; size: number; isFolder: boolean; modified: string }>): string {
+export function generateS3BucketListingXml(
+  bucketName: string,
+  items: Array<{
+    name: string
+    size: number
+    isFolder: boolean
+    modified: string
+  }>,
+): string {
   let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`
   xml += `<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">\n`
   xml += `  <Name>${bucketName}</Name>\n`

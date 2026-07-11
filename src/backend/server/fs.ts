@@ -7,7 +7,7 @@ import {
   removeItems,
   moveItems,
   copyItems,
-  putItem
+  putItem,
 } from "../internal/op/storage"
 import { downloadOfflineFile } from "../internal/stream/stream"
 
