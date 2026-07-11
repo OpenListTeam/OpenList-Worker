@@ -1,30 +1,6 @@
-const fsModule = "node:fs/promises"
-const fsSyncModule = "node:fs"
-const pathModule = "node:path"
-
-let fs: any = null
-let createReadStream: any = null
-let path: any = null
-
-try {
-  fs = await import(fsModule)
-  if (fs && fs.default) {
-    fs = fs.default
-  }
-} catch (_) {}
-
-try {
-  const fsSync = await import(fsSyncModule)
-  createReadStream = fsSync ? fsSync.createReadStream : null
-} catch (_) {}
-
-try {
-  path = await import(pathModule)
-  if (path && path.default) {
-    path = path.default
-  }
-} catch (_) {}
-
+import fs from "fs/promises"
+import { createReadStream } from "fs"
+import path from "path"
 import { resolvePath } from "../model/db"
 
 export interface RangeParams {
@@ -52,7 +28,7 @@ export async function downloadOfflineFile(urls: string[], virtualDir: string): P
       let filename = parsed.pathname.split("/").pop() || "downloaded_file"
       if (!filename) filename = "downloaded_file"
 
-      const fileVirtualPath = path ? path.join(virtualDir, filename) : (virtualDir + "/" + filename)
+      const fileVirtualPath = path.join(virtualDir, filename)
       const resolved = await resolvePath(fileVirtualPath)
       if (resolved.isVirtual || !resolved.physical) {
         throw new Error("Cannot download to a virtual path")
@@ -62,12 +38,8 @@ export async function downloadOfflineFile(urls: string[], virtualDir: string): P
       const res = await fetch(urlStr)
       if (res.ok && res.body) {
         const buffer = await res.arrayBuffer()
-        if (fs && path) {
-          await fs.mkdir(path.dirname(targetPath), { recursive: true })
-          await fs.writeFile(targetPath, Buffer.from(buffer))
-        } else {
-          throw new Error("Filesystem is not available in this environment")
-        }
+        await fs.mkdir(path.dirname(targetPath), { recursive: true })
+        await fs.writeFile(targetPath, Buffer.from(buffer))
       }
     } catch (e) {
       console.error("Offline download stream transfer task failed:", e)

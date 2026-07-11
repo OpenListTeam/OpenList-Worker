@@ -31,22 +31,23 @@ if (!languages.some((lang) => lang.code === initialLang)) {
   initialLang = defaultLang
 }
 
-import { dict as enDict } from "~/lang/en/entry"
-import { dict as zhDict } from "~/lang/zh-CN/entry"
-
-const dictionaries: Record<string, typeof enDict> = {
-  en: enDict,
-  "zh-CN": zhDict,
-}
+// Type imports
+// use `type` to not include the actual dictionary in the bundle
+import type * as en from "~/lang/en/entry"
 
 export type Lang = string
-export type RawDictionary = typeof enDict
+export type RawDictionary = typeof en.default
 export type Dictionary = i18n.Flatten<RawDictionary>
 
 // Fetch and flatten the dictionary
 const fetchDictionary = async (locale: Lang): Promise<Dictionary> => {
-  const dict = dictionaries[locale] || enDict
-  return i18n.flatten(dict)
+  try {
+    const dict: RawDictionary = (await import(`~/lang/${locale}/entry.ts`)).default
+    return i18n.flatten(dict) // Flatten dictionary for easier access to keys
+  } catch (err) {
+    console.error(`Error loading dictionary for locale: ${locale}`, err)
+    throw new Error(`Failed to load dictionary for ${locale}`)
+  }
 }
 
 // Signals to track current language and dictionary state

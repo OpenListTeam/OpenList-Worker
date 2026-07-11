@@ -7,7 +7,7 @@ import { fileURLToPath } from "url";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
-import backendApp from "./src/backend/index";
+import backendApp from "./src/backend/index.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

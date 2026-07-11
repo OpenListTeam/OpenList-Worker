@@ -1,22 +1,6 @@
 import { Hono } from "hono"
-const fsModule = "node:fs/promises"
-const fsSyncModule = "node:fs"
-
-let fs: any = null
-let createReadStream: any = null
-
-try {
-  fs = await import(fsModule)
-  if (fs && fs.default) {
-    fs = fs.default
-  }
-} catch (_) {}
-
-try {
-  const fsSync = await import(fsSyncModule)
-  createReadStream = fsSync ? fsSync.createReadStream : null
-} catch (_) {}
-
+import fs from "fs/promises"
+import { createReadStream } from "fs"
 import { resolvePath } from "../internal/model/db"
 import { parseRangeHeader } from "../internal/stream/stream"
 import { getDriver } from "../internal/op/storage"
@@ -47,10 +31,6 @@ rawRouter.get("/*", async (c) => {
       if (downloadUrl) {
         return c.redirect(downloadUrl)
       }
-    }
-    
-    if (!fs || !createReadStream) {
-      return c.text("Filesystem is not supported in this environment", 400)
     }
     
     const stat = await fs.stat(resolved.physical)
