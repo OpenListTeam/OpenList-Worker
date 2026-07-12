@@ -15,35 +15,24 @@ const instance = axios.create({
   withCredentials: false,
 })
 
-const originalAdapter = instance.defaults.adapter
-
-instance.defaults.adapter = async (config) => {
-  try {
-    const mockRes = await handleMockRequest(config)
-    if (mockRes) {
-      return {
-        data: mockRes,
-        status: 200,
-        statusText: "OK",
-        headers: {},
-        config,
-        request: {},
-      }
-    }
-  } catch (err) {
-    console.error("[Supabase Client Adapter Error]", err)
-  }
-
-  // Fallback to original or default adapter
-  const adapter = originalAdapter || axios.defaults.adapter
-  if (typeof adapter === "function") {
-    return adapter(config)
-  }
-  throw new Error("No adapter found")
-}
-
 instance.interceptors.request.use(
-  (config) => {
+  async (config) => {
+    try {
+      const mockRes = await handleMockRequest(config)
+      if (mockRes) {
+        config.adapter = () =>
+          Promise.resolve({
+            data: mockRes,
+            status: 200,
+            statusText: "OK",
+            headers: {} as any,
+            config,
+            request: {},
+          })
+      }
+    } catch (err) {
+      console.error("[Supabase Client Adapter Error]", err)
+    }
     // do something before request is sent
     return config
   },
