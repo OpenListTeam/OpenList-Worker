@@ -101,7 +101,7 @@ const AddOrEdit = () => {
     return r.post(`/admin/storage/${id ? "update" : "create"}`, storage)
   })
   const alert = createMemo(() => {
-    const i = drivers()[storage.driver]?.config.alert
+    const i = drivers()[storage.driver]?.config?.alert
     console.log(i)
     if (i) {
       return i.split("|")[0]
@@ -128,6 +128,7 @@ const AddOrEdit = () => {
           options_prefix="drivers.drivers"
           driver="drivers"
           onChange={(value) => {
+            if (!drivers()[value]) return
             for (const item of drivers()[value].common) {
               setStorage(
                 item.name as keyof Storage,
@@ -199,7 +200,7 @@ const AddOrEdit = () => {
         <Button
           loading={okLoading()}
           onClick={async () => {
-            if (drivers()[storage.driver].config.need_ms) {
+            if (drivers()[storage.driver]?.config?.need_ms) {
               notify.info(t("manage.add_storage-tips"))
               window.open(joinBase("/@manage/messenger"), "_blank")
             }
