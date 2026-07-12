@@ -18,11 +18,14 @@ app.use("*", async (c, next) => {
 const api = new Hono()
 setupRouter(api)
 app.route("/api", api)
+// 允许直接挂载到根路径，以适配某些剥离了 /api 前缀的 Serverless 环境
+app.route("/", api)
 
-// Mount specific short paths at root for better compatibility
-app.route("/d", rawRouter)
-app.route("/sd", rawRouter)
-app.route("/p", rawRouter)
+// 404 Fallback
+app.all("*", (c) => {
+  console.log(`[Backend 404] No route matched for: ${c.req.path}`)
+  return c.json({ code: 404, message: `Not Found: ${c.req.path}` }, 404)
+})
 
 export default app
 

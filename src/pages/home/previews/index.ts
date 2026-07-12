@@ -169,20 +169,17 @@ const previews: Preview[] = [
   },
   {
     key: "archive",
-    exts: (name: string) => {
+    exts: (name: string, isShare: boolean) => {
       const index = UserPermissions.findIndex(
         (item) => item === "read_archives",
       )
-      const { isShare } = useRouter()
-      if (!isShare() && !UserMethods.can(me(), index)) return false
-      if (isShare() && !getSettingBool("share_archive_preview")) return false
+      if (!isShare && !UserMethods.can(me(), index)) return false
+      if (isShare && !getSettingBool("share_archive_preview")) return false
       return isArchive(name)
     },
-    component: lazy(() => import("./archive")),
-    prior: () => {
-      const { isShare } = useRouter()
+    prior: (isShare: boolean) => {
       return (
-        (!isShare() &&
+        (!isShare &&
           getSettingBool("preview_archives_by_default") &&
           !getSettingBool("preview_download_by_default")) ||
         (isShare() &&
@@ -196,9 +193,10 @@ const previews: Preview[] = [
 
 export const getPreviews = (
   file: Obj & { provider: string },
+  router: ReturnType<typeof useRouter>,
+  t: ReturnType<typeof useT>,
 ): PreviewComponent[] => {
-  const { searchParams, isShare } = useRouter()
-  const t = useT()
+  const { searchParams, isShare } = router
   const typeOverride =
     ObjType[searchParams["type"]?.toUpperCase() as keyof typeof ObjType]
   const res: PreviewComponent[] = []
@@ -213,11 +211,22 @@ export const getPreviews = (
       if (preview.provider && !preview.provider.test(file.provider)) {
         return
       }
+
+      let matches = false
       if (
         preview.type === file.type ||
-        (typeOverride && preview.type === typeOverride) ||
-        extsContains(preview.exts, file.name)
+        (typeOverride && preview.type === typeOverride)
       ) {
+        matches = true
+      } else if (preview.exts) {
+        if (typeof preview.exts === "function") {
+          matches = (preview.exts as any)(file.name, isShare())
+        } else {
+          matches = extsContains(preview.exts, file.name)
+        }
+      }
+
+      if (matches) {
         const r = {
           key: preview.key,
           name: t(`home.preview.names.${preview.key}`),
@@ -227,7 +236,13 @@ export const getPreviews = (
         if (isInArchive && preview.availableInArchive === false) {
           return
         }
-        if (!downloadPrior && isPrior(preview.prior)) {
+        let prior = false
+        if (typeof preview.prior === "function") {
+          prior = (preview.prior as any)(isShare())
+        } else {
+          prior = preview.prior
+        }
+        if (!downloadPrior && prior) {
           res.push(r)
         } else {
           subsequent.push(r)

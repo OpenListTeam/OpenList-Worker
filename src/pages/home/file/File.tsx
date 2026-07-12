@@ -9,8 +9,10 @@ import { OpenWith } from "./open-with"
 import { getPreviews } from "../previews"
 
 const File = () => {
-  const { searchParams, setSearchParams } = useRouter()
-  const previews = getPreviews({ ...objStore.obj, provider: objStore.provider })
+  const router = useRouter()
+  const { searchParams, setSearchParams } = router
+  const t = useT()
+  const previews = getPreviews({ ...objStore.obj, provider: objStore.provider }, router, t)
   const cur = createMemo(() => {
     if (!previews.length) return undefined
     const selected = searchParams["preview"]
