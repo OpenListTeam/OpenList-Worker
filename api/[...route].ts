@@ -4,10 +4,10 @@ import backendApp from '../src/backend/index'
 
 const app = new Hono()
 
-// Mount backendApp at root to let it handle /api or / prefixing
+// 挂载整个后端应用
 app.route("/", backendApp)
 
-// Export for serverless
+// 导出符合 Vercel/EdgeOne 规范的 Serverless 句柄
 export const GET = handle(app)
 export const POST = handle(app)
 export const PUT = handle(app)

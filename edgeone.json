@@ -2,11 +2,11 @@
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/d/(.*)",
+      "source": "/api/(.*)",
       "destination": "/api/[...route]"
     },
     {
-      "source": "/sd/(.*)",
+      "source": "/d/(.*)",
       "destination": "/api/[...route]"
     },
     {
@@ -14,7 +14,7 @@
       "destination": "/api/[...route]"
     },
     {
-      "source": "/api/(.*)",
+      "source": "/sd/(.*)",
       "destination": "/api/[...route]"
     },
     {

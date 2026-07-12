@@ -6,12 +6,16 @@ let DB_PATH = "";
 
 // Dynamic import for Node.js environments
 async function initNodeModules() {
-  if (typeof process !== 'undefined' && process.release?.name === 'node') {
+  if (fs && path) return;
+  // Use robust check for Node.js environment
+  if (typeof process !== 'undefined' && process.versions && process.versions.node) {
     try {
       fs = await import('fs/promises');
       path = await import('path');
       DB_PATH = path.join(process.cwd(), "public_data", "db.json");
-    } catch(e) {}
+    } catch(e) {
+      // Failed to load, will stay null
+    }
   }
 }
 
@@ -27,6 +31,7 @@ export const defaultDb = {
     { key: "site_title", value: "OpenList", type: "string", help: "Site Title", group: 1, flag: 0 },
     { key: "home_icon", value: "openlist", type: "string", help: "Home icon name", group: 1, flag: 0 },
     { key: "auto_update_index", value: "false", type: "bool", help: "Auto update search index", group: 5, flag: 0 },
+    { key: "version", value: "v4.2.3", type: "string", help: "Application version", group: 1, flag: 1 },
   ],
   storages: [],
   users: [
@@ -44,6 +49,7 @@ export const defaultDb = {
 }
 
 let memoryDb: any = null
+let isWarnedAboutPersistence = false
 
 const ensureDefaultSettings = (db: any) => {
   if (!db) return
@@ -90,15 +96,25 @@ export const getDb = async () => {
     return memoryDb
   }
 
+  // Priority 1: Supabase
   if (supabase) {
     try {
-      const { data, error } = await supabase
+      console.log("[DB] Attempting to load config from Supabase...")
+      // Add a timeout to prevent hanging in serverless environments
+      const fetchPromise = supabase
         .from("openlist_config")
         .select("data")
         .eq("id", 1)
         .maybeSingle()
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Supabase fetch timeout")), 5000)
+      )
+
+      const { data, error } = await (Promise.race([fetchPromise, timeoutPromise]) as any)
 
       if (!error && data && data.data) {
+        console.log("[DB] Config loaded from Supabase.")
         memoryDb = data.data
         ensureDefaultSettings(memoryDb)
         ensureDefaultStorages(memoryDb)
@@ -118,6 +134,7 @@ export const getDb = async () => {
     }
   }
 
+  // Priority 2: Environment Variable
   if (process.env.DATABASE_JSON) {
     try {
       memoryDb = JSON.parse(process.env.DATABASE_JSON)
@@ -129,6 +146,7 @@ export const getDb = async () => {
     }
   }
 
+  // Priority 3: Local File (Node only)
   if (fs && path) {
       try {
         const data = await fs.readFile(DB_PATH, "utf-8")
@@ -150,6 +168,11 @@ export const getDb = async () => {
         }
       }
   } else {
+      // Fallback: Memory only
+      if (!isWarnedAboutPersistence && !supabase) {
+        console.warn("[DB] Running in Serverless mode without Supabase. Changes will NOT be persisted between sessions.")
+        isWarnedAboutPersistence = true
+      }
       memoryDb = JSON.parse(JSON.stringify(defaultDb))
       ensureDefaultStorages(memoryDb)
       return memoryDb
@@ -185,7 +208,6 @@ export const saveDb = async (data: any) => {
 export async function resolvePath(virtualPath: string) {
   await initNodeModules();
   const db = await getDb()
-  console.log("resolvePath: virtualPath=", virtualPath, "storages=", db.storages ? db.storages.length : 0)
   
   let cleanPath = "/" + virtualPath.split("/").filter(Boolean).join("/")
   if (cleanPath === "") {
@@ -222,6 +244,7 @@ export async function resolvePath(virtualPath: string) {
       const addition = JSON.parse(storage.addition || "{}")
       const isCloud = ["onedrive", "s3"].includes(storage.driver.toLowerCase())
       
+      // Fix: Fallback for path.join if not in Node
       const defaultRoot = isCloud || !path ? "/" : path.join(process.cwd(), "public_data")
       let rootFolder = addition.root_folder_path !== undefined ? addition.root_folder_path : defaultRoot
 
@@ -229,7 +252,9 @@ export async function resolvePath(virtualPath: string) {
         if (!rootFolder || rootFolder === "") {
           rootFolder = defaultRoot
         } else {
-          rootFolder = path.resolve(process.cwd(), rootFolder)
+          try {
+            rootFolder = path.resolve(process.cwd(), rootFolder)
+          } catch(e) {}
         }
         try {
           await fs.mkdir(rootFolder, { recursive: true })
@@ -278,4 +303,30 @@ export async function resolvePath(virtualPath: string) {
   }
 
   throw new Error("failed get storage: storage not found")
+}
+
+export async function getSettings() {
+  const db = await getDb()
+  const settingsObj: Record<string, any> = {}
+  if (db.settings) {
+    db.settings.forEach((s: any) => {
+      settingsObj[s.key] = s.value
+    })
+  }
+  return settingsObj
+}
+
+export async function getUsers() {
+  const db = await getDb()
+  return db.users || []
+}
+
+export async function getStorages() {
+  const db = await getDb()
+  return db.storages || []
+}
+
+export async function getMetas() {
+  const db = await getDb()
+  return db.metas || []
 }

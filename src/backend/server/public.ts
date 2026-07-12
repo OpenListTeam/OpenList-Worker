@@ -42,3 +42,11 @@ publicRouter.get("/archive_extensions", (c) => {
     data: ["zip", "rar", "7z", "tar", "gz", "bz2", "xz"],
   })
 })
+
+publicRouter.get("/offline_download_tools", (c) => {
+  return c.json({
+    code: 200,
+    message: "success",
+    data: [], // EdgeOne Pages / Serverless won't have local Aria2/qBit by default
+  })
+})

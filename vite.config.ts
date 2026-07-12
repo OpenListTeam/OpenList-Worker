@@ -4,6 +4,7 @@ import solidPlugin from "vite-plugin-solid"
 import legacy from "@vitejs/plugin-legacy"
 import { dynamicBase } from "vite-plugin-dynamic-base"
 import { viteStaticCopy } from "vite-plugin-static-copy"
+import devServer from "@hono/vite-dev-server"
 import type { Plugin } from "vite"
 
 // vite-plugin-dynamic-base converts data-src → src in its generateBundle hook,
@@ -42,6 +43,10 @@ export default defineConfig({
   },
   plugins: [
     solidPlugin(),
+    devServer({
+      entry: "src/backend/index.ts",
+      exclude: [/^\/(?!api\/|d\/|sd\/|p\/).*/, /^\/assets\/.*/, /^\/favicon.ico$/, /^\/manifest.json$/],
+    }),
     legacy({
       targets: ["defaults"],
     }),
@@ -96,12 +101,6 @@ export default defineConfig({
   // },
   server: {
     host: "0.0.0.0",
-    proxy: {
-      "/api": {
-        target: "http://localhost:5244",
-        changeOrigin: true,
-        // rewrite: (path) => path.replace(/^\/api/, ""),
-      },
-    },
+    port: 3000,
   },
 })

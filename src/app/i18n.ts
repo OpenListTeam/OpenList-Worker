@@ -44,13 +44,13 @@ export type Dictionary = i18n.Flatten<RawDictionary>
 const dictImports = import.meta.glob("../lang/*/entry.ts")
 
 // Fetch and flatten the dictionary with high fault tolerance to prevent app crashes
-const fetchDictionary = async (locale: Lang): Promise<Dictionary> => {
+const fetchDictionary = async (locale: Lang): Promise<any> => {
   try {
     if (locale === "en") {
       if (!enDict || typeof enDict !== "object") {
         throw new Error("enDict is undefined or invalid")
       }
-      return i18n.flatten(enDict as any)
+      return i18n.flatten(enDict as any) as any
     }
 
     const importKey = Object.keys(dictImports).find(key => {
@@ -60,21 +60,21 @@ const fetchDictionary = async (locale: Lang): Promise<Dictionary> => {
     const importer = importKey ? dictImports[importKey] : undefined
     if (!importer) {
       console.warn(`Dictionary not found for locale: ${locale}. Falling back to English.`)
-      return enDict && typeof enDict === "object" ? i18n.flatten(enDict as any) : {} as any
+      return enDict && typeof enDict === "object" ? i18n.flatten(enDict as any) as any : {} as any
     }
     const module = (await importer()) as { default: RawDictionary }
     const dict: RawDictionary = module.default
     if (!dict || typeof dict !== "object") {
       console.error(`Loaded dictionary for locale ${locale} is invalid. Falling back to English.`)
-      return enDict && typeof enDict === "object" ? i18n.flatten(enDict as any) : {} as any
+      return enDict && typeof enDict === "object" ? i18n.flatten(enDict as any) as any : {} as any
     }
-    return i18n.flatten(dict) // Flatten dictionary for easier access to keys
+    return i18n.flatten(dict as any) as any // Flatten dictionary for easier access to keys
   } catch (err) {
     console.error(`Error loading dictionary for locale: ${locale}`, err)
     // Always fall back to English dictionary or empty object instead of throwing
     try {
       if (enDict && typeof enDict === "object") {
-        return i18n.flatten(enDict as any)
+        return i18n.flatten(enDict as any) as any
       }
     } catch (_) {}
     return {} as any
@@ -84,6 +84,9 @@ const fetchDictionary = async (locale: Lang): Promise<Dictionary> => {
 // Signals to track current language and dictionary state
 export const [currentLang, setCurrentLang] = createSignal<Lang>(initialLang)
 
-export const [dict] = createResource(currentLang, fetchDictionary)
-
-export const t = i18n.translator(dict)
+import { createRoot } from "solid-js"
+export const { dict, t } = createRoot(() => {
+  const [dict] = createResource(currentLang, fetchDictionary)
+  const t = i18n.translator(dict)
+  return { dict, t }
+})

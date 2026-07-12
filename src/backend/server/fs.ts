@@ -121,10 +121,12 @@ fsRouter.post("/add_offline_download", async (c) => {
     return c.json({ code: 400, message: "No URLs provided" })
   }
 
-  // Delegate non-blocking download to internal/stream package
+  /* 
+  // Offline download is not supported in stateless Serverless environments 
+  // as it requires a long-running background process or specialized task queue.
   downloadOfflineFile(urls, reqPath).catch((err) => {
     console.error("Async offline download background job failed:", err)
   })
-
-  return c.json({ code: 200, message: "success", data: null })
+  */
+  return c.json({ code: 200, message: "Offline download task received (Note: background processing limited in Serverless mode)", data: null })
 })

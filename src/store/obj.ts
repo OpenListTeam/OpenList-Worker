@@ -182,7 +182,11 @@ export const isIndeterminate = () => {
   return selectedNum() > 0 && selectedNum() < objStore.objs.length
 }
 
-const selectedNum = createMemo(() => selectedObjs().length)
+import { createRoot } from "solid-js"
+export const { selectedNum } = createRoot(() => {
+  const selectedNum = createMemo(() => selectedObjs().length)
+  return { selectedNum }
+})
 
 export type LayoutType = "list" | "grid" | "image"
 const [pathname, setPathname] = createSignal<string>(location.pathname)
