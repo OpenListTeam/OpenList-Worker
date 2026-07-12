@@ -19,3 +19,11 @@ app.request(new Request("http://localhost/test", {
     console.log("status:", r.status)
     r.headers.forEach((v, k) => console.log(`${k}: ${v}`))
 })
+
+app.request(new Request("http://localhost/not_exist", {
+    method: "OPTIONS",
+    headers: { "Origin": "https://example.com" }
+})).then(r => {
+    console.log("not_exist status:", r.status)
+})
+
