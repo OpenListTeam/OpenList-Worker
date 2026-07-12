@@ -34,17 +34,11 @@ export interface Storage {
   addition: string
   remark: string
   modified: string
-  cache_expiration?: number
-  custom_cache_policies?: string
-  web_proxy: boolean
-  webdav_policy: WebdavPolicy
-  down_proxy_url?: string
-  disable_proxy_sign?: boolean
   order_by: OrderBy
   order_direction: OrderDirection
   extract_folder: ExtractFolder
-  disable_index?: boolean
-  enable_sign?: boolean
+  web_proxy: boolean
+  webdav_policy: WebdavPolicy
   disabled: boolean
   mount_details?: MountDetails
 }

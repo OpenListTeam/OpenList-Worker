@@ -45,14 +45,6 @@ export function generateWebDavXml(path: string, items: Array<{ name: string; siz
   return xml
 }
 
-const stringToHex = (str: string) => {
-  let hex = "";
-  for(let i = 0; i < str.length; i++) {
-    hex += str.charCodeAt(i).toString(16).padStart(2, "0");
-  }
-  return hex;
-};
-
 export function generateS3BucketListingXml(bucketName: string, items: Array<{ name: string; size: number; isFolder: boolean; modified: string }>): string {
   let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`
   xml += `<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">\n`
@@ -71,7 +63,7 @@ export function generateS3BucketListingXml(bucketName: string, items: Array<{ na
       xml += `  <Contents>\n`
       xml += `    <Key>${item.name}</Key>\n`
       xml += `    <LastModified>${new Date(item.modified).toISOString()}</LastModified>\n`
-      xml += `    <ETag>"${stringToHex(item.name).substring(0, 32)}"</ETag>\n`
+      xml += `    <ETag>"${Buffer.from(item.name).toString("hex").substring(0, 32)}"</ETag>\n`
       xml += `    <Size>${item.size}</Size>\n`
       xml += `    <StorageClass>STANDARD</StorageClass>\n`
       xml += `  </Contents>\n`

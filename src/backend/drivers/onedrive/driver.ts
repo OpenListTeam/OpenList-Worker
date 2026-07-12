@@ -1,6 +1,7 @@
 import { StorageDriver, FileItem } from "../../internal/driver/base";
 import { onedriveHostMap, Addition } from "./meta";
 import { fileToObj } from "./types";
+import axios from "axios";
 import {
   refreshToken,
   requestApi,
@@ -192,13 +193,11 @@ export class Onedrive implements StorageDriver {
     }
   }
 
-  async put(virtualPath: string, physicalPath: string, content: ArrayBuffer | Uint8Array): Promise<void> {
-    const dataArray = content instanceof ArrayBuffer ? new Uint8Array(content) : content;
-    const length = dataArray.length || dataArray.byteLength;
-    if (length <= 4 * 1024 * 1024) {
+  async put(virtualPath: string, physicalPath: string, content: Buffer): Promise<void> {
+    if (content.length <= 4 * 1024 * 1024) {
       // upSmall
       const url = this.getMetaUrl(false, physicalPath, "content");
-      await requestApi(this, url, "PUT", dataArray);
+      await requestApi(this, url, "PUT", content);
     } else {
       // upBig
       const url = this.getMetaUrl(false, physicalPath, "createUploadSession");
@@ -208,18 +207,16 @@ export class Onedrive implements StorageDriver {
       
       const DEFAULT = this.chunk_size * 1024 * 1024;
       let finish = 0;
-      const size = length;
+      const size = content.length;
       
       while (finish < size) {
         const left = size - finish;
         const byteSize = Math.min(left, DEFAULT);
-        const chunk = dataArray.slice(finish, finish + byteSize);
+        const chunk = content.slice(finish, finish + byteSize);
         
-        await fetch(uploadUrl, {
-          method: 'PUT',
-          body: chunk,
+        await axios.put(uploadUrl, chunk, {
           headers: {
-            "Content-Length": byteSize.toString(),
+            "Content-Length": byteSize,
             "Content-Range": `bytes ${finish}-${finish + byteSize - 1}/${size}`
           }
         });

@@ -2,6 +2,7 @@ import axios from "axios"
 import type { AxiosRequestConfig, AxiosResponse } from "axios"
 import { api } from "./config"
 import { log } from "./log"
+import { handleMockRequest } from "./supabase_client"
 
 const baseURL = api.endsWith("/api") ? api : api + "/api"
 
@@ -97,6 +98,22 @@ const instance = axios.create({
 
 instance.interceptors.request.use(
   async (config) => {
+    try {
+      const mockRes = await handleMockRequest(config)
+      if (mockRes) {
+        config.adapter = () =>
+          Promise.resolve({
+            data: mockRes,
+            status: 200,
+            statusText: "OK",
+            headers: {} as any,
+            config: config as any,
+            request: {},
+          })
+      }
+    } catch (err) {
+      console.error("[Supabase Client Adapter Error]", err)
+    }
     // do something before request is sent
     return config
   },

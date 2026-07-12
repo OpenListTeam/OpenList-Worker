@@ -16,5 +16,5 @@ export interface StorageDriver {
   remove(virtualPath: string, physicalPath: string, names: string[]): Promise<void>
   move(srcDir: string, dstDir: string, names: string[], srcPhys: string, dstPhys: string): Promise<void>
   copy(srcDir: string, dstDir: string, names: string[], srcPhys: string, dstPhys: string): Promise<void>
-  put(virtualPath: string, physicalPath: string, content: ArrayBuffer | Uint8Array): Promise<void>
+  put(virtualPath: string, physicalPath: string, content: Buffer): Promise<void>
 }

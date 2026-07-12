@@ -110,23 +110,6 @@ adminRouter.get("/driver/names", (c) => {
   return c.json({ code: 200, message: "success", data: ["Local", "S3", "Onedrive"] })
 })
 
-const commonFields = [
-  { name: "mount_path", type: "string", default: "", required: true, help: "1" },
-  { name: "order", type: "number", default: "0", required: false, help: "" },
-  { name: "remark", type: "string", default: "", required: false, help: "" },
-  { name: "cache_expiration", type: "number", default: "30", required: true, help: "1" },
-  { name: "custom_cache_policies", type: "string", default: "", required: false, help: "1" },
-  { name: "web_proxy", type: "bool", default: "false", required: false, help: "" },
-  { name: "webdav_policy", type: "select", options: "302_redirect,use_proxy_url,native_proxy", default: "302_redirect", required: true, help: "1" },
-  { name: "down_proxy_url", type: "string", default: "", required: false, help: "1" },
-  { name: "disable_proxy_sign", type: "bool", default: "false", required: false, help: "" },
-  { name: "order_by", type: "select", options: "name,size,modified", default: "", required: false, help: "" },
-  { name: "order_direction", type: "select", options: "ASC,DESC", default: "", required: false, help: "" },
-  { name: "extract_folder", type: "select", options: "front,back", default: "", required: false, help: "" },
-  { name: "disable_index", type: "bool", default: "false", required: true, help: "1" },
-  { name: "enable_sign", type: "bool", default: "false", required: true, help: "1" },
-]
-
 adminRouter.get("/driver/list", (c) => {
   return c.json({
     code: 200,
@@ -135,7 +118,11 @@ adminRouter.get("/driver/list", (c) => {
       Local: {
         name: "Local",
         default_mount_path: "/",
-        common: commonFields,
+        common: [
+          { name: "mount_path", type: "string", default: "", required: true, help: "1" },
+          { name: "order", type: "number", default: "0", required: false, help: "" },
+          { name: "remark", type: "string", default: "", required: false, help: "" }
+        ],
         additional: [
           {
             name: "root_folder_path",
@@ -148,7 +135,11 @@ adminRouter.get("/driver/list", (c) => {
       S3: {
         name: "S3",
         default_mount_path: "/s3",
-        common: commonFields,
+        common: [
+          { name: "mount_path", type: "string", default: "", required: true, help: "1" },
+          { name: "order", type: "number", default: "0", required: false, help: "" },
+          { name: "remark", type: "string", default: "", required: false, help: "" }
+        ],
         additional: [
           {
             name: "s3_bucket_name",
@@ -161,7 +152,11 @@ adminRouter.get("/driver/list", (c) => {
       Onedrive: {
         name: "Onedrive",
         default_mount_path: "/onedrive",
-        common: commonFields,
+        common: [
+          { name: "mount_path", type: "string", default: "", required: true, help: "1" },
+          { name: "order", type: "number", default: "0", required: false, help: "" },
+          { name: "remark", type: "string", default: "", required: false, help: "" }
+        ],
         additional: [
           {
             name: "root_folder_path",
@@ -199,28 +194,24 @@ adminRouter.get("/driver/list", (c) => {
             type: "string",
             default: "",
             required: false,
-            help: "1",
           },
           {
             name: "client_secret",
             type: "string",
             default: "",
             required: false,
-            help: "1",
           },
           {
             name: "redirect_uri",
             type: "string",
             default: "https://api.oplist.org/onedrive/callback",
             required: true,
-            help: "1",
           },
           {
             name: "refresh_token",
             type: "string",
             default: "",
             required: true,
-            help: "<a href='https://alist.nn.ci/tool/onedrive/request' target='_blank'>获取/Get Token</a>",
           },
           {
             name: "site_id",

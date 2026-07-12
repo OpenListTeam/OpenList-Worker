@@ -177,7 +177,7 @@ export async function copyItems(srcDir: string, dstDir: string, names: string[])
   }
 }
 
-export async function putItem(virtualPath: string, content: ArrayBuffer | Uint8Array): Promise<void> {
+export async function putItem(virtualPath: string, content: Buffer): Promise<void> {
   const resolved = await resolvePath(virtualPath)
   if (resolved.isVirtual) {
     throw new Error("failed get storage: storage not found")

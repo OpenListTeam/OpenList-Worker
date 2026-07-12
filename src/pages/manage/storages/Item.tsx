@@ -158,17 +158,13 @@ const Item = (props: ItemProps) => {
         </Match>
       </Switch>
       <Show when={props.help}>
-        <FormHelperText
-          innerHTML={
-            props.help === "1" || props.help === "true" || props.help === true
-              ? t(
-                  props.driver === "common"
-                    ? `storages.common.${props.name}-tips`
-                    : `drivers.${props.driver}.${props.name}-tips`,
-                )
-              : (props.help as string)
-          }
-        />
+        <FormHelperText>
+          {t(
+            props.driver === "common"
+              ? `storages.common.${props.name}-tips`
+              : `drivers.${props.driver}.${props.name}-tips`,
+          )}
+        </FormHelperText>
       </Show>
     </FormControl>
   )

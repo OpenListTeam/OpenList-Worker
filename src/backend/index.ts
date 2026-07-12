@@ -1,16 +1,8 @@
 import { Hono } from "hono"
-import { cors } from "hono/cors"
 import { setupRouter } from "./server/router"
 import { rawRouter } from "./server/raw"
 
 const app = new Hono()
-
-app.use("*", cors({
-  origin: (origin) => origin || "*",
-  exposeHeaders: ["Content-Length", "Content-Type"],
-  maxAge: 600,
-  credentials: true,
-}))
 
 app.use("*", async (c, next) => {
   const start = Date.now()
