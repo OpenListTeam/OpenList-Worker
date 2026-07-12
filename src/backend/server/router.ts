@@ -1,5 +1,4 @@
 import { Hono } from "hono"
-import { cors } from "hono/cors"
 import { fsRouter } from "./fs"
 import { authRouter, meHandler } from "./auth"
 import { adminRouter } from "./admin"
@@ -10,16 +9,6 @@ import { mcpRouter } from "./mcp"
 import { debugRouter } from "./debug"
 
 export function setupRouter(app: Hono) {
-  // CORS Middleware
-  app.use("*", cors({
-    origin: (origin) => origin,
-    allowHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    exposeHeaders: ["Content-Length", "Content-Type"],
-    maxAge: 600,
-    credentials: true,
-  }))
-
   // API core sub-routing (mounted at /api by the parent)
   app.route("/raw", rawRouter)
   app.route("/fs", fsRouter)
