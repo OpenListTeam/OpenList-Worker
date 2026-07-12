@@ -43,7 +43,7 @@ const Login = () => {
   useTitle(title)
   const bgColor = useColorModeValue("white", "$neutral1")
   const [username, setUsername] = createSignal(
-    localStorage.getItem("username") || "",
+    localStorage.getItem("username") || "admin",
   )
   const [password, setPassword] = createSignal(
     localStorage.getItem("password") || "",

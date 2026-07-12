@@ -35,10 +35,7 @@ instance.defaults.adapter = async (config) => {
   }
 
   // Fallback to original or default adapter
-  let adapter = originalAdapter || config.adapter || axios.defaults.adapter
-  if (typeof adapter === "string" || Array.isArray(adapter)) {
-    adapter = (axios as any).getAdapter?.(adapter)
-  }
+  const adapter = originalAdapter || axios.defaults.adapter
   if (typeof adapter === "function") {
     return adapter(config)
   }
