@@ -29,6 +29,14 @@ authRouter.post("/login/hash", async (c) => {
   const hash_salt = "https://github.com/alist-org/alist";
   const expectedPassword = sha256(`${expectedPasswordPlain}-${hash_salt}`);
 
+  console.log("[Auth Debug]", {
+    expectedUsername,
+    bodyUsername: body.username,
+    expectedPasswordPlain,
+    expectedPassword,
+    bodyPassword: body.password
+  });
+
   if (body.username === expectedUsername && body.password === expectedPassword) {
     const payload = {
       username: expectedUsername,

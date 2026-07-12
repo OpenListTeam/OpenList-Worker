@@ -15,6 +15,8 @@ const instance = axios.create({
   withCredentials: false,
 })
 
+const originalAdapter = instance.defaults.adapter
+
 instance.defaults.adapter = async (config) => {
   try {
     const mockRes = await handleMockRequest(config)
@@ -32,8 +34,11 @@ instance.defaults.adapter = async (config) => {
     console.error("[Supabase Client Adapter Error]", err)
   }
 
-  // Fallback to default adapter
-  const adapter = (axios as any).defaults?.adapter || (axios as any).getAdapter?.(config.adapter) || (axios as any).adapters?.xhr;
+  // Fallback to original or default adapter
+  let adapter = originalAdapter || config.adapter || axios.defaults.adapter
+  if (typeof adapter === "string" || Array.isArray(adapter)) {
+    adapter = (axios as any).getAdapter?.(adapter)
+  }
   if (typeof adapter === "function") {
     return adapter(config)
   }

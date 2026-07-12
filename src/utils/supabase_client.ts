@@ -118,16 +118,12 @@ export async function handleMockRequest(config: any): Promise<any> {
 
   // 3. /auth/login/hash
   if (pathNoQuery === "/auth/login/hash" && method === "post") {
-    // We can allow standard 'admin' login
-    const expectedUsername = "admin"
+    const adminUsername = process.env.ADMIN_USERNAME || "admin"
+    const adminPassword = process.env.ADMIN_PASSWORD || "admin"
     const hash_salt = "https://github.com/alist-org/alist"
-    const expectedPassword = sha256(`admin-${hash_salt}`)
+    const expectedPassword = sha256(`${adminPassword}-${hash_salt}`)
     
-    // Fallback to checking password matches admin or users stored in supabase database
-    const db = await getClientDb()
-    
-    const isMatched = (body.username === expectedUsername && body.password === expectedPassword) ||
-                      (db.users || []).some((u: any) => u.username === body.username && (u.password === body.password || !u.password))
+    const isMatched = body.username === adminUsername && body.password === expectedPassword
     
     if (isMatched) {
       return {
@@ -141,15 +137,36 @@ export async function handleMockRequest(config: any): Promise<any> {
 
   // 4. /me
   if (pathNoQuery === "/me" && method === "get") {
+    const authHeader = config.headers?.Authorization || config.headers?.authorization || ""
+    if (authHeader !== "supabase-mock-token-admin") {
+      return {
+        code: 401,
+        message: "Unauthorized",
+        data: null
+      }
+    }
+    const adminUsername = process.env.ADMIN_USERNAME || "admin"
     return {
       code: 200,
       message: "success",
       data: {
         id: 1,
-        username: "admin",
+        username: adminUsername,
         role: 2,
         permission: 0,
         otp: false
+      }
+    }
+  }
+
+  // Admin routing token validation
+  if (pathNoQuery.startsWith("/admin/")) {
+    const authHeader = config.headers?.Authorization || config.headers?.authorization || ""
+    if (authHeader !== "supabase-mock-token-admin") {
+      return {
+        code: 401,
+        message: "Unauthorized",
+        data: null
       }
     }
   }
