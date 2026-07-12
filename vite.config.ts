@@ -1,5 +1,5 @@
 import path from "path"
-import { defineConfig, loadEnv } from "vite"
+import { defineConfig } from "vite"
 import solidPlugin from "vite-plugin-solid"
 import legacy from "@vitejs/plugin-legacy"
 import { dynamicBase } from "vite-plugin-dynamic-base"
@@ -33,15 +33,13 @@ function fixLegacyPolyfillDataSrc(): Plugin {
   }
 }
 
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), "")
-  return {
-    define: {
-      "process.env.NEXT_PUBLIC_SUPABASE_URL": JSON.stringify(env.NEXT_PUBLIC_SUPABASE_URL || env.VITE_SUPABASE_URL),
-      "process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY": JSON.stringify(env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_ANON_KEY),
-      "process.env.ADMIN_USERNAME": JSON.stringify(env.ADMIN_USERNAME),
-      "process.env.ADMIN_PASSWORD": JSON.stringify(env.ADMIN_PASSWORD),
-    },
+export default defineConfig({
+  define: {
+    "process.env.NEXT_PUBLIC_SUPABASE_URL": JSON.stringify(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL),
+    "process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY": JSON.stringify(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY),
+    "process.env.ADMIN_USERNAME": JSON.stringify(process.env.ADMIN_USERNAME),
+    "process.env.ADMIN_PASSWORD": JSON.stringify(process.env.ADMIN_PASSWORD),
+  },
   resolve: {
     alias: {
       "~": path.resolve(__dirname, "src"),
@@ -111,5 +109,4 @@ export default defineConfig(({ mode }) => {
     host: "0.0.0.0",
     port: 3000,
   },
-  }
 })

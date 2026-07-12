@@ -118,8 +118,8 @@ export async function handleMockRequest(config: any): Promise<any> {
 
   // 3. /auth/login/hash
   if (pathNoQuery === "/auth/login/hash" && method === "post") {
-    const adminUsername = process.env.ADMIN_USERNAME || "admin"
-    const adminPassword = process.env.ADMIN_PASSWORD || "admin"
+    const adminUsername = (typeof process !== "undefined" && process.env?.ADMIN_USERNAME) || "admin"
+    const adminPassword = (typeof process !== "undefined" && process.env?.ADMIN_PASSWORD) || "admin"
     const hash_salt = "https://github.com/alist-org/alist"
     const expectedPassword = sha256(`${adminPassword}-${hash_salt}`)
     
@@ -145,7 +145,7 @@ export async function handleMockRequest(config: any): Promise<any> {
         data: null
       }
     }
-    const adminUsername = process.env.ADMIN_USERNAME || "admin"
+    const adminUsername = (typeof process !== "undefined" && process.env?.ADMIN_USERNAME) || "admin"
     return {
       code: 200,
       message: "success",
