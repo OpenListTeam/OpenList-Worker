@@ -105,10 +105,11 @@ export class LocalDriver implements StorageDriver {
     }
   }
 
-  async put(virtualPath: string, physicalPath: string, content: Buffer): Promise<void> {
+  async put(virtualPath: string, physicalPath: string, content: ArrayBuffer | Uint8Array): Promise<void> {
     await initNodeModules();
     if (!fs || !path) throw new Error("LocalDriver is not supported in Edge Runtime");
     await fs.mkdir(path.dirname(physicalPath), { recursive: true })
-    await fs.writeFile(physicalPath, content)
+    const data = content instanceof ArrayBuffer ? new Uint8Array(content) : content;
+    await fs.writeFile(physicalPath, data)
   }
 }

@@ -34,7 +34,7 @@ export class S3Driver implements StorageDriver {
     // S3 copy actions
   }
 
-  async put(virtualPath: string, physicalPath: string, content: Buffer): Promise<void> {
+  async put(virtualPath: string, physicalPath: string, content: ArrayBuffer | Uint8Array): Promise<void> {
     // S3 putObject action
   }
 }

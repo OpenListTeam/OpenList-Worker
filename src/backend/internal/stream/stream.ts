@@ -53,7 +53,7 @@ export async function downloadOfflineFile(urls: string[], virtualDir: string): P
       if (res.ok && res.body) {
         const buffer = await res.arrayBuffer()
         await fs.mkdir(path.dirname(targetPath), { recursive: true })
-        await fs.writeFile(targetPath, Buffer.from(buffer))
+        await fs.writeFile(targetPath, new Uint8Array(buffer))
       }
     } catch (e) {
       console.error("Offline download stream transfer task failed:", e)

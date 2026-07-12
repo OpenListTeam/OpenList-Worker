@@ -108,7 +108,7 @@ fsRouter.put("/put", async (c) => {
   const reqPath = decodeURIComponent(c.req.header("File-Path") || "")
   try {
     const buffer = await c.req.arrayBuffer()
-    await putItem(reqPath, Buffer.from(buffer))
+    await putItem(reqPath, buffer)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: e.message, data: null })

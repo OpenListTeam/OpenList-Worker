@@ -780,12 +780,25 @@
   ],
   "storages": [
     {
-      "id": 1,
-      "mount_path": "/",
-      "driver": "Local",
-      "addition": "{\"root_folder_path\":\"/data\"}",
-      "disabled": false,
-      "modified": "2026-07-12T14:32:04.857Z"
+      "id": 2,
+      "order": 0,
+      "driver": "Onedrive",
+      "remark": "",
+      "status": "work",
+      "addition": "{\"root_folder_path\":\"/\",\"region\":\"global\",\"is_sharepoint\":false,\"use_online_api\":true,\"api_url_address\":\"https://api.oplist.org/onedrive/renewapi\",\"client_id\":\"\",\"client_secret\":\"\",\"redirect_uri\":\"https://api.oplist.org/onedrive/callback\",\"refresh_token\":\"M.C546_SN1.0.U.MsaArtifacts.-Csl*FE7njTB6dD6I4lUNvaJT7LSI1qeJxLqBo5DdVpR3e9gzdHUu1c8xywb54DDqp9u!Ex9glT9LlwYZtCgSoDi9BImCe42rwjbsgdnQ2fTf2Y40Gp1nNOPlh1LfpOgr4PrTiI2*Z!oRrrz28OJM7rKkdqQC*zt5eGOF0O0mbK3I2SNzFqTp6AJOHqXIg1EQNXhNGH6G99YVlIwHvC5!UNt7aQx9*fNSS2iRDnhiFVoLApCXiG!sNznN95m*gZD*Csg4k*PPFYrK1dnybG7sVVjACBWd0rb0np42onTMr3q8ETDLs!sJ8eHULg1QlulckbNIZHczH!pQ5fw7cNInrtUghr64D18Y0lnbdM*bNVso65aCTfj5XV646IkH5Ns4Mw$$\",\"site_id\":\"\",\"chunk_size\":5,\"custom_host\":\"\",\"disable_disk_usage\":false,\"enable_direct_upload\":false}",
+      "modified": "2026-07-12T14:47:03.864Z",
+      "order_by": "",
+      "web_proxy": false,
+      "mount_path": "/onedrive",
+      "enable_sign": false,
+      "disable_index": false,
+      "webdav_policy": "302_redirect",
+      "down_proxy_url": "",
+      "extract_folder": "",
+      "order_direction": "",
+      "cache_expiration": 30,
+      "disable_proxy_sign": false,
+      "custom_cache_policies": ""
     }
   ]
 }
