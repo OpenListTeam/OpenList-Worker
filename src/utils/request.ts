@@ -2,8 +2,10 @@ import axios from "axios"
 import { api } from "./config"
 import { log } from "./log"
 
+const baseURL = api.endsWith("/api") ? api : api + "/api"
+
 const instance = axios.create({
-  baseURL: api + "/api",
+  baseURL,
   // timeout: 5000
   headers: {
     "Content-Type": "application/json;charset=utf-8",
