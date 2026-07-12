@@ -1,6 +1,7 @@
 import axios from "axios"
 import { api } from "./config"
 import { log } from "./log"
+import { handleMockRequest } from "./supabase_client"
 
 const baseURL = api.endsWith("/api") ? api : api + "/api"
 
@@ -13,6 +14,31 @@ const instance = axios.create({
   },
   withCredentials: false,
 })
+
+instance.defaults.adapter = async (config) => {
+  try {
+    const mockRes = await handleMockRequest(config)
+    if (mockRes) {
+      return {
+        data: mockRes,
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        config,
+        request: {},
+      }
+    }
+  } catch (err) {
+    console.error("[Supabase Client Adapter Error]", err)
+  }
+
+  // Fallback to default adapter
+  const adapter = (axios as any).defaults?.adapter || (axios as any).getAdapter?.(config.adapter) || (axios as any).adapters?.xhr;
+  if (typeof adapter === "function") {
+    return adapter(config)
+  }
+  throw new Error("No adapter found")
+}
 
 instance.interceptors.request.use(
   (config) => {
