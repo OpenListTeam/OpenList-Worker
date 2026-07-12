@@ -41,7 +41,7 @@ export function parseRange(rangeHeader: string | undefined | null, total: number
 /**
  * Convert a buffer to a readable stream
  */
-export function bufferToStream(buffer: Buffer): Readable {
+export function bufferToStream(buffer: Uint8Array): Readable {
   const stream = new Readable();
   stream.push(buffer);
   stream.push(null);
@@ -51,11 +51,20 @@ export function bufferToStream(buffer: Buffer): Readable {
 /**
  * Convert a stream to a buffer
  */
-export async function streamToBuffer(stream: Readable): Promise<Buffer> {
+export async function streamToBuffer(stream: Readable): Promise<Uint8Array> {
   const chunks: any[] = [];
   return new Promise((resolve, reject) => {
-    stream.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    stream.on("data", (chunk) => chunks.push(new Uint8Array(chunk)));
     stream.on("error", (err) => reject(err));
-    stream.on("end", () => resolve(Buffer.concat(chunks)));
+    stream.on("end", () => {
+      const totalLength = chunks.reduce((acc, val) => acc + val.length, 0);
+      const result = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const chunk of chunks) {
+        result.set(chunk, offset);
+        offset += chunk.length;
+      }
+      resolve(result);
+    });
   });
 }

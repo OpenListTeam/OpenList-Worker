@@ -27,7 +27,7 @@
     "start": "node dist/api/[...route].js",
     "dev": "vite --port 3000 --host 0.0.0.0",
     "build": "vite build && npm run build:edge",
-    "build:edge": "esbuild api/[...route].ts --bundle --platform=node --outfile=dist/api/[...route].js --minify --format=cjs --external:fsevents",
+    "build:edge": "esbuild api/[...route].ts --bundle --platform=node --outfile=dist/api/[...route].js --minify --format=esm --external:fsevents",
     "build:all": "npm run build",
     "serve": "vite preview",
     "sls:deploy": "serverless deploy",
