@@ -103,7 +103,7 @@ export const OfflineDownloadEnhanced = () => {
   const [tools, setTools] = createSignal([] as string[])
   const [toolsLoading, reqTool] = useFetch(async (): PResp<string[]> => {
     try {
-      const resp = await r.get("/public/offline_download_tools")
+      const resp = (await r.get("/public/offline_download_tools")) as any
       if (resp.code !== 200) {
         return { code: 200, message: "success", data: [] }
       }

@@ -5,26 +5,26 @@ import { ext } from "~/utils"
 import { generateIframePreview } from "./iframe"
 import { useRouter, useT } from "~/hooks"
 
-type Ext = string[] | "*" | ((name: string) => boolean)
-type Prior = boolean | (() => boolean)
+type Ext = string[] | "*" | ((name: string, isShare: boolean) => boolean)
+type Prior = boolean | ((isShare: boolean) => boolean)
 
-const extsContains = (exts: Ext | undefined, name: string): boolean => {
+const extsContains = (exts: Ext | undefined, name: string, isShare: boolean): boolean => {
   if (exts === undefined) {
     return false
   } else if (exts === "*") {
     return true
   } else if (typeof exts === "function") {
-    return (exts as (name: string) => boolean)(name)
+    return exts(name, isShare)
   } else {
     return (exts as string[]).includes(ext(name).toLowerCase())
   }
 }
 
-const isPrior = (p: Prior): boolean => {
+const isPrior = (p: Prior, isShare: boolean): boolean => {
   if (typeof p === "boolean") {
     return p
   }
-  return p()
+  return p(isShare)
 }
 
 export interface Preview {
@@ -177,12 +177,13 @@ const previews: Preview[] = [
       if (isShare && !getSettingBool("share_archive_preview")) return false
       return isArchive(name)
     },
+    component: lazy(() => import("./archive")),
     prior: (isShare: boolean) => {
       return (
         (!isShare &&
           getSettingBool("preview_archives_by_default") &&
           !getSettingBool("preview_download_by_default")) ||
-        (isShare() &&
+        (isShare &&
           getSettingBool("share_preview_archives_by_default") &&
           !getSettingBool("share_preview_download_by_default"))
       )
@@ -219,11 +220,7 @@ export const getPreviews = (
       ) {
         matches = true
       } else if (preview.exts) {
-        if (typeof preview.exts === "function") {
-          matches = (preview.exts as any)(file.name, isShare())
-        } else {
-          matches = extsContains(preview.exts, file.name)
-        }
+        matches = extsContains(preview.exts, file.name, isShare())
       }
 
       if (matches) {
@@ -236,13 +233,7 @@ export const getPreviews = (
         if (isInArchive && preview.availableInArchive === false) {
           return
         }
-        let prior = false
-        if (typeof preview.prior === "function") {
-          prior = (preview.prior as any)(isShare())
-        } else {
-          prior = preview.prior
-        }
-        if (!downloadPrior && prior) {
+        if (!downloadPrior && isPrior(preview.prior, isShare())) {
           res.push(r)
         } else {
           subsequent.push(r)
