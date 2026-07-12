@@ -423,5 +423,47 @@ export async function handleMockRequest(config: any): Promise<any> {
     }
   }
 
+  // 23. /public/offline_download_tools
+  if (pathNoQuery === "/public/offline_download_tools" && method === "get") {
+    return {
+      code: 200,
+      message: "success",
+      data: []
+    }
+  }
+
+  // 24. /fs/get
+  if (pathNoQuery === "/fs/get" && method === "post") {
+    // Return a dummy directory info or file info for now
+    return {
+      code: 200,
+      message: "success",
+      data: {
+        name: body.path ? body.path.split("/").pop() : "root",
+        size: 0,
+        is_dir: true,
+        modified: new Date().toISOString(),
+        sign: "",
+        thumb: "",
+        type: 1
+      }
+    }
+  }
+
+  // 25. /fs/list
+  if (pathNoQuery === "/fs/list" && method === "post") {
+    return {
+      code: 200,
+      message: "success",
+      data: {
+        content: [],
+        total: 0,
+        readme: "",
+        write: true,
+        provider: "Local"
+      }
+    }
+  }
+
   return null
 }
