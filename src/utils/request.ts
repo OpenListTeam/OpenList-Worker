@@ -99,22 +99,12 @@ const instance = axios.create({
 instance.interceptors.request.use(
   async (config) => {
     try {
-      const mockRes = await handleMockRequest(config)
-      if (mockRes) {
-        config.adapter = () =>
-          Promise.resolve({
-            data: mockRes,
-            status: 200,
-            statusText: "OK",
-            headers: {} as any,
-            config: config as any,
-            request: {},
-          })
-      }
+      // Allow requests to pass to the serverless fetch adapter which routes to our Hono backend
+      // We removed the mock override here so real API endpoints will be hit.
     } catch (err) {
       console.error("[Supabase Client Adapter Error]", err)
     }
-    // do something before request is sent
+    // We let all requests pass to the serverless fetch adapter which routes to our Hono backend
     return config
   },
   (error) => {

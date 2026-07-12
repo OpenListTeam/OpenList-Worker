@@ -325,7 +325,18 @@ export async function handleMockRequest(config: any): Promise<any> {
           common: [
             { name: "mount_path", type: "string", default: "", required: true, help: "1" },
             { name: "order", type: "number", default: "0", required: false, help: "" },
-            { name: "remark", type: "string", default: "", required: false, help: "" }
+            { name: "remark", type: "string", default: "", required: false, help: "" },
+            { name: "cache_expiration", type: "number", default: "30", required: true, help: "The cache expiration time for this storage (minutes)" },
+            { name: "custom_cache_policies", type: "string", default: "", required: false },
+            { name: "web_proxy", type: "bool", default: "false", required: false },
+            { name: "webdav_policy", type: "select", options: "302 Redirect,Native", default: "302 Redirect", required: true },
+            { name: "down_proxy_url", type: "string", default: "", required: false },
+            { name: "disable_proxy_sign", type: "bool", default: "false", required: false },
+            { name: "order_by", type: "select", options: "Choose,name,size,modified", default: "Choose", required: false },
+            { name: "order_direction", type: "select", options: "Choose,asc,desc", default: "Choose", required: false },
+            { name: "folder_order", type: "select", options: "Choose,first,last", default: "Choose", required: false },
+            { name: "disable_index", type: "bool", default: "false", required: false },
+            { name: "enable_sign", type: "bool", default: "false", required: false }
           ],
           additional: [
             { name: "root_folder_path", type: "string", default: "", required: true }
@@ -337,7 +348,18 @@ export async function handleMockRequest(config: any): Promise<any> {
           common: [
             { name: "mount_path", type: "string", default: "", required: true, help: "1" },
             { name: "order", type: "number", default: "0", required: false, help: "" },
-            { name: "remark", type: "string", default: "", required: false, help: "" }
+            { name: "remark", type: "string", default: "", required: false, help: "" },
+            { name: "cache_expiration", type: "number", default: "30", required: true, help: "The cache expiration time for this storage (minutes)" },
+            { name: "custom_cache_policies", type: "string", default: "", required: false },
+            { name: "web_proxy", type: "bool", default: "false", required: false },
+            { name: "webdav_policy", type: "select", options: "302 Redirect,Native", default: "302 Redirect", required: true },
+            { name: "down_proxy_url", type: "string", default: "", required: false },
+            { name: "disable_proxy_sign", type: "bool", default: "false", required: false },
+            { name: "order_by", type: "select", options: "Choose,name,size,modified", default: "Choose", required: false },
+            { name: "order_direction", type: "select", options: "Choose,asc,desc", default: "Choose", required: false },
+            { name: "folder_order", type: "select", options: "Choose,first,last", default: "Choose", required: false },
+            { name: "disable_index", type: "bool", default: "false", required: false },
+            { name: "enable_sign", type: "bool", default: "false", required: false }
           ],
           additional: [
             { name: "bucket", type: "string", default: "", required: true },
@@ -353,13 +375,31 @@ export async function handleMockRequest(config: any): Promise<any> {
           common: [
             { name: "mount_path", type: "string", default: "", required: true, help: "1" },
             { name: "order", type: "number", default: "0", required: false, help: "" },
-            { name: "remark", type: "string", default: "", required: false, help: "" }
+            { name: "remark", type: "string", default: "", required: false, help: "" },
+            { name: "cache_expiration", type: "number", default: "30", required: true, help: "The cache expiration time for this storage (minutes)" },
+            { name: "custom_cache_policies", type: "string", default: "", required: false },
+            { name: "web_proxy", type: "bool", default: "false", required: false },
+            { name: "webdav_policy", type: "select", options: "302 Redirect,Native", default: "302 Redirect", required: true },
+            { name: "down_proxy_url", type: "string", default: "", required: false },
+            { name: "disable_proxy_sign", type: "bool", default: "false", required: false },
+            { name: "order_by", type: "select", options: "Choose,name,size,modified", default: "Choose", required: false },
+            { name: "order_direction", type: "select", options: "Choose,asc,desc", default: "Choose", required: false },
+            { name: "folder_order", type: "select", options: "Choose,first,last", default: "Choose", required: false },
+            { name: "disable_index", type: "bool", default: "false", required: false },
+            { name: "enable_sign", type: "bool", default: "false", required: false }
           ],
           additional: [
-            { name: "client_id", type: "string", default: "", required: true },
-            { name: "client_secret", type: "string", default: "", required: true },
-            { name: "redirect_uri", type: "string", default: "", required: true },
-            { name: "refresh_token", type: "string", default: "", required: true }
+            { name: "root_folder_path", type: "string", default: "/", required: true },
+            { name: "region", type: "select", options: "Global,China,US Government,Germany", default: "Global", required: true },
+            { name: "is_sharepoint", type: "bool", default: "false", required: false },
+            { name: "use_online_api", type: "bool", default: "true", required: false },
+            { name: "api_url_address", type: "string", default: "https://api.oplist.org/onedrive/renewapi", required: false },
+            { name: "client_id", type: "string", default: "", required: false },
+            { name: "client_secret", type: "string", default: "", required: false },
+            { name: "redirect_uri", type: "string", default: "https://api.oplist.org/onedrive/callback", required: true },
+            { name: "refresh_token", type: "string", default: "", required: true },
+            { name: "site_id", type: "string", default: "", required: false },
+            { name: "chunk_size", type: "number", default: "5", required: true }
           ]
         }
       }

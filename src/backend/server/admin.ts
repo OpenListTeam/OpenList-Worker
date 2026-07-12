@@ -121,7 +121,18 @@ adminRouter.get("/driver/list", (c) => {
         common: [
           { name: "mount_path", type: "string", default: "", required: true, help: "1" },
           { name: "order", type: "number", default: "0", required: false, help: "" },
-          { name: "remark", type: "string", default: "", required: false, help: "" }
+          { name: "remark", type: "string", default: "", required: false, help: "" },
+          { name: "cache_expiration", type: "number", default: "30", required: true, help: "The cache expiration time for this storage (minutes)" },
+          { name: "custom_cache_policies", type: "string", default: "", required: false },
+          { name: "web_proxy", type: "bool", default: "false", required: false },
+          { name: "webdav_policy", type: "select", options: "302 Redirect,Native", default: "302 Redirect", required: true },
+          { name: "down_proxy_url", type: "string", default: "", required: false },
+          { name: "disable_proxy_sign", type: "bool", default: "false", required: false },
+          { name: "order_by", type: "select", options: "Choose,name,size,modified", default: "Choose", required: false },
+          { name: "order_direction", type: "select", options: "Choose,asc,desc", default: "Choose", required: false },
+          { name: "folder_order", type: "select", options: "Choose,first,last", default: "Choose", required: false },
+          { name: "disable_index", type: "bool", default: "false", required: false },
+          { name: "enable_sign", type: "bool", default: "false", required: false }
         ],
         additional: [
           {
@@ -138,7 +149,18 @@ adminRouter.get("/driver/list", (c) => {
         common: [
           { name: "mount_path", type: "string", default: "", required: true, help: "1" },
           { name: "order", type: "number", default: "0", required: false, help: "" },
-          { name: "remark", type: "string", default: "", required: false, help: "" }
+          { name: "remark", type: "string", default: "", required: false, help: "" },
+          { name: "cache_expiration", type: "number", default: "30", required: true, help: "The cache expiration time for this storage (minutes)" },
+          { name: "custom_cache_policies", type: "string", default: "", required: false },
+          { name: "web_proxy", type: "bool", default: "false", required: false },
+          { name: "webdav_policy", type: "select", options: "302 Redirect,Native", default: "302 Redirect", required: true },
+          { name: "down_proxy_url", type: "string", default: "", required: false },
+          { name: "disable_proxy_sign", type: "bool", default: "false", required: false },
+          { name: "order_by", type: "select", options: "Choose,name,size,modified", default: "Choose", required: false },
+          { name: "order_direction", type: "select", options: "Choose,asc,desc", default: "Choose", required: false },
+          { name: "folder_order", type: "select", options: "Choose,first,last", default: "Choose", required: false },
+          { name: "disable_index", type: "bool", default: "false", required: false },
+          { name: "enable_sign", type: "bool", default: "false", required: false }
         ],
         additional: [
           {
@@ -155,7 +177,18 @@ adminRouter.get("/driver/list", (c) => {
         common: [
           { name: "mount_path", type: "string", default: "", required: true, help: "1" },
           { name: "order", type: "number", default: "0", required: false, help: "" },
-          { name: "remark", type: "string", default: "", required: false, help: "" }
+          { name: "remark", type: "string", default: "", required: false, help: "" },
+          { name: "cache_expiration", type: "number", default: "30", required: true, help: "The cache expiration time for this storage (minutes)" },
+          { name: "custom_cache_policies", type: "string", default: "", required: false },
+          { name: "web_proxy", type: "bool", default: "false", required: false },
+          { name: "webdav_policy", type: "select", options: "302 Redirect,Native", default: "302 Redirect", required: true },
+          { name: "down_proxy_url", type: "string", default: "", required: false },
+          { name: "disable_proxy_sign", type: "bool", default: "false", required: false },
+          { name: "order_by", type: "select", options: "Choose,name,size,modified", default: "Choose", required: false },
+          { name: "order_direction", type: "select", options: "Choose,asc,desc", default: "Choose", required: false },
+          { name: "folder_order", type: "select", options: "Choose,first,last", default: "Choose", required: false },
+          { name: "disable_index", type: "bool", default: "false", required: false },
+          { name: "enable_sign", type: "bool", default: "false", required: false }
         ],
         additional: [
           {
@@ -338,6 +371,46 @@ adminRouter.get("/user/list", async (c) => {
     message: "success",
     data: { content: db.users, total: db.users.length },
   })
+})
+
+adminRouter.post("/user/create", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const db = await getDb()
+  if (db.users.some((u: any) => u.username === body.username)) {
+    return c.json({ code: 400, message: "Username already exists", data: null })
+  }
+  const newUser = {
+    ...body,
+    id: db.users.length ? Math.max(...db.users.map((u: any) => u.id)) + 1 : 1,
+  }
+  db.users.push(newUser)
+  await saveDb(db)
+  return c.json({ code: 200, message: "success", data: newUser })
+})
+
+adminRouter.post("/user/update", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const db = await getDb()
+  const idx = db.users.findIndex((u: any) => u.id === body.id)
+  if (idx !== -1) {
+    if (body.username && db.users.some((u: any) => u.id !== body.id && u.username === body.username)) {
+      return c.json({ code: 400, message: "Username already exists", data: null })
+    }
+    db.users[idx] = { ...db.users[idx], ...body }
+    await saveDb(db)
+  }
+  return c.json({ code: 200, message: "success", data: null })
+})
+
+adminRouter.post("/user/delete", async (c) => {
+  const id = parseInt(c.req.query("id") || "0", 10)
+  const db = await getDb()
+  if (id === 1) {
+    return c.json({ code: 400, message: "Cannot delete admin user", data: null })
+  }
+  db.users = db.users.filter((u: any) => u.id !== id)
+  await saveDb(db)
+  return c.json({ code: 200, message: "success", data: null })
 })
 
 adminRouter.get("/supabase/status", async (c) => {

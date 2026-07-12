@@ -4,8 +4,8 @@ export interface Addition {
   is_sharepoint: boolean;
   use_online_api: boolean;
   api_url_address: string;
-  client_id: string;
-  client_secret: string;
+  client_id?: string;
+  client_secret?: string;
   redirect_uri: string;
   refresh_token: string;
   site_id: string;

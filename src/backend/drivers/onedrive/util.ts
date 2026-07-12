@@ -3,11 +3,15 @@ import { File, Files, Metadata, DriveResp, Host } from "./types";
 import axios from "axios";
 
 export async function refreshToken(d: Addition & { accessToken?: string }): Promise<void> {
-  // Use online API
-  if (d.use_online_api && d.api_url_address) {
-    const resp = await axios.get(d.api_url_address, {
+  const useOnlineApi = d.use_online_api !== false && String(d.use_online_api).toLowerCase() !== "false";
+  const hasLocalCreds = !!(d.client_id && d.client_secret);
+
+  // Use online API if enabled or if local client credentials are not provided
+  if (useOnlineApi || !hasLocalCreds) {
+    const apiUrl = d.api_url_address || "https://api.oplist.org/onedrive/renewapi";
+    const resp = await axios.get(apiUrl, {
       params: {
-        refresh_ui: d.refresh_token,
+        refresh_token: d.refresh_token,
         server_use: "true",
         driver_txt: "onedrive_pr",
       },
@@ -24,11 +28,6 @@ export async function refreshToken(d: Addition & { accessToken?: string }): Prom
     return;
   }
 
-  // Use local client
-  if (!d.client_id || !d.client_secret) {
-    throw new Error("empty ClientID or ClientSecret");
-  }
-
   const hostMap = onedriveHostMap[d.region] || onedriveHostMap["global"];
   const url = `${hostMap.oauth}/common/oauth2/v2.0/token`;
 
@@ -36,8 +35,8 @@ export async function refreshToken(d: Addition & { accessToken?: string }): Prom
     url,
     new URLSearchParams({
       grant_type: "refresh_token",
-      client_id: d.client_id,
-      client_secret: d.client_secret,
+      client_id: d.client_id!,
+      client_secret: d.client_secret!,
       redirect_uri: d.redirect_uri,
       refresh_token: d.refresh_token,
     }).toString(),

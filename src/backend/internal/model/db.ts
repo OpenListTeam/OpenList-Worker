@@ -241,7 +241,7 @@ export async function resolvePath(virtualPath: string) {
         relPath = "/" + relPath
       }
       
-      const addition = JSON.parse(storage.addition || "{}")
+      const addition = typeof storage.addition === "string" ? JSON.parse(storage.addition || "{}") : (storage.addition || {})
       const isCloud = ["onedrive", "s3"].includes(storage.driver.toLowerCase())
       
       // Fix: Fallback for path.join if not in Node
