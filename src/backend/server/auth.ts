@@ -5,31 +5,44 @@ import { JWT_SECRET } from "./middlewares"
 export const authRouter = new Hono()
 
 authRouter.post("/login/hash", async (c) => {
-  let body: any = {};
+  let body: any = {}
   try {
-    body = await c.req.json();
+    body = await c.req.json()
   } catch (err) {
-    const text = await c.req.text().catch(() => "");
-    console.error("[Auth] Failed to parse JSON body, raw text:", text, err);
+    const text = await c.req.text().catch(() => "")
+    console.error("[Auth] Failed to parse JSON body, raw text:", text, err)
     try {
-      body = JSON.parse(text);
+      body = JSON.parse(text)
     } catch (e) {
-      return c.json({ code: 400, message: "Invalid JSON body", data: null }, 400);
+      return c.json(
+        { code: 400, message: "Invalid JSON body", data: null },
+        400,
+      )
     }
   }
-  
+
   const expectedUsername = process.env.ADMIN_USERNAME || "admin"
   const expectedPasswordPlain = process.env.ADMIN_PASSWORD || "admin"
-  
-  if (!process.env.ADMIN_PASSWORD) {
-    console.warn("[Auth] ADMIN_PASSWORD not set, defaulting to 'admin'");
-  }
-  
-  const sha256 = (await import("sha256")).default;
-  const hash_salt = "https://github.com/alist-org/alist";
-  const expectedPassword = sha256(`${expectedPasswordPlain}-${hash_salt}`);
 
-  if (body.username === expectedUsername && body.password === expectedPassword) {
+  if (!process.env.ADMIN_PASSWORD) {
+    console.warn("[Auth] ADMIN_PASSWORD not set, defaulting to 'admin'")
+  }
+
+  // Use Web Crypto API (SubtleCrypto) — works natively in Cloudflare Workers and Node.js 18+
+  const hash_salt = "https://github.com/alist-org/alist"
+  const msgBuffer = new TextEncoder().encode(
+    `${expectedPasswordPlain}-${hash_salt}`,
+  )
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer)
+  const hashArray = Array.from(new Uint8Array(hashBuffer))
+  const expectedPassword = hashArray
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+
+  if (
+    body.username === expectedUsername &&
+    body.password === expectedPassword
+  ) {
     const payload = {
       username: expectedUsername,
       id: 1,
@@ -53,10 +66,16 @@ authRouter.post("/login/hash", async (c) => {
 export const meHandler = async (c: any) => {
   const authHeader = c.req.header("Authorization")
   if (!authHeader) {
-    console.warn("[Auth] /me request missing Authorization header");
-    return c.json({ code: 401, message: "Unauthorized: Missing Authorization header", data: null })
+    console.warn("[Auth] /me request missing Authorization header")
+    return c.json({
+      code: 401,
+      message: "Unauthorized: Missing Authorization header",
+      data: null,
+    })
   }
-  const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.substring(7)
+    : authHeader
   try {
     const payload = await verify(token, JWT_SECRET, "HS256")
     return c.json({
@@ -70,8 +89,12 @@ export const meHandler = async (c: any) => {
       },
     })
   } catch (e: any) {
-    console.error("[Auth] Token verification failed:", e.message || e);
-    return c.json({ code: 401, message: `Unauthorized: ${e.message || "Invalid token"}`, data: null })
+    console.error("[Auth] Token verification failed:", e.message || e)
+    return c.json({
+      code: 401,
+      message: `Unauthorized: ${e.message || "Invalid token"}`,
+      data: null,
+    })
   }
 }
 
