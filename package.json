@@ -29,7 +29,7 @@
     "build": "vite build && npm run build:edge",
     "build:edge": "esbuild api/[...route].ts --bundle --platform=neutral --outfile=dist/api/[...route].js --minify --format=esm",
     "dev:worker": "wrangler dev",
-    "deploy:worker": "wrangler deploy",
+    "deploy:worker": "wrangler deploy --yes",
     "build:all": "npm run build",
     "serve": "vite preview",
     "sls:deploy": "serverless deploy",
@@ -68,7 +68,7 @@
     "vite-plugin-dynamic-base": "^1.3.0",
     "vite-plugin-solid": "^2.11.12",
     "vite-plugin-static-copy": "^3.4.0",
-    "wrangler": "^3.109.2"
+    "wrangler": "^4.0.0"
   },
   "dependencies": {
     "@egjs/view360": "4.0.0-beta.7",
