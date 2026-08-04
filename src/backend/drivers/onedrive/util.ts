@@ -1,20 +1,18 @@
 import { Addition, onedriveHostMap } from "./meta"
 import { File, Files, Metadata, DriveResp, Host } from "./types"
-import axios from "axios"
 
 export async function refreshToken(
   d: Addition & { accessToken?: string },
 ): Promise<void> {
   // Use online API
   if (d.use_online_api && d.api_url_address) {
-    const resp = await axios.get(d.api_url_address, {
-      params: {
-        refresh_ui: d.refresh_token,
-        server_use: "true",
-        driver_txt: "onedrive_pr",
-      },
-    })
-    const data = resp.data
+    const qs = new URLSearchParams({
+      refresh_ui: d.refresh_token,
+      server_use: "true",
+      driver_txt: "onedrive_pr",
+    }).toString()
+    const resp = await fetch(`${d.api_url_address}?${qs}`)
+    const data = await resp.json()
     if (!data.refresh_token || !data.access_token) {
       if (data.text) {
         throw new Error(`failed to refresh token: ${data.text}`)
@@ -34,23 +32,19 @@ export async function refreshToken(
   const hostMap = onedriveHostMap[d.region] || onedriveHostMap["global"]
   const url = `${hostMap.oauth}/common/oauth2/v2.0/token`
 
-  const resp = await axios.post(
-    url,
-    new URLSearchParams({
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
       grant_type: "refresh_token",
       client_id: d.client_id,
       client_secret: d.client_secret,
       redirect_uri: d.redirect_uri,
       refresh_token: d.refresh_token,
     }).toString(),
-    {
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-    },
-  )
+  })
 
-  const data = resp.data
+  const data = await resp.json()
   if (!data.refresh_token) {
     throw new Error("Empty token")
   }
@@ -65,30 +59,36 @@ export async function requestApi<T>(
   data?: any,
   noRetry?: boolean,
 ): Promise<T> {
-  try {
-    const res = await axios({
-      url,
-      method,
-      data,
-      headers: {
-        Authorization: `Bearer ${d.accessToken}`,
-      },
-    })
-    return res.data
-  } catch (error: any) {
-    const errData = error.response?.data?.error
+  const init: RequestInit = {
+    method: method.toUpperCase(),
+    headers: {
+      Authorization: `Bearer ${d.accessToken}`,
+      ...(data !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
+    ...(data !== undefined ? { body: JSON.stringify(data) } : {}),
+  }
+  const res = await fetch(url, init)
+  if (!res.ok) {
+    let errData: any
+    try {
+      errData = (await res.json()).error
+    } catch {
+      errData = null
+    }
     const errCode = errData?.code
     if (
       (errCode === "InvalidAuthenticationToken" ||
         errCode === "ExpiredAuthenticationToken" ||
-        error.response?.status === 401) &&
+        res.status === 401) &&
       !noRetry
     ) {
       await refreshToken(d)
       return requestApi(d, url, method, data, true)
     }
-    throw new Error(errData?.message || error.message)
+    throw new Error(errData?.message || `Request failed: ${res.status}`)
   }
+  if (res.status === 204) return undefined as unknown as T
+  return res.json() as Promise<T>
 }
 
 function cleanSubPath(p: string): string {
