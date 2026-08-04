@@ -249,6 +249,42 @@ export const defaultDb = {
       group: 11,
       flag: 0,
     },
+
+    // Group 9: S3
+    {
+      key: "s3_access_key_id",
+      value: "",
+      type: "string",
+      help: "S3 Access Key ID",
+      group: 9,
+      flag: 0,
+    },
+    {
+      key: "s3_secret_access_key",
+      value: "",
+      type: "string",
+      help: "S3 Secret Access Key",
+      group: 9,
+      flag: 0,
+    },
+    {
+      key: "s3_buckets",
+      value: "[]",
+      type: "text",
+      help: "S3 Buckets",
+      group: 9,
+      flag: 0,
+    },
+
+    // Group 14: OTHER
+    {
+      key: "package_download_disabled",
+      value: "false",
+      type: "bool",
+      help: "Disable Package Download",
+      group: 14,
+      flag: 0,
+    },
   ],
   storages: [
     {
