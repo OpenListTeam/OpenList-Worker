@@ -1,0 +1,13 @@
+{
+  "login_to": "登录到",
+  "username-tips": "请输入用户名",
+  "password-tips": "请输入密码",
+  "otp-tips": "请输入 OTP 验证码",
+  "remember": "记住登录",
+  "forget": "忘记密码？",
+  "forget_url": "https://doc.oplist.org/faq/howto#how-to-get-password-if-i-forget-it",
+  "clear": "清除",
+  "login": "登录",
+  "use_guest": "以游客身份浏览",
+  "success": "登录成功"
+}

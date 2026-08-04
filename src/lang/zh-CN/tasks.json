@@ -1,0 +1,66 @@
+{
+  "offline_download": "下载文件到本地设备",
+  "offline_download_transfer": "传输下载的文件到对应存储",
+  "upload": "上传文件到对应存储",
+  "copy": "跨存储复制文件",
+  "move": "跨存储移动文件",
+  "decompress": "下载并解压压缩包",
+  "decompress_upload": "上传解压后的文件到目标存储",
+  "done": "已完成",
+  "undone": "运行中",
+  "clear_succeeded": "清理已成功的任务",
+  "retry": "Retry",
+  "retry_failed": "重试已失败的任务",
+  "state": {
+    "0": "Pending",
+    "1": "Running",
+    "2": "Succeeded",
+    "3": "Canceling",
+    "4": "Canceled",
+    "5": "Error",
+    "6": "Failing",
+    "7": "Failed",
+    "8": "Waiting for Retry",
+    "9": "Preparing to Retry"
+  },
+  "retry_selected": "Retry Selected",
+  "cancel_selected": "Cancel Selected",
+  "delete_selected": "Delete Selected",
+  "filter": "Filter",
+  "expand": "Expand",
+  "fold": "Fold",
+  "expand_all": "Expand All",
+  "fold_all": "Fold All",
+  "attr": {
+    "name": "Name",
+    "creator": "Creator",
+    "state": "State",
+    "progress": "Progress",
+    "speed": "Speed",
+    "operation": "Operation",
+    "copy": {
+      "src": "Source Path",
+      "dst": "Destination Path"
+    },
+    "upload": {
+      "path": "Path"
+    },
+    "offline_download": {
+      "url": "URL",
+      "path": "Destination Path",
+      "transfer_src": "Source Path",
+      "transfer_src_local": "Source Path (Local)",
+      "transfer_dst": "Destination Path"
+    },
+    "decompress": {
+      "src": "Source Path",
+      "dst": "Destination Path",
+      "inner": "Inner Path",
+      "password": "Extraction Password"
+    },
+    "time_elapsed": "Time Elapsed",
+    "status": "Status",
+    "err": "Error"
+  },
+  "show_only_mine": "Show only my tasks"
+}

@@ -1,0 +1,42 @@
+{
+  "expires": "过期时间",
+  "id": "ID",
+  "id_placeholder": "自定义 ID (可选，留空随机生成)",
+  "accessed": "访问次数",
+  "max_accessed": "最大访问次数",
+  "pwd": "提取码",
+  "files": "分享路径",
+  "files_etc": " 以及另外 {{more}} 项",
+  "files_placeholder": "输入文件或文件夹路径，每行一个",
+  "add_path": "添加路径",
+  "creator": "创建者",
+  "status": "状态",
+  "status_list": {
+    "disabled": "已禁用",
+    "invalid": "已失效",
+    "work": "正常",
+    "denied": "No permission"
+  },
+  "remark": "Remark",
+  "readme": "Description",
+  "header": "Header Description",
+  "order_by": "Order By",
+  "order_bys": {
+    "name": "Name",
+    "size": "Size",
+    "modified": "Modified"
+  },
+  "order_direction": "Order Direction",
+  "order_directions": {
+    "asc": "Ascending",
+    "desc": "Descending"
+  },
+  "extract_folder": "Folder Order",
+  "extract_folders": {
+    "front": "Folders on Top",
+    "back": "Folders at Bottom"
+  },
+  "input_password": "Please enter Share Code",
+  "copy_msg": "Copy link",
+  "no_permission_tip": "To create a share, you need \"Share\" permission."
+}
