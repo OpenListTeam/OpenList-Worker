@@ -4,7 +4,7 @@ import { getDb } from "../internal/model/db"
 export const publicRouter = new Hono()
 
 publicRouter.get("/settings", async (c) => {
-  const db = await getDb()
+  const db = await getDb(c.env)
 
   const settingsObj: Record<string, string> = {
     title: "OpenList Serverless",

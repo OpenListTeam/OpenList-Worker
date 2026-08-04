@@ -25,7 +25,7 @@ adminRouter.use("*", async (c, next) => {
 })
 
 adminRouter.get("/storage/list", async (c) => {
-  const db = await getDb()
+  const db = await getDb(c.env)
   return c.json({
     code: 200,
     message: "success",
@@ -35,7 +35,7 @@ adminRouter.get("/storage/list", async (c) => {
 
 adminRouter.post("/storage/create", async (c) => {
   const body = await c.req.json().catch(() => ({}))
-  const db = await getDb()
+  const db = await getDb(c.env)
 
   const mountPath =
     "/" + (body.mount_path || "").split("/").filter(Boolean).join("/")
@@ -63,13 +63,13 @@ adminRouter.post("/storage/create", async (c) => {
     modified: new Date().toISOString(),
   }
   db.storages.push(newStorage)
-  await saveDb(db)
+  await saveDb(db, c.env)
   return c.json({ code: 200, message: "success", data: newStorage })
 })
 
 adminRouter.post("/storage/update", async (c) => {
   const body = await c.req.json().catch(() => ({}))
-  const db = await getDb()
+  const db = await getDb(c.env)
 
   const mountPath =
     "/" + (body.mount_path || "").split("/").filter(Boolean).join("/")
@@ -96,37 +96,37 @@ adminRouter.post("/storage/update", async (c) => {
       mount_path: mountPath,
       modified: new Date().toISOString(),
     }
-    await saveDb(db)
+    await saveDb(db, c.env)
   }
   return c.json({ code: 200, message: "success", data: null })
 })
 
 adminRouter.post("/storage/delete", async (c) => {
   const id = parseInt(c.req.query("id") || "0", 10)
-  const db = await getDb()
+  const db = await getDb(c.env)
   db.storages = db.storages.filter((s: any) => s.id !== id)
-  await saveDb(db)
+  await saveDb(db, c.env)
   return c.json({ code: 200, message: "success", data: null })
 })
 
 adminRouter.post("/storage/enable", async (c) => {
   const id = parseInt(c.req.query("id") || "0", 10)
-  const db = await getDb()
+  const db = await getDb(c.env)
   const s = db.storages.find((s: any) => s.id === id)
   if (s) {
     s.disabled = false
-    await saveDb(db)
+    await saveDb(db, c.env)
   }
   return c.json({ code: 200, message: "success", data: null })
 })
 
 adminRouter.post("/storage/disable", async (c) => {
   const id = parseInt(c.req.query("id") || "0", 10)
-  const db = await getDb()
+  const db = await getDb(c.env)
   const s = db.storages.find((s: any) => s.id === id)
   if (s) {
     s.disabled = true
-    await saveDb(db)
+    await saveDb(db, c.env)
   }
   return c.json({ code: 200, message: "success", data: null })
 })
@@ -307,7 +307,7 @@ adminRouter.get("/driver/list", (c) => {
 })
 
 adminRouter.get("/setting/list", async (c) => {
-  const db = await getDb()
+  const db = await getDb(c.env)
   const groupQuery = c.req.query("group")
   const groupsQuery = c.req.query("groups")
 
@@ -326,7 +326,7 @@ adminRouter.get("/setting/list", async (c) => {
 
 adminRouter.post("/setting/save", async (c) => {
   const body = await c.req.json().catch(() => [])
-  const db = await getDb()
+  const db = await getDb(c.env)
   for (const item of body) {
     const idx = db.settings.findIndex((s: any) => s.key === item.key)
     if (idx !== -1) {
@@ -335,7 +335,7 @@ adminRouter.post("/setting/save", async (c) => {
       db.settings.push(item)
     }
   }
-  await saveDb(db)
+  await saveDb(db, c.env)
   return c.json({ code: 200, message: "success", data: null })
 })
 
@@ -345,7 +345,7 @@ adminRouter.post("/setting/default", async (c) => {
     return c.json({ code: 400, message: "group is required", data: null })
   }
   const groupNum = parseInt(groupQuery, 10)
-  const db = await getDb()
+  const db = await getDb(c.env)
 
   db.settings = (db.settings || []).filter((s: any) => s.group !== groupNum)
   const groupDefaults = defaultDb.settings.filter(
@@ -353,7 +353,7 @@ adminRouter.post("/setting/default", async (c) => {
   )
   db.settings.push(...JSON.parse(JSON.stringify(groupDefaults)))
 
-  await saveDb(db)
+  await saveDb(db, c.env)
   return c.json({ code: 200, message: "success", data: groupDefaults })
 })
 
@@ -362,14 +362,14 @@ adminRouter.post("/setting/delete", async (c) => {
   if (!key) {
     return c.json({ code: 400, message: "key is required", data: null })
   }
-  const db = await getDb()
+  const db = await getDb(c.env)
   db.settings = (db.settings || []).filter((s: any) => s.key !== key)
-  await saveDb(db)
+  await saveDb(db, c.env)
   return c.json({ code: 200, message: "success", data: null })
 })
 
 adminRouter.get("/meta/list", async (c) => {
-  const db = await getDb()
+  const db = await getDb(c.env)
   return c.json({
     code: 200,
     message: "success",

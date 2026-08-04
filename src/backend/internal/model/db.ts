@@ -647,16 +647,7 @@ export const defaultDb = {
       flag: 0,
     },
   ],
-  storages: [
-    {
-      id: 1,
-      mount_path: "/s3",
-      driver: "S3",
-      addition: '{"s3_bucket_name":"my-bucket"}',
-      disabled: false,
-      modified: new Date().toISOString(),
-    },
-  ],
+  storages: [],
   users: [
     {
       id: 1,
@@ -687,6 +678,7 @@ export const defaultDb = {
 }
 
 let memoryDb: any = null
+let globalEnvCtx: any = null
 
 /**
  * Universal KV Storage Adapter for Cloudflare Workers
@@ -696,7 +688,13 @@ export function getKvBinding(envCtx?: any): {
   platform: string
   mode: "binding" | "api" | "none"
 } {
-  const env = envCtx || (typeof process !== "undefined" ? process.env : {})
+  if (envCtx) {
+    globalEnvCtx = envCtx
+  }
+  const env =
+    envCtx ||
+    globalEnvCtx ||
+    (typeof process !== "undefined" ? process.env : {})
   const g = typeof globalThis !== "undefined" ? (globalThis as any) : {}
 
   const candidates = [
@@ -712,7 +710,7 @@ export function getKvBinding(envCtx?: any): {
     if (b && typeof b.get === "function" && typeof b.put === "function") {
       return {
         binding: b,
-        platform: "Cloudflare Workers KV (Binding)",
+        platform: `Cloudflare Workers KV (${c.name})`,
         mode: "binding",
       }
     }
@@ -832,22 +830,16 @@ const ensureDefaultStorages = (db: any) => {
 }
 
 export const getDb = async (envCtx?: any) => {
-  if (memoryDb) {
-    ensureDefaultSettings(memoryDb)
-    ensureDefaultStorages(memoryDb)
-    return memoryDb
+  if (envCtx) {
+    globalEnvCtx = envCtx
   }
 
   // Priority 1: Cloudflare KV Namespace Storage
   const kvInfo = getKvBinding(envCtx)
   if (kvInfo.mode !== "none") {
     try {
-      console.log(
-        `[DB] Attempting to load config from KV Namespace (${kvInfo.platform})...`,
-      )
       const kvConfig = await readFromKv(kvInfo, "openlist_config")
       if (kvConfig) {
-        console.log(`[DB] Config successfully loaded from ${kvInfo.platform}.`)
         memoryDb = kvConfig
         ensureDefaultSettings(memoryDb)
         ensureDefaultStorages(memoryDb)
@@ -856,6 +848,12 @@ export const getDb = async (envCtx?: any) => {
     } catch (err) {
       console.error("[DB] Error reading config from KV:", err)
     }
+  }
+
+  if (memoryDb) {
+    ensureDefaultSettings(memoryDb)
+    ensureDefaultStorages(memoryDb)
+    return memoryDb
   }
 
   // Priority 2: Environment Variable
@@ -881,14 +879,29 @@ export const getDb = async (envCtx?: any) => {
 }
 
 export const saveDb = async (data: any, envCtx?: any) => {
+  if (envCtx) {
+    globalEnvCtx = envCtx
+  }
   memoryDb = data
 
   // Save to KV Namespace
   const kvInfo = getKvBinding(envCtx)
   if (kvInfo.mode !== "none") {
-    saveToKv(kvInfo, "openlist_config", data).catch((err) => {
-      console.error("[DB] Failed to save to KV:", err)
-    })
+    const success = await saveToKv(kvInfo, "openlist_config", data).catch(
+      (err) => {
+        console.error("[DB] Failed to save to KV:", err)
+        return false
+      },
+    )
+    if (success) {
+      console.log(
+        `[DB] Successfully persisted ${data.storages?.length || 0} storages to KV (${kvInfo.platform})`,
+      )
+    }
+  } else {
+    console.warn(
+      "[DB] WARNING: No KV binding found! Storage configuration changes will exist only in memory!",
+    )
   }
 }
 

@@ -6,7 +6,7 @@ export const debugRouter = new Hono()
 
 debugRouter.get("/info", async (c) => {
   const isAdmin = await checkAdminAuth(c)
-  const db = await getDb()
+  const db = await getDb(c.env)
 
   const uptime = process.uptime()
   const memoryUsage = process.memoryUsage()
