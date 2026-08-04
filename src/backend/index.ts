@@ -24,4 +24,20 @@ app.route("/d", rawRouter)
 app.route("/sd", rawRouter)
 app.route("/p", rawRouter)
 
+// Catch-all handler for static assets & SPA frontend serving via Cloudflare Assets
+app.all("*", async (c) => {
+  const env = c.env as any
+  if (env && env.ASSETS && typeof env.ASSETS.fetch === "function") {
+    const res = await env.ASSETS.fetch(c.req.raw)
+    if (res.status !== 404) {
+      return res
+    }
+    // SPA fallback: return index.html for non-asset routes (e.g. /login, /manage)
+    const url = new URL(c.req.url)
+    const indexReq = new Request(`${url.origin}/index.html`, c.req.raw)
+    return env.ASSETS.fetch(indexReq)
+  }
+  return c.text("404 Not Found", 404)
+})
+
 export default app
