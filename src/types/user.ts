@@ -37,11 +37,14 @@ export const UserPermissions = [
 ] as const
 
 export const UserMethods = {
-  is_guest: (user: User) => user.role === UserRole.GUEST,
-  is_admin: (user: User) => user.role === UserRole.ADMIN,
-  is_general: (user: User) => user.role === UserRole.GENERAL,
-  can: (user: User, permission: number) => {
-    return ((user.permission >> permission) & 1) == 1
+  is_guest: (user?: User | null) => user?.role === UserRole.GUEST,
+  is_admin: (user?: User | null) => user?.role === UserRole.ADMIN,
+  is_general: (user?: User | null) => user?.role === UserRole.GENERAL,
+  can: (user?: User | null, permission?: number) => {
+    if (!user) return false
+    if (UserMethods.is_admin(user)) return true
+    if (permission === undefined) return false
+    return ((user.permission >> permission) & 1) === 1
   },
   // can_see_hides: (user: User) =>
   //   UserMethods.is_admin(user) || (user.permission & 1) == 1,
