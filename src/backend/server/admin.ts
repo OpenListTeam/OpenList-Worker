@@ -377,14 +377,8 @@ adminRouter.get("/meta/list", async (c) => {
   })
 })
 
-adminRouter.get("/user/list", async (c) => {
-  const db = await getDb()
-  return c.json({
-    code: 200,
-    message: "success",
-    data: { content: db.users, total: db.users.length },
-  })
-})
+import { userRouter } from "./user"
+adminRouter.route("/user", userRouter)
 
 adminRouter.get("/kv/status", async (c) => {
   const statusData = await getKvStatus(c.env)

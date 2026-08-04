@@ -8,17 +8,21 @@ import { publicRouter } from "./public"
 import { s3Router } from "./s3"
 import { mcpRouter } from "./mcp"
 import { debugRouter } from "./debug"
+import { updatePwdHandler } from "./user"
 
 export function setupRouter(app: Hono) {
   // CORS Middleware
-  app.use("*", cors({
-    origin: (origin) => origin,
-    allowHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    exposeHeaders: ["Content-Length", "Content-Type"],
-    maxAge: 600,
-    credentials: true,
-  }))
+  app.use(
+    "*",
+    cors({
+      origin: (origin) => origin,
+      allowHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+      allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      exposeHeaders: ["Content-Length", "Content-Type"],
+      maxAge: 600,
+      credentials: true,
+    }),
+  )
 
   // API core sub-routing (mounted at /api by the parent)
   app.route("/raw", rawRouter)
@@ -37,6 +41,7 @@ export function setupRouter(app: Hono) {
 
   // Current user handler queried directly by the frontend
   app.get("/me", meHandler)
+  app.post("/user/update_pwd", updatePwdHandler)
 
   // Simple service health check
   app.get("/health", (c) => c.text("OK"))
