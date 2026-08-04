@@ -550,7 +550,94 @@ export const defaultDb = {
       flag: 0,
     },
 
-    // Group 14: OTHER
+    // Group 14: OTHER (https://doc.oplist.org/configuration/other)
+    // Aria2
+    {
+      key: "aria2_uri",
+      value: "http://localhost:6800/jsonrpc",
+      type: "string",
+      help: "Aria2 RPC Address",
+      group: 14,
+      flag: 0,
+    },
+    {
+      key: "aria2_secret",
+      value: "",
+      type: "string",
+      help: "Aria2 RPC Token / Secret",
+      group: 14,
+      flag: 0,
+    },
+    {
+      key: "aria2_path",
+      value: "",
+      type: "string",
+      help: "Aria2 Download Path",
+      group: 14,
+      flag: 0,
+    },
+    {
+      key: "aria2_keep_files",
+      value: "false",
+      type: "bool",
+      help: "Aria2 Keep Files After Download",
+      group: 14,
+      flag: 0,
+    },
+
+    // qBittorrent
+    {
+      key: "qbittorrent_url",
+      value: "http://localhost:8080",
+      type: "string",
+      help: "qBittorrent Web UI URL",
+      group: 14,
+      flag: 0,
+    },
+    {
+      key: "qbittorrent_seed_time",
+      value: "0",
+      type: "number",
+      help: "qBittorrent Seed Time Limit (Minutes)",
+      group: 14,
+      flag: 0,
+    },
+    {
+      key: "qbittorrent_path",
+      value: "",
+      type: "string",
+      help: "qBittorrent Download Path",
+      group: 14,
+      flag: 0,
+    },
+    {
+      key: "qbittorrent_username",
+      value: "",
+      type: "string",
+      help: "qBittorrent Username",
+      group: 14,
+      flag: 0,
+    },
+    {
+      key: "qbittorrent_password",
+      value: "",
+      type: "string",
+      help: "qBittorrent Password",
+      group: 14,
+      flag: 0,
+    },
+
+    // 115 / PikPak / Thunder
+    {
+      key: "token",
+      value: "",
+      type: "string",
+      help: "115 / PikPak / Thunder Token",
+      group: 14,
+      flag: 0,
+    },
+
+    // Miscellaneous
     {
       key: "package_download_disabled",
       value: "false",
