@@ -1,12 +1,15 @@
 name = "openlistnextpro"
 main = "src/backend/worker.ts"
-compatibility_date = "2025-01-01"
+compatibility_date = "2026-08-04"
 compatibility_flags = ["nodejs_compat"]
-
 
 [vars]
 ENVIRONMENT = "production"
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "admin"
+VITE_API_URL = "/api"
 
 [[kv_namespaces]]
 binding = "OPENLIST_KV"
-id = "OPENLIST_KV_ID"
+id = "c3217a3ee9b04d44bc0530affa038160"
+
