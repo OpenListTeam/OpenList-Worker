@@ -3,13 +3,13 @@ import { createMemo, Show } from "solid-js"
 import { RightIcon } from "./Icon"
 import { CgMoreO } from "solid-icons/cg"
 import { TbCheckbox } from "solid-icons/tb"
-import { objStore, selectAll, State, toggleCheckbox } from "~/store"
+import { objStore, selectAll, State, toggleCheckbox, userCan } from "~/store"
 import { bus } from "~/utils"
 import { operations } from "./operations"
 import { IoMagnetOutline } from "solid-icons/io"
 import { AiOutlineCloudUpload, AiOutlineSetting } from "solid-icons/ai"
 import { RiSystemRefreshLine } from "solid-icons/ri"
-import { usePath } from "~/hooks"
+import { usePath, useRouter } from "~/hooks"
 import { Motion } from "solid-motionone"
 import { isTocVisible, setTocDisabled } from "~/components"
 import { BiSolidBookContent } from "solid-icons/bi"
@@ -21,8 +21,16 @@ export const Right = () => {
     onOpen: () => localStorage.setItem("more-open", "true"),
   })
   const margin = createMemo(() => (isOpen() ? "$4" : "$5"))
-  const isFolder = createMemo(() => objStore.state === State.Folder)
+  const isFolder = createMemo(() =>
+    [State.Folder, State.FetchingMore].includes(objStore.state),
+  )
   const { refresh } = usePath()
+  const { isShare } = useRouter()
+
+  const canWrite = createMemo(
+    () => !isShare() && (objStore.write || userCan("write_content")),
+  )
+
   return (
     <Box
       class="left-toolbar-box"
@@ -65,58 +73,68 @@ export const Right = () => {
                   refresh(undefined, true)
                 }}
               />
-              <RightIcon
-                as={operations.new_file.icon}
-                tips="new_file"
-                onClick={() => {
-                  bus.emit("tool", "new_file")
-                }}
-              />
-              <RightIcon
-                as={operations.mkdir.icon}
-                p="$1_5"
-                tips="mkdir"
-                onClick={() => {
-                  bus.emit("tool", "mkdir")
-                }}
-              />
-              <RightIcon
-                as={operations.recursive_move.icon}
-                tips="recursive_move"
-                onClick={() => {
-                  bus.emit("tool", "recursiveMove")
-                }}
-              />
-              <RightIcon
-                as={operations.remove_empty_directory.icon}
-                tips="remove_empty_directory"
-                onClick={() => {
-                  bus.emit("tool", "removeEmptyDirectory")
-                }}
-              />
-              <RightIcon
-                as={operations.batch_rename.icon}
-                tips="batch_rename"
-                onClick={() => {
-                  selectAll(true)
-                  bus.emit("tool", "batchRename")
-                }}
-              />
-              <RightIcon
-                as={AiOutlineCloudUpload}
-                tips="upload"
-                onClick={() => {
-                  bus.emit("tool", "upload")
-                }}
-              />
-              <RightIcon
-                as={IoMagnetOutline}
-                pl="0"
-                tips="offline_download"
-                onClick={() => {
-                  bus.emit("tool", "offline_download")
-                }}
-              />
+              <Show when={canWrite()}>
+                <RightIcon
+                  as={operations.new_file.icon}
+                  tips="new_file"
+                  onClick={() => {
+                    bus.emit("tool", "new_file")
+                  }}
+                />
+                <RightIcon
+                  as={operations.mkdir.icon}
+                  p="$1_5"
+                  tips="mkdir"
+                  onClick={() => {
+                    bus.emit("tool", "mkdir")
+                  }}
+                />
+                <Show when={userCan("move")}>
+                  <RightIcon
+                    as={operations.recursive_move.icon}
+                    tips="recursive_move"
+                    onClick={() => {
+                      bus.emit("tool", "recursiveMove")
+                    }}
+                  />
+                </Show>
+                <Show when={userCan("delete")}>
+                  <RightIcon
+                    as={operations.remove_empty_directory.icon}
+                    tips="remove_empty_directory"
+                    onClick={() => {
+                      bus.emit("tool", "removeEmptyDirectory")
+                    }}
+                  />
+                </Show>
+                <Show when={userCan("rename")}>
+                  <RightIcon
+                    as={operations.batch_rename.icon}
+                    tips="batch_rename"
+                    onClick={() => {
+                      selectAll(true)
+                      bus.emit("tool", "batchRename")
+                    }}
+                  />
+                </Show>
+                <RightIcon
+                  as={AiOutlineCloudUpload}
+                  tips="upload"
+                  onClick={() => {
+                    bus.emit("tool", "upload")
+                  }}
+                />
+              </Show>
+              <Show when={!isShare() && userCan("offline_download")}>
+                <RightIcon
+                  as={IoMagnetOutline}
+                  pl="0"
+                  tips="offline_download"
+                  onClick={() => {
+                    bus.emit("tool", "offline_download")
+                  }}
+                />
+              </Show>
             </Show>
             <Show when={isTocVisible()}>
               <RightIcon

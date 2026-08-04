@@ -1,13 +1,15 @@
 import { Box, HStack, useColorModeValue } from "@hope-ui/solid"
-import { createMemo, For, Show } from "solid-js"
+import { createMemo, Show } from "solid-js"
 import {
   checkboxOpen,
   haveSelected,
   objStore,
   selectAll,
+  selectedObjs,
   State,
   userCan,
 } from "~/store"
+import { isArchive } from "~/store/archive"
 import { CopyLink } from "./CopyLink"
 import { CenterIcon } from "./Icon"
 import { bus } from "~/utils"
@@ -23,6 +25,14 @@ export const Center = () => {
       haveSelected(),
   )
   const { isShare } = useRouter()
+
+  const selected = createMemo(() => selectedObjs())
+  const count = createMemo(() => selected().length)
+  const canDecompress = createMemo(
+    () =>
+      count() > 0 && selected().every((o) => !o.is_dir && isArchive(o.name)),
+  )
+
   return (
     <Presence exitBeforeEnter>
       <Show when={show()}>
@@ -53,23 +63,51 @@ export const Center = () => {
                 backdropFilter: "blur(8px)",
               }}
             >
-              <Show when={!isShare() && objStore.write}>
-                <For
-                  each={
-                    ["rename", "move", "copy", "delete", "decompress"] as const
-                  }
-                >
-                  {(name) => {
-                    return userCan(name) ? (
-                      <CenterIcon
-                        name={name}
-                        onClick={() => {
-                          bus.emit("tool", name)
-                        }}
-                      />
-                    ) : null
-                  }}
-                </For>
+              <Show
+                when={
+                  !isShare() && (objStore.write || userCan("write_content"))
+                }
+              >
+                <Show when={count() === 1 && userCan("rename")}>
+                  <CenterIcon
+                    name="rename"
+                    onClick={() => {
+                      bus.emit("tool", "rename")
+                    }}
+                  />
+                </Show>
+                <Show when={userCan("move")}>
+                  <CenterIcon
+                    name="move"
+                    onClick={() => {
+                      bus.emit("tool", "move")
+                    }}
+                  />
+                </Show>
+                <Show when={userCan("copy")}>
+                  <CenterIcon
+                    name="copy"
+                    onClick={() => {
+                      bus.emit("tool", "copy")
+                    }}
+                  />
+                </Show>
+                <Show when={userCan("delete")}>
+                  <CenterIcon
+                    name="delete"
+                    onClick={() => {
+                      bus.emit("tool", "delete")
+                    }}
+                  />
+                </Show>
+                <Show when={canDecompress() && userCan("decompress")}>
+                  <CenterIcon
+                    name="decompress"
+                    onClick={() => {
+                      bus.emit("tool", "decompress")
+                    }}
+                  />
+                </Show>
               </Show>
               <Show when={userCan("share") && !isShare()}>
                 <CenterIcon
