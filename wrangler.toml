@@ -2,6 +2,9 @@ name = "openlistnextpro"
 main = "src/backend/worker.ts"
 compatibility_date = "2026-08-04"
 compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+preview_urls = false
+
 
 [vars]
 ENVIRONMENT = "production"
