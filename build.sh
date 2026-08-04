@@ -144,7 +144,7 @@ update_package_version() {
 # Build the project
 build_project() {
     log_step "==== Installing dependencies ===="
-    pnpm install
+    pnpm install --no-frozen-lockfile
 
     log_step "==== Building i18n ===="
     if [[ "$SKIP_I18N" == "false" ]]; then
