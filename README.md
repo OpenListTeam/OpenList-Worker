@@ -22,4 +22,10 @@ Credentials to access backend:
 
 Settings and Storage configurations are persisted purely via JSON: `public_data/db.json`.
 
+## Deployment
+
+For edge/serverless deployment instructions:
+- [Cloudflare Workers Deployment Guide](file:///c:/Users/aaajn/Documents/GitHub/openlistnext/docs/deploy-cloudflare-workers.md)
+
 Enjoy the modern React/Solid based file list.
+
