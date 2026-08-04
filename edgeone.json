@@ -2,6 +2,22 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/api/(.*)",
+      "destination": "/api/[...route]"
+    },
+    {
+      "source": "/d/(.*)",
+      "destination": "/api/[...route]"
+    },
+    {
+      "source": "/p/(.*)",
+      "destination": "/api/[...route]"
+    },
+    {
+      "source": "/sd/(.*)",
+      "destination": "/api/[...route]"
+    },
+    {
       "source": "/((?!api/|d/|sd/|p/).*)",
       "destination": "/index.html"
     }

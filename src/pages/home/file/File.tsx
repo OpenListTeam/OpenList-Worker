@@ -3,16 +3,14 @@ import { createMemo, ErrorBoundary, Show, Suspense } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { Error, FullLoading, SelectWrapper } from "~/components"
 import { objStore } from "~/store"
-import { useRouter, useT } from "~/hooks"
+import { useRouter } from "~/hooks"
 import { Download } from "../previews/download"
 import { OpenWith } from "./open-with"
 import { getPreviews } from "../previews"
 
 const File = () => {
-  const router = useRouter()
-  const { searchParams, setSearchParams } = router
-  const t = useT()
-  const previews = getPreviews({ ...objStore.obj, provider: objStore.provider }, router, t)
+  const { searchParams, setSearchParams } = useRouter()
+  const previews = getPreviews({ ...objStore.obj, provider: objStore.provider })
   const cur = createMemo(() => {
     if (!previews.length) return undefined
     const selected = searchParams["preview"]

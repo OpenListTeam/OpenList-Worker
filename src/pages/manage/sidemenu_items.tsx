@@ -10,6 +10,7 @@ import {
   BsFingerprint,
   BsFront,
   BsCloudUploadFill,
+  BsCloudArrowDownFill,
   BsSearch,
   BsBucket,
   BsHddNetwork,
@@ -22,7 +23,7 @@ import { OcWorkflow2 } from "solid-icons/oc"
 import { IoCopy, IoMove, IoHome, IoMagnetOutline } from "solid-icons/io"
 import { Component, lazy } from "solid-js"
 import { Group, UserRole } from "~/types"
-import { FaSolidBook, FaSolidDatabase } from "solid-icons/fa"
+import { FaSolidBook, FaSolidDatabase, FaBrandsQuinscape } from "solid-icons/fa"
 import { TbArchive } from "solid-icons/tb"
 
 export type SideMenuItem = SideMenuItemProps & {
@@ -34,7 +35,7 @@ const CommonSettings = lazy(() => import("./settings/Common"))
 
 export const side_menu_items: SideMenuItem[] = [
   {
-    title: "Supabase Status",
+    title: "KV Storage Status",
     icon: BsHddNetwork,
     to: "/@manage/dashboard",
     role: UserRole.GUEST,
@@ -121,18 +122,20 @@ export const side_menu_items: SideMenuItem[] = [
         role: UserRole.GENERAL,
         component: lazy(() => import("./tasks/offline_download")),
       },
-      // {
-      //   title: "manage.sidemenu.aria2",
-      //   icon: BsCloudArrowDownFill,
-      //   to: "/@manage/tasks/aria2",
-      //   component: lazy(() => import("./tasks/Aria2")),
-      // },
-      // {
-      //   title: "manage.sidemenu.qbit",
-      //   icon: FaBrandsQuinscape,
-      //   to: "/@manage/tasks/qbit",
-      //   component: lazy(() => import("./tasks/Qbit")),
-      // },
+      {
+        title: "manage.sidemenu.aria2",
+        icon: BsCloudArrowDownFill,
+        to: "/@manage/tasks/aria2",
+        role: UserRole.GENERAL,
+        component: lazy(() => import("./tasks/Aria2")),
+      },
+      {
+        title: "manage.sidemenu.qbit",
+        icon: FaBrandsQuinscape,
+        to: "/@manage/tasks/qbit",
+        role: UserRole.GENERAL,
+        component: lazy(() => import("./tasks/Qbit")),
+      },
       {
         title: "manage.sidemenu.upload",
         icon: BsCloudUploadFill,

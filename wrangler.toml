@@ -1,0 +1,11 @@
+name = "openlistnext"
+main = "src/backend/worker.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ENVIRONMENT = "production"
+
+[[kv_namespaces]]
+binding = "OPENLIST_KV"
+id = "OPENLIST_KV_ID"

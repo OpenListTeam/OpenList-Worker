@@ -1,6 +1,6 @@
 import { Hono } from "hono"
 import { verify } from "hono/jwt"
-import { getDb, saveDb, defaultDb } from "../internal/model/db"
+import { getDb, saveDb, defaultDb, getKvStatus } from "../internal/model/db"
 import { JWT_SECRET } from "./middlewares"
 
 export const adminRouter = new Hono()
@@ -10,7 +10,9 @@ adminRouter.use("*", async (c, next) => {
   if (!authHeader) {
     return c.json({ code: 401, message: "Unauthorized", data: null })
   }
-  const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.substring(7)
+    : authHeader
   try {
     const payload = await verify(token, JWT_SECRET, "HS256")
     if (payload.role !== 2) {
@@ -35,9 +37,20 @@ adminRouter.post("/storage/create", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const db = await getDb()
 
-  const mountPath = "/" + (body.mount_path || "").split("/").filter(Boolean).join("/")
-  if (db.storages.some((s: any) => "/" + (s.mount_path || "").split("/").filter(Boolean).join("/") === mountPath)) {
-    return c.json({ code: 400, message: "mount path already exists", data: null })
+  const mountPath =
+    "/" + (body.mount_path || "").split("/").filter(Boolean).join("/")
+  if (
+    db.storages.some(
+      (s: any) =>
+        "/" + (s.mount_path || "").split("/").filter(Boolean).join("/") ===
+        mountPath,
+    )
+  ) {
+    return c.json({
+      code: 400,
+      message: "mount path already exists",
+      data: null,
+    })
   }
 
   const newStorage = {
@@ -58,9 +71,21 @@ adminRouter.post("/storage/update", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const db = await getDb()
 
-  const mountPath = "/" + (body.mount_path || "").split("/").filter(Boolean).join("/")
-  if (db.storages.some((s: any) => s.id !== body.id && "/" + (s.mount_path || "").split("/").filter(Boolean).join("/") === mountPath)) {
-    return c.json({ code: 400, message: "mount path already exists", data: null })
+  const mountPath =
+    "/" + (body.mount_path || "").split("/").filter(Boolean).join("/")
+  if (
+    db.storages.some(
+      (s: any) =>
+        s.id !== body.id &&
+        "/" + (s.mount_path || "").split("/").filter(Boolean).join("/") ===
+          mountPath,
+    )
+  ) {
+    return c.json({
+      code: 400,
+      message: "mount path already exists",
+      data: null,
+    })
   }
 
   const idx = db.storages.findIndex((s: any) => s.id === body.id)
@@ -107,7 +132,7 @@ adminRouter.post("/storage/disable", async (c) => {
 })
 
 adminRouter.get("/driver/names", (c) => {
-  return c.json({ code: 200, message: "success", data: ["Local", "S3", "Onedrive"] })
+  return c.json({ code: 200, message: "success", data: ["S3", "Onedrive"] })
 })
 
 adminRouter.get("/driver/list", (c) => {
@@ -115,52 +140,31 @@ adminRouter.get("/driver/list", (c) => {
     code: 200,
     message: "success",
     data: {
-      Local: {
-        name: "Local",
-        default_mount_path: "/",
-        common: [
-          { name: "mount_path", type: "string", default: "", required: true, help: "1" },
-          { name: "order", type: "number", default: "0", required: false, help: "" },
-          { name: "remark", type: "string", default: "", required: false, help: "" },
-          { name: "cache_expiration", type: "number", default: "30", required: true, help: "The cache expiration time for this storage (minutes)" },
-          { name: "custom_cache_policies", type: "string", default: "", required: false },
-          { name: "web_proxy", type: "bool", default: "false", required: false },
-          { name: "webdav_policy", type: "select", options: "302 Redirect,Native", default: "302 Redirect", required: true },
-          { name: "down_proxy_url", type: "string", default: "", required: false },
-          { name: "disable_proxy_sign", type: "bool", default: "false", required: false },
-          { name: "order_by", type: "select", options: "Choose,name,size,modified", default: "Choose", required: false },
-          { name: "order_direction", type: "select", options: "Choose,asc,desc", default: "Choose", required: false },
-          { name: "folder_order", type: "select", options: "Choose,first,last", default: "Choose", required: false },
-          { name: "disable_index", type: "bool", default: "false", required: false },
-          { name: "enable_sign", type: "bool", default: "false", required: false }
-        ],
-        additional: [
-          {
-            name: "root_folder_path",
-            type: "string",
-            default: "",
-            required: true,
-          },
-        ],
-      },
       S3: {
         name: "S3",
         default_mount_path: "/s3",
         common: [
-          { name: "mount_path", type: "string", default: "", required: true, help: "1" },
-          { name: "order", type: "number", default: "0", required: false, help: "" },
-          { name: "remark", type: "string", default: "", required: false, help: "" },
-          { name: "cache_expiration", type: "number", default: "30", required: true, help: "The cache expiration time for this storage (minutes)" },
-          { name: "custom_cache_policies", type: "string", default: "", required: false },
-          { name: "web_proxy", type: "bool", default: "false", required: false },
-          { name: "webdav_policy", type: "select", options: "302 Redirect,Native", default: "302 Redirect", required: true },
-          { name: "down_proxy_url", type: "string", default: "", required: false },
-          { name: "disable_proxy_sign", type: "bool", default: "false", required: false },
-          { name: "order_by", type: "select", options: "Choose,name,size,modified", default: "Choose", required: false },
-          { name: "order_direction", type: "select", options: "Choose,asc,desc", default: "Choose", required: false },
-          { name: "folder_order", type: "select", options: "Choose,first,last", default: "Choose", required: false },
-          { name: "disable_index", type: "bool", default: "false", required: false },
-          { name: "enable_sign", type: "bool", default: "false", required: false }
+          {
+            name: "mount_path",
+            type: "string",
+            default: "",
+            required: true,
+            help: "1",
+          },
+          {
+            name: "order",
+            type: "number",
+            default: "0",
+            required: false,
+            help: "",
+          },
+          {
+            name: "remark",
+            type: "string",
+            default: "",
+            required: false,
+            help: "",
+          },
         ],
         additional: [
           {
@@ -168,27 +172,34 @@ adminRouter.get("/driver/list", (c) => {
             type: "string",
             default: "",
             required: true,
-          }
-        ]
+          },
+        ],
       },
       Onedrive: {
         name: "Onedrive",
         default_mount_path: "/onedrive",
         common: [
-          { name: "mount_path", type: "string", default: "", required: true, help: "1" },
-          { name: "order", type: "number", default: "0", required: false, help: "" },
-          { name: "remark", type: "string", default: "", required: false, help: "" },
-          { name: "cache_expiration", type: "number", default: "30", required: true, help: "The cache expiration time for this storage (minutes)" },
-          { name: "custom_cache_policies", type: "string", default: "", required: false },
-          { name: "web_proxy", type: "bool", default: "false", required: false },
-          { name: "webdav_policy", type: "select", options: "302 Redirect,Native", default: "302 Redirect", required: true },
-          { name: "down_proxy_url", type: "string", default: "", required: false },
-          { name: "disable_proxy_sign", type: "bool", default: "false", required: false },
-          { name: "order_by", type: "select", options: "Choose,name,size,modified", default: "Choose", required: false },
-          { name: "order_direction", type: "select", options: "Choose,asc,desc", default: "Choose", required: false },
-          { name: "folder_order", type: "select", options: "Choose,first,last", default: "Choose", required: false },
-          { name: "disable_index", type: "bool", default: "false", required: false },
-          { name: "enable_sign", type: "bool", default: "false", required: false }
+          {
+            name: "mount_path",
+            type: "string",
+            default: "",
+            required: true,
+            help: "1",
+          },
+          {
+            name: "order",
+            type: "number",
+            default: "0",
+            required: false,
+            help: "",
+          },
+          {
+            name: "remark",
+            type: "string",
+            default: "",
+            required: false,
+            help: "",
+          },
         ],
         additional: [
           {
@@ -290,7 +301,7 @@ adminRouter.get("/driver/list", (c) => {
           need_ms: false,
           default_root: "/",
         },
-      }
+      },
     },
   })
 })
@@ -335,11 +346,13 @@ adminRouter.post("/setting/default", async (c) => {
   }
   const groupNum = parseInt(groupQuery, 10)
   const db = await getDb()
-  
+
   db.settings = (db.settings || []).filter((s: any) => s.group !== groupNum)
-  const groupDefaults = defaultDb.settings.filter((s: any) => s.group === groupNum)
+  const groupDefaults = defaultDb.settings.filter(
+    (s: any) => s.group === groupNum,
+  )
   db.settings.push(...JSON.parse(JSON.stringify(groupDefaults)))
-  
+
   await saveDb(db)
   return c.json({ code: 200, message: "success", data: groupDefaults })
 })
@@ -373,99 +386,11 @@ adminRouter.get("/user/list", async (c) => {
   })
 })
 
-adminRouter.post("/user/create", async (c) => {
-  const body = await c.req.json().catch(() => ({}))
-  const db = await getDb()
-  if (db.users.some((u: any) => u.username === body.username)) {
-    return c.json({ code: 400, message: "Username already exists", data: null })
-  }
-  const newUser = {
-    ...body,
-    id: db.users.length ? Math.max(...db.users.map((u: any) => u.id)) + 1 : 1,
-  }
-  db.users.push(newUser)
-  await saveDb(db)
-  return c.json({ code: 200, message: "success", data: newUser })
-})
-
-adminRouter.post("/user/update", async (c) => {
-  const body = await c.req.json().catch(() => ({}))
-  const db = await getDb()
-  const idx = db.users.findIndex((u: any) => u.id === body.id)
-  if (idx !== -1) {
-    if (body.username && db.users.some((u: any) => u.id !== body.id && u.username === body.username)) {
-      return c.json({ code: 400, message: "Username already exists", data: null })
-    }
-    db.users[idx] = { ...db.users[idx], ...body }
-    await saveDb(db)
-  }
-  return c.json({ code: 200, message: "success", data: null })
-})
-
-adminRouter.post("/user/delete", async (c) => {
-  const id = parseInt(c.req.query("id") || "0", 10)
-  const db = await getDb()
-  if (id === 1) {
-    return c.json({ code: 400, message: "Cannot delete admin user", data: null })
-  }
-  db.users = db.users.filter((u: any) => u.id !== id)
-  await saveDb(db)
-  return c.json({ code: 200, message: "success", data: null })
-})
-
-adminRouter.get("/supabase/status", async (c) => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-
-  if (!supabaseUrl || !supabaseKey) {
-    return c.json({
-      code: 200,
-      message: "success",
-      data: {
-        configured: false,
-        tableExists: false,
-        error: null,
-        url: null
-      }
-    })
-  }
-
-  try {
-    const { createClient } = await import("@supabase/supabase-js")
-    const client = createClient(supabaseUrl, supabaseKey)
-    const { error } = await client.from("openlist_config").select("id").eq("id", 1).maybeSingle()
-    if (error) {
-      return c.json({
-        code: 200,
-        message: "success",
-        data: {
-          configured: true,
-          tableExists: false,
-          error: error.message || String(error),
-          url: supabaseUrl
-        }
-      })
-    }
-    return c.json({
-      code: 200,
-      message: "success",
-      data: {
-        configured: true,
-        tableExists: true,
-        error: null,
-        url: supabaseUrl
-      }
-    })
-  } catch (err: any) {
-    return c.json({
-      code: 200,
-      message: "success",
-      data: {
-        configured: true,
-        tableExists: false,
-        error: err.message || String(err),
-        url: supabaseUrl
-      }
-    })
-  }
+adminRouter.get("/kv/status", async (c) => {
+  const statusData = await getKvStatus(c.env)
+  return c.json({
+    code: 200,
+    message: "success",
+    data: statusData,
+  })
 })

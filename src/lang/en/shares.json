@@ -1,0 +1,42 @@
+{
+  "expires": "Expiration time",
+  "id": "ID",
+  "id_placeholder": "Custom ID (optional, leave empty for random)",
+  "accessed": "Access count",
+  "max_accessed": "Maximum access count",
+  "pwd": "Share code",
+  "files": "Share Paths",
+  "files_etc": " and {{more}} more",
+  "files_placeholder": "Enter file or folder paths, one per line",
+  "add_path": "Add Path",
+  "creator": "Creator",
+  "status": "Status",
+  "status_list": {
+    "disabled": "Disabled",
+    "invalid": "Invalid",
+    "work": "Work",
+    "denied": "No permission"
+  },
+  "remark": "Remark",
+  "readme": "Description",
+  "header": "Header Description",
+  "order_by": "Order By",
+  "order_bys": {
+    "name": "Name",
+    "size": "Size",
+    "modified": "Modified"
+  },
+  "order_direction": "Order Direction",
+  "order_directions": {
+    "asc": "Ascending",
+    "desc": "Descending"
+  },
+  "extract_folder": "Folder Order",
+  "extract_folders": {
+    "front": "Folders on Top",
+    "back": "Folders at Bottom"
+  },
+  "input_password": "Please enter Share Code",
+  "copy_msg": "Copy link",
+  "no_permission_tip": "To create a share, you need \"Share\" permission."
+}

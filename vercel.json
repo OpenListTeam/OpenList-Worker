@@ -3,15 +3,19 @@
   "rewrites": [
     {
       "source": "/d/(.*)",
-      "destination": "/api/d/$1"
+      "destination": "/api/[...route]"
     },
     {
       "source": "/sd/(.*)",
-      "destination": "/api/sd/$1"
+      "destination": "/api/[...route]"
     },
     {
       "source": "/p/(.*)",
-      "destination": "/api/p/$1"
+      "destination": "/api/[...route]"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/[...route]"
     },
     {
       "source": "/((?!api/|d/|sd/|p/).*)",

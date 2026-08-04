@@ -1,0 +1,65 @@
+{
+  "common": {
+    "export": "Export",
+    "export_title": "Export Storage to JSON",
+    "export_tips": "Please copy the storage JSON above.",
+    "import": "Import",
+    "import_title": "Import Storage from JSON",
+    "import_success": "Imported successfully!",
+    "import_tips": "Paste the exported storage JSON to import.",
+    "mount_path": "Mount Path",
+    "mount_path-tips": "The path you want to mount to, it is unique and cannot be repeated",
+    "driver": "Driver",
+    "order": "Order",
+    "order-tips": "Used for sorting",
+    "usage": "Usage",
+    "status": "Status",
+    "remark": "Remark",
+    "cache_expiration": "Cache Expiration",
+    "cache_expiration-tips": "The cache expiration time for this storage (minutes)",
+    "custom_cache_policies": "Custom Cache Policies",
+    "custom_cache_policies-tips": "The cache expiration rules for this storage (minutes)",
+    "down_proxy_url": "Download Proxy URL",
+    "disable_proxy_sign": "Disable Proxy Sign",
+    "disable_proxy_sign-tips": "Disable sign for download proxy URL",
+    "web_proxy": "Web Proxy",
+    "webdav_policy": "WebDAV Policy",
+    "proxy_range": "Proxy Range",
+    "proxy_range-tips": "Need to enable proxy",
+    "webdav_policys": {
+      "302_redirect": "302 redirect",
+      "use_proxy_url": "Use proxy URL",
+      "native_proxy": "Native proxy"
+    },
+    "order_by": "Order By",
+    "order_bys": {
+      "name": "Name",
+      "size": "Size",
+      "modified": "Modified"
+    },
+    "order_direction": "Order Direction",
+    "order_directions": {
+      "asc": "Ascending",
+      "desc": "Descending"
+    },
+    "extract_folder": "Folder Order",
+    "extract_folders": {
+      "front": " Folders on Top",
+      "back": "Folders at Bottom"
+    },
+    "enable_sign": "Enable sign",
+    "disable_index": "Disable index"
+  },
+  "table_fields": {
+    "status": {
+      "work": "Working",
+      "disabled": "Disabled"
+    }
+  },
+  "other": {
+    "start_load_success": "Start loading",
+    "load_all": "Reload All",
+    "filter_by_driver": "Filter by driver",
+    "table_layout": "Table layout"
+  }
+}

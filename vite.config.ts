@@ -34,12 +34,6 @@ function fixLegacyPolyfillDataSrc(): Plugin {
 }
 
 export default defineConfig({
-  define: {
-    "process.env.NEXT_PUBLIC_SUPABASE_URL": JSON.stringify(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL),
-    "process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY": JSON.stringify(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY),
-    "process.env.ADMIN_USERNAME": JSON.stringify(process.env.ADMIN_USERNAME),
-    "process.env.ADMIN_PASSWORD": JSON.stringify(process.env.ADMIN_PASSWORD),
-  },
   resolve: {
     alias: {
       "~": path.resolve(__dirname, "src"),
@@ -51,7 +45,12 @@ export default defineConfig({
     solidPlugin(),
     devServer({
       entry: "src/backend/index.ts",
-      exclude: [/^\/(?!api\/|d\/|sd\/|p\/).*/, /^\/assets\/.*/, /^\/favicon.ico$/, /^\/manifest.json$/],
+      exclude: [
+        /^\/(?!api\/|d\/|sd\/|p\/).*/,
+        /^\/assets\/.*/,
+        /^\/favicon.ico$/,
+        /^\/manifest.json$/,
+      ],
     }),
     legacy({
       targets: ["defaults"],

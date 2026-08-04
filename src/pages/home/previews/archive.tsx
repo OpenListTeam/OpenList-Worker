@@ -430,9 +430,7 @@ const Preview = () => {
     const file = files().find((f) => f.name === selectedFile())
     if (!file) return []
 
-    const router = useRouter()
-    const t = useT()
-    return getPreviews({ ...file, provider: objStore.provider }, router, t)
+    return getPreviews({ ...file, provider: objStore.provider })
   })
 
   const currentPreview = createMemo(() => {

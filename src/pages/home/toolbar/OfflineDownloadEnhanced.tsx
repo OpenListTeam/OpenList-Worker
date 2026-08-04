@@ -101,17 +101,8 @@ export const OfflineDownloadEnhanced = () => {
 
   // 下载工具列表
   const [tools, setTools] = createSignal([] as string[])
-  const [toolsLoading, reqTool] = useFetch(async (): PResp<string[]> => {
-    try {
-      const resp = (await r.get("/public/offline_download_tools")) as any
-      if (resp.code !== 200) {
-        return { code: 200, message: "success", data: [] }
-      }
-      return resp
-    } catch (e) {
-      console.warn("Failed to fetch offline download tools, using fallback:", e)
-      return { code: 200, message: "success", data: [] }
-    }
+  const [toolsLoading, reqTool] = useFetch((): PResp<string[]> => {
+    return r.get("/public/offline_download_tools")
   })
   const [tool, setTool] = createSignal("")
   const [deletePolicy, setDeletePolicy] = createSignal<DeletePolicy>(

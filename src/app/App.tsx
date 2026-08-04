@@ -23,7 +23,6 @@ import { globalStyles } from "./theme"
 const Home = lazy(() => import("~/pages/home/Layout"))
 const Manage = lazy(() => import("~/pages/manage"))
 const Login = lazy(() => import("~/pages/login"))
-const Test = lazy(() => import("~/pages/test"))
 
 const App: Component = () => {
   const t = useT()
@@ -46,31 +45,41 @@ const App: Component = () => {
   const [loading, data] = useLoading(() =>
     Promise.all([
       (async () => {
-        const resp = (await r.get("/public/settings")) as Resp<Record<string, string>>
+        const resp = (await r.get("/public/settings")) as Resp<
+          Record<string, string>
+        >
         if (resp && resp.code === 200) {
           setSettings(resp.data)
         } else {
-          console.warn("Using client-side fallback settings due to API failure:", resp?.message || "unknown")
+          console.warn(
+            "Using client-side fallback settings due to API failure:",
+            resp?.message || "unknown",
+          )
           const defaultSettings = {
             site_title: "OpenList",
             logo: "https://res.oplist.org/logo/logo.svg",
             favicon: "https://res.oplist.org/logo/logo.svg",
-            announcement: "欢迎使用 OpenList! (运行于 Serverless 离线 fallback 模式)",
+            announcement:
+              "欢迎使用 OpenList! (运行于 Serverless 离线 fallback 模式)",
             main_color: "#1890ff",
             home_container: "hope_container",
             home_icon: "openlist",
             settings_layout: "simple",
-            version: "v4.2.3"
+            version: "v4.2.3",
           }
           setSettings(defaultSettings)
         }
       })(),
       (async () => {
-        const resp = (await r.get("/public/archive_extensions")) as Resp<string[]>
+        const resp = (await r.get("/public/archive_extensions")) as Resp<
+          string[]
+        >
         if (resp && resp.code === 200) {
           setArchiveExtensions(resp.data)
         } else {
-          console.warn("Using client-side fallback archive extensions due to API failure")
+          console.warn(
+            "Using client-side fallback archive extensions due to API failure",
+          )
           setArchiveExtensions(["zip", "tar", "gz", "rar", "7z"])
         }
       })(),
@@ -96,7 +105,6 @@ const App: Component = () => {
       <Switch
         fallback={
           <Routes base={base_path}>
-            <Route path="/@test" component={Test} />
             <Route path="/@login" component={Login} />
             <Route
               path="/@manage/*"

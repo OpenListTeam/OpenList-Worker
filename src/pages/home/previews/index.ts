@@ -5,26 +5,26 @@ import { ext } from "~/utils"
 import { generateIframePreview } from "./iframe"
 import { useRouter, useT } from "~/hooks"
 
-type Ext = string[] | "*" | ((name: string, isShare: boolean) => boolean)
-type Prior = boolean | ((isShare: boolean) => boolean)
+type Ext = string[] | "*" | ((name: string) => boolean)
+type Prior = boolean | (() => boolean)
 
-const extsContains = (exts: Ext | undefined, name: string, isShare: boolean): boolean => {
+const extsContains = (exts: Ext | undefined, name: string): boolean => {
   if (exts === undefined) {
     return false
   } else if (exts === "*") {
     return true
   } else if (typeof exts === "function") {
-    return exts(name, isShare)
+    return (exts as (name: string) => boolean)(name)
   } else {
     return (exts as string[]).includes(ext(name).toLowerCase())
   }
 }
 
-const isPrior = (p: Prior, isShare: boolean): boolean => {
+const isPrior = (p: Prior): boolean => {
   if (typeof p === "boolean") {
     return p
   }
-  return p(isShare)
+  return p()
 }
 
 export interface Preview {
@@ -169,21 +169,23 @@ const previews: Preview[] = [
   },
   {
     key: "archive",
-    exts: (name: string, isShare: boolean) => {
+    exts: (name: string) => {
       const index = UserPermissions.findIndex(
         (item) => item === "read_archives",
       )
-      if (!isShare && !UserMethods.can(me(), index)) return false
-      if (isShare && !getSettingBool("share_archive_preview")) return false
+      const { isShare } = useRouter()
+      if (!isShare() && !UserMethods.can(me(), index)) return false
+      if (isShare() && !getSettingBool("share_archive_preview")) return false
       return isArchive(name)
     },
     component: lazy(() => import("./archive")),
-    prior: (isShare: boolean) => {
+    prior: () => {
+      const { isShare } = useRouter()
       return (
-        (!isShare &&
+        (!isShare() &&
           getSettingBool("preview_archives_by_default") &&
           !getSettingBool("preview_download_by_default")) ||
-        (isShare &&
+        (isShare() &&
           getSettingBool("share_preview_archives_by_default") &&
           !getSettingBool("share_preview_download_by_default"))
       )
@@ -194,10 +196,9 @@ const previews: Preview[] = [
 
 export const getPreviews = (
   file: Obj & { provider: string },
-  router: ReturnType<typeof useRouter>,
-  t: ReturnType<typeof useT>,
 ): PreviewComponent[] => {
-  const { searchParams, isShare } = router
+  const { searchParams, isShare } = useRouter()
+  const t = useT()
   const typeOverride =
     ObjType[searchParams["type"]?.toUpperCase() as keyof typeof ObjType]
   const res: PreviewComponent[] = []
@@ -212,18 +213,11 @@ export const getPreviews = (
       if (preview.provider && !preview.provider.test(file.provider)) {
         return
       }
-
-      let matches = false
       if (
         preview.type === file.type ||
-        (typeOverride && preview.type === typeOverride)
+        (typeOverride && preview.type === typeOverride) ||
+        extsContains(preview.exts, file.name)
       ) {
-        matches = true
-      } else if (preview.exts) {
-        matches = extsContains(preview.exts, file.name, isShare())
-      }
-
-      if (matches) {
         const r = {
           key: preview.key,
           name: t(`home.preview.names.${preview.key}`),
@@ -233,7 +227,7 @@ export const getPreviews = (
         if (isInArchive && preview.availableInArchive === false) {
           return
         }
-        if (!downloadPrior && isPrior(preview.prior, isShare())) {
+        if (!downloadPrior && isPrior(preview.prior)) {
           res.push(r)
         } else {
           subsequent.push(r)

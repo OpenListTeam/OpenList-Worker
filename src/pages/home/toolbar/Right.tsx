@@ -3,27 +3,26 @@ import { createMemo, Show } from "solid-js"
 import { RightIcon } from "./Icon"
 import { CgMoreO } from "solid-icons/cg"
 import { TbCheckbox } from "solid-icons/tb"
-import { objStore, selectAll, State, toggleCheckbox, userCan } from "~/store"
+import { objStore, selectAll, State, toggleCheckbox } from "~/store"
 import { bus } from "~/utils"
 import { operations } from "./operations"
 import { IoMagnetOutline } from "solid-icons/io"
 import { AiOutlineCloudUpload, AiOutlineSetting } from "solid-icons/ai"
 import { RiSystemRefreshLine } from "solid-icons/ri"
-import { usePath, useRouter } from "~/hooks"
+import { usePath } from "~/hooks"
 import { Motion } from "solid-motionone"
 import { isTocVisible, setTocDisabled } from "~/components"
 import { BiSolidBookContent } from "solid-icons/bi"
 
 export const Right = () => {
   const { isOpen, onToggle } = createDisclosure({
-    defaultIsOpen: localStorage.getItem("more-open") === "true",
+    defaultIsOpen: localStorage.getItem("more-open") !== "false",
     onClose: () => localStorage.setItem("more-open", "false"),
     onOpen: () => localStorage.setItem("more-open", "true"),
   })
   const margin = createMemo(() => (isOpen() ? "$4" : "$5"))
   const isFolder = createMemo(() => objStore.state === State.Folder)
   const { refresh } = usePath()
-  const { isShare } = useRouter()
   return (
     <Box
       class="left-toolbar-box"
@@ -49,8 +48,6 @@ export const Right = () => {
           p="$1"
           rounded="$lg"
           spacing="$1"
-          // shadow="0px 10px 30px -5px rgba(0, 0, 0, 0.3)"
-          // bgColor={useColorModeValue("white", "$neutral4")()}
           bgColor="$neutral1"
           as={Motion.div}
           initial={{ opacity: 0, scale: 0.9 }}
@@ -60,14 +57,7 @@ export const Right = () => {
           transition={{ duration: 0.2 }}
         >
           <VStack spacing="$1" class="left-toolbar-in">
-            <Show
-              when={
-                isFolder() &&
-                !isShare() &&
-                (userCan("write_content") || objStore.write_content_bypass) &&
-                objStore.write
-              }
-            >
+            <Show when={isFolder()}>
               <RightIcon
                 as={RiSystemRefreshLine}
                 tips="refresh"
@@ -90,12 +80,6 @@ export const Right = () => {
                   bus.emit("tool", "mkdir")
                 }}
               />
-            </Show>
-            <Show
-              when={
-                isFolder() && !isShare() && userCan("move") && objStore.write
-              }
-            >
               <RightIcon
                 as={operations.recursive_move.icon}
                 tips="recursive_move"
@@ -103,12 +87,6 @@ export const Right = () => {
                   bus.emit("tool", "recursiveMove")
                 }}
               />
-            </Show>
-            <Show
-              when={
-                isFolder() && !isShare() && userCan("delete") && objStore.write
-              }
-            >
               <RightIcon
                 as={operations.remove_empty_directory.icon}
                 tips="remove_empty_directory"
@@ -116,12 +94,6 @@ export const Right = () => {
                   bus.emit("tool", "removeEmptyDirectory")
                 }}
               />
-            </Show>
-            <Show
-              when={
-                isFolder() && !isShare() && userCan("rename") && objStore.write
-              }
-            >
               <RightIcon
                 as={operations.batch_rename.icon}
                 tips="batch_rename"
@@ -130,15 +102,6 @@ export const Right = () => {
                   bus.emit("tool", "batchRename")
                 }}
               />
-            </Show>
-            <Show
-              when={
-                isFolder() &&
-                !isShare() &&
-                (userCan("write_content") || objStore.write_content_bypass) &&
-                objStore.write
-              }
-            >
               <RightIcon
                 as={AiOutlineCloudUpload}
                 tips="upload"
@@ -146,15 +109,6 @@ export const Right = () => {
                   bus.emit("tool", "upload")
                 }}
               />
-            </Show>
-            <Show
-              when={
-                isFolder() &&
-                !isShare() &&
-                userCan("offline_download") &&
-                objStore.write
-              }
-            >
               <RightIcon
                 as={IoMagnetOutline}
                 pl="0"

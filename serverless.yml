@@ -1,6 +1,6 @@
 service: openlistnext
 
-frameworkVersion: '4'
+frameworkVersion: "4"
 
 provider:
   name: aws
@@ -14,9 +14,7 @@ provider:
     ADMIN_USERNAME: ${env:ADMIN_USERNAME, 'admin'}
     ADMIN_PASSWORD: ${env:ADMIN_PASSWORD, 'admin'}
     DATABASE_JSON: ${env:DATABASE_JSON, ''}
-    NEXT_PUBLIC_SUPABASE_URL: ${env:NEXT_PUBLIC_SUPABASE_URL, ''}
-    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${env:NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, ''}
-    AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1' # Performance optimization for keep-alive
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1" # Performance optimization for keep-alive
 
 build:
   esbuild:
@@ -27,10 +25,10 @@ build:
     platform: node
     format: esm
     exclude:
-      - '@aws-sdk/*'
+      - "@aws-sdk/*"
 
 functions:
   api:
     handler: handler.handler
     events:
-      - httpApi: '*'
+      - httpApi: "*"
