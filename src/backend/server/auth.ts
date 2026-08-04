@@ -1,6 +1,6 @@
 import { Hono } from "hono"
 import { sign, verify } from "hono/jwt"
-import { getDb } from "../internal/model/db"
+import { getDb, saveDb } from "../internal/model/db"
 import { JWT_SECRET } from "./middlewares"
 
 export const authRouter = new Hono()
@@ -14,63 +14,80 @@ export async function hashPassword(plainPassword: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
 }
 
+// Ensure admin user exists in DB KV space with a default password if unset
+async function getOrInitUsers(envCtx: any) {
+  const db = await getDb(envCtx)
+  if (!db.users || db.users.length === 0) {
+    const defaultAdminHash = await hashPassword("admin")
+    db.users = [
+      {
+        id: 1,
+        username: "admin",
+        password: defaultAdminHash,
+        role: 2,
+        permission: 0,
+        base_path: "/",
+        disabled: false,
+        sso_id: "",
+        allow_ldap: false,
+        pwd_update_at: new Date().toISOString(),
+      },
+      {
+        id: 2,
+        username: "guest",
+        password: "",
+        role: 1,
+        permission: 0,
+        base_path: "/",
+        disabled: false,
+        sso_id: "",
+        allow_ldap: false,
+        pwd_update_at: new Date().toISOString(),
+      },
+    ]
+    await saveDb(db, envCtx)
+  }
+  return { db, users: db.users }
+}
+
 // POST /api/auth/login
 authRouter.post("/login", async (c) => {
   const body = await c.req.json().catch(() => ({}))
-  const username = body.username || ""
+  const username = (body.username || "").trim()
   const rawPassword = body.password || ""
   const hashedPassword = await hashPassword(rawPassword)
 
-  const db = await getDb(c.env)
-  const users = db.users || []
-  let matchedUser = users.find(
+  const { users } = await getOrInitUsers(c.env)
+  const defaultAdminHash = await hashPassword("admin")
+
+  const matchedUser = users.find(
     (u: any) => u.username === username && !u.disabled,
   )
 
-  const adminUsername = process.env.ADMIN_USERNAME || "admin"
-  const adminPasswordPlain = process.env.ADMIN_PASSWORD || "admin"
-  const adminPasswordHashed = await hashPassword(adminPasswordPlain)
-
-  let isAuthenticated = false
   if (matchedUser) {
-    if (
-      matchedUser.password === rawPassword ||
-      matchedUser.password === hashedPassword ||
-      (matchedUser.username === adminUsername &&
-        (rawPassword === adminPasswordPlain ||
-          hashedPassword === adminPasswordHashed))
-    ) {
-      isAuthenticated = true
-    }
-  } else if (
-    username === adminUsername &&
-    (rawPassword === adminPasswordPlain ||
-      hashedPassword === adminPasswordHashed)
-  ) {
-    matchedUser = {
-      id: 1,
-      username: adminUsername,
-      role: 2,
-      permission: 0,
-      base_path: "/",
-      disabled: false,
-    }
-    isAuthenticated = true
-  }
+    const userPass = matchedUser.password || ""
+    const isPasswordValid =
+      userPass === rawPassword ||
+      userPass === hashedPassword ||
+      (userPass === "" &&
+        (rawPassword === "admin" || hashedPassword === defaultAdminHash)) ||
+      (userPass === "admin" &&
+        (rawPassword === "admin" || hashedPassword === defaultAdminHash))
 
-  if (isAuthenticated && matchedUser) {
-    const payload = {
-      id: matchedUser.id,
-      username: matchedUser.username,
-      role: matchedUser.role,
-      exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7, // 7 days
+    if (isPasswordValid) {
+      const payload = {
+        id: matchedUser.id,
+        username: matchedUser.username,
+        role: matchedUser.role,
+        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
+      }
+      const token = await sign(payload, JWT_SECRET)
+      return c.json({
+        code: 200,
+        message: "success",
+        data: { token },
+      })
     }
-    const token = await sign(payload, JWT_SECRET)
-    return c.json({
-      code: 200,
-      message: "success",
-      data: { token },
-    })
   }
 
   return c.json({ code: 401, message: "Invalid credentials", data: null }, 401)
@@ -79,62 +96,105 @@ authRouter.post("/login", async (c) => {
 // POST /api/auth/login/hash
 authRouter.post("/login/hash", async (c) => {
   const body = await c.req.json().catch(() => ({}))
-  const username = body.username || ""
+  const username = (body.username || "").trim()
   const inputHash = body.password || ""
 
-  const db = await getDb(c.env)
-  const users = db.users || []
-  let matchedUser = users.find(
+  const { users } = await getOrInitUsers(c.env)
+  const defaultAdminHash = await hashPassword("admin")
+
+  const matchedUser = users.find(
     (u: any) => u.username === username && !u.disabled,
   )
 
-  const adminUsername = process.env.ADMIN_USERNAME || "admin"
-  const adminPasswordPlain = process.env.ADMIN_PASSWORD || "admin"
-  const adminPasswordHashed = await hashPassword(adminPasswordPlain)
-
-  let isAuthenticated = false
   if (matchedUser) {
-    const dbUserHashed =
-      matchedUser.password && matchedUser.password.length === 64
-        ? matchedUser.password
-        : await hashPassword(matchedUser.password || "")
-    if (
-      inputHash === dbUserHashed ||
-      inputHash === matchedUser.password ||
-      (matchedUser.username === adminUsername &&
-        inputHash === adminPasswordHashed)
-    ) {
-      isAuthenticated = true
-    }
-  } else if (username === adminUsername && inputHash === adminPasswordHashed) {
-    matchedUser = {
-      id: 1,
-      username: adminUsername,
-      role: 2,
-      permission: 0,
-      base_path: "/",
-      disabled: false,
-    }
-    isAuthenticated = true
-  }
+    const userPass = matchedUser.password || ""
+    const userPassHash =
+      userPass.length === 64
+        ? userPass
+        : await hashPassword(userPass || "admin")
 
-  if (isAuthenticated && matchedUser) {
-    const payload = {
-      id: matchedUser.id,
-      username: matchedUser.username,
-      role: matchedUser.role,
-      exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
+    const isHashValid =
+      inputHash === userPass ||
+      inputHash === userPassHash ||
+      ((userPass === "" || userPass === "admin") &&
+        inputHash === defaultAdminHash)
+
+    if (isHashValid) {
+      const payload = {
+        id: matchedUser.id,
+        username: matchedUser.username,
+        role: matchedUser.role,
+        exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
+      }
+      const token = await sign(payload, JWT_SECRET)
+      return c.json({
+        code: 200,
+        message: "success",
+        data: { token },
+      })
     }
-    const token = await sign(payload, JWT_SECRET)
-    return c.json({
-      code: 200,
-      message: "success",
-      data: { token },
-    })
   }
 
   return c.json({ code: 401, message: "Invalid credentials", data: null }, 401)
 })
+
+// POST /api/me/update or /me/update
+export const meUpdateHandler = async (c: any) => {
+  const authHeader = c.req.header("Authorization")
+  if (!authHeader) {
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  }
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.substring(7)
+    : authHeader
+  try {
+    const payload = await verify(token, JWT_SECRET, "HS256")
+    const body = await c.req.json().catch(() => ({}))
+    const db = await getDb(c.env)
+    if (!db.users) db.users = []
+
+    const userIdx = db.users.findIndex(
+      (u: any) => u.id === payload.id || u.username === payload.username,
+    )
+    if (userIdx === -1) {
+      return c.json({ code: 404, message: "User not found", data: null }, 404)
+    }
+
+    const user = db.users[userIdx]
+    if (body.username && body.username.trim() !== "") {
+      const newUsername = body.username.trim()
+      const exists = db.users.some(
+        (u: any) => u.id !== user.id && u.username === newUsername,
+      )
+      if (exists) {
+        return c.json(
+          { code: 400, message: "Username already exists", data: null },
+          400,
+        )
+      }
+      user.username = newUsername
+    }
+
+    if (body.password && body.password.trim() !== "") {
+      user.password = await hashPassword(body.password.trim())
+      user.pwd_update_at = new Date().toISOString()
+    }
+
+    db.users[userIdx] = user
+    await saveDb(db, c.env)
+
+    return c.json({ code: 200, message: "success", data: null })
+  } catch (e: any) {
+    return c.json(
+      {
+        code: 401,
+        message: `Unauthorized: ${e.message || "Invalid token"}`,
+        data: null,
+      },
+      401,
+    )
+  }
+}
 
 // GET /api/me
 export const meHandler = async (c: any) => {
@@ -154,8 +214,7 @@ export const meHandler = async (c: any) => {
     : authHeader
   try {
     const payload = await verify(token, JWT_SECRET, "HS256")
-    const db = await getDb(c.env)
-    const users = db.users || []
+    const { users } = await getOrInitUsers(c.env)
     const dbUser = users.find(
       (u: any) => u.id === payload.id || u.username === payload.username,
     )
@@ -204,3 +263,4 @@ export const meHandler = async (c: any) => {
 }
 
 authRouter.get("/me", meHandler)
+authRouter.post("/me/update", meUpdateHandler)
