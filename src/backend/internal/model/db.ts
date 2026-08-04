@@ -73,6 +73,7 @@ export function getKvBinding(envCtx?: any): {
 
   const candidates = [
     { key: "OPENLIST_KV", name: "OPENLIST_KV" },
+    { key: "OPENLIST_KV_ID", name: "OPENLIST_KV_ID" },
     { key: "KV", name: "KV" },
     { key: "CF_KV", name: "CF_KV" },
     { key: "DATABASE_KV", name: "DATABASE_KV" },

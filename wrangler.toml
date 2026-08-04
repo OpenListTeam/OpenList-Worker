@@ -5,7 +5,6 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = false
 preview_urls = false
 
-
 [vars]
 ENVIRONMENT = "production"
 ADMIN_USERNAME = "admin"
@@ -14,6 +13,7 @@ VITE_API_URL = "/api"
 
 [[kv_namespaces]]
 binding = "OPENLIST_KV"
-id = "12345"
+id = "c3217a3ee9b04d44bc0530affa038160"
+
 
 
