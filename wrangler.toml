@@ -13,7 +13,8 @@ VITE_API_URL = "/api"
 
 [[kv_namespaces]]
 binding = "OPENLIST_KV"
-id = "c3217a3ee9b04d44bc0530affa038160"
+id = "0e48234248a84d4dbdc5a70e886773ea"
+
 
 
 
