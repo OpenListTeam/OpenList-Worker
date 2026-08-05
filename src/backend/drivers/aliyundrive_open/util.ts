@@ -63,11 +63,12 @@ export class AliyunOpenClient {
       onlineApis.push(this.addition.api_url_address.trim())
     }
     onlineApis.push(
-      "https://api.alist.nn.ci/alist/ali_open/token",
-      "https://api.oplist.org/alist/ali_open/token",
-      "https://api-sam.oplist.org/aliyundrive/token",
-      "https://api.alist.nn.ci/aliyundrive/token",
+      "https://api.oplist.org/alicloud/renewapi",
+      "https://api.oplist.org/ali_open/token",
       "https://api.oplist.org/aliyundrive/token",
+      "https://api.alist.nn.ci/alist/ali_open/token",
+      "https://api.alist.nn.ci/aliyundrive/token",
+      "https://api-sam.oplist.org/aliyundrive/token",
     )
 
     const driverTxt =
@@ -77,6 +78,7 @@ export class AliyunOpenClient {
       try {
         const params = new URLSearchParams({
           refresh_ui: token,
+          refresh_token: token,
           server_use: "true",
           driver_txt: driverTxt,
         })

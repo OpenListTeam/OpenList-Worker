@@ -196,7 +196,7 @@ const driverConfigs: Record<string, any> = {
       {
         name: "api_url_address",
         type: "string",
-        default: "https://api.alist.nn.ci/alist/ali_open/token",
+        default: "https://api.oplist.org/alicloud/renewapi",
         required: false,
         help: "true",
       },
