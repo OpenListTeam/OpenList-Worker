@@ -69,41 +69,80 @@ rawRouter.get("/*", async (c) => {
               console.log(
                 `[rawRouter] Proxying download for '${reqPath}' via ${resolved.storage.driver}`,
               )
+              // Forward all relevant request headers to upstream
               const headers: Record<string, string> = {
                 "User-Agent":
                   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
               }
+              // Forward Range header for video/audio seeking
               const rangeReq = c.req.header("Range")
-              if (rangeReq) {
-                headers["Range"] = rangeReq
-              }
+              if (rangeReq) headers["Range"] = rangeReq
+              const ifRange = c.req.header("If-Range")
+              if (ifRange) headers["If-Range"] = ifRange
+              const ifNoneMatch = c.req.header("If-None-Match")
+              if (ifNoneMatch) headers["If-None-Match"] = ifNoneMatch
+              const ifModifiedSince = c.req.header("If-Modified-Since")
+              if (ifModifiedSince)
+                headers["If-Modified-Since"] = ifModifiedSince
 
               const upstreamRes = await fetch(fileItem.raw_url, { headers })
 
+              // CORS headers
               c.header("Access-Control-Allow-Origin", "*")
               c.header("Access-Control-Allow-Methods", "GET, OPTIONS, HEAD")
-              c.header("Access-Control-Allow-Headers", "*")
+              c.header(
+                "Access-Control-Expose-Headers",
+                "Content-Range, Accept-Ranges, Content-Length, Content-Disposition",
+              )
 
-              const defaultContentType = reqPath.toLowerCase().endsWith(".pdf")
-                ? "application/pdf"
-                : "application/octet-stream"
-              const contentType =
-                upstreamRes.headers.get("content-type") || defaultContentType
-              c.header("Content-Type", contentType)
+              // Content-Type: prefer upstream, fallback by extension
+              const extMap: Record<string, string> = {
+                pdf: "application/pdf",
+                mp4: "video/mp4",
+                webm: "video/webm",
+                mkv: "video/x-matroska",
+                mp3: "audio/mpeg",
+                flac: "audio/flac",
+                m3u8: "application/vnd.apple.mpegurl",
+                ts: "video/mp2t",
+                png: "image/png",
+                jpg: "image/jpeg",
+                jpeg: "image/jpeg",
+                gif: "image/gif",
+                webp: "image/webp",
+                svg: "image/svg+xml",
+              }
+              const fileExt = reqPath.split(".").pop()?.toLowerCase() || ""
+              const defaultContentType =
+                extMap[fileExt] || "application/octet-stream"
+              c.header(
+                "Content-Type",
+                upstreamRes.headers.get("content-type") || defaultContentType,
+              )
 
-              if (upstreamRes.headers.get("content-length")) {
-                c.header(
-                  "Content-Length",
-                  upstreamRes.headers.get("content-length")!,
-                )
-              }
-              if (upstreamRes.headers.get("content-range")) {
-                c.header(
-                  "Content-Range",
-                  upstreamRes.headers.get("content-range")!,
-                )
-                c.header("Accept-Ranges", "bytes")
-              }
+              // Forward range/length headers
+              const contentLength = upstreamRes.headers.get("content-length")
+              if (contentLength) c.header("Content-Length", contentLength)
+              const contentRange = upstreamRes.headers.get("content-range")
+              if (contentRange) c.header("Content-Range", contentRange)
+              // Always advertise range support so video/audio players can seek
+              c.header(
+                "Accept-Ranges",
+                upstreamRes.headers.get("accept-ranges") || "bytes",
+              )
+
+              // Forward caching headers
+              const etag = upstreamRes.headers.get("etag")
+              if (etag) c.header("ETag", etag)
+              const lastModified = upstreamRes.headers.get("last-modified")
+              if (lastModified) c.header("Last-Modified", lastModified)
+              const cacheControl = upstreamRes.headers.get("cache-control")
+              if (cacheControl) c.header("Cache-Control", cacheControl)
+              const contentDisposition = upstreamRes.headers.get(
+                "content-disposition",
+              )
+              if (contentDisposition)
+                c.header("Content-Disposition", contentDisposition)
 
               return c.body(upstreamRes.body as any, upstreamRes.status as any)
             } else {
