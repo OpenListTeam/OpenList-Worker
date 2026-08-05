@@ -9,7 +9,7 @@ publicRouter.get("/settings", async (c) => {
   const settingsObj: Record<string, string> = {
     title: "OpenList Serverless",
     main_color: "#1890ff",
-    version: "v4.2.3",
+    version: "v4.2.4",
     logo: "https://res.oplist.org/logo/logo.svg",
     favicon: "https://res.oplist.org/logo/logo.svg",
     allow_indexed: "true",
