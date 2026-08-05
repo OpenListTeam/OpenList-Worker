@@ -1,9 +1,7 @@
 import { getDb, resolvePath } from "../model/db"
 import { S3Driver } from "../../drivers/s3"
 import { Onedrive } from "../../drivers/onedrive/driver"
-import { Aliyundrive } from "../../drivers/aliyundrive_open/aliyundrive_driver"
 import { AliyundriveOpen } from "../../drivers/aliyundrive_open/driver"
-import { AliyundriveShare } from "../../drivers/aliyundrive_open/share_driver"
 import { GoogleDrive } from "../../drivers/google_drive/driver"
 import { StorageDriver, FileItem } from "../driver/base"
 
@@ -43,23 +41,13 @@ export async function getDriver(
       console.error("onedrive init failed:", e)
       throw e
     }
-  } else if (normDriver === "aliyundrive") {
-    // 旧版 Web API（不需要 client_id）
-    driver = new Aliyundrive(parseAddition(storageConfig))
-    await driver.init?.()
   } else if (
+    normDriver === "aliyundrive" ||
     normDriver === "aliyundriveopen" ||
-    normDriver === "aliyundriveopen"
-  ) {
-    // 新版 OpenAPI（推荐）
-    driver = new AliyundriveOpen(parseAddition(storageConfig))
-    await driver.init?.()
-  } else if (
-    normDriver === "aliyundriveshare" ||
     normDriver === "aliyundriveshare"
   ) {
-    // 分享链接（只读）
-    driver = new AliyundriveShare(parseAddition(storageConfig))
+    // 统一只保留阿里云盘 OAuth2 (AliyundriveOpen)
+    driver = new AliyundriveOpen(parseAddition(storageConfig))
     await driver.init?.()
   } else if (normDriver === "googledrive") {
     driver = new GoogleDrive(parseAddition(storageConfig))

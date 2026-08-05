@@ -135,14 +135,7 @@ adminRouter.get("/driver/names", (c) => {
   return c.json({
     code: 200,
     message: "success",
-    data: [
-      "Aliyundrive",
-      "AliyundriveOpen",
-      "AliyundriveShare",
-      "GoogleDrive",
-      "Onedrive",
-      "S3",
-    ],
+    data: ["AliyundriveOpen", "GoogleDrive", "Onedrive", "S3"],
   })
 })
 
@@ -160,68 +153,9 @@ const COMMON_FIELDS = [
 ]
 
 const driverConfigs: Record<string, any> = {
-  Aliyundrive: {
-    name: "Aliyundrive",
-    default_mount_path: "/aliyundrive",
-    common: COMMON_FIELDS,
-    additional: [
-      {
-        name: "refresh_token",
-        type: "text",
-        default: "",
-        required: true,
-        help: "true",
-      },
-      {
-        name: "drive_type",
-        type: "select",
-        options: "default,resource,backup",
-        default: "default",
-        required: true,
-      },
-      { name: "drive_id", type: "string", default: "", required: false },
-      {
-        name: "root_folder_id",
-        type: "string",
-        default: "root",
-        required: true,
-      },
-      {
-        name: "order_by",
-        type: "select",
-        options: "updated_at,name,size,created_at",
-        default: "updated_at",
-        required: false,
-      },
-      {
-        name: "order_direction",
-        type: "select",
-        options: "DESC,ASC",
-        default: "DESC",
-        required: false,
-      },
-      {
-        name: "remove_way",
-        type: "select",
-        options: "trash,delete",
-        default: "trash",
-        required: false,
-      },
-    ],
-    config: {
-      name: "Aliyundrive",
-      local_sort: true,
-      only_local: false,
-      only_proxy: false,
-      no_cache: false,
-      no_upload: false,
-      need_ms: false,
-      default_root: "root",
-    },
-  },
   AliyundriveOpen: {
     name: "AliyundriveOpen",
-    default_mount_path: "/aliyundrive-open",
+    default_mount_path: "/aliyundrive",
     common: COMMON_FIELDS,
     additional: [
       {
@@ -290,45 +224,6 @@ const driverConfigs: Record<string, any> = {
       only_proxy: false,
       no_cache: false,
       no_upload: false,
-      need_ms: false,
-      default_root: "root",
-    },
-  },
-  AliyundriveShare: {
-    name: "AliyundriveShare",
-    default_mount_path: "/aliyundrive-share",
-    common: COMMON_FIELDS,
-    additional: [
-      { name: "share_id", type: "string", default: "", required: true },
-      { name: "share_pwd", type: "string", default: "", required: false },
-      {
-        name: "root_folder_id",
-        type: "string",
-        default: "root",
-        required: false,
-      },
-      {
-        name: "order_by",
-        type: "select",
-        options: "updated_at,name,size,created_at",
-        default: "updated_at",
-        required: false,
-      },
-      {
-        name: "order_direction",
-        type: "select",
-        options: "DESC,ASC",
-        default: "DESC",
-        required: false,
-      },
-    ],
-    config: {
-      name: "AliyundriveShare",
-      local_sort: true,
-      only_local: false,
-      only_proxy: false,
-      no_cache: false,
-      no_upload: true,
       need_ms: false,
       default_root: "root",
     },
