@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { fsRouter } from "./fs"
-import { authRouter, meHandler, meUpdateHandler } from "./auth"
+import { authRouter, meHandler, meUpdateHandler, logoutHandler } from "./auth"
 import { adminRouter } from "./admin"
 import { rawRouter } from "./raw"
 import { publicRouter } from "./public"
@@ -43,6 +43,8 @@ export function setupRouter(app: Hono) {
   app.get("/me", meHandler)
   app.post("/me/update", meUpdateHandler)
   app.post("/user/update_pwd", updatePwdHandler)
+  app.get("/logout", logoutHandler)
+  app.post("/logout", logoutHandler)
 
   // Simple service health check
   app.get("/health", (c) => c.text("OK"))

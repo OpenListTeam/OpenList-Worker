@@ -264,3 +264,14 @@ export const meHandler = async (c: any) => {
 
 authRouter.get("/me", meHandler)
 authRouter.post("/me/update", meUpdateHandler)
+
+export const logoutHandler = (c: any) => {
+  return c.json({
+    code: 200,
+    message: "success",
+    data: null,
+  })
+}
+
+authRouter.get("/logout", logoutHandler)
+authRouter.post("/logout", logoutHandler)
