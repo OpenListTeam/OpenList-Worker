@@ -1,4 +1,8 @@
-import { StorageDriver, FileItem } from "../../internal/driver/base"
+import {
+  StorageDriver,
+  FileItem,
+  calcFileType,
+} from "../../internal/driver/base"
 import { QuarkAddition, QuarkFile } from "./types"
 import { QuarkClient } from "./util"
 
@@ -14,7 +18,7 @@ function quarkFileToFileItem(f: QuarkFile): FileItem {
     is_dir: isDir,
     modified: modTime,
     sign: "",
-    type: isDir ? 1 : 0,
+    type: calcFileType(f.file_name, isDir),
     thumb: f.thumbnail || "",
     raw_url: "",
   }

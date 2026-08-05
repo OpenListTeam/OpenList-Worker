@@ -194,6 +194,115 @@ const previews: Preview[] = [
   },
 ]
 
+export const getObjTypeByName = (name: string): ObjType => {
+  const e = ext(name).toLowerCase()
+  const videoExts = [
+    "mp4",
+    "mkv",
+    "avi",
+    "mov",
+    "flv",
+    "wmv",
+    "ts",
+    "m2ts",
+    "m4v",
+    "rmvb",
+    "webm",
+    "3gp",
+    "asf",
+    "vob",
+    "ogv",
+    "rm",
+    "f4v",
+  ]
+  if (videoExts.includes(e)) return ObjType.VIDEO
+
+  const audioExts = [
+    "mp3",
+    "flac",
+    "aac",
+    "wav",
+    "ogg",
+    "m4a",
+    "opus",
+    "wma",
+    "ape",
+    "alac",
+    "aiff",
+    "mid",
+    "midi",
+  ]
+  if (audioExts.includes(e)) return ObjType.AUDIO
+
+  const textExts = [
+    "txt",
+    "md",
+    "markdown",
+    "json",
+    "js",
+    "ts",
+    "jsx",
+    "tsx",
+    "css",
+    "scss",
+    "html",
+    "htm",
+    "xml",
+    "yaml",
+    "yml",
+    "ini",
+    "conf",
+    "env",
+    "log",
+    "sql",
+    "py",
+    "java",
+    "c",
+    "cpp",
+    "h",
+    "hpp",
+    "go",
+    "rs",
+    "sh",
+    "bat",
+    "cmd",
+    "ps1",
+    "php",
+    "rb",
+    "swift",
+    "kt",
+    "cs",
+    "vue",
+    "svelte",
+    "json5",
+    "toml",
+  ]
+  if (textExts.includes(e)) return ObjType.TEXT
+
+  const imageExts = [
+    "jpg",
+    "jpeg",
+    "png",
+    "gif",
+    "bmp",
+    "webp",
+    "svg",
+    "ico",
+    "tiff",
+    "tif",
+    "heic",
+    "heif",
+    "avif",
+    "vvc",
+    "avc",
+    "psd",
+    "ai",
+  ]
+  if (imageExts.includes(e)) return ObjType.IMAGE
+
+  return ObjType.UNKNOWN
+}
+
 export const getPreviews = (
   file: Obj & { provider: string },
 ): PreviewComponent[] => {
@@ -201,6 +310,11 @@ export const getPreviews = (
   const t = useT()
   const typeOverride =
     ObjType[searchParams["type"]?.toUpperCase() as keyof typeof ObjType]
+  const effectiveType =
+    typeOverride ||
+    (file.type && file.type !== ObjType.UNKNOWN
+      ? file.type
+      : getObjTypeByName(file.name))
   const res: PreviewComponent[] = []
   const subsequent: PreviewComponent[] = []
   const downloadPrior =
@@ -214,8 +328,7 @@ export const getPreviews = (
         return
       }
       if (
-        preview.type === file.type ||
-        (typeOverride && preview.type === typeOverride) ||
+        preview.type === effectiveType ||
         extsContains(preview.exts, file.name)
       ) {
         const r = {

@@ -1,11 +1,13 @@
-import { getDb, resolvePath } from "../model/db"
+import { resolvePath, getDb } from "../model/db"
+import { FileItem, StorageDriver, calcFileType } from "../driver/base"
+import { LocalDriver } from "../../drivers/local"
 import { S3Driver } from "../../drivers/s3"
 import { Onedrive } from "../../drivers/onedrive/driver"
 import { AliyundriveOpen } from "../../drivers/aliyundrive_open/driver"
 import { GoogleDrive } from "../../drivers/google_drive/driver"
 import { QuarkDriver } from "../../drivers/quark/driver"
-import { StorageDriver, FileItem } from "../driver/base"
 
+const localDriver = new LocalDriver()
 const s3Driver = new S3Driver()
 
 const driverCache = new Map<string, StorageDriver>()
@@ -22,9 +24,16 @@ export async function getDriver(
   driverName: string,
   storageConfig?: any,
 ): Promise<StorageDriver> {
-  const cacheKey = storageConfig
-    ? `${driverName}_${storageConfig.id || storageConfig.mount_path}`
-    : driverName
+  const normDriver = (driverName || "").toLowerCase().replace(/_/g, "")
+  if (normDriver === "local") {
+    return localDriver
+  }
+
+  if (!storageConfig) {
+    return s3Driver
+  }
+
+  const cacheKey = `${storageConfig.id}_${storageConfig.modified}`
 
   if (driverCache.has(cacheKey)) {
     return driverCache.get(cacheKey)!
@@ -32,7 +41,6 @@ export async function getDriver(
 
   let driver: StorageDriver
   console.log("getDriver: driverName=", driverName)
-  const normDriver = (driverName || "").toLowerCase().replace(/_/g, "")
 
   if (normDriver === "onedrive") {
     driver = new Onedrive(parseAddition(storageConfig))
@@ -45,7 +53,8 @@ export async function getDriver(
   } else if (
     normDriver === "aliyundrive" ||
     normDriver === "aliyundriveopen" ||
-    normDriver === "aliyundriveshare"
+    normDriver === "aliyundriveshare" ||
+    normDriver === "aliyun"
   ) {
     // 统一只保留阿里云盘 OAuth2 (AliyundriveOpen)
     driver = new AliyundriveOpen(parseAddition(storageConfig))
@@ -96,8 +105,7 @@ export async function listItems(
 
     const prefix = cleanListedPath === "/" ? "/" : cleanListedPath + "/"
     if (mount.startsWith(prefix)) {
-      const relative = mount.slice(prefix.length)
-      const name = relative.split("/").filter(Boolean)[0]
+      const name = mount.slice(prefix.length).split("/").filter(Boolean)[0]
       if (name && !items.some((f) => f.name === name)) {
         items.push({
           name,
@@ -108,6 +116,13 @@ export async function listItems(
           type: 1,
         })
       }
+    }
+  })
+
+  // Ensure all items have calculated types
+  items.forEach((item) => {
+    if (!item.type) {
+      item.type = calcFileType(item.name, item.is_dir)
     }
   })
 
@@ -137,6 +152,9 @@ export async function getItem(
   const driverName = resolved.storage ? resolved.storage.driver : "Local"
   const driver = await getDriver(driverName, resolved.storage)
   const item = await driver.get(virtualPath, resolved.physical!)
+  if (!item.type) {
+    item.type = calcFileType(item.name, item.is_dir)
+  }
   return {
     item,
     provider: driverName,

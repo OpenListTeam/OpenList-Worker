@@ -1,15 +1,20 @@
-import { StorageDriver, FileItem } from "../../internal/driver/base"
+import {
+  StorageDriver,
+  FileItem,
+  calcFileType,
+} from "../../internal/driver/base"
 import { AliyundriveOpenAddition, AliyunFileItem } from "./types"
 import { AliyunOpenClient } from "./util"
 
 function aliyunFileToFileItem(f: AliyunFileItem): FileItem {
+  const isDir = f.type === "folder"
   return {
     name: f.name,
     size: f.size || 0,
-    is_dir: f.type === "folder",
+    is_dir: isDir,
     modified: f.updated_at || f.created_at || new Date().toISOString(),
     sign: "",
-    type: f.type === "folder" ? 1 : 0,
+    type: calcFileType(f.name, isDir),
     thumb: f.thumbnail || "",
     raw_url: f.download_url || "",
   }
