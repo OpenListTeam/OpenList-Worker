@@ -216,7 +216,7 @@ const driverConfigs: Record<string, any> = {
       {
         name: "api_url_address",
         type: "string",
-        default: "https://api.oplist.org/aliyundrive/token",
+        default: "https://api.alist.nn.ci/aliyundrive/token",
         required: false,
       },
       {

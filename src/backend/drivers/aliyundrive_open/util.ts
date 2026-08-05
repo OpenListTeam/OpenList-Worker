@@ -4,7 +4,6 @@ import {
   AliyunTokenResp,
 } from "./types"
 
-const DEFAULT_TOKEN_API = "https://api.oplist.org/aliyundrive/token"
 const ALIYUN_OPEN_API = "https://openapi.aliyundrive.com/adrive/v1.0"
 
 export class AliyunOpenClient {
@@ -32,18 +31,35 @@ export class AliyunOpenClient {
   }
 
   public async init(): Promise<void> {
-    await this.refreshAccessToken()
+    try {
+      await this.refreshAccessToken()
+    } catch (e: any) {
+      console.warn("AliyundriveOpen initial token refresh warning:", e.message)
+    }
   }
 
   public async refreshAccessToken(): Promise<void> {
-    const tokenApi =
-      this.addition.api_url_address && this.addition.api_url_address.trim()
-        ? this.addition.api_url_address.trim()
-        : DEFAULT_TOKEN_API
+    if (!this.refreshTokenVal || !this.refreshTokenVal.trim()) {
+      console.warn(
+        "AliyunDrive refresh_token is empty, skipping token refresh.",
+      )
+      return
+    }
+
+    const candidateApis: string[] = []
+    if (this.addition.api_url_address && this.addition.api_url_address.trim()) {
+      candidateApis.push(this.addition.api_url_address.trim())
+    }
+    candidateApis.push(
+      "https://api.alist.nn.ci/aliyundrive/token",
+      "https://api.oplist.org/aliyundrive/token",
+      "https://openapi.aliyundrive.com/oauth/access_token",
+      "https://auth.aliyundrive.com/v2/account/token",
+    )
 
     const payload: any = {
       grant_type: "refresh_token",
-      refresh_token: this.refreshTokenVal,
+      refresh_token: this.refreshTokenVal.trim(),
     }
     if (this.addition.client_id) {
       payload.client_id = this.addition.client_id
@@ -52,51 +68,68 @@ export class AliyunOpenClient {
       payload.client_secret = this.addition.client_secret
     }
 
-    const res = await fetch(tokenApi, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
+    let lastError: Error | null = null
 
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "")
-      throw new Error(
-        `AliyunDrive token refresh failed (${res.status}): ${errText}`,
-      )
-    }
+    for (const tokenApi of candidateApis) {
+      try {
+        const res = await fetch(tokenApi, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
 
-    const data: any = await res.json()
-    // Handle both direct token response and OpenList wrapped response ({ code: 200, data: ... })
-    const tokenData: AliyunTokenResp = data.data || data
+        if (!res.ok) {
+          const errText = await res.text().catch(() => "")
+          throw new Error(`[Status ${res.status}] ${errText}`)
+        }
 
-    if (!tokenData.access_token) {
-      throw new Error(
-        `Invalid AliyunDrive token response: ${JSON.stringify(data)}`,
-      )
-    }
+        const data: any = await res.json()
+        const tokenData: AliyunTokenResp = data.data || data
 
-    this.accessToken = tokenData.access_token
-    if (tokenData.refresh_token) {
-      this.refreshTokenVal = tokenData.refresh_token
-    }
-    this.tokenExpiresAt =
-      Date.now() + (tokenData.expires_in || 7200) * 1000 - 60000
+        if (!tokenData.access_token) {
+          throw new Error(
+            `Invalid response token payload: ${JSON.stringify(data)}`,
+          )
+        }
 
-    // Auto-resolve drive_id if not specified
-    if (!this.addition.drive_id) {
-      const driveType = this.addition.drive_type || "default"
-      if (driveType === "resource" && tokenData.resource_drive_id) {
-        this.driveId = tokenData.resource_drive_id
-      } else if (driveType === "backup" && tokenData.backup_drive_id) {
-        this.driveId = tokenData.backup_drive_id
-      } else {
-        this.driveId =
-          tokenData.default_drive_id ||
-          tokenData.resource_drive_id ||
-          tokenData.backup_drive_id ||
-          ""
+        this.accessToken = tokenData.access_token
+        if (tokenData.refresh_token) {
+          this.refreshTokenVal = tokenData.refresh_token
+        }
+        this.tokenExpiresAt =
+          Date.now() + (tokenData.expires_in || 7200) * 1000 - 60000
+
+        // Auto-resolve drive_id if not specified
+        if (!this.addition.drive_id) {
+          const driveType = this.addition.drive_type || "default"
+          if (driveType === "resource" && tokenData.resource_drive_id) {
+            this.driveId = tokenData.resource_drive_id
+          } else if (driveType === "backup" && tokenData.backup_drive_id) {
+            this.driveId = tokenData.backup_drive_id
+          } else {
+            this.driveId =
+              tokenData.default_drive_id ||
+              tokenData.resource_drive_id ||
+              tokenData.backup_drive_id ||
+              ""
+          }
+        }
+
+        // Successfully refreshed token!
+        return
+      } catch (err: any) {
+        lastError = err
+        console.warn(
+          `AliyunDrive token refresh endpoint '${tokenApi}' failed: ${err.message}`,
+        )
       }
     }
+
+    throw new Error(
+      `AliyunDrive token refresh failed across all fallback endpoints: ${
+        lastError?.message || "Unknown error"
+      }`,
+    )
   }
 
   private async ensureToken(): Promise<void> {
