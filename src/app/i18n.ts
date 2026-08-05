@@ -5,7 +5,6 @@ export { i18n }
 // Statically import English and Chinese dictionaries to guarantee build-time/runtime bundling
 import enDict from "../lang/en/entry"
 import zhCNDict from "../lang/zh-CN/entry"
-import zhDict from "../lang/zh/entry"
 
 // Glob search by Vite for index.json descriptors
 const rawLangs = import.meta.glob("../lang/*/index.json", {
@@ -26,17 +25,21 @@ const globLanguages = Object.keys(rawLangs).map((langPath) => {
 const defaultLanguages = [
   { code: "en", lang: "English" },
   { code: "zh-CN", lang: "简体中文" },
-  { code: "zh", lang: "简体中文" },
 ]
 
-// Merge & deduplicate by language code
+// Merge & deduplicate by language code & display name
 const langMap = new Map<string, { code: string; lang: string }>()
 for (const l of defaultLanguages) {
   langMap.set(l.code, l)
 }
 for (const l of globLanguages) {
   if (l.code && l.lang) {
-    langMap.set(l.code, l)
+    const canonicalCode = l.code.toLowerCase().startsWith("zh")
+      ? "zh-CN"
+      : l.code
+    if (!langMap.has(canonicalCode)) {
+      langMap.set(canonicalCode, { code: canonicalCode, lang: l.lang })
+    }
   }
 }
 
@@ -49,10 +52,18 @@ const defaultLang =
   languages.find(
     (lang) => lang.code.toLowerCase().split("-")[0] === userLang.split("-")[0],
   )?.code ||
-  "en"
+  "zh-CN"
 
 // Get initial language from localStorage or fallback to defaultLang
 export let initialLang = localStorage.getItem("lang") ?? defaultLang
+
+if (
+  initialLang === "zh" ||
+  initialLang === "zh_CN" ||
+  initialLang === "zh-cn"
+) {
+  initialLang = "zh-CN"
+}
 
 if (!languages.some((lang) => lang.code === initialLang)) {
   initialLang = defaultLang
@@ -67,13 +78,12 @@ const dictImports = import.meta.glob("../lang/*/entry.ts")
 // Fetch and flatten the dictionary with high fault tolerance
 const fetchDictionary = async (locale: Lang): Promise<any> => {
   try {
-    const loc = (locale || "en").toLowerCase()
+    const loc = (locale || "zh-CN").toLowerCase()
     if (loc === "en") {
       return i18n.flatten(enDict as any) as any
     }
     if (loc === "zh-cn" || loc === "zh_cn" || loc === "zh") {
-      const dictObj = zhCNDict || zhDict || enDict
-      return i18n.flatten(dictObj as any) as any
+      return i18n.flatten(zhCNDict as any) as any
     }
 
     const importKey = Object.keys(dictImports).find((key) => {
@@ -83,20 +93,20 @@ const fetchDictionary = async (locale: Lang): Promise<any> => {
     const importer = importKey ? dictImports[importKey] : undefined
     if (!importer) {
       console.warn(`Dictionary not found for locale: ${locale}. Falling back.`)
-      const fallback = loc.startsWith("zh") ? zhCNDict || zhDict : enDict
+      const fallback = loc.startsWith("zh") ? zhCNDict : enDict
       return i18n.flatten(fallback as any) as any
     }
     const module = (await importer()) as { default: RawDictionary }
     const dictObj = module.default
     if (!dictObj || typeof dictObj !== "object") {
-      const fallback = loc.startsWith("zh") ? zhCNDict || zhDict : enDict
+      const fallback = loc.startsWith("zh") ? zhCNDict : enDict
       return i18n.flatten(fallback as any) as any
     }
     return i18n.flatten(dictObj as any) as any
   } catch (err) {
     console.error(`Error loading dictionary for locale: ${locale}`, err)
     const fallback = (locale || "").toLowerCase().startsWith("zh")
-      ? zhCNDict || zhDict
+      ? zhCNDict
       : enDict
     return i18n.flatten(fallback as any) as any
   }

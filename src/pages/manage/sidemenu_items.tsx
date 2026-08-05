@@ -35,7 +35,7 @@ const CommonSettings = lazy(() => import("./settings/Common"))
 
 export const side_menu_items: SideMenuItem[] = [
   {
-    title: "KV Storage Status",
+    title: "manage.sidemenu.dashboard",
     icon: BsHddNetwork,
     to: "/@manage/dashboard",
     role: UserRole.GUEST,
