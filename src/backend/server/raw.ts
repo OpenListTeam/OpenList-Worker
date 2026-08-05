@@ -69,23 +69,25 @@ rawRouter.get("/*", async (c) => {
               console.log(
                 `[rawRouter] Proxying download for '${reqPath}' via ${resolved.storage.driver}`,
               )
-              // Forward all relevant request headers to upstream
+              // Forward User-Agent and Range (for seeking/partial content)
               const headers: Record<string, string> = {
                 "User-Agent":
                   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
               }
-              // Forward Range header for video/audio seeking
+              // Forward Range header for video/audio/PDF seeking
               const rangeReq = c.req.header("Range")
               if (rangeReq) headers["Range"] = rangeReq
-              const ifRange = c.req.header("If-Range")
-              if (ifRange) headers["If-Range"] = ifRange
-              const ifNoneMatch = c.req.header("If-None-Match")
-              if (ifNoneMatch) headers["If-None-Match"] = ifNoneMatch
-              const ifModifiedSince = c.req.header("If-Modified-Since")
-              if (ifModifiedSince)
-                headers["If-Modified-Since"] = ifModifiedSince
 
-              const upstreamRes = await fetch(fileItem.raw_url, { headers })
+              let upstreamRes = await fetch(fileItem.raw_url, { headers })
+
+              // If upstream returns 412 Precondition Failed (e.g. strict OSS check), retry with plain GET without Range
+              if (upstreamRes.status === 412) {
+                console.warn(
+                  `[rawRouter] Upstream returned 412 for '${reqPath}', retrying without Range header...`,
+                )
+                delete headers["Range"]
+                upstreamRes = await fetch(fileItem.raw_url, { headers })
+              }
 
               // CORS headers
               c.header("Access-Control-Allow-Origin", "*")
