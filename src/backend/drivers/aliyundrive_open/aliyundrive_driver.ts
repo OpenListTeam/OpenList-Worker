@@ -1,6 +1,6 @@
 import { StorageDriver, FileItem } from "../../internal/driver/base"
-import { AliyundriveOpenAddition, AliyunFileItem } from "./types"
-import { AliyunOpenClient } from "./util"
+import { AlidriveAddition, AliyunFileItem } from "./types"
+import { AlidriveClient } from "./util"
 
 function aliyunFileToFileItem(f: AliyunFileItem): FileItem {
   return {
@@ -15,12 +15,12 @@ function aliyunFileToFileItem(f: AliyunFileItem): FileItem {
   }
 }
 
-export class AliyundriveOpen implements StorageDriver {
-  private client: AliyunOpenClient
+export class Aliyundrive implements StorageDriver {
+  private client: AlidriveClient
   private pathFileIdCache = new Map<string, string>()
 
-  constructor(addition: AliyundriveOpenAddition) {
-    this.client = new AliyunOpenClient(addition)
+  constructor(addition: AlidriveAddition) {
+    this.client = new AlidriveClient(addition)
   }
 
   async init(): Promise<void> {
@@ -35,6 +35,7 @@ export class AliyundriveOpen implements StorageDriver {
 
   async get(_virtualPath: string, physicalPath: string): Promise<FileItem> {
     const fileId = await this.resolveFileId(physicalPath)
+    // For files, get download URL
     const url = await this.client.getDownloadUrl(fileId).catch(() => "")
     const parts = physicalPath.split("/").filter(Boolean)
     const name = parts[parts.length - 1] || "root"
@@ -76,7 +77,7 @@ export class AliyundriveOpen implements StorageDriver {
   }
 
   async move(
-    _srcDir: string,
+    srcDir: string,
     dstDir: string,
     _names: string[],
     srcPhysical: string,
@@ -88,7 +89,7 @@ export class AliyundriveOpen implements StorageDriver {
   }
 
   async copy(
-    _srcDir: string,
+    srcDir: string,
     dstDir: string,
     _names: string[],
     srcPhysical: string,
@@ -108,7 +109,31 @@ export class AliyundriveOpen implements StorageDriver {
     const name = parts.pop() || "upload"
     const parentPath = "/" + parts.join("/")
     const parentId = await this.resolveFileId(parentPath)
-    await this.client.putFile(parentId, name, content)
+    // Use multipart upload via web API
+    const size = content.length
+    const createResp = await this.client.request<any>(
+      "/adrive/v2/file/createWithFolders",
+      {
+        check_name_mode: "auto_rename",
+        drive_id: this.client.driveId,
+        name,
+        parent_file_id: parentId,
+        type: "file",
+        size,
+        part_info_list: [{ part_number: 1 }],
+      },
+    )
+    const uploadUrl = createResp.part_info_list?.[0]?.upload_url
+    if (!uploadUrl) return
+    const putRes = await fetch(uploadUrl, { method: "PUT", body: content })
+    if (!putRes.ok) {
+      throw new Error(`[Aliyundrive] Upload failed: ${putRes.status}`)
+    }
+    await this.client.request("/v2/file/complete", {
+      drive_id: this.client.driveId,
+      file_id: createResp.file_id,
+      upload_id: createResp.upload_id,
+    })
   }
 
   private async resolveFileId(physicalPath: string): Promise<string> {
@@ -126,7 +151,7 @@ export class AliyundriveOpen implements StorageDriver {
       }
       const items = await this.client.listFiles(currentId)
       const target = items.find((f) => f.name === part)
-      if (!target) throw new Error(`[AliyundriveOpen] Path '${part}' not found`)
+      if (!target) throw new Error(`[Aliyundrive] Path '${part}' not found`)
       currentId = target.file_id
       this.pathFileIdCache.set(subPath, currentId)
     }

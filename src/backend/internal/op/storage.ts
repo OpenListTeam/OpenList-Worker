@@ -1,12 +1,22 @@
 import { getDb, resolvePath } from "../model/db"
 import { S3Driver } from "../../drivers/s3"
 import { Onedrive } from "../../drivers/onedrive/driver"
+import { Aliyundrive } from "../../drivers/aliyundrive_open/aliyundrive_driver"
 import { AliyundriveOpen } from "../../drivers/aliyundrive_open/driver"
+import { AliyundriveShare } from "../../drivers/aliyundrive_open/share_driver"
 import { StorageDriver, FileItem } from "../driver/base"
 
 const s3Driver = new S3Driver()
 
 const driverCache = new Map<string, StorageDriver>()
+
+function parseAddition(storageConfig?: any): any {
+  const additionStr = storageConfig?.addition
+  if (!additionStr) return {}
+  return typeof additionStr === "string"
+    ? JSON.parse(additionStr || "{}")
+    : additionStr
+}
 
 export async function getDriver(
   driverName: string,
@@ -22,58 +32,39 @@ export async function getDriver(
 
   let driver: StorageDriver
   console.log("getDriver: driverName=", driverName)
-  const normDriver = (driverName || "").toLowerCase()
+  const normDriver = (driverName || "").toLowerCase().replace(/_/g, "")
 
   if (normDriver === "onedrive") {
-    const additionStr = storageConfig?.addition
-    const addition = additionStr
-      ? typeof additionStr === "string"
-        ? JSON.parse(additionStr || "{}")
-        : additionStr
-      : {}
-    driver = new Onedrive(addition)
-    if (driver.init) {
-      try {
-        await driver.init()
-      } catch (e) {
-        console.error("onedrive init failed:", e)
-        throw e
-      }
+    driver = new Onedrive(parseAddition(storageConfig))
+    try {
+      await driver.init?.()
+    } catch (e) {
+      console.error("onedrive init failed:", e)
+      throw e
     }
+  } else if (normDriver === "aliyundrive") {
+    // 旧版 Web API（不需要 client_id）
+    driver = new Aliyundrive(parseAddition(storageConfig))
+    await driver.init?.()
   } else if (
     normDriver === "aliyundriveopen" ||
-    normDriver === "aliyun_drive_open" ||
-    normDriver === "aliyundrive_open"
+    normDriver === "aliyundriveopen"
   ) {
-    const additionStr = storageConfig?.addition
-    const addition = additionStr
-      ? typeof additionStr === "string"
-        ? JSON.parse(additionStr || "{}")
-        : additionStr
-      : {}
-    driver = new AliyundriveOpen(addition)
-    if (driver.init) {
-      try {
-        await driver.init()
-      } catch (e) {
-        console.error("aliyundrive_open init failed:", e)
-        throw e
-      }
-    }
+    // 新版 OpenAPI（推荐）
+    driver = new AliyundriveOpen(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (
+    normDriver === "aliyundriveshare" ||
+    normDriver === "aliyundriveshare"
+  ) {
+    // 分享链接（只读）
+    driver = new AliyundriveShare(parseAddition(storageConfig))
+    await driver.init?.()
   } else {
     driver = s3Driver
   }
 
-  if (
-    normDriver === "onedrive" ||
-    normDriver === "s3" ||
-    normDriver === "aliyundriveopen" ||
-    normDriver === "aliyun_drive_open" ||
-    normDriver === "aliyundrive_open"
-  ) {
-    driverCache.set(cacheKey, driver)
-  }
-
+  driverCache.set(cacheKey, driver)
   return driver
 }
 

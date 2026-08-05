@@ -135,43 +135,34 @@ adminRouter.get("/driver/names", (c) => {
   return c.json({
     code: 200,
     message: "success",
-    data: ["AliyundriveOpen", "Onedrive", "S3"],
+    data: [
+      "Aliyundrive",
+      "AliyundriveOpen",
+      "AliyundriveShare",
+      "Onedrive",
+      "S3",
+    ],
   })
 })
 
+const COMMON_FIELDS = [
+  {
+    name: "mount_path",
+    type: "string",
+    default: "",
+    required: true,
+    help: "1",
+  },
+  { name: "order", type: "number", default: "0", required: false, help: "" },
+  { name: "remark", type: "string", default: "", required: false, help: "" },
+  { name: "cache_expiration", type: "number", default: "30", required: false },
+]
+
 const driverConfigs: Record<string, any> = {
-  AliyundriveOpen: {
-    name: "AliyundriveOpen",
+  Aliyundrive: {
+    name: "Aliyundrive",
     default_mount_path: "/aliyundrive",
-    common: [
-      {
-        name: "mount_path",
-        type: "string",
-        default: "",
-        required: true,
-        help: "1",
-      },
-      {
-        name: "order",
-        type: "number",
-        default: "0",
-        required: false,
-        help: "",
-      },
-      {
-        name: "remark",
-        type: "string",
-        default: "",
-        required: false,
-        help: "",
-      },
-      {
-        name: "cache_expiration",
-        type: "number",
-        default: "30",
-        required: false,
-      },
-    ],
+    common: COMMON_FIELDS,
     additional: [
       {
         name: "refresh_token",
@@ -187,12 +178,7 @@ const driverConfigs: Record<string, any> = {
         default: "default",
         required: true,
       },
-      {
-        name: "drive_id",
-        type: "string",
-        default: "",
-        required: false,
-      },
+      { name: "drive_id", type: "string", default: "", required: false },
       {
         name: "root_folder_id",
         type: "string",
@@ -204,33 +190,90 @@ const driverConfigs: Record<string, any> = {
         type: "select",
         options: "updated_at,name,size,created_at",
         default: "updated_at",
-        required: true,
+        required: false,
       },
       {
         name: "order_direction",
         type: "select",
         options: "DESC,ASC",
         default: "DESC",
+        required: false,
+      },
+      {
+        name: "remove_way",
+        type: "select",
+        options: "trash,delete",
+        default: "trash",
+        required: false,
+      },
+    ],
+    config: {
+      name: "Aliyundrive",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "root",
+    },
+  },
+  AliyundriveOpen: {
+    name: "AliyundriveOpen",
+    default_mount_path: "/aliyundrive-open",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "refresh_token",
+        type: "text",
+        default: "",
         required: true,
+        help: "true",
+      },
+      {
+        name: "drive_type",
+        type: "select",
+        options: "default,resource,backup",
+        default: "default",
+        required: true,
+      },
+      { name: "drive_id", type: "string", default: "", required: false },
+      {
+        name: "root_folder_id",
+        type: "string",
+        default: "root",
+        required: true,
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "updated_at,name,size,created_at",
+        default: "updated_at",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "DESC,ASC",
+        default: "DESC",
+        required: false,
       },
       {
         name: "api_url_address",
         type: "string",
-        default: "https://api.alist.nn.ci/aliyundrive/token",
+        default: "https://api.alist.nn.ci/alist/ali_open/token",
         required: false,
+        help: "true",
       },
       {
-        name: "client_id",
-        type: "string",
-        default: "",
+        name: "alipan_type",
+        type: "select",
+        options: "alipanQR,alipanTV",
+        default: "alipanQR",
         required: false,
       },
-      {
-        name: "client_secret",
-        type: "string",
-        default: "",
-        required: false,
-      },
+      { name: "client_id", type: "string", default: "", required: false },
+      { name: "client_secret", type: "string", default: "", required: false },
       {
         name: "remove_way",
         type: "select",
@@ -250,39 +293,51 @@ const driverConfigs: Record<string, any> = {
       default_root: "root",
     },
   },
+  AliyundriveShare: {
+    name: "AliyundriveShare",
+    default_mount_path: "/aliyundrive-share",
+    common: COMMON_FIELDS,
+    additional: [
+      { name: "share_id", type: "string", default: "", required: true },
+      { name: "share_pwd", type: "string", default: "", required: false },
+      {
+        name: "root_folder_id",
+        type: "string",
+        default: "root",
+        required: false,
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "updated_at,name,size,created_at",
+        default: "updated_at",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "DESC,ASC",
+        default: "DESC",
+        required: false,
+      },
+    ],
+    config: {
+      name: "AliyundriveShare",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: true,
+      need_ms: false,
+      default_root: "root",
+    },
+  },
   S3: {
     name: "S3",
     default_mount_path: "/s3",
-    common: [
-      {
-        name: "mount_path",
-        type: "string",
-        default: "",
-        required: true,
-        help: "1",
-      },
-      {
-        name: "order",
-        type: "number",
-        default: "0",
-        required: false,
-        help: "",
-      },
-      {
-        name: "remark",
-        type: "string",
-        default: "",
-        required: false,
-        help: "",
-      },
-    ],
+    common: COMMON_FIELDS.slice(0, 3),
     additional: [
-      {
-        name: "s3_bucket_name",
-        type: "string",
-        default: "",
-        required: true,
-      },
+      { name: "s3_bucket_name", type: "string", default: "", required: true },
     ],
     config: {
       name: "S3",
@@ -298,29 +353,7 @@ const driverConfigs: Record<string, any> = {
   Onedrive: {
     name: "Onedrive",
     default_mount_path: "/onedrive",
-    common: [
-      {
-        name: "mount_path",
-        type: "string",
-        default: "",
-        required: true,
-        help: "1",
-      },
-      {
-        name: "order",
-        type: "number",
-        default: "0",
-        required: false,
-        help: "",
-      },
-      {
-        name: "remark",
-        type: "string",
-        default: "",
-        required: false,
-        help: "",
-      },
-    ],
+    common: COMMON_FIELDS.slice(0, 3),
     additional: [
       {
         name: "root_folder_path",
@@ -353,42 +386,17 @@ const driverConfigs: Record<string, any> = {
         default: "https://api.oplist.org/onedrive/renewapi",
         required: false,
       },
-      {
-        name: "client_id",
-        type: "string",
-        default: "",
-        required: false,
-      },
-      {
-        name: "client_secret",
-        type: "string",
-        default: "",
-        required: false,
-      },
+      { name: "client_id", type: "string", default: "", required: false },
+      { name: "client_secret", type: "string", default: "", required: false },
       {
         name: "redirect_uri",
         type: "string",
         default: "https://api.oplist.org/onedrive/callback",
         required: true,
       },
-      {
-        name: "refresh_token",
-        type: "string",
-        default: "",
-        required: true,
-      },
-      {
-        name: "site_id",
-        type: "string",
-        default: "",
-        required: false,
-      },
-      {
-        name: "chunk_size",
-        type: "number",
-        default: "5",
-        required: false,
-      },
+      { name: "refresh_token", type: "string", default: "", required: true },
+      { name: "site_id", type: "string", default: "", required: false },
+      { name: "chunk_size", type: "number", default: "5", required: false },
       {
         name: "custom_host",
         type: "string",
