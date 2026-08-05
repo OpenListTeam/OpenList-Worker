@@ -1,6 +1,7 @@
 import { getDb, resolvePath } from "../model/db"
 import { S3Driver } from "../../drivers/s3"
 import { Onedrive } from "../../drivers/onedrive/driver"
+import { AliyundriveOpen } from "../../drivers/aliyundrive_open/driver"
 import { StorageDriver, FileItem } from "../driver/base"
 
 const s3Driver = new S3Driver()
@@ -21,7 +22,9 @@ export async function getDriver(
 
   let driver: StorageDriver
   console.log("getDriver: driverName=", driverName)
-  if (driverName && driverName.toLowerCase() === "onedrive") {
+  const normDriver = (driverName || "").toLowerCase()
+
+  if (normDriver === "onedrive") {
     const additionStr = storageConfig?.addition
     const addition = additionStr
       ? typeof additionStr === "string"
@@ -37,14 +40,36 @@ export async function getDriver(
         throw e
       }
     }
+  } else if (
+    normDriver === "aliyundriveopen" ||
+    normDriver === "aliyun_drive_open" ||
+    normDriver === "aliyundrive_open"
+  ) {
+    const additionStr = storageConfig?.addition
+    const addition = additionStr
+      ? typeof additionStr === "string"
+        ? JSON.parse(additionStr || "{}")
+        : additionStr
+      : {}
+    driver = new AliyundriveOpen(addition)
+    if (driver.init) {
+      try {
+        await driver.init()
+      } catch (e) {
+        console.error("aliyundrive_open init failed:", e)
+        throw e
+      }
+    }
   } else {
     driver = s3Driver
   }
 
-  // Only cache OneDrive and S3 (stateful or expensive drivers)
   if (
-    driverName.toLowerCase() === "onedrive" ||
-    driverName.toLowerCase() === "s3"
+    normDriver === "onedrive" ||
+    normDriver === "s3" ||
+    normDriver === "aliyundriveopen" ||
+    normDriver === "aliyun_drive_open" ||
+    normDriver === "aliyundrive_open"
   ) {
     driverCache.set(cacheKey, driver)
   }
