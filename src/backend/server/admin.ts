@@ -168,8 +168,8 @@ const driverConfigs: Record<string, any> = {
       {
         name: "drive_type",
         type: "select",
-        options: "default,resource,backup",
-        default: "default",
+        options: "resource,backup,default",
+        default: "resource",
         required: true,
       },
       { name: "drive_id", type: "string", default: "", required: false },

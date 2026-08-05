@@ -35,7 +35,15 @@ export class AliyundriveOpen implements StorageDriver {
 
   async get(_virtualPath: string, physicalPath: string): Promise<FileItem> {
     const fileId = await this.resolveFileId(physicalPath)
+    const file = await this.client.getFile(fileId).catch(() => null)
     const url = await this.client.getDownloadUrl(fileId).catch(() => "")
+
+    if (file) {
+      const item = aliyunFileToFileItem(file)
+      item.raw_url = url || item.raw_url
+      return item
+    }
+
     const parts = physicalPath.split("/").filter(Boolean)
     const name = parts[parts.length - 1] || "root"
     return {

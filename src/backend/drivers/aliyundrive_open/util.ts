@@ -53,7 +53,7 @@ export class AliyunOpenClient {
       const res = await this.openApiRequest<any>("/user/getDriveInfo", {})
       const driveType = forceResource
         ? "resource"
-        : this.addition.drive_type || "default"
+        : this.addition.drive_type || "resource"
 
       let pickedDriveId = ""
       if (driveType === "resource" && res.resource_drive_id) {
@@ -264,6 +264,16 @@ export class AliyunOpenClient {
       marker = resp.next_marker || undefined
     } while (marker)
     return items
+  }
+
+  public async getFile(fileId: string): Promise<AliyunFileItem> {
+    if (!this.driveId) {
+      await this.resolveDriveId()
+    }
+    return this.openApiRequest<AliyunFileItem>("/openFile/get", {
+      drive_id: this.driveId,
+      file_id: fileId,
+    })
   }
 
   public async getDownloadUrl(fileId: string): Promise<string> {
