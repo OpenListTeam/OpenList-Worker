@@ -39,15 +39,45 @@ export class AliyunOpenClient {
     }
   }
 
-  private async resolveDriveId(): Promise<void> {
-    const res = await this.openApiRequest<any>("/openFile/getDriveInfo", {})
-    const driveType = this.addition.drive_type || "default"
-    if (driveType === "resource") {
-      this.driveId = res.resource_drive_id || res.default_drive_id || ""
-    } else if (driveType === "backup") {
-      this.driveId = res.backup_drive_id || res.default_drive_id || ""
-    } else {
-      this.driveId = res.default_drive_id || ""
+  private async resolveDriveId(forceResource = false): Promise<void> {
+    if (
+      !forceResource &&
+      this.addition.drive_id &&
+      this.addition.drive_id.trim()
+    ) {
+      this.driveId = this.addition.drive_id.trim()
+      return
+    }
+
+    try {
+      const res = await this.openApiRequest<any>("/user/getDriveInfo", {})
+      const driveType = forceResource
+        ? "resource"
+        : this.addition.drive_type || "default"
+
+      let pickedDriveId = ""
+      if (driveType === "resource" && res.resource_drive_id) {
+        pickedDriveId = res.resource_drive_id
+      } else if (driveType === "backup" && res.backup_drive_id) {
+        pickedDriveId = res.backup_drive_id
+      } else if (driveType === "default" && res.default_drive_id) {
+        pickedDriveId = res.default_drive_id
+      }
+
+      if (!pickedDriveId) {
+        pickedDriveId =
+          res.resource_drive_id ||
+          res.default_drive_id ||
+          res.backup_drive_id ||
+          ""
+      }
+
+      this.driveId = pickedDriveId
+      console.log(
+        `[AliyundriveOpen] Resolved drive_id: ${this.driveId} (driveType: ${driveType})`,
+      )
+    } catch (e: any) {
+      console.warn("[AliyundriveOpen] resolveDriveId failed:", e.message)
     }
   }
 
@@ -197,6 +227,9 @@ export class AliyunOpenClient {
   }
 
   public async listFiles(parentFileId: string): Promise<AliyunFileItem[]> {
+    if (!this.driveId) {
+      await this.resolveDriveId()
+    }
     const items: AliyunFileItem[] = []
     let marker: string | undefined
     const orderBy = this.addition.order_by || "updated_at"
@@ -210,7 +243,23 @@ export class AliyunOpenClient {
         order_direction: orderDirection,
       }
       if (marker) body.marker = marker
-      const resp = await this.openApiRequest<any>("/openFile/list", body)
+
+      let resp: any
+      try {
+        resp = await this.openApiRequest<any>("/openFile/list", body)
+      } catch (err: any) {
+        if (err.message?.includes("UserNotAllowedAccessDrive")) {
+          console.warn(
+            `[AliyundriveOpen] UserNotAllowedAccessDrive for drive ${this.driveId}, auto re-resolving drive_id...`,
+          )
+          await this.resolveDriveId(true)
+          body.drive_id = this.driveId
+          resp = await this.openApiRequest<any>("/openFile/list", body)
+        } else {
+          throw err
+        }
+      }
+
       items.push(...(resp.items || []))
       marker = resp.next_marker || undefined
     } while (marker)
