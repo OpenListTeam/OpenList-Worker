@@ -135,7 +135,7 @@ adminRouter.get("/driver/names", (c) => {
   return c.json({
     code: 200,
     message: "success",
-    data: ["AliyundriveOpen", "GoogleDrive", "Onedrive", "S3"],
+    data: ["AliyundriveOpen", "GoogleDrive", "Onedrive", "Quark", "S3"],
   })
 })
 
@@ -377,6 +377,69 @@ const driverConfigs: Record<string, any> = {
       no_upload: false,
       need_ms: false,
       default_root: "root",
+    },
+  },
+  Quark: {
+    name: "Quark",
+    default_mount_path: "/quark",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "variant",
+        type: "select",
+        options: "Quark,UC",
+        default: "Quark",
+        required: true,
+      },
+      {
+        name: "cookie",
+        type: "text",
+        default: "",
+        required: true,
+        help: "true",
+      },
+      {
+        name: "root_folder_id",
+        type: "string",
+        default: "0",
+        required: true,
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "none,file_type,file_name,updated_at",
+        default: "none",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "asc,desc",
+        default: "asc",
+        required: false,
+      },
+      {
+        name: "use_transcoding_address",
+        type: "bool",
+        default: "false",
+        required: false,
+      },
+      {
+        name: "only_list_video_file",
+        type: "bool",
+        default: "false",
+        required: false,
+      },
+    ],
+    config: {
+      name: "Quark",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "0",
     },
   },
 }

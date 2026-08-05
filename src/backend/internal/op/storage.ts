@@ -3,6 +3,7 @@ import { S3Driver } from "../../drivers/s3"
 import { Onedrive } from "../../drivers/onedrive/driver"
 import { AliyundriveOpen } from "../../drivers/aliyundrive_open/driver"
 import { GoogleDrive } from "../../drivers/google_drive/driver"
+import { QuarkDriver } from "../../drivers/quark/driver"
 import { StorageDriver, FileItem } from "../driver/base"
 
 const s3Driver = new S3Driver()
@@ -51,6 +52,13 @@ export async function getDriver(
     await driver.init?.()
   } else if (normDriver === "googledrive") {
     driver = new GoogleDrive(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (
+    normDriver === "quark" ||
+    normDriver === "quarkuc" ||
+    normDriver === "uc"
+  ) {
+    driver = new QuarkDriver(parseAddition(storageConfig))
     await driver.init?.()
   } else {
     driver = s3Driver
