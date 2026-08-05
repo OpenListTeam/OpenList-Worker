@@ -46,7 +46,7 @@ export interface PreviewComponent {
 const previews: Preview[] = [
   {
     key: "html",
-    exts: ["html"],
+    exts: ["html", "htm"],
     component: lazy(() => import("./html")),
     prior: true,
   },
@@ -133,19 +133,19 @@ const previews: Preview[] = [
       ]),
   {
     key: "ppt",
-    exts: ["pptx"],
+    exts: ["pptx", "ppt"],
     component: lazy(() => import("./ppt")),
     prior: true,
   },
   {
     key: "xls",
-    exts: ["xlsx"],
+    exts: ["xlsx", "xls"],
     component: lazy(() => import("./xls")),
     prior: true,
   },
   {
     key: "doc",
-    exts: ["docx"],
+    exts: ["docx", "doc"],
     component: lazy(() => import("./doc")),
     prior: true,
   },
