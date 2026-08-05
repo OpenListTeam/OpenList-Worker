@@ -459,7 +459,7 @@ const driverConfigs: Record<string, any> = {
       {
         name: "api_url_address",
         type: "string",
-        default: "https://api.alist.nn.ci/alist/google/token",
+        default: "https://api.alist.nn.ci/googledrive/token",
         required: false,
         help: "true",
       },

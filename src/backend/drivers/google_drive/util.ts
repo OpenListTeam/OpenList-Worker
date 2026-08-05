@@ -55,6 +55,9 @@ export class GoogleDriveClient {
         onlineApis.push(this.addition.api_url_address.trim())
       }
       onlineApis.push(
+        "https://api.alist.nn.ci/googledrive/token",
+        "https://api.oplist.org/googledrive/token",
+        "https://api-sam.oplist.org/googledrive/token",
         "https://api.alist.nn.ci/alist/google/token",
         "https://api.oplist.org/alist/google/token",
       )
