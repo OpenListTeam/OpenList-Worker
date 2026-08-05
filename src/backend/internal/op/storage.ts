@@ -4,6 +4,7 @@ import { Onedrive } from "../../drivers/onedrive/driver"
 import { Aliyundrive } from "../../drivers/aliyundrive_open/aliyundrive_driver"
 import { AliyundriveOpen } from "../../drivers/aliyundrive_open/driver"
 import { AliyundriveShare } from "../../drivers/aliyundrive_open/share_driver"
+import { GoogleDrive } from "../../drivers/google_drive/driver"
 import { StorageDriver, FileItem } from "../driver/base"
 
 const s3Driver = new S3Driver()
@@ -59,6 +60,9 @@ export async function getDriver(
   ) {
     // 分享链接（只读）
     driver = new AliyundriveShare(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (normDriver === "googledrive") {
+    driver = new GoogleDrive(parseAddition(storageConfig))
     await driver.init?.()
   } else {
     driver = s3Driver
