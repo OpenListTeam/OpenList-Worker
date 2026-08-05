@@ -1,6 +1,6 @@
 {
   "name": "openlistnext",
-  "version": "4.2.4",
+  "version": "4.2.3",
   "type": "module",
   "packageManager": "pnpm@9.15.4",
   "author": {
