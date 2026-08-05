@@ -52,17 +52,18 @@ export class AliyunOpenClient {
     }
     candidateApis.push(
       "https://api.alist.nn.ci/aliyundrive/token",
-      "https://api.oplist.org/aliyundrive/token",
+      "https://api-sam.oplist.org/aliyundrive/token",
       "https://openapi.aliyundrive.com/oauth/access_token",
       "https://auth.aliyundrive.com/v2/account/token",
     )
 
+    const clientId =
+      (this.addition.client_id || "").trim() ||
+      "25ab4837190e48718a28f80073574a4d"
     const payload: any = {
       grant_type: "refresh_token",
       refresh_token: this.refreshTokenVal.trim(),
-    }
-    if (this.addition.client_id) {
-      payload.client_id = this.addition.client_id
+      client_id: clientId,
     }
     if (this.addition.client_secret) {
       payload.client_secret = this.addition.client_secret
