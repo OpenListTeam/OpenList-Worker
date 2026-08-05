@@ -48,7 +48,13 @@ const Preview = () => {
       // Use objStore.raw_url for current file (has correct auth tokens from backend)
       // Use rawLink for other files in playlist
       url:
-        obj.name === objStore.obj.name ? objStore.raw_url : rawLink(obj, true),
+        obj.name === objStore.obj.name
+          ? objStore.raw_url && !objStore.raw_url.includes("proxy=true")
+            ? objStore.raw_url +
+              (objStore.raw_url.includes("?") ? "&" : "?") +
+              "proxy=true"
+            : objStore.raw_url
+          : proxyLink(obj, true),
       cover: cover,
       lrc: lrc,
     }

@@ -48,7 +48,13 @@ const Preview = () => {
         >
           <canvas class="view360-canvas" />
           <video
-            src={objStore.raw_url}
+            src={
+              objStore.raw_url && !objStore.raw_url.includes("proxy=true")
+                ? objStore.raw_url +
+                  (objStore.raw_url.includes("?") ? "&" : "?") +
+                  "proxy=true"
+                : objStore.raw_url
+            }
             id="view360-video"
             playsinline
             crossOrigin="anonymous"

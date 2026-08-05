@@ -184,7 +184,16 @@ const Preview = () => {
   // TODO: add a switch in manage panel to choose whether to enable `libass-wasm`
   const enableEnhanceAss = true
 
-  const switchUrl = (url: string) => {
+  const switchUrl = (raw_url: string) => {
+    let url = raw_url
+    if (
+      url &&
+      !url.includes("proxy=true") &&
+      !url.includes("/p/") &&
+      !url.includes("/api/p/")
+    ) {
+      url += (url.includes("?") ? "&" : "?") + "proxy=true"
+    }
     const { playing } = player
     player.pause()
     player.option.id = pathname()
