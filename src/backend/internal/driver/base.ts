@@ -2,6 +2,7 @@ export interface FileItem {
   name: string
   size: number
   is_dir: boolean
+  created?: string
   modified: string
   sign: string
   type: number // 1: FOLDER, 2: VIDEO, 3: AUDIO, 4: TEXT, 5: IMAGE, 0: UNKNOWN

@@ -1,21 +1,26 @@
-import { StorageDriver, FileItem } from "../internal/driver/base"
+import { StorageDriver, FileItem, calcFileType } from "../internal/driver/base"
 
-let fs: any = null;
-let path: any = null;
+let fs: any = null
+let path: any = null
 
 async function initNodeModules() {
-  if (typeof process !== 'undefined' && process.release?.name === 'node' && !fs) {
+  if (
+    typeof process !== "undefined" &&
+    process.release?.name === "node" &&
+    !fs
+  ) {
     try {
-      fs = await import('fs/promises');
-      path = await import('path');
-    } catch(e) {}
+      fs = await import("fs/promises")
+      path = await import("path")
+    } catch (e) {}
   }
 }
 
 export class LocalDriver implements StorageDriver {
   async list(virtualPath: string, physicalPath: string): Promise<FileItem[]> {
-    await initNodeModules();
-    if (!fs || !path) throw new Error("LocalDriver is not supported in Edge Runtime");
+    await initNodeModules()
+    if (!fs || !path)
+      throw new Error("LocalDriver is not supported in Edge Runtime")
     let files: any[] = []
     try {
       files = await fs.readdir(physicalPath, { withFileTypes: true })
@@ -36,18 +41,20 @@ export class LocalDriver implements StorageDriver {
           name: file.name,
           size: isDir ? 0 : size,
           is_dir: isDir,
+          created: mtime.toISOString(),
           modified: mtime.toISOString(),
           sign: "",
-          type: isDir ? 1 : 0,
+          type: calcFileType(file.name, isDir),
         }
-      })
+      }),
     )
     return items
   }
 
   async get(virtualPath: string, physicalPath: string): Promise<FileItem> {
-    await initNodeModules();
-    if (!fs || !path) throw new Error("LocalDriver is not supported in Edge Runtime");
+    await initNodeModules()
+    if (!fs || !path)
+      throw new Error("LocalDriver is not supported in Edge Runtime")
     const stat = await fs.stat(physicalPath)
     const isDir = stat.isDirectory()
     const name = physicalPath.split(path.sep).filter(Boolean).pop() || "root"
@@ -55,37 +62,56 @@ export class LocalDriver implements StorageDriver {
       name,
       size: isDir ? 0 : stat.size,
       is_dir: isDir,
+      created: stat.ctime?.toISOString() || stat.mtime.toISOString(),
       modified: stat.mtime.toISOString(),
       sign: "",
-      type: isDir ? 1 : 0,
+      type: calcFileType(name, isDir),
     }
   }
 
   async mkdir(virtualPath: string, physicalPath: string): Promise<void> {
-    await initNodeModules();
-    if (!fs || !path) throw new Error("LocalDriver is not supported in Edge Runtime");
+    await initNodeModules()
+    if (!fs || !path)
+      throw new Error("LocalDriver is not supported in Edge Runtime")
     await fs.mkdir(physicalPath, { recursive: true })
   }
 
-  async rename(virtualPath: string, physicalPath: string, newName: string): Promise<void> {
-    await initNodeModules();
-    if (!fs || !path) throw new Error("LocalDriver is not supported in Edge Runtime");
+  async rename(
+    virtualPath: string,
+    physicalPath: string,
+    newName: string,
+  ): Promise<void> {
+    await initNodeModules()
+    if (!fs || !path)
+      throw new Error("LocalDriver is not supported in Edge Runtime")
     const dst = path.join(path.dirname(physicalPath), newName)
     await fs.rename(physicalPath, dst)
   }
 
-  async remove(virtualPath: string, physicalPath: string, names: string[]): Promise<void> {
-    await initNodeModules();
-    if (!fs || !path) throw new Error("LocalDriver is not supported in Edge Runtime");
+  async remove(
+    virtualPath: string,
+    physicalPath: string,
+    names: string[],
+  ): Promise<void> {
+    await initNodeModules()
+    if (!fs || !path)
+      throw new Error("LocalDriver is not supported in Edge Runtime")
     for (const name of names) {
       const itemPath = path.join(physicalPath, name)
       await fs.rm(itemPath, { recursive: true, force: true })
     }
   }
 
-  async move(srcDir: string, dstDir: string, names: string[], srcPhys: string, dstPhys: string): Promise<void> {
-    await initNodeModules();
-    if (!fs || !path) throw new Error("LocalDriver is not supported in Edge Runtime");
+  async move(
+    srcDir: string,
+    dstDir: string,
+    names: string[],
+    srcPhys: string,
+    dstPhys: string,
+  ): Promise<void> {
+    await initNodeModules()
+    if (!fs || !path)
+      throw new Error("LocalDriver is not supported in Edge Runtime")
     for (const name of names) {
       const src = path.join(srcPhys, name)
       const dst = path.join(dstPhys, name)
@@ -94,9 +120,16 @@ export class LocalDriver implements StorageDriver {
     }
   }
 
-  async copy(srcDir: string, dstDir: string, names: string[], srcPhys: string, dstPhys: string): Promise<void> {
-    await initNodeModules();
-    if (!fs || !path) throw new Error("LocalDriver is not supported in Edge Runtime");
+  async copy(
+    srcDir: string,
+    dstDir: string,
+    names: string[],
+    srcPhys: string,
+    dstPhys: string,
+  ): Promise<void> {
+    await initNodeModules()
+    if (!fs || !path)
+      throw new Error("LocalDriver is not supported in Edge Runtime")
     for (const name of names) {
       const src = path.join(srcPhys, name)
       const dst = path.join(dstPhys, name)
@@ -105,9 +138,14 @@ export class LocalDriver implements StorageDriver {
     }
   }
 
-  async put(virtualPath: string, physicalPath: string, content: Buffer): Promise<void> {
-    await initNodeModules();
-    if (!fs || !path) throw new Error("LocalDriver is not supported in Edge Runtime");
+  async put(
+    virtualPath: string,
+    physicalPath: string,
+    content: Buffer,
+  ): Promise<void> {
+    await initNodeModules()
+    if (!fs || !path)
+      throw new Error("LocalDriver is not supported in Edge Runtime")
     await fs.mkdir(path.dirname(physicalPath), { recursive: true })
     await fs.writeFile(physicalPath, content)
   }

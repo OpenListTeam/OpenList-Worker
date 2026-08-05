@@ -73,11 +73,6 @@ rawRouter.get("/*", async (c) => {
                 "User-Agent":
                   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
               }
-              if (normDriver.includes("quark") || normDriver.includes("uc")) {
-                headers["Referer"] = "https://pan.quark.cn/"
-              } else if (normDriver.includes("aliyun")) {
-                headers["Referer"] = "https://www.aliyundrive.com/"
-              }
               const rangeReq = c.req.header("Range")
               if (rangeReq) {
                 headers["Range"] = rangeReq

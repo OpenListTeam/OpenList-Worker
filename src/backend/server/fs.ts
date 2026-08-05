@@ -7,7 +7,7 @@ import {
   removeItems,
   moveItems,
   copyItems,
-  putItem
+  putItem,
 } from "../internal/op/storage"
 import { downloadOfflineFile } from "../internal/stream/stream"
 
@@ -19,10 +19,29 @@ fsRouter.post("/list", async (c) => {
 
   try {
     const { content, provider } = await listItems(reqPath)
+    // Normalize each item to the full Obj shape expected by the frontend
+    const normalized = content.map((item: any) => ({
+      name: item.name,
+      size: item.size,
+      is_dir: item.is_dir,
+      created: item.created || item.modified || new Date().toISOString(),
+      modified: item.modified || new Date().toISOString(),
+      sign: item.sign || "",
+      thumb: item.thumb || "",
+      type: item.type ?? 0,
+    }))
     return c.json({
       code: 200,
       message: "success",
-      data: { content, total: content.length, readme: "", provider },
+      data: {
+        content: normalized,
+        total: normalized.length,
+        readme: "",
+        header: "",
+        write: true,
+        write_content_bypass: false,
+        provider,
+      },
     })
   } catch (err: any) {
     return c.json({ code: 500, message: err.message, data: null })
@@ -41,11 +60,19 @@ fsRouter.post("/get", async (c) => {
         name: item.name,
         size: item.size,
         is_dir: item.is_dir,
+        created:
+          (item as any).created || item.modified || new Date().toISOString(),
         modified: item.modified,
-        type: item.type,
+        sign: item.sign || "",
+        thumb: (item as any).thumb || "",
+        type: item.type ?? 0,
         raw_url: rawUrl,
         readme: "",
+        header: "",
         provider,
+        related: [],
+        write: true,
+        write_content_bypass: false,
       },
     })
   } catch (err: any) {
@@ -128,5 +155,10 @@ fsRouter.post("/add_offline_download", async (c) => {
     console.error("Async offline download background job failed:", err)
   })
   */
-  return c.json({ code: 200, message: "Offline download task received (Note: background processing limited in Serverless mode)", data: null })
+  return c.json({
+    code: 200,
+    message:
+      "Offline download task received (Note: background processing limited in Serverless mode)",
+    data: null,
+  })
 })
