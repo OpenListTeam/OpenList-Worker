@@ -24,6 +24,13 @@ export const rawRouter = new Hono()
 rawRouter.get("/*", async (c) => {
   await initNodeModules()
 
+  const isProxy =
+    c.req.query("proxy") === "true" ||
+    c.req.path.startsWith("/p") ||
+    c.req.path.startsWith("/api/p") ||
+    c.req.path.startsWith("/sd") ||
+    c.req.path.startsWith("/api/sd")
+
   const rawPath = c.req.path
     .replace(/^\/api\/raw/, "")
     .replace(/^\/api\/d/, "")
@@ -48,7 +55,7 @@ rawRouter.get("/*", async (c) => {
         .toLowerCase()
         .replace(/_/g, "")
 
-      // Remote cloud drivers: fetch download link via driver.get() and redirect
+      // Remote cloud drivers: fetch download link via driver.get()
       if (normDriver !== "local") {
         try {
           const driver = await getDriver(
@@ -58,10 +65,53 @@ rawRouter.get("/*", async (c) => {
           const fileItem = await driver.get(reqPath, resolved.physical)
 
           if (fileItem && fileItem.raw_url) {
-            console.log(
-              `[rawRouter] Redirecting download for '${reqPath}' via ${resolved.storage.driver}`,
-            )
-            return c.redirect(fileItem.raw_url, 302)
+            if (isProxy) {
+              console.log(
+                `[rawRouter] Proxying download for '${reqPath}' via ${resolved.storage.driver}`,
+              )
+              const headers: Record<string, string> = {
+                "User-Agent":
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              }
+              const rangeReq = c.req.header("Range")
+              if (rangeReq) {
+                headers["Range"] = rangeReq
+              }
+
+              const upstreamRes = await fetch(fileItem.raw_url, { headers })
+
+              c.header("Access-Control-Allow-Origin", "*")
+              c.header("Access-Control-Allow-Methods", "GET, OPTIONS, HEAD")
+              c.header("Access-Control-Allow-Headers", "*")
+
+              const defaultContentType = reqPath.toLowerCase().endsWith(".pdf")
+                ? "application/pdf"
+                : "application/octet-stream"
+              const contentType =
+                upstreamRes.headers.get("content-type") || defaultContentType
+              c.header("Content-Type", contentType)
+
+              if (upstreamRes.headers.get("content-length")) {
+                c.header(
+                  "Content-Length",
+                  upstreamRes.headers.get("content-length")!,
+                )
+              }
+              if (upstreamRes.headers.get("content-range")) {
+                c.header(
+                  "Content-Range",
+                  upstreamRes.headers.get("content-range")!,
+                )
+                c.header("Accept-Ranges", "bytes")
+              }
+
+              return c.body(upstreamRes.body as any, upstreamRes.status as any)
+            } else {
+              console.log(
+                `[rawRouter] Redirecting download for '${reqPath}' via ${resolved.storage.driver}`,
+              )
+              return c.redirect(fileItem.raw_url, 302)
+            }
           }
         } catch (e: any) {
           console.error(
@@ -83,6 +133,7 @@ rawRouter.get("/*", async (c) => {
       return c.text("Cannot download directory", 400)
     }
 
+    c.header("Access-Control-Allow-Origin", "*")
     const rangeHeader = c.req.header("Range")
     if (rangeHeader) {
       const { start, end, chunksize } = parseRangeHeader(rangeHeader, stat.size)

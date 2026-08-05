@@ -11,7 +11,10 @@ const PDFViewer = () => {
   const { colorMode } = useColorMode()
   let ref: HTMLDivElement | undefined
   onMount(() => {
-    const src = objStore.raw_url
+    let src = objStore.raw_url
+    if (src && !src.includes("proxy=true")) {
+      src += (src.includes("?") ? "&" : "?") + "proxy=true"
+    }
     // wasm url must be absolute
     const absolutePdfiumWasmUrl = new URL(
       pdfiumWasmUrl,

@@ -48,7 +48,8 @@ const DocViewerApp = () => {
       }
 
       // 获取文件URL并下载
-      const fileUrl = currentObjLink()
+      const link = currentObjLink()
+      const fileUrl = link + (link.includes("?") ? "&" : "?") + "proxy=true"
       const response = await fetch(fileUrl)
       if (!response.ok) {
         throw new Error("Failed to fetch document file")

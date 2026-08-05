@@ -81,8 +81,11 @@ const PPTViewerApp = () => {
 
       // 初始化pptxToHtml（渲染到Shadow DOM内的resultRef）
       if (resultRef) {
+        const pptLink = currentObjLink()
+        const pptFileUrl =
+          pptLink + (pptLink.includes("?") ? "&" : "?") + "proxy=true"
         window.$(resultRef).pptxToHtml({
-          pptxFileUrl: currentObjLink(),
+          pptxFileUrl: pptFileUrl,
           slideMode: false,
           keyBoardShortCut: false,
           slideModeConfig: {

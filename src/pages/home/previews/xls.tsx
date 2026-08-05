@@ -47,7 +47,8 @@ const ExcelViewerApp = () => {
       await loadScriptIIFE(excelJSPath(), "exceljs-script")
 
       // 获取文件URL
-      const fileUrl = currentObjLink()
+      const link = currentObjLink()
+      const fileUrl = link + (link.includes("?") ? "&" : "?") + "proxy=true"
 
       // 下载文件
       const response = await fetch(fileUrl)
