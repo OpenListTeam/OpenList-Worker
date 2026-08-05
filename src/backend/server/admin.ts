@@ -132,177 +132,313 @@ adminRouter.post("/storage/disable", async (c) => {
 })
 
 adminRouter.get("/driver/names", (c) => {
-  return c.json({ code: 200, message: "success", data: ["S3", "Onedrive"] })
+  return c.json({
+    code: 200,
+    message: "success",
+    data: ["AliyundriveOpen", "Onedrive", "S3"],
+  })
 })
+
+const driverConfigs: Record<string, any> = {
+  AliyundriveOpen: {
+    name: "AliyundriveOpen",
+    default_mount_path: "/aliyundrive",
+    common: [
+      {
+        name: "mount_path",
+        type: "string",
+        default: "",
+        required: true,
+        help: "1",
+      },
+      {
+        name: "order",
+        type: "number",
+        default: "0",
+        required: false,
+        help: "",
+      },
+      {
+        name: "remark",
+        type: "string",
+        default: "",
+        required: false,
+        help: "",
+      },
+      {
+        name: "cache_expiration",
+        type: "number",
+        default: "30",
+        required: false,
+      },
+    ],
+    additional: [
+      {
+        name: "refresh_token",
+        type: "text",
+        default: "",
+        required: true,
+        help: "true",
+      },
+      {
+        name: "drive_type",
+        type: "select",
+        options: "default,resource,backup",
+        default: "default",
+        required: true,
+      },
+      {
+        name: "drive_id",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "root_folder_id",
+        type: "string",
+        default: "root",
+        required: true,
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "updated_at,name,size,created_at",
+        default: "updated_at",
+        required: true,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "DESC,ASC",
+        default: "DESC",
+        required: true,
+      },
+      {
+        name: "api_url_address",
+        type: "string",
+        default: "https://api.oplist.org/aliyundrive/token",
+        required: false,
+      },
+      {
+        name: "client_id",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "client_secret",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "remove_way",
+        type: "select",
+        options: "trash,delete",
+        default: "trash",
+        required: false,
+      },
+    ],
+    config: {
+      name: "AliyundriveOpen",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "root",
+    },
+  },
+  S3: {
+    name: "S3",
+    default_mount_path: "/s3",
+    common: [
+      {
+        name: "mount_path",
+        type: "string",
+        default: "",
+        required: true,
+        help: "1",
+      },
+      {
+        name: "order",
+        type: "number",
+        default: "0",
+        required: false,
+        help: "",
+      },
+      {
+        name: "remark",
+        type: "string",
+        default: "",
+        required: false,
+        help: "",
+      },
+    ],
+    additional: [
+      {
+        name: "s3_bucket_name",
+        type: "string",
+        default: "",
+        required: true,
+      },
+    ],
+    config: {
+      name: "S3",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "/",
+    },
+  },
+  Onedrive: {
+    name: "Onedrive",
+    default_mount_path: "/onedrive",
+    common: [
+      {
+        name: "mount_path",
+        type: "string",
+        default: "",
+        required: true,
+        help: "1",
+      },
+      {
+        name: "order",
+        type: "number",
+        default: "0",
+        required: false,
+        help: "",
+      },
+      {
+        name: "remark",
+        type: "string",
+        default: "",
+        required: false,
+        help: "",
+      },
+    ],
+    additional: [
+      {
+        name: "root_folder_path",
+        type: "string",
+        default: "/",
+        required: true,
+      },
+      {
+        name: "region",
+        type: "select",
+        options: "global,cn,us,de",
+        default: "global",
+        required: true,
+      },
+      {
+        name: "is_sharepoint",
+        type: "bool",
+        default: "false",
+        required: false,
+      },
+      {
+        name: "use_online_api",
+        type: "bool",
+        default: "true",
+        required: false,
+      },
+      {
+        name: "api_url_address",
+        type: "string",
+        default: "https://api.oplist.org/onedrive/renewapi",
+        required: false,
+      },
+      {
+        name: "client_id",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "client_secret",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "redirect_uri",
+        type: "string",
+        default: "https://api.oplist.org/onedrive/callback",
+        required: true,
+      },
+      {
+        name: "refresh_token",
+        type: "string",
+        default: "",
+        required: true,
+      },
+      {
+        name: "site_id",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "chunk_size",
+        type: "number",
+        default: "5",
+        required: false,
+      },
+      {
+        name: "custom_host",
+        type: "string",
+        default: "",
+        required: false,
+        help: "true",
+      },
+      {
+        name: "disable_disk_usage",
+        type: "bool",
+        default: "false",
+        required: false,
+        help: "true",
+      },
+      {
+        name: "enable_direct_upload",
+        type: "bool",
+        default: "false",
+        required: false,
+        help: "true",
+      },
+    ],
+    config: {
+      name: "Onedrive",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "/",
+    },
+  },
+}
 
 adminRouter.get("/driver/list", (c) => {
   return c.json({
     code: 200,
     message: "success",
-    data: {
-      S3: {
-        name: "S3",
-        default_mount_path: "/s3",
-        common: [
-          {
-            name: "mount_path",
-            type: "string",
-            default: "",
-            required: true,
-            help: "1",
-          },
-          {
-            name: "order",
-            type: "number",
-            default: "0",
-            required: false,
-            help: "",
-          },
-          {
-            name: "remark",
-            type: "string",
-            default: "",
-            required: false,
-            help: "",
-          },
-        ],
-        additional: [
-          {
-            name: "s3_bucket_name",
-            type: "string",
-            default: "",
-            required: true,
-          },
-        ],
-      },
-      Onedrive: {
-        name: "Onedrive",
-        default_mount_path: "/onedrive",
-        common: [
-          {
-            name: "mount_path",
-            type: "string",
-            default: "",
-            required: true,
-            help: "1",
-          },
-          {
-            name: "order",
-            type: "number",
-            default: "0",
-            required: false,
-            help: "",
-          },
-          {
-            name: "remark",
-            type: "string",
-            default: "",
-            required: false,
-            help: "",
-          },
-        ],
-        additional: [
-          {
-            name: "root_folder_path",
-            type: "string",
-            default: "/",
-            required: true,
-          },
-          {
-            name: "region",
-            type: "select",
-            options: "global,cn,us,de",
-            default: "global",
-            required: true,
-          },
-          {
-            name: "is_sharepoint",
-            type: "bool",
-            default: "false",
-            required: false,
-          },
-          {
-            name: "use_online_api",
-            type: "bool",
-            default: "true",
-            required: false,
-          },
-          {
-            name: "api_url_address",
-            type: "string",
-            default: "https://api.oplist.org/onedrive/renewapi",
-            required: false,
-          },
-          {
-            name: "client_id",
-            type: "string",
-            default: "",
-            required: false,
-          },
-          {
-            name: "client_secret",
-            type: "string",
-            default: "",
-            required: false,
-          },
-          {
-            name: "redirect_uri",
-            type: "string",
-            default: "https://api.oplist.org/onedrive/callback",
-            required: true,
-          },
-          {
-            name: "refresh_token",
-            type: "string",
-            default: "",
-            required: true,
-          },
-          {
-            name: "site_id",
-            type: "string",
-            default: "",
-            required: false,
-          },
-          {
-            name: "chunk_size",
-            type: "number",
-            default: "5",
-            required: false,
-          },
-          {
-            name: "custom_host",
-            type: "string",
-            default: "",
-            required: false,
-            help: "true",
-          },
-          {
-            name: "disable_disk_usage",
-            type: "bool",
-            default: "false",
-            required: false,
-            help: "true",
-          },
-          {
-            name: "enable_direct_upload",
-            type: "bool",
-            default: "false",
-            required: false,
-            help: "true",
-          },
-        ],
-        config: {
-          name: "Onedrive",
-          local_sort: true,
-          only_local: false,
-          only_proxy: false,
-          no_cache: false,
-          no_upload: false,
-          need_ms: false,
-          default_root: "/",
-        },
-      },
-    },
+    data: driverConfigs,
+  })
+})
+
+adminRouter.get("/driver/info", (c) => {
+  const driverName = c.req.query("driver") || ""
+  const info = driverConfigs[driverName] || driverConfigs["AliyundriveOpen"]
+  return c.json({
+    code: 200,
+    message: "success",
+    data: info,
   })
 })
 
