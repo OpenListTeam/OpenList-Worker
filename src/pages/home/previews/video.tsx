@@ -117,7 +117,6 @@ const Preview = () => {
       // @ts-ignore
       "webkit-playsinline": true,
       playsInline: true,
-      crossOrigin: "anonymous",
     },
     customType: {
       flv: function (video: HTMLMediaElement, url: string) {
@@ -350,7 +349,15 @@ const Preview = () => {
 
   onMount(() => {
     player = new Artplayer(option)
-    createEffect(on(() => objStore.raw_url, switchUrl))
+    if (objStore.raw_url) {
+      switchUrl(objStore.raw_url)
+    }
+    createEffect(
+      on(
+        () => objStore.raw_url,
+        (url) => url && switchUrl(url),
+      ),
+    )
     let auto_fullscreen: boolean
     switch (searchParams["auto_fullscreen"]) {
       case "true":
