@@ -36,9 +36,12 @@ function fixLegacyPolyfillDataSrc(): Plugin {
 export default defineConfig({
   resolve: {
     alias: {
-      "~": path.resolve(__dirname, "src"),
-      // "@solidjs/router": path.resolve(__dirname, "solid-router/src"),
-      "solid-icons": path.resolve(__dirname, "node_modules/solid-icons"),
+      "~": path.resolve(import.meta.dirname, "src"),
+      // "@solidjs/router": path.resolve(import.meta.dirname, "solid-router/src"),
+      "solid-icons": path.resolve(
+        import.meta.dirname,
+        "node_modules/solid-icons",
+      ),
     },
   },
   plugins: [
@@ -92,7 +95,9 @@ export default defineConfig({
       : null,
     fixLegacyPolyfillDataSrc(),
   ],
-  base: "/",
+  // vite-plugin-dynamic-base requires a unique marker as base during build
+  // so it can rewrite asset URLs to the runtime window.__dynamic_base__.
+  base: process.env.NODE_ENV === "production" ? "/__dynamic_base__/" : "/",
   build: {
     // target: "es2015", //next
     // polyfillDynamicImport: false,
