@@ -1,5 +1,5 @@
 /**
- * Task management for OpenList background operations.
+ * Task management for OpenListNext background operations.
  * Uses an inline EventEmitter to avoid the node:events built-in module,
  * making this file compatible with Cloudflare Workers (neutral platform).
  */

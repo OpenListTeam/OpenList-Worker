@@ -31,7 +31,7 @@
     "aria2": "Aria2 任务",
     "qbit": "qBittorrent 任务"
   },
-  "title": "OpenList 管理后台",
+  "title": "OpenListNext 管理后台",
   "not_admin": "您当前非管理员账号，请使用管理员账号登录后台。",
   "logout_success": "退出登录成功",
   "send": "发送",

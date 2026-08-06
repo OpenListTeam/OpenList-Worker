@@ -916,6 +916,7 @@
     "custom_host": "Custom host",
     "custom_host-tips": "Custom host for OneDrive download link",
     "disable_disk_usage": "Disable disk usage",
+    "disable_disk_usage-tips": "Disable automatic disk usage calculation and display for this storage",
     "enable_direct_upload": "Enable direct upload",
     "enable_direct_upload-tips": "Enable direct upload from client to OneDrive",
     "is_sharepoint": "Is sharepoint",
@@ -935,7 +936,7 @@
   "Onedrive Sharelink": {
     "disable_disk_usage": "Disable disk usage",
     "enable_direct_upload": "Enable direct upload",
-    "enable_direct_upload-tips": "Allow uploading directly to OneDrive without going through OpenList",
+    "enable_direct_upload-tips": "Allow uploading directly to OneDrive without going through OpenListNext",
     "password": "Password",
     "root_folder_path": "Root folder path",
     "url": "Url"
@@ -1656,6 +1657,7 @@
     "Alias": "Alias",
     "Aliyundrive": "Aliyundrive",
     "AliyundriveOpen": "AliyundriveOpen",
+    "AliyunDriveOpen": "Aliyun Drive OpenAPI",
     "AliyundriveShare": "AliyundriveShare",
     "AutoIndex": "AutoIndex",
     "Azure Blob Storage": "Azure Blob Storage",

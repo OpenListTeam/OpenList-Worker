@@ -2,7 +2,7 @@ import { Context } from "hono"
 import { getDb } from "../internal/model/db"
 
 /**
- * Common utilities for OpenList backend services.
+ * Common utilities for OpenListNext backend services.
  */
 
 export * from "./xml"

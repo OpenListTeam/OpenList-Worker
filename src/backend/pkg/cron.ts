@@ -1,12 +1,11 @@
-
 /**
- * Simple cron-like task scheduler for OpenList.
+ * Simple cron-like task scheduler for OpenListNext.
  */
 
-export type CronJob = () => Promise<void> | void;
+export type CronJob = () => Promise<void> | void
 
 export class CronManager {
-  private jobs: Map<string, NodeJS.Timeout> = new Map();
+  private jobs: Map<string, NodeJS.Timeout> = new Map()
 
   /**
    * Schedule a recurring job
@@ -15,30 +14,30 @@ export class CronManager {
    * @param fn Function to execute
    */
   public schedule(name: string, intervalInSeconds: number, fn: CronJob) {
-    this.stop(name);
+    this.stop(name)
     const timeout = setInterval(async () => {
       try {
-        await fn();
+        await fn()
       } catch (e) {
-        console.error(`Cron job ${name} failed:`, e);
+        console.error(`Cron job ${name} failed:`, e)
       }
-    }, intervalInSeconds * 1000);
-    this.jobs.set(name, timeout);
+    }, intervalInSeconds * 1000)
+    this.jobs.set(name, timeout)
   }
 
   public stop(name: string) {
-    const timeout = this.jobs.get(name);
+    const timeout = this.jobs.get(name)
     if (timeout) {
-      clearInterval(timeout);
-      this.jobs.delete(name);
+      clearInterval(timeout)
+      this.jobs.delete(name)
     }
   }
 
   public stopAll() {
     for (const name of Array.from(this.jobs.keys())) {
-      this.stop(name);
+      this.stop(name)
     }
   }
 }
 
-export const GlobalCronManager = new CronManager();
+export const GlobalCronManager = new CronManager()

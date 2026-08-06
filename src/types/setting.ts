@@ -10,7 +10,6 @@ export enum Group {
   INDEX,
   SSO,
   LDAP,
-  S3,
   FTP,
   TRAFFIC,
 }

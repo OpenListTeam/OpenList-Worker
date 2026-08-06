@@ -1,10 +1,11 @@
 import { resolvePath, getDb } from "../model/db"
 import { FileItem, StorageDriver, calcFileType } from "../driver/base"
-import { S3Driver } from "../../drivers/s3"
 import { Onedrive } from "../../drivers/onedrive/driver"
 import { AliyundriveOpen } from "../../drivers/aliyundrive_open/driver"
 import { GoogleDrive } from "../../drivers/google_drive/driver"
 import { QuarkDriver } from "../../drivers/quark/driver"
+import { BaiduDriver } from "../../drivers/baidu_netdisk/driver"
+import { Pan123Driver } from "../../drivers/123pan/driver"
 
 // LocalDriver is not available in Cloudflare Workers (no fs module).
 // When running in Node.js container mode, import dynamically on first use.
@@ -16,8 +17,6 @@ async function getLocalDriver(): Promise<StorageDriver> {
   }
   return _localDriver
 }
-
-const s3Driver = new S3Driver()
 
 const driverCache = new Map<string, StorageDriver>()
 
@@ -45,7 +44,9 @@ export async function getDriver(
   }
 
   if (!storageConfig) {
-    return s3Driver
+    throw new Error(
+      "failed get driver: storage config not found for driver " + driverName,
+    )
   }
 
   const cacheKey = `${storageConfig.id}_${storageConfig.modified}`
@@ -84,8 +85,20 @@ export async function getDriver(
   ) {
     driver = new QuarkDriver(parseAddition(storageConfig))
     await driver.init?.()
+  } else if (
+    normDriver === "baidunetdisk" ||
+    normDriver === "baidu" ||
+    normDriver === "baiduyun"
+  ) {
+    driver = new BaiduDriver(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (normDriver === "123pan" || normDriver === "123") {
+    driver = new Pan123Driver(parseAddition(storageConfig))
+    await driver.init?.()
   } else {
-    driver = s3Driver
+    throw new Error(
+      "failed get driver: unsupported driver '" + driverName + "'",
+    )
   }
 
   driverCache.set(cacheKey, driver)

@@ -156,6 +156,18 @@ export function ShareListItem(props: ShareProps) {
           >
             {t("shares.copy_msg")}
           </Button>
+          <Button
+            colorScheme="info"
+            onClick={() => {
+              const { base_url } = makeTemplateData(props.share)
+              const pwd = props.share.pwd
+                ? `?pwd=${encodeURIComponent(props.share.pwd)}`
+                : ""
+              copy(`${base_url}/@s/${props.share.id}${pwd}`)
+            }}
+          >
+            {t("shares.copy_url")}
+          </Button>
           <ShareOp {...props} />
         </HStack>
       </Td>

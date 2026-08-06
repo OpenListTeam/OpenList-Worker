@@ -17,7 +17,7 @@ ADMIN_PASSWORD = "admin"
 VITE_API_URL = "/api"
 
 [[kv_namespaces]]
-binding = "OPENLIST_KV"
+binding = "OPENLISTNEXT_KV"
 id = "0e48234248a84d4dbdc5a70e886773ea"
 
 

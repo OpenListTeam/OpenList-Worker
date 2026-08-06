@@ -1,8 +1,8 @@
-# OpenList Refactoring Progress
+# OpenListNext Refactoring Progress
 
 ## Core Features (核心功能)
 
-- [x] 部署方便，开箱即用 (Deploy easily, out of the box) - *Supported via Node.js container backend*
+- [x] 部署方便，开箱即用 (Deploy easily, out of the box) - _Supported via Node.js container backend_
 - [x] 文件预览（PDF、markdown、代码、纯文本等） (File preview)
 - [x] 画廊模式下的图片预览 (Gallery mode image preview)
 - [x] 视频和音频预览，支持歌词和字幕 (Video/audio preview)
@@ -11,19 +11,19 @@
 - [x] 文件永久链接复制和直接文件下载 (File permalink copy and direct download)
 - [x] 黑暗模式 (Dark mode)
 - [x] 国际化 (i18n)
-- [x] 受保护的路由（密码保护和认证） (Protected routes) - *Implemented for admin login*
-- [ ] WebDAV (WebDAV) - *Not supported in JS backend yet*
-- [x] Docker 部署 (Docker deploy) - *Supported via container*
-- [x] Cloudflare Workers / Vercel 代理 - *Supported via entrypoints*
-- [x] 文件/文件夹打包下载 (File/folder archive download) - *Implemented via browser ZIP stream*
-- [x] 网页上传、删除、新建文件夹、重命名、移动和复制 (Web upload, delete, create folder, rename, move, copy) - *Implemented for Local storage*
-- [x] 离线下载 (Offline download) - *Basic implementation for Local storage*
-- [x] 跨存储复制文件 (Cross-storage file copy) - *Supported via /fs/copy API abstraction*
-- [x] 单文件多线程下载/流式加速 (Multi-thread download/stream acceleration) - *Implemented HTTP Range requests support in backend*
+- [x] 受保护的路由（密码保护和认证） (Protected routes) - _Implemented for admin login_
+- [ ] WebDAV (WebDAV) - _Not supported in JS backend yet_
+- [x] Docker 部署 (Docker deploy) - _Supported via container_
+- [x] Cloudflare Workers / Vercel 代理 - _Supported via entrypoints_
+- [x] 文件/文件夹打包下载 (File/folder archive download) - _Implemented via browser ZIP stream_
+- [x] 网页上传、删除、新建文件夹、重命名、移动和复制 (Web upload, delete, create folder, rename, move, copy) - _Implemented for Local storage_
+- [x] 离线下载 (Offline download) - _Basic implementation for Local storage_
+- [x] 跨存储复制文件 (Cross-storage file copy) - _Supported via /fs/copy API abstraction_
+- [x] 单文件多线程下载/流式加速 (Multi-thread download/stream acceleration) - _Implemented HTTP Range requests support in backend_
 
 ## Storages (多种存储)
 
-- [x] 本地存储 (Local storage) - *Implemented for Node.js container*
+- [x] 本地存储 (Local storage) - _Implemented for Node.js container_
 - [ ] 阿里云盘 (Aliyundrive)
 - [ ] OneDrive / Sharepoint
 - [ ] 天翼云盘 (189Cloud)
@@ -48,6 +48,7 @@
 - [ ] 迅雷网盘 (Xunlei Drive)
 
 ## Developer TODOs
+
 - [x] Implement backend auth endpoints (/api/auth) correctly with JWT (using .env for credentials).
 - [x] 后台管理功能 (Admin management): Implement basic Storage and Settings management via local JSON database.
 - [x] Implement backend `fs` operations for `Local` driver mapping to container filesystem.

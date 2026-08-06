@@ -49,8 +49,8 @@ compatibility_flags = ["nodejs_compat"]
 ENVIRONMENT = "production"
 
 [[kv_namespaces]]
-binding = "OPENLIST_KV"
-id = "OPENLIST_KV_ID"
+binding = "OPENLISTNEXT_KV"
+id = "OPENLISTNEXT_KV_ID"
 ```
 
 - **`main`**: 指定 Worker 入口文件，OpenListNext 导出 Worker 标准 `fetch` 接口的入口为 [src/backend/worker.ts](file:///c:/Users/aaajn/Documents/GitHub/openlistnext/src/backend/worker.ts)。
@@ -58,6 +58,7 @@ id = "OPENLIST_KV_ID"
 - **`[[kv_namespaces]]`**: 用于数据库与配置在边缘侧的持久化存储。
 
 若要同时托管前端静态资源，可以在 `wrangler.toml` 中开启静态资源配置：
+
 ```toml
 assets = { directory = "./dist" }
 ```
@@ -70,21 +71,23 @@ OpenListNext 在 Serverless 环境中使用 Cloudflare KV 来存储配置数据�
 
 1. **创建生产环境 KV 命名空间**：
    运行以下命令创建用于 OpenListNext 的 KV 空间：
+
    ```bash
-   npx wrangler kv:namespace create OPENLIST_KV
+   npx wrangler kv:namespace create OPENLISTNEXT_KV
    ```
 
    命令行将输出类似以下的信息：
+
    ```text
-   🌀 Creating namespace with title "openlistnext-OPENLIST_KV"
-   ✨ Success! Created namespace openlistnext-OPENLIST_KV with ID "a1b2c3d4e5f67890abcdef1234567890"
+   🌀 Creating namespace with title "openlistnext-OPENLISTNEXT_KV"
+   ✨ Success! Created namespace openlistnext-OPENLISTNEXT_KV with ID "a1b2c3d4e5f67890abcdef1234567890"
    ```
 
 2. **更新 `wrangler.toml`**：
    将获取到的 `ID` 填入 [wrangler.toml](file:///c:/Users/aaajn/Documents/GitHub/openlistnext/wrangler.toml) 文件中：
    ```toml
    [[kv_namespaces]]
-   binding = "OPENLIST_KV"
+   binding = "OPENLISTNEXT_KV"
    id = "a1b2c3d4e5f67890abcdef1234567890" # 替换为你自己的 KV Namespace ID
    ```
 
@@ -111,6 +114,7 @@ pnpm build
 ```bash
 pnpm dev:worker
 ```
+
 该命令会调用 `wrangler dev`，在本地启动 Workers 运行时与模拟 KV 数据库。
 
 ---
@@ -122,7 +126,9 @@ pnpm dev:worker
 ```bash
 pnpm deploy:worker
 ```
+
 或者直接运行：
+
 ```bash
 npx wrangler deploy
 ```
@@ -140,6 +146,7 @@ npx wrangler deploy
 ```bash
 npx wrangler secret put JWT_SECRET
 ```
+
 系统会提示你输入 Secret 值。
 
 ### 2. 绑定自定义域名
@@ -156,8 +163,9 @@ npx wrangler secret put JWT_SECRET
 > [!IMPORTANT]
 > **Serverless 无状态特性说明**：
 > Cloudflare Workers 运行在无状态边缘计算节点上，因此：
+>
 > 1. 本地硬盘存储驱动 (`Local` Driver) 在 Worker 部署环境下无法作为长期存储使用，推荐配置并使用对象存储（如 **AWS S3 / Cloudflare R2 / 阿里云 OSS / WebDAV** 等云存储驱动）。
-> 2. 系统配置及用户状态会自动持久化到绑定的 `OPENLIST_KV` 数据库中。
+> 2. 系统配置及用户状态会自动持久化到绑定的 `OPENLISTNEXT_KV` 数据库中。
 
 > [!TIP]
 > **资源配额**：

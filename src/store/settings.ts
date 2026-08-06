@@ -8,7 +8,7 @@ export const setSettings = (items: Record<string, string>) => {
   })
   const version = settings["version"] || "Unknown"
   console.log(
-    `%c OpenList %c ${version} %c https://github.com/OpenListTeam/OpenList`,
+    `%c OpenListNext %c ${version} %c https://github.com/OpenListTeam/OpenList`,
     "color: #fff; background: #5f5f5f",
     "color: #fff; background: #70c6be",
     "",
@@ -28,8 +28,8 @@ export const getSettingNumber = (key: string, defaultV?: number) => {
   return defaultV ?? 0
 }
 export const getMainColor = (): string => {
-  if (window.OPENLIST_CONFIG.main_color) {
-    return window.OPENLIST_CONFIG.main_color
+  if (window.OPENLISTNEXT_CONFIG.main_color) {
+    return window.OPENLISTNEXT_CONFIG.main_color
   }
   return getSetting("main_color") || "#1890ff"
 }

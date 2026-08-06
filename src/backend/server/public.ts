@@ -10,8 +10,8 @@ publicRouter.get("/settings", async (c) => {
   // Source: internal/bootstrap/data/setting.go + internal/conf/const.go
   const settingsObj: Record<string, string> = {
     // --- Site ---
-    title: "OpenList Serverless",
-    site_title: "OpenList Serverless",
+    title: "OpenListNext Serverless",
+    site_title: "OpenListNext Serverless",
     version: "v4.2.3",
     announcement: "",
     pagination_type: "all",
@@ -21,8 +21,8 @@ publicRouter.get("/settings", async (c) => {
     robots_txt: "User-agent: *\nAllow: /",
 
     // --- Appearance ---
-    logo: "https://res.oplist.org/logo/logo.svg",
-    favicon: "https://res.oplist.org/logo/logo.svg",
+    logo: "/logo.png",
+    favicon: "/favicon.png",
     main_color: "#1890ff",
     hide_storage_details: "false",
     hide_storage_details_in_manage_page: "false",

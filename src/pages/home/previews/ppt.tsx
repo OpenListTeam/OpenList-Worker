@@ -228,7 +228,7 @@ const PPTViewerApp = () => {
 
         {/* 错误状态 */}
         <Show when={error()}>
-          <Erro msg={t("preview.failed_load_ppt")} h="70vh" />
+          <Erro msg={t("home.preview.failed_load_ppt")} h="70vh" />
         </Show>
       </div>
 

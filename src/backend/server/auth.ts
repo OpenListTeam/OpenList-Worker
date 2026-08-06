@@ -5,7 +5,7 @@ import { JWT_SECRET } from "./middlewares"
 
 export const authRouter = new Hono()
 
-// Helper to hash password matching OpenList/AList specification
+// Helper to hash password matching OpenListNext/AList specification
 export async function hashPassword(plainPassword: string): Promise<string> {
   const hash_salt = "https://github.com/alist-org/alist"
   const msgBuffer = new TextEncoder().encode(`${plainPassword}-${hash_salt}`)

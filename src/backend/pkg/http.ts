@@ -1,5 +1,5 @@
 /**
- * HTTP client utilities for OpenList backend.
+ * HTTP client utilities for OpenListNext backend.
  * Uses native fetch — compatible with Cloudflare Workers and Node.js 18+.
  */
 

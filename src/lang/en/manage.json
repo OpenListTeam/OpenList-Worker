@@ -31,7 +31,7 @@
     "aria2": "Aria2 Tasks",
     "qbit": "qBittorrent Tasks"
   },
-  "title": "OpenList Management",
+  "title": "OpenListNext Management",
   "not_admin": "You are not an admin user, please login with an admin account.",
   "logout_success": "Logout successful",
   "send": "Send",

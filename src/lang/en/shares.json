@@ -38,5 +38,6 @@
   },
   "input_password": "Please enter Share Code",
   "copy_msg": "Copy link",
+  "copy_url": "Copy URL",
   "no_permission_tip": "To create a share, you need \"Share\" permission."
 }

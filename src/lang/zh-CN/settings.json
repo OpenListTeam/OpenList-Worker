@@ -142,5 +142,6 @@
   "version": "应用版本号",
   "video_autoplay": "视频自动播放",
   "video_types": "视频类型文件扩展名",
-  "webauthn_login_enabled": "启用 WebAuthn 无密码登录"
+  "webauthn_login_enabled": "启用 WebAuthn 无密码登录",
+  "unknown_type": "未知类型"
 }

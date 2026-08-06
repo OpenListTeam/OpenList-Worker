@@ -52,7 +52,11 @@
       "video360": "Video360 Player",
       "archive": "Archive Previewer",
       "torrent": "Torrent Previewer"
-    }
+    },
+    "failed_load_doc": "文档加载失败",
+    "failed_load_swf": "SWF 加载失败",
+    "failed_load_ppt": "PPT 加载失败",
+    "failed_load_excel": "Excel 加载失败"
   },
   "layouts": {
     "list": "List View",
@@ -166,7 +170,8 @@
     "sequential_renaming_desc": "The new file name will have a numerical starting value appended to it, and it will be displayed sequentially by adding 1 to the starting value. Enter the new file name on the first line and the starting value on the second line. Supports {number} placeholders.",
     "sequential_renaming_input3_placeholder": "Padding zeros (optional)",
     "find_replace": "Find and Replace",
-    "find_replace_desc": "Find and Replace"
+    "find_replace_desc": "Find and Replace",
+    "no_selected": "未选择文件"
   },
   "upload": {
     "add_as_task": "Add as task",
@@ -257,7 +262,7 @@
     "success": "Download completed"
   },
   "footer": {
-    "powered_by": "Powered by OpenList",
+    "powered_by": "Powered by OpenListNext",
     "manage": "管理"
   },
   "search": {

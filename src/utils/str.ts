@@ -64,7 +64,7 @@ export const convertURL = (scheme: string, args: ConvertURLArgs) => {
   if (args.ts) {
     const d = new URL(args.d_url)
     const ts = Date.now()
-    d.searchParams.set("openlist_ts", ts.toString())
+    d.searchParams.set("openlistnext_ts", ts.toString())
     args.d_url = d.toString()
   }
   ans = ans.replace(/\$[eb_]*url/, (old) => {

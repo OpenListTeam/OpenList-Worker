@@ -1,4 +1,3 @@
-
 export enum ErrorCode {
   OK = 200,
   BadRequest = 400,
@@ -6,8 +5,8 @@ export enum ErrorCode {
   Forbidden = 403,
   NotFound = 404,
   InternalError = 500,
-  
-  // Custom AList/OpenList codes
+
+  // Custom AList/OpenListNext codes
   InvalidConfig = 1001,
   InvalidStorage = 1002,
   StorageNotReady = 1003,
@@ -16,21 +15,36 @@ export enum ErrorCode {
   TaskNotFound = 1006,
 }
 
-export class OpenListError extends Error {
+export class OpenListNextNextError extends Error {
   constructor(
     public code: ErrorCode,
     public message: string,
-    public originalError?: any
+    public originalError?: any,
   ) {
-    super(message);
-    this.name = "OpenListError";
+    super(message)
+    this.name = "OpenListNextNextError"
   }
 }
 
 export const Errs = {
-  PathNotFound: new OpenListError(ErrorCode.PathNotFound, "Path not found"),
-  NotReady: new OpenListError(ErrorCode.StorageNotReady, "Storage not ready"),
-  InvalidConfig: new OpenListError(ErrorCode.InvalidConfig, "Invalid configuration"),
-  Unauthorized: new OpenListError(ErrorCode.Unauthorized, "Unauthorized access"),
-  Forbidden: new OpenListError(ErrorCode.Forbidden, "Permission denied"),
-};
+  PathNotFound: new OpenListNextNextError(
+    ErrorCode.PathNotFound,
+    "Path not found",
+  ),
+  NotReady: new OpenListNextNextError(
+    ErrorCode.StorageNotReady,
+    "Storage not ready",
+  ),
+  InvalidConfig: new OpenListNextNextError(
+    ErrorCode.InvalidConfig,
+    "Invalid configuration",
+  ),
+  Unauthorized: new OpenListNextNextError(
+    ErrorCode.Unauthorized,
+    "Unauthorized access",
+  ),
+  Forbidden: new OpenListNextNextError(
+    ErrorCode.Forbidden,
+    "Permission denied",
+  ),
+}

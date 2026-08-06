@@ -113,7 +113,7 @@ const Preview = () => {
 
         {/* 错误状态 */}
         <Show when={error()}>
-          <Error msg={t("preview.failed_load_swf")} h="$full" />
+          <Error msg={t("home.preview.failed_load_swf")} h="$full" />
         </Show>
       </div>
     </BoxWithFullScreen>

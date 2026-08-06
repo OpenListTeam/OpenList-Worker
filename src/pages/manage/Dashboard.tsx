@@ -194,7 +194,7 @@ const Dashboard = () => {
                     <Text size="xs" mt="$2" color="$neutral11">
                       如需开启 Cloudflare Workers KV 空间持久化，请在 Cloudflare
                       仪表盘绑定 KV 命名空间（绑定变量名如：
-                      <code>OPENLIST_KV</code>）或配置 REST API 环境变量（
+                      <code>OPENLISTNEXT_KV</code>）或配置 REST API 环境变量（
                       <code>CF_ACCOUNT_ID</code>,{" "}
                       <code>CF_KV_NAMESPACE_ID</code>, <code>CF_API_TOKEN</code>
                       ）。

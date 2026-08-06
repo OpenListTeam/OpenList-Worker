@@ -5,7 +5,6 @@ import { authRouter, meHandler, meUpdateHandler, logoutHandler } from "./auth"
 import { adminRouter } from "./admin"
 import { rawRouter } from "./raw"
 import { publicRouter } from "./public"
-import { s3Router } from "./s3"
 import { mcpRouter } from "./mcp"
 import { debugRouter } from "./debug"
 import { shareRouter } from "./share"
@@ -32,7 +31,6 @@ export function setupRouter(app: Hono) {
   app.route("/auth", authRouter)
   app.route("/public", publicRouter)
   app.route("/admin", adminRouter)
-  app.route("/s3", s3Router)
   app.route("/mcp", mcpRouter)
   app.route("/debug", debugRouter)
   app.route("/share", shareRouter)

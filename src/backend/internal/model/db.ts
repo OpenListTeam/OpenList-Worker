@@ -12,7 +12,7 @@ export const defaultDb = {
     },
     {
       key: "site_title",
-      value: "OpenList",
+      value: "OpenListNext",
       type: "string",
       help: "Site Title",
       group: 1,
@@ -71,7 +71,7 @@ export const defaultDb = {
     // Group 2: STYLE (https://doc.oplist.org/configuration/style)
     {
       key: "logo",
-      value: "",
+      value: "/logo.png",
       type: "string",
       help: "Site Logo URL",
       group: 2,
@@ -79,7 +79,7 @@ export const defaultDb = {
     },
     {
       key: "favicon",
-      value: "",
+      value: "/favicon.png",
       type: "string",
       help: "Favicon URL",
       group: 2,
@@ -95,7 +95,7 @@ export const defaultDb = {
     },
     {
       key: "home_icon",
-      value: "openlist",
+      value: "openlistnext",
       type: "string",
       help: "Home Icon Name",
       group: 2,
@@ -506,13 +506,13 @@ export const defaultDb = {
       flag: 0,
     },
 
-    // Group 11: TRAFFIC
+    // Group 10: TRAFFIC
     {
       key: "traffic_limit",
       value: "0",
       type: "number",
       help: "Traffic Limit in MB",
-      group: 11,
+      group: 10,
       flag: 0,
     },
     {
@@ -520,33 +520,7 @@ export const defaultDb = {
       value: "0",
       type: "number",
       help: "IP Rate Limit Per Minute",
-      group: 11,
-      flag: 0,
-    },
-
-    // Group 9: S3
-    {
-      key: "s3_access_key_id",
-      value: "",
-      type: "string",
-      help: "S3 Access Key ID",
-      group: 9,
-      flag: 0,
-    },
-    {
-      key: "s3_secret_access_key",
-      value: "",
-      type: "string",
-      help: "S3 Secret Access Key",
-      group: 9,
-      flag: 0,
-    },
-    {
-      key: "s3_buckets",
-      value: "[]",
-      type: "text",
-      help: "S3 Buckets",
-      group: 9,
+      group: 10,
       flag: 0,
     },
 
@@ -700,8 +674,8 @@ export function getKvBinding(envCtx?: any): {
   const g = typeof globalThis !== "undefined" ? (globalThis as any) : {}
 
   const candidates = [
-    { key: "OPENLIST_KV", name: "OPENLIST_KV" },
-    { key: "OPENLIST_KV_ID", name: "OPENLIST_KV_ID" },
+    { key: "OPENLISTNEXT_KV", name: "OPENLISTNEXT_KV" },
+    { key: "OPENLISTNEXT_KV_ID", name: "OPENLISTNEXT_KV_ID" },
     { key: "KV", name: "KV" },
     { key: "CF_KV", name: "CF_KV" },
     { key: "DATABASE_KV", name: "DATABASE_KV" },
@@ -747,7 +721,7 @@ export function getKvBinding(envCtx?: any): {
 
 async function readFromKv(
   kvInfo: ReturnType<typeof getKvBinding>,
-  key = "openlist_config",
+  key = "openlistnext_config",
 ): Promise<any | null> {
   const { binding, mode } = kvInfo
   if (mode === "none" || !binding) return null
@@ -854,7 +828,7 @@ export const getDb = async (envCtx?: any) => {
   const kvInfo = getKvBinding(envCtx)
   if (kvInfo.mode !== "none") {
     try {
-      const kvConfig = await readFromKv(kvInfo, "openlist_config")
+      const kvConfig = await readFromKv(kvInfo, "openlistnext_config")
       if (kvConfig) {
         memoryDb = kvConfig
         ensureDefaultSettings(memoryDb)
@@ -911,7 +885,7 @@ export const saveDb = async (data: any, envCtx?: any) => {
   // Save to KV Namespace
   const kvInfo = getKvBinding(envCtx)
   if (kvInfo.mode !== "none") {
-    const success = await saveToKv(kvInfo, "openlist_config", data).catch(
+    const success = await saveToKv(kvInfo, "openlistnext_config", data).catch(
       (err) => {
         console.error("[DB] Failed to save to KV:", err)
         return false
@@ -937,7 +911,7 @@ export async function getKvStatus(envCtx?: any) {
 
   if (isConfigured) {
     try {
-      const testVal = await readFromKv(kvInfo, "openlist_config")
+      const testVal = await readFromKv(kvInfo, "openlistnext_config")
       connected = true
       return {
         configured: true,

@@ -142,5 +142,6 @@
   "version": "Version",
   "video_autoplay": "Video autoplay",
   "video_types": "Video types",
-  "webauthn_login_enabled": "WebAuthn login enabled"
+  "webauthn_login_enabled": "WebAuthn login enabled",
+  "unknown_type": "Unknown type"
 }
