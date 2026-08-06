@@ -12,6 +12,15 @@ export interface Pan123Addition {
   upload_thread?: number
   /** 请求使用的 platform header，默认 "web" */
   platform?: string
+  /** 排序字段 */
+  order_by?: "file_id" | "file_name" | "size" | "created_at" | "updated_at"
+  /** 排序方向 */
+  order_direction?: "asc" | "desc"
+  /**
+   * 已保存的登录令牌。设置后优先用令牌验证（避免境外 IP 风控）；
+   * 密码登录成功后会持久化回此字段。
+   */
+  access_token?: string
 }
 
 // --- API response types ---

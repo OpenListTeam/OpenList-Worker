@@ -313,6 +313,20 @@ const driverConfigs: Record<string, any> = {
         required: false,
         help: "true",
       },
+      {
+        name: "order_by",
+        type: "select",
+        options: "filename,modified_time,size",
+        default: "filename",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "asc,desc",
+        default: "asc",
+        required: false,
+      },
     ],
     config: {
       name: "Onedrive",
@@ -348,6 +362,13 @@ const driverConfigs: Record<string, any> = {
         type: "select",
         options: "folder,name,modifiedTime desc",
         default: "folder,name,modifiedTime desc",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "asc,desc",
+        default: "asc",
         required: false,
       },
       {
@@ -459,6 +480,13 @@ const driverConfigs: Record<string, any> = {
         required: true,
       },
       {
+        name: "access_token",
+        type: "string",
+        default: "",
+        required: false,
+        help: "登录令牌（可选）。填入后可跳过密码登录，避免境外 IP 触发风控。",
+      },
+      {
         name: "root_id",
         type: "string",
         default: "0",
@@ -477,6 +505,20 @@ const driverConfigs: Record<string, any> = {
         default: "web",
         required: false,
         help: "the platform header value, sent with API requests",
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "file_id,file_name,size,created_at,updated_at",
+        default: "file_id",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "asc,desc",
+        default: "desc",
+        required: false,
       },
     ],
     config: {

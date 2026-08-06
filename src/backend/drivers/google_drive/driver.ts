@@ -1,4 +1,5 @@
 import { StorageDriver, FileItem } from "../../internal/driver/base"
+import { sortFileItems } from "../../internal/driver/sort"
 import {
   GoogleDriveAddition,
   GoogleFile,
@@ -21,8 +22,10 @@ function googleFileToFileItem(f: GoogleFile): FileItem {
 
 export class GoogleDrive implements StorageDriver {
   private client: GoogleDriveClient
+  private addition: GoogleDriveAddition
 
   constructor(addition: GoogleDriveAddition) {
+    this.addition = addition
     this.client = new GoogleDriveClient(addition)
   }
 
@@ -33,7 +36,12 @@ export class GoogleDrive implements StorageDriver {
   async list(_virtualPath: string, physicalPath: string): Promise<FileItem[]> {
     const folderId = await this.client.resolveFileId(physicalPath)
     const files = await this.client.listFiles(folderId)
-    return files.map(googleFileToFileItem)
+    const items = files.map(googleFileToFileItem)
+    return sortFileItems(
+      items,
+      this.addition.order_by,
+      this.addition.order_direction,
+    )
   }
 
   async get(_virtualPath: string, physicalPath: string): Promise<FileItem> {

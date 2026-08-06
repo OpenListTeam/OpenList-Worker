@@ -3,6 +3,7 @@ export interface GoogleDriveAddition {
   root_folder_id?: string
   refresh_token: string
   order_by?: string
+  order_direction?: string
   // 在线 API 中转模式（推荐，无需 client_id）
   use_online_api?: boolean
   api_url_address?: string

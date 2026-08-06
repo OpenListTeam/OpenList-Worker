@@ -1,4 +1,4 @@
-import { resolvePath, getDb } from "../model/db"
+import { resolvePath, getDb, saveDb } from "../model/db"
 import { FileItem, StorageDriver, calcFileType } from "../driver/base"
 import { Onedrive } from "../../drivers/onedrive/driver"
 import { AliyundriveOpen } from "../../drivers/aliyundrive_open/driver"
@@ -93,7 +93,28 @@ export async function getDriver(
     driver = new BaiduDriver(parseAddition(storageConfig))
     await driver.init?.()
   } else if (normDriver === "123pan" || normDriver === "123") {
-    driver = new Pan123Driver(parseAddition(storageConfig))
+    const addition = parseAddition(storageConfig)
+    driver = new Pan123Driver(addition, async (token: string) => {
+      // Persist the refreshed 123Pan access_token back to the storage config
+      // so subsequent cold starts skip password login (avoiding overseas-IP
+      // risk control in Cloudflare Workers).
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        stAddition.access_token = token
+        st.addition = JSON.stringify(stAddition)
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[123Pan] failed to persist access_token:", e)
+      }
+    })
     await driver.init?.()
   } else {
     throw new Error(

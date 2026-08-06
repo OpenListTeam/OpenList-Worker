@@ -5,6 +5,7 @@ import {
   FileItem,
   calcFileType,
 } from "../../internal/driver/base"
+import { sortFileItems } from "../../internal/driver/sort"
 import { Pan123Addition, Pan123File } from "./types"
 import { Pan123Client } from "./util"
 
@@ -30,9 +31,12 @@ export class Pan123Driver implements StorageDriver {
   /** cache: physical path → folder FileId (string) */
   private pathIdCache = new Map<string, string>()
 
-  constructor(addition: Pan123Addition) {
+  constructor(
+    addition: Pan123Addition,
+    onTokenUpdate?: (token: string) => void,
+  ) {
     this.addition = addition
-    this.client = new Pan123Client(addition)
+    this.client = new Pan123Client(addition, onTokenUpdate)
   }
 
   async init(): Promise<void> {
@@ -114,7 +118,12 @@ export class Pan123Driver implements StorageDriver {
   async list(_virtualPath: string, physicalPath: string): Promise<FileItem[]> {
     const folderId = await this.resolveFolderId(physicalPath)
     const files = await this.client.getFiles(folderId)
-    return files.map(pan123FileToFileItem)
+    const items = files.map(pan123FileToFileItem)
+    return sortFileItems(
+      items,
+      this.addition.order_by || "file_name",
+      this.addition.order_direction,
+    )
   }
 
   async get(_virtualPath: string, physicalPath: string): Promise<FileItem> {

@@ -3,6 +3,7 @@ import {
   FileItem,
   calcFileType,
 } from "../../internal/driver/base"
+import { sortFileItems } from "../../internal/driver/sort"
 import { AliyundriveOpenAddition, AliyunFileItem } from "./types"
 import { AliyunOpenClient } from "./util"
 
@@ -22,9 +23,11 @@ function aliyunFileToFileItem(f: AliyunFileItem): FileItem {
 
 export class AliyundriveOpen implements StorageDriver {
   private client: AliyunOpenClient
+  private addition: AliyundriveOpenAddition
   private pathFileIdCache = new Map<string, string>()
 
   constructor(addition: AliyundriveOpenAddition) {
+    this.addition = addition
     this.client = new AliyunOpenClient(addition)
   }
 
@@ -35,7 +38,12 @@ export class AliyundriveOpen implements StorageDriver {
   async list(_virtualPath: string, physicalPath: string): Promise<FileItem[]> {
     const folderId = await this.resolveFileId(physicalPath)
     const files = await this.client.listFiles(folderId)
-    return files.map(aliyunFileToFileItem)
+    const items = files.map(aliyunFileToFileItem)
+    return sortFileItems(
+      items,
+      this.addition.order_by,
+      this.addition.order_direction,
+    )
   }
 
   async get(_virtualPath: string, physicalPath: string): Promise<FileItem> {

@@ -13,6 +13,8 @@ export interface Addition {
   custom_host: string
   disable_disk_usage: boolean
   enable_direct_upload: boolean
+  order_by?: string
+  order_direction?: string
 }
 
 export const config = {

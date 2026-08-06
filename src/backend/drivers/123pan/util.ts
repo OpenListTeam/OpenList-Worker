@@ -114,9 +114,15 @@ function getApi(rawUrl: string): string {
 export class Pan123Client {
   private addition: Pan123Addition
   private accessToken = ""
+  /** Called after a successful password login so the new token can be persisted */
+  private onTokenUpdate?: (token: string) => void
 
-  constructor(addition: Pan123Addition) {
+  constructor(
+    addition: Pan123Addition,
+    onTokenUpdate?: (token: string) => void,
+  ) {
     this.addition = addition
+    this.onTokenUpdate = onTokenUpdate
   }
 
   public getRootId(): string {
@@ -125,7 +131,27 @@ export class Pan123Client {
 
   // ---- Login ----
 
+  /**
+   * Login strategy to avoid overseas-IP risk control:
+   * 1. If a saved access_token exists, validate it with getUserInfo first —
+   *    no password login needed when the token is still valid.
+   * 2. Only fall back to password login when the token is missing/expired.
+   */
   public async login(): Promise<void> {
+    if (this.addition.access_token) {
+      this.accessToken = this.addition.access_token
+      try {
+        await this.userInfo()
+        return // token is valid
+      } catch {
+        // token invalid/expired — fall through to password login
+        this.accessToken = ""
+      }
+    }
+    await this.signIn()
+  }
+
+  private async signIn(): Promise<void> {
     const isEmail = /@/.test(this.addition.username)
     const body = isEmail
       ? {
@@ -158,6 +184,9 @@ export class Pan123Client {
     }
     this.accessToken = data.data?.token || ""
     if (!this.accessToken) throw new Error("login returned empty token")
+    // Persist the fresh token so subsequent boots skip password login
+    this.addition.access_token = this.accessToken
+    this.onTokenUpdate?.(this.accessToken)
   }
 
   // ---- Core request ----
@@ -219,13 +248,15 @@ export class Pan123Client {
   public async getFiles(parentId: string): Promise<Pan123File[]> {
     const files: Pan123File[] = []
     let page = 1
+    const orderBy = this.addition.order_by || "file_id"
+    const orderDirection = this.addition.order_direction || "desc"
     for (;;) {
       const query = new URLSearchParams({
         driveId: "0",
         limit: "100",
         next: "0",
-        orderBy: "file_id",
-        orderDirection: "desc",
+        orderBy,
+        orderDirection,
         parentFileId: parentId,
         trashed: "false",
         SearchData: "",

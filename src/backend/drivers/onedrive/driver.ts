@@ -1,4 +1,5 @@
 import { StorageDriver, FileItem } from "../../internal/driver/base"
+import { sortFileItems } from "../../internal/driver/sort"
 import { onedriveHostMap, Addition } from "./meta"
 import { fileToObj } from "./types"
 
@@ -20,6 +21,8 @@ export class Onedrive implements StorageDriver {
   custom_host: string = ""
   disable_disk_usage: boolean = false
   enable_direct_upload: boolean = false
+  order_by: string = "filename"
+  order_direction: string = "asc"
 
   accessToken: string = ""
 
@@ -98,7 +101,7 @@ export class Onedrive implements StorageDriver {
 
   async list(virtualPath: string, physicalPath: string): Promise<FileItem[]> {
     const files = await getFiles(this, physicalPath)
-    return files.map((f) => {
+    const items = files.map((f) => {
       const obj = fileToObj(f, "")
       return {
         name: obj.name,
@@ -109,6 +112,7 @@ export class Onedrive implements StorageDriver {
         type: obj.isFolder ? 1 : 0,
       }
     })
+    return sortFileItems(items, this.order_by, this.order_direction)
   }
 
   async get(virtualPath: string, physicalPath: string): Promise<FileItem> {
