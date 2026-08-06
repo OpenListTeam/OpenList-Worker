@@ -217,7 +217,7 @@ export const ContextMenu = () => {
                   <Image
                     m="0 auto"
                     boxSize="$7"
-                    src={`${window.__dynamic_base__}/images/${player.icon}.webp`}
+                    src={`${window.__dynamic_base__ || ""}/images/${player.icon}.webp`}
                   />
                   <Text>{player.name}</Text>
                 </HStack>

@@ -29,19 +29,38 @@ instance.interceptors.response.use(
   (response) => {
     const resp = response.data
     log(resp)
+    // Guard against non-JSON responses (e.g. HTML 404 pages or empty bodies):
+    // return a standard error object so callers never receive undefined fields.
+    if (
+      typeof resp !== "object" ||
+      resp === null ||
+      typeof resp.code !== "number"
+    ) {
+      return {
+        code: response.status >= 400 ? response.status : 500,
+        message:
+          typeof resp === "string" && resp.length > 0
+            ? resp.slice(0, 200)
+            : `Unexpected response (HTTP ${response.status})`,
+        data: null,
+      }
+    }
     return resp
   },
   (error) => {
     // response error
     console.error(error) // for debug
-    // notificationService.show({
-    //   status: "danger",
-    //   title: error.code,
-    //   description: error.message,
-    // });
+    // Prefer the backend's own error message (e.g. "Username already exists")
+    // over axios's generic "Request failed with status code XXX".
+    const serverMsg =
+      error.response?.data &&
+      typeof error.response.data === "object" &&
+      typeof error.response.data.message === "string"
+        ? error.response.data.message
+        : undefined
     return {
       code: axios.isCancel(error) ? -1 : error.response?.status,
-      message: error.message,
+      message: serverMsg || error.message,
     }
   },
 )

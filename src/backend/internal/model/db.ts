@@ -675,6 +675,8 @@ export const defaultDb = {
     },
   ],
   metas: [],
+  shares: [],
+  tasks: [],
 }
 
 let memoryDb: any = null
@@ -829,6 +831,20 @@ const ensureDefaultStorages = (db: any) => {
   }
 }
 
+const ensureDefaultShares = (db: any) => {
+  if (!db) return
+  if (!db.shares) {
+    db.shares = []
+  }
+}
+
+const ensureDefaultTasks = (db: any) => {
+  if (!db) return
+  if (!db.tasks) {
+    db.tasks = []
+  }
+}
+
 export const getDb = async (envCtx?: any) => {
   if (envCtx) {
     globalEnvCtx = envCtx
@@ -843,6 +859,8 @@ export const getDb = async (envCtx?: any) => {
         memoryDb = kvConfig
         ensureDefaultSettings(memoryDb)
         ensureDefaultStorages(memoryDb)
+        ensureDefaultShares(memoryDb)
+        ensureDefaultTasks(memoryDb)
         return memoryDb
       }
     } catch (err) {
@@ -853,6 +871,8 @@ export const getDb = async (envCtx?: any) => {
   if (memoryDb) {
     ensureDefaultSettings(memoryDb)
     ensureDefaultStorages(memoryDb)
+    ensureDefaultShares(memoryDb)
+    ensureDefaultTasks(memoryDb)
     return memoryDb
   }
 
@@ -866,6 +886,8 @@ export const getDb = async (envCtx?: any) => {
       memoryDb = JSON.parse(process.env.DATABASE_JSON)
       ensureDefaultSettings(memoryDb)
       ensureDefaultStorages(memoryDb)
+      ensureDefaultShares(memoryDb)
+      ensureDefaultTasks(memoryDb)
       return memoryDb
     } catch (err) {
       console.error("Failed to parse DATABASE_JSON env variable:", err)
@@ -875,6 +897,8 @@ export const getDb = async (envCtx?: any) => {
   // Priority 3: In-Memory DB
   memoryDb = JSON.parse(JSON.stringify(defaultDb))
   ensureDefaultStorages(memoryDb)
+  ensureDefaultShares(memoryDb)
+  ensureDefaultTasks(memoryDb)
   return memoryDb
 }
 
@@ -987,9 +1011,10 @@ export async function resolvePath(virtualPath: string) {
 
       const parts = [rootFolder, relPath]
         .map((p) => p.replace(/\\/g, "/"))
-        .filter(Boolean)
-      const physicalPath =
-        "/" + parts.join("/").split("/").filter(Boolean).join("/")
+        .filter((p) => Boolean(p) && p !== "/")
+      // Keep root_folder_path intact (e.g. Windows "C:/data" must not be
+      // split into segments) while normalizing separators and slashes.
+      const physicalPath = (parts.join("/") || "/").replace(/\/{2,}/g, "/")
 
       return {
         storage,

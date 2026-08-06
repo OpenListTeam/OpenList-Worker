@@ -38,11 +38,38 @@ export class GoogleDrive implements StorageDriver {
 
   async get(_virtualPath: string, physicalPath: string): Promise<FileItem> {
     const fileId = await this.client.resolveFileId(physicalPath)
-    const file = await this.client.getFile(fileId)
-    const item = googleFileToFileItem(file)
-    // Attach download URL + auth header
-    item.raw_url = this.client.getDownloadUrl(fileId)
-    return item
+    const file = await this.client.getFile(fileId).catch(() => null)
+    if (file) {
+      const item = googleFileToFileItem(file)
+      // Attach download URL + auth header
+      item.raw_url = this.client.getDownloadUrl(fileId)
+      return item
+    }
+    // Fallback: the path may be a folder that isn't found via getFile
+    // (e.g. the storage root). Probe it by listing.
+    const parts = physicalPath.split("/").filter(Boolean)
+    const name = parts[parts.length - 1] || "root"
+    try {
+      await this.client.listFiles(fileId)
+      return {
+        name,
+        size: 0,
+        is_dir: true,
+        modified: new Date().toISOString(),
+        sign: "",
+        type: 1,
+        raw_url: "",
+      }
+    } catch {}
+    return {
+      name,
+      size: 0,
+      is_dir: false,
+      modified: new Date().toISOString(),
+      sign: "",
+      type: 0,
+      raw_url: "",
+    }
   }
 
   async mkdir(_virtualPath: string, physicalPath: string): Promise<void> {

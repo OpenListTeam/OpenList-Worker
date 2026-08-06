@@ -1,13 +1,22 @@
 import { resolvePath, getDb } from "../model/db"
 import { FileItem, StorageDriver, calcFileType } from "../driver/base"
-import { LocalDriver } from "../../drivers/local"
 import { S3Driver } from "../../drivers/s3"
 import { Onedrive } from "../../drivers/onedrive/driver"
 import { AliyundriveOpen } from "../../drivers/aliyundrive_open/driver"
 import { GoogleDrive } from "../../drivers/google_drive/driver"
 import { QuarkDriver } from "../../drivers/quark/driver"
 
-const localDriver = new LocalDriver()
+// LocalDriver is not available in Cloudflare Workers (no fs module).
+// When running in Node.js container mode, import dynamically on first use.
+let _localDriver: StorageDriver | null = null
+async function getLocalDriver(): Promise<StorageDriver> {
+  if (!_localDriver) {
+    const { LocalDriver } = await import("../../drivers/local")
+    _localDriver = new LocalDriver()
+  }
+  return _localDriver
+}
+
 const s3Driver = new S3Driver()
 
 const driverCache = new Map<string, StorageDriver>()
@@ -26,7 +35,13 @@ export async function getDriver(
 ): Promise<StorageDriver> {
   const normDriver = (driverName || "").toLowerCase().replace(/_/g, "")
   if (normDriver === "local") {
-    return localDriver
+    // Only available in Node.js container — not in Cloudflare Workers
+    if (typeof process !== "undefined" && process.release?.name === "node") {
+      return getLocalDriver()
+    }
+    throw new Error(
+      "Local storage driver requires Node.js runtime (not available in Cloudflare Workers)",
+    )
   }
 
   if (!storageConfig) {
@@ -158,7 +173,7 @@ export async function getItem(
   return {
     item,
     provider: driverName,
-    rawUrl: `/api/raw${virtualPath.startsWith("/") ? "" : "/"}${virtualPath}`,
+    rawUrl: `/api/p${virtualPath.startsWith("/") ? "" : "/"}${virtualPath}`,
   }
 }
 

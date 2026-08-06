@@ -10,6 +10,7 @@
   "finish_restore": "完成恢复",
   "success_restore_item": "[ {{item}} ] 恢复成功",
   "failed_restore_item": "[ {{item}} ] 恢复失败",
+  "skip_existing_item": "[ {{item}} ] 已存在，跳过",
   "override": "覆盖",
   "encrypt_password_placeholder": "Leave empty if you don't need encryption",
   "encrypt_password": "加密密码",

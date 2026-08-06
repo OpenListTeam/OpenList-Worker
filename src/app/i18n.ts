@@ -117,6 +117,6 @@ export const [currentLang, setCurrentLang] = createSignal<Lang>(initialLang)
 
 export const { dict, t } = createRoot(() => {
   const [dict] = createResource(currentLang, fetchDictionary)
-  const t = i18n.translator(dict)
+  const t = i18n.translator(dict, i18n.resolveTemplate)
   return { dict, t }
 })

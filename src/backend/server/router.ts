@@ -8,6 +8,8 @@ import { publicRouter } from "./public"
 import { s3Router } from "./s3"
 import { mcpRouter } from "./mcp"
 import { debugRouter } from "./debug"
+import { shareRouter } from "./share"
+import { taskRouter } from "./task"
 import { updatePwdHandler } from "./user"
 
 export function setupRouter(app: Hono) {
@@ -33,6 +35,8 @@ export function setupRouter(app: Hono) {
   app.route("/s3", s3Router)
   app.route("/mcp", mcpRouter)
   app.route("/debug", debugRouter)
+  app.route("/share", shareRouter)
+  app.route("/task", taskRouter)
 
   // Direct short-paths for compatibility
   app.route("/d", rawRouter)

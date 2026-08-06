@@ -9,15 +9,174 @@ import {
   copyItems,
   putItem,
 } from "../internal/op/storage"
-import { downloadOfflineFile } from "../internal/stream/stream"
+import { resolveShare } from "../internal/op/share"
 
 export const fsRouter = new Hono()
+
+// GET sub-directories of a path (used by FolderTree in metas/storages editors)
+fsRouter.post("/dirs", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const reqPath = body.path || "/"
+  try {
+    // Share path support for completeness
+    if (reqPath.startsWith("/@s")) {
+      const shareRes = await resolveShare(reqPath, body.password || "", c.env)
+      if (!shareRes.ok) {
+        return c.json({ code: 400, message: shareRes.error, data: null })
+      }
+      if (shareRes.virtualList) {
+        const dirs = []
+        for (const f of shareRes.share.files || []) {
+          try {
+            const { item } = await getItem(f)
+            if (item.is_dir) {
+              const segs = String(f).split("/").filter(Boolean)
+              dirs.push({
+                name: segs[segs.length - 1] || f,
+                size: 0,
+                is_dir: true,
+                modified: item.modified || new Date().toISOString(),
+                sign: "",
+                thumb: "",
+                type: 1,
+              })
+            }
+          } catch {
+            // skip unlistable share items
+          }
+        }
+        return c.json({ code: 200, message: "success", data: dirs })
+      }
+      const { content } = await listItems(shareRes.realPath!)
+      const dirs = content
+        .filter((item: any) => item.is_dir)
+        .map((item: any) => ({
+          name: item.name,
+          size: 0,
+          is_dir: true,
+          modified: item.modified || new Date().toISOString(),
+          sign: item.sign || "",
+          thumb: item.thumb || "",
+          type: 1,
+        }))
+      return c.json({ code: 200, message: "success", data: dirs })
+    }
+
+    const { content } = await listItems(reqPath)
+    const dirs = content
+      .filter((item: any) => item.is_dir)
+      .map((item: any) => ({
+        name: item.name,
+        size: 0,
+        is_dir: true,
+        modified: item.modified || new Date().toISOString(),
+        sign: item.sign || "",
+        thumb: item.thumb || "",
+        type: 1,
+      }))
+    return c.json({ code: 200, message: "success", data: dirs })
+  } catch (err: any) {
+    return c.json({ code: 500, message: err.message, data: null })
+  }
+})
 
 fsRouter.post("/list", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const reqPath = body.path || "/"
 
   try {
+    // Share path: /@s/{shareId}/...
+    if (reqPath.startsWith("/@s")) {
+      const shareRes = await resolveShare(reqPath, body.password || "", c.env)
+      if (!shareRes.ok) {
+        return c.json({ code: 400, message: shareRes.error, data: null })
+      }
+
+      // Multi-file share root → virtual list of the shared items
+      if (shareRes.virtualList) {
+        const items = []
+        for (const f of shareRes.share.files || []) {
+          const segs = String(f).split("/").filter(Boolean)
+          const name = segs[segs.length - 1] || f
+          try {
+            const { item } = await getItem(f)
+            items.push({
+              name,
+              size: item.size || 0,
+              is_dir: !!item.is_dir,
+              modified: item.modified || new Date().toISOString(),
+              sign: "",
+              thumb: item.thumb || "",
+              type: item.type ?? 0,
+            })
+          } catch {
+            // If getItem failed, probe by listing — a listable path is a folder
+            try {
+              await listItems(f)
+              items.push({
+                name,
+                size: 0,
+                is_dir: true,
+                modified: new Date().toISOString(),
+                sign: "",
+                thumb: "",
+                type: 1,
+              })
+            } catch {
+              items.push({
+                name,
+                size: 0,
+                is_dir: false,
+                modified: new Date().toISOString(),
+                sign: "",
+                thumb: "",
+                type: 0,
+              })
+            }
+          }
+        }
+        return c.json({
+          code: 200,
+          message: "success",
+          data: {
+            content: items,
+            total: items.length,
+            readme: shareRes.share.readme || "",
+            header: shareRes.share.header || "",
+            write: false,
+            write_content_bypass: false,
+            provider: "Share",
+          },
+        })
+      }
+
+      // Mapped to a real path — fall through to normal listing
+      const { content, provider } = await listItems(shareRes.realPath!)
+      const normalized = content.map((item: any) => ({
+        name: item.name,
+        size: item.size,
+        is_dir: item.is_dir,
+        created: item.created || item.modified || new Date().toISOString(),
+        modified: item.modified || new Date().toISOString(),
+        sign: item.sign || "",
+        thumb: item.thumb || "",
+        type: item.type ?? 0,
+      }))
+      return c.json({
+        code: 200,
+        message: "success",
+        data: {
+          content: normalized,
+          total: normalized.length,
+          readme: shareRes.share.readme || "",
+          header: shareRes.share.header || "",
+          write: false,
+          write_content_bypass: false,
+          provider,
+        },
+      })
+    }
+
     const { content, provider } = await listItems(reqPath)
     // Normalize each item to the full Obj shape expected by the frontend
     const normalized = content.map((item: any) => ({
@@ -52,6 +211,66 @@ fsRouter.post("/get", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const reqPath = body.path || "/"
   try {
+    // Share path: /@s/{shareId}/...
+    if (reqPath.startsWith("/@s")) {
+      const shareRes = await resolveShare(reqPath, body.password || "", c.env)
+      if (!shareRes.ok) {
+        return c.json({ code: 400, message: shareRes.error, data: null })
+      }
+
+      // Multi-file share root: report as a virtual folder so the frontend lists it
+      if (shareRes.virtualList) {
+        const shareId = reqPath.split("/").filter(Boolean)[1] || "share"
+        return c.json({
+          code: 200,
+          message: "success",
+          data: {
+            name: shareId,
+            size: 0,
+            is_dir: true,
+            modified: new Date().toISOString(),
+            sign: "",
+            thumb: "",
+            type: 1,
+            raw_url: "",
+            readme: shareRes.share.readme || "",
+            header: shareRes.share.header || "",
+            provider: "Share",
+            related: [],
+            write: false,
+            write_content_bypass: false,
+          },
+        })
+      }
+
+      // Mapped to a real path — get with share-aware raw_url (/sd/{shareId}...)
+      const shareId = reqPath.split("/").filter(Boolean)[1] || ""
+      const { item, provider } = await getItem(shareRes.realPath!)
+      const subPath = reqPath.replace(/^\/@s\/[^/]+/, "")
+      return c.json({
+        code: 200,
+        message: "success",
+        data: {
+          name: item.name,
+          size: item.size,
+          is_dir: item.is_dir,
+          created:
+            (item as any).created || item.modified || new Date().toISOString(),
+          modified: item.modified,
+          sign: item.sign || "",
+          thumb: (item as any).thumb || "",
+          type: item.type ?? 0,
+          raw_url: `/api/sd/${shareId}${subPath}`,
+          readme: shareRes.share.readme || "",
+          header: shareRes.share.header || "",
+          provider,
+          related: [],
+          write: false,
+          write_content_bypass: false,
+        },
+      })
+    }
+
     const { item, provider, rawUrl } = await getItem(reqPath)
     return c.json({
       code: 200,

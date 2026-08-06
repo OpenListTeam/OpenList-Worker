@@ -53,9 +53,11 @@ export class QuarkDriver implements StorageDriver {
     const file = files.find((f) => f.fid === fileId || f.file_name === name)
 
     let downloadLink = ""
+    let downloadHeaders: Record<string, string> | undefined
     try {
       const linkRes = await this.client.getDownloadUrl(fileId, name)
       downloadLink = linkRes.url
+      downloadHeaders = linkRes.headers
     } catch (e: any) {
       console.warn(`[Quark/UC] getDownloadUrl warning for ${name}:`, e.message)
     }
@@ -63,8 +65,24 @@ export class QuarkDriver implements StorageDriver {
     if (file) {
       const item = quarkFileToFileItem(file)
       item.raw_url = downloadLink
+      item.raw_url_headers = downloadHeaders
       return item
     }
+
+    // Fallback: the path may be a folder that isn't listed in its parent
+    // (e.g. the storage root). Probe it by listing — if it lists, it's a folder.
+    try {
+      await this.client.getFiles(fileId)
+      return {
+        name,
+        size: 0,
+        is_dir: true,
+        modified: new Date().toISOString(),
+        sign: "",
+        type: 1,
+        raw_url: "",
+      }
+    } catch {}
 
     return {
       name,
@@ -74,6 +92,7 @@ export class QuarkDriver implements StorageDriver {
       sign: "",
       type: 0,
       raw_url: downloadLink,
+      raw_url_headers: downloadHeaders,
     }
   }
 

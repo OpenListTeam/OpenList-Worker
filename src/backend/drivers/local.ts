@@ -57,7 +57,12 @@ export class LocalDriver implements StorageDriver {
       throw new Error("LocalDriver is not supported in Edge Runtime")
     const stat = await fs.stat(physicalPath)
     const isDir = stat.isDirectory()
-    const name = physicalPath.split(path.sep).filter(Boolean).pop() || "root"
+    // physicalPath may use either "/" or "\" separators
+    const name =
+      physicalPath
+        .split(/[\\/]+/)
+        .filter(Boolean)
+        .pop() || "root"
     return {
       name,
       size: isDir ? 0 : stat.size,

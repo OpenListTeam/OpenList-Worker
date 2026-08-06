@@ -8,6 +8,8 @@ export interface FileItem {
   type: number // 1: FOLDER, 2: VIDEO, 3: AUDIO, 4: TEXT, 5: IMAGE, 0: UNKNOWN
   thumb?: string
   raw_url?: string
+  /** Headers that must accompany the raw_url request (e.g. Cookie, Referer for cloud drives) */
+  raw_url_headers?: Record<string, string>
 }
 
 export function calcFileType(name: string, isDir: boolean): number {

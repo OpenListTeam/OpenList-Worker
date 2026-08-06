@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { resolvePath } from "../internal/model/db"
 import { parseRangeHeader } from "../internal/stream/stream"
 import { getDriver } from "../internal/op/storage"
+import { resolveShare } from "../internal/op/share"
 
 let fsPromises: any = null
 let createReadStream: any = null
@@ -41,9 +42,28 @@ rawRouter.get("/*", async (c) => {
     .replace(/^\/sd/, "")
     .replace(/^\/p/, "")
 
-  const reqPath = decodeURIComponent(rawPath)
+  const reqPath0 = decodeURIComponent(rawPath)
 
   try {
+    let reqPath = reqPath0
+    // Share download: /sd/{shareId}/... — map to the real storage path
+    const isSharePath =
+      c.req.path.startsWith("/api/sd") || c.req.path.startsWith("/sd")
+    if (isSharePath) {
+      const shareRes = await resolveShare(
+        reqPath,
+        c.req.query("pwd") || "",
+        c.env,
+      )
+      if (!shareRes.ok) {
+        return c.text(shareRes.error || "Share not found", 404)
+      }
+      if (shareRes.virtualList || !shareRes.realPath) {
+        return c.text("Cannot download share root", 400)
+      }
+      reqPath = shareRes.realPath
+    }
+
     const resolved = await resolvePath(reqPath)
 
     if (resolved.isVirtual || !resolved.physical) {
@@ -69,10 +89,14 @@ rawRouter.get("/*", async (c) => {
               console.log(
                 `[rawRouter] Proxying download for '${reqPath}' via ${resolved.storage.driver}`,
               )
-              // Forward User-Agent and Range (for seeking/partial content)
+              // Start with driver-provided headers (Cookie, Referer, etc.)
               const headers: Record<string, string> = {
-                "User-Agent":
-                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                ...(fileItem.raw_url_headers || {}),
+              }
+              // Ensure a User-Agent is set (don't override if driver already set one)
+              if (!headers["User-Agent"]) {
+                headers["User-Agent"] =
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
               }
               // Forward Range header for video/audio/PDF seeking
               const rangeReq = c.req.header("Range")
@@ -192,7 +216,7 @@ rawRouter.get("/*", async (c) => {
       return c.body(stream as any)
     }
   } catch (err: any) {
-    console.error(`[rawRouter] Download 404 for '${reqPath}':`, err.message)
+    console.error(`[rawRouter] Download 404 for '${reqPath0}':`, err.message)
     return c.text(`Not found: ${err.message || err}`, 404)
   }
 })

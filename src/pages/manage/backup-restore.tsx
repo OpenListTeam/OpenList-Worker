@@ -374,6 +374,17 @@ const BackupRestore = () => {
             "manage.sidemenu.shares",
           )
         } else {
+          // Non-override mode: fetch current users once so we can skip
+          // usernames that already exist (system ships with admin/guest,
+          // recreating them would fail with 400 "already exists").
+          const currentUsers = ((await getUsers()).data?.content ||
+            []) as User[]
+          const currentStorages = ((await getStorages()).data?.content ||
+            []) as Storage[]
+          const currentMetas = ((await getMetas()).data?.content ||
+            []) as Meta[]
+          const currentShares = ((await getShares()).data?.content ||
+            []) as ShareInfo[]
           for (const item of [
             {
               name: "users",
@@ -381,6 +392,8 @@ const BackupRestore = () => {
               data: data.users,
               key: "username",
               removeId: true,
+              skipExisting: (itemData: any) =>
+                currentUsers.some((u: any) => u.username === itemData.username),
             },
             {
               name: "storages",
@@ -388,6 +401,20 @@ const BackupRestore = () => {
               data: data.storages,
               key: "mount_path",
               removeId: true,
+              skipExisting: (itemData: any) =>
+                currentStorages.some(
+                  (s: any) =>
+                    "/" +
+                      String(s.mount_path || "")
+                        .split("/")
+                        .filter(Boolean)
+                        .join("/") ===
+                    "/" +
+                      String(itemData.mount_path || "")
+                        .split("/")
+                        .filter(Boolean)
+                        .join("/"),
+                ),
             },
             {
               name: "metas",
@@ -395,6 +422,8 @@ const BackupRestore = () => {
               data: data.metas,
               key: "path",
               removeId: true,
+              skipExisting: (itemData: any) =>
+                currentMetas.some((m: any) => m.path === itemData.path),
             },
             {
               name: "shares",
@@ -402,11 +431,22 @@ const BackupRestore = () => {
               data: data.shares,
               key: "id",
               removeId: false,
+              skipExisting: (itemData: any) =>
+                currentShares.some((s: any) => s.id === itemData.id),
             },
           ] as const) {
             for (const itemData of item.data || []) {
               if (item.removeId) {
                 itemData.id = 0
+              }
+              if (item.skipExisting && item.skipExisting(itemData)) {
+                appendLog(
+                  t("br.skip_existing_item", {
+                    item: t(`manage.sidemenu.${item.name}`),
+                  }) + ` [ ${(itemData as any)[item.key]} ] `,
+                  "info",
+                )
+                continue
               }
               handleRespWithoutNotify(
                 await item.fn(itemData),

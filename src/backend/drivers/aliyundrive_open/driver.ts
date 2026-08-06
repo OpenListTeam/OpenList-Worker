@@ -49,6 +49,23 @@ export class AliyundriveOpen implements StorageDriver {
       return item
     }
 
+    // Fallback: the path may be a folder that isn't listed in its parent
+    // (e.g. the storage root). Probe it by listing — if it lists, it's a folder.
+    try {
+      await this.client.listFiles(fileId)
+      const parts = physicalPath.split("/").filter(Boolean)
+      const name = parts[parts.length - 1] || "root"
+      return {
+        name,
+        size: 0,
+        is_dir: true,
+        modified: new Date().toISOString(),
+        sign: "",
+        type: 1,
+        raw_url: "",
+      }
+    } catch {}
+
     const parts = physicalPath.split("/").filter(Boolean)
     const name = parts[parts.length - 1] || "root"
     return {

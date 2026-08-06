@@ -52,6 +52,7 @@ export default defineConfig({
         /^\/manifest.json$/,
       ],
     }),
+    dynamicBase(),
     legacy({
       targets: ["defaults"],
     }),

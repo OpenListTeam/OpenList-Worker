@@ -33,6 +33,16 @@ adminRouter.get("/storage/list", async (c) => {
   })
 })
 
+adminRouter.get("/storage/get", async (c) => {
+  const id = parseInt(c.req.query("id") || "0", 10)
+  const db = await getDb(c.env)
+  const storage = db.storages.find((s: any) => s.id === id)
+  if (!storage) {
+    return c.json({ code: 404, message: "storage not found", data: null })
+  }
+  return c.json({ code: 200, message: "success", data: storage })
+})
+
 adminRouter.post("/storage/create", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const db = await getDb(c.env)
@@ -533,6 +543,122 @@ adminRouter.get("/meta/list", async (c) => {
   })
 })
 
+adminRouter.get("/meta/get", async (c) => {
+  const id = parseInt(c.req.query("id") || "0", 10)
+  const db = await getDb(c.env)
+  const meta = (db.metas || []).find((m: any) => m.id === id)
+  if (!meta) {
+    return c.json({ code: 404, message: "meta not found", data: null })
+  }
+  return c.json({ code: 200, message: "success", data: meta })
+})
+
+adminRouter.post("/meta/create", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const db = await getDb(c.env)
+  if (!db.metas) db.metas = []
+
+  const path =
+    "/" +
+    String(body.path || "")
+      .split("/")
+      .filter(Boolean)
+      .join("/")
+  if (!path || path === "/") {
+    return c.json({ code: 400, message: "path is required", data: null })
+  }
+  if (db.metas.some((m: any) => m.path === path)) {
+    return c.json({ code: 400, message: "meta already exists", data: null })
+  }
+
+  const newMeta = {
+    id: db.metas.length ? Math.max(...db.metas.map((m: any) => m.id)) + 1 : 1,
+    path,
+    password: body.password || "",
+    read_users: body.read_users || [],
+    read_users_sub: !!body.read_users_sub,
+    write_users: body.write_users || [],
+    write_users_sub: !!body.write_users_sub,
+    p_sub: !!body.p_sub,
+    write: !!body.write,
+    w_sub: !!body.w_sub,
+    hide: body.hide || "",
+    h_sub: !!body.h_sub,
+    readme: body.readme || "",
+    r_sub: !!body.r_sub,
+    header: body.header || "",
+    header_sub: !!body.header_sub,
+  }
+  db.metas.push(newMeta)
+  await saveDb(db, c.env)
+  return c.json({ code: 200, message: "success", data: newMeta })
+})
+
+adminRouter.post("/meta/update", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const db = await getDb(c.env)
+  if (!db.metas) db.metas = []
+
+  const idx = db.metas.findIndex((m: any) => m.id === body.id)
+  if (idx === -1) {
+    return c.json({ code: 404, message: "meta not found", data: null })
+  }
+
+  const path =
+    body.path !== undefined
+      ? "/" + String(body.path).split("/").filter(Boolean).join("/")
+      : db.metas[idx].path
+  if (path && db.metas.some((m: any) => m.path === path && m.id !== body.id)) {
+    return c.json({ code: 400, message: "meta already exists", data: null })
+  }
+
+  db.metas[idx] = {
+    ...db.metas[idx],
+    ...(path ? { path } : {}),
+    password:
+      body.password !== undefined ? body.password : db.metas[idx].password,
+    read_users:
+      body.read_users !== undefined
+        ? body.read_users
+        : db.metas[idx].read_users,
+    read_users_sub:
+      body.read_users_sub !== undefined
+        ? !!body.read_users_sub
+        : db.metas[idx].read_users_sub,
+    write_users:
+      body.write_users !== undefined
+        ? body.write_users
+        : db.metas[idx].write_users,
+    write_users_sub:
+      body.write_users_sub !== undefined
+        ? !!body.write_users_sub
+        : db.metas[idx].write_users_sub,
+    p_sub: body.p_sub !== undefined ? !!body.p_sub : db.metas[idx].p_sub,
+    write: body.write !== undefined ? !!body.write : db.metas[idx].write,
+    w_sub: body.w_sub !== undefined ? !!body.w_sub : db.metas[idx].w_sub,
+    hide: body.hide !== undefined ? body.hide : db.metas[idx].hide,
+    h_sub: body.h_sub !== undefined ? !!body.h_sub : db.metas[idx].h_sub,
+    readme: body.readme !== undefined ? body.readme : db.metas[idx].readme,
+    r_sub: body.r_sub !== undefined ? !!body.r_sub : db.metas[idx].r_sub,
+    header: body.header !== undefined ? body.header : db.metas[idx].header,
+    header_sub:
+      body.header_sub !== undefined
+        ? !!body.header_sub
+        : db.metas[idx].header_sub,
+  }
+  await saveDb(db, c.env)
+  return c.json({ code: 200, message: "success", data: null })
+})
+
+adminRouter.post("/meta/delete", async (c) => {
+  const id = parseInt(c.req.query("id") || "0", 10)
+  const db = await getDb(c.env)
+  if (!db.metas) db.metas = []
+  db.metas = db.metas.filter((m: any) => m.id !== id)
+  await saveDb(db, c.env)
+  return c.json({ code: 200, message: "success", data: null })
+})
+
 import { userRouter } from "./user"
 adminRouter.route("/user", userRouter)
 
@@ -542,5 +668,23 @@ adminRouter.get("/kv/status", async (c) => {
     code: 200,
     message: "success",
     data: statusData,
+  })
+})
+
+// Index progress stub — background indexing is not supported in stateless Workers
+adminRouter.get("/index/progress", (c) => {
+  return c.json({
+    code: 200,
+    message: "success",
+    data: { total: 0, current: 0, speed: 0 },
+  })
+})
+
+// Scan progress stub — background scanning is not supported in stateless Workers
+adminRouter.get("/scan/progress", (c) => {
+  return c.json({
+    code: 200,
+    message: "success",
+    data: { total: 0, current: 0, speed: 0 },
   })
 })
