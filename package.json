@@ -30,6 +30,7 @@
     "build:edge": "esbuild api/[...route].ts --bundle --platform=neutral --outfile=dist/api/[...route].js --minify --format=esm",
     "dev:worker": "wrangler dev",
     "deploy:worker": "wrangler deploy --yes",
+    "deploy": "node scripts/deploy.js",
     "build:all": "npm run build",
     "serve": "vite preview",
     "sls:deploy": "serverless deploy",

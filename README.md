@@ -127,23 +127,21 @@ npm run start
 项目内置 [wrangler.toml](wrangler.toml) 与 [部署指南](docs/deploy-cloudflare-workers.md)。
 
 ```bash
-# 1. 构建前端静态资源
-npm run build
+# 一键部署（自动检测/创建 KV namespace 并写入 wrangler.toml，无需手动填 id）
+npm run deploy
 
-# 2. 登录 Cloudflare
+# 或分步执行：
+# 1) 登录 Cloudflare
 npx wrangler login
-
-# 3. 创建并绑定 KV namespace（用于配置持久化）
-#    在 wrangler.toml 的 [[kv_namespaces]] 中填入 namespace id
-
-# 4. 部署
+# 2) 确保 KV 绑定（自动检测/创建，无需手动编辑 wrangler.toml）
+node scripts/deploy.js --kv
+# 3) 部署
 npm run deploy:worker
-# 或
-npx wrangler deploy
-
 # 本地预览
 npm run dev:worker   # wrangler dev
 ```
+
+`npm run deploy` 会自动完成：检测 `OPENLISTNEXT_KV` 命名空间 → 不存在则自动创建 → 把最新 id 写入 `wrangler.toml` → 构建前端 → `wrangler deploy`，全程无需手动填写 KV id。
 
 部署完成后静态资源由 Workers 的 `ASSETS` binding 托管，API 由 Hono 后端处理，配置数据持久化在 KV 中。
 
