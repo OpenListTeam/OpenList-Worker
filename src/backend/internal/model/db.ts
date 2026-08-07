@@ -650,7 +650,6 @@ export const defaultDb = {
   ],
   metas: [],
   shares: [],
-  tasks: [],
 }
 
 let memoryDb: any = null
@@ -853,13 +852,6 @@ const ensureDefaultShares = (db: any) => {
   }
 }
 
-const ensureDefaultTasks = (db: any) => {
-  if (!db) return
-  if (!db.tasks) {
-    db.tasks = []
-  }
-}
-
 export const getDb = async (envCtx?: any) => {
   if (envCtx) {
     globalEnvCtx = envCtx
@@ -875,7 +867,6 @@ export const getDb = async (envCtx?: any) => {
         ensureDefaultSettings(memoryDb)
         ensureDefaultStorages(memoryDb)
         ensureDefaultShares(memoryDb)
-        ensureDefaultTasks(memoryDb)
         return memoryDb
       }
     } catch (err) {
@@ -887,7 +878,6 @@ export const getDb = async (envCtx?: any) => {
     ensureDefaultSettings(memoryDb)
     ensureDefaultStorages(memoryDb)
     ensureDefaultShares(memoryDb)
-    ensureDefaultTasks(memoryDb)
     return memoryDb
   }
 
@@ -902,7 +892,6 @@ export const getDb = async (envCtx?: any) => {
       ensureDefaultSettings(memoryDb)
       ensureDefaultStorages(memoryDb)
       ensureDefaultShares(memoryDb)
-      ensureDefaultTasks(memoryDb)
       return memoryDb
     } catch (err) {
       console.error("Failed to parse DATABASE_JSON env variable:", err)
@@ -913,7 +902,6 @@ export const getDb = async (envCtx?: any) => {
   memoryDb = JSON.parse(JSON.stringify(defaultDb))
   ensureDefaultStorages(memoryDb)
   ensureDefaultShares(memoryDb)
-  ensureDefaultTasks(memoryDb)
   return memoryDb
 }
 

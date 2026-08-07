@@ -11,7 +11,6 @@ import settings from "./settings.json"
 import settings_other from "./settings_other.json"
 import shares from "./shares.json"
 import storages from "./storages.json"
-import tasks from "./tasks.json"
 import users from "./users.json"
 
 export default {
@@ -28,6 +27,5 @@ export default {
   settings_other,
   shares,
   storages,
-  tasks,
   users,
 }

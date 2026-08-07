@@ -9,7 +9,6 @@ export * from "./xml"
 export * from "./errs"
 export * from "./generic"
 export * from "./http"
-export * from "./task"
 export * from "./crypto"
 export * from "./stream"
 

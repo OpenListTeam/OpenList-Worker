@@ -9,8 +9,6 @@ import {
   BsMedium,
   BsFingerprint,
   BsFront,
-  BsCloudUploadFill,
-  BsCloudArrowDownFill,
   BsSearch,
   BsHddNetwork,
   BsArrowLeftRight,
@@ -18,12 +16,10 @@ import {
 import { FiLogIn } from "solid-icons/fi"
 import { SiMetabase } from "solid-icons/si"
 import { CgDatabase, CgShare } from "solid-icons/cg"
-import { OcWorkflow2 } from "solid-icons/oc"
-import { IoCopy, IoMove, IoHome, IoMagnetOutline } from "solid-icons/io"
+import { IoHome } from "solid-icons/io"
 import { Component, lazy } from "solid-js"
 import { Group, UserRole } from "~/types"
-import { FaSolidBook, FaSolidDatabase, FaBrandsQuinscape } from "solid-icons/fa"
-import { TbArchive } from "solid-icons/tb"
+import { FaSolidBook, FaSolidDatabase } from "solid-icons/fa"
 
 export type SideMenuItem = SideMenuItemProps & {
   component?: Component
@@ -99,63 +95,6 @@ export const side_menu_items: SideMenuItem[] = [
         icon: BsMedium,
         to: "/@manage/settings/other",
         component: lazy(() => import("./settings/Other")),
-      },
-    ],
-  },
-  {
-    title: "manage.sidemenu.tasks",
-    icon: OcWorkflow2,
-    to: "/@manage/tasks",
-    role: UserRole.GENERAL,
-    children: [
-      {
-        title: "manage.sidemenu.offline_download",
-        icon: IoMagnetOutline,
-        to: "/@manage/tasks/offline_download",
-        role: UserRole.GENERAL,
-        component: lazy(() => import("./tasks/offline_download")),
-      },
-      {
-        title: "manage.sidemenu.aria2",
-        icon: BsCloudArrowDownFill,
-        to: "/@manage/tasks/aria2",
-        role: UserRole.GENERAL,
-        component: lazy(() => import("./tasks/Aria2")),
-      },
-      {
-        title: "manage.sidemenu.qbit",
-        icon: FaBrandsQuinscape,
-        to: "/@manage/tasks/qbit",
-        role: UserRole.GENERAL,
-        component: lazy(() => import("./tasks/Qbit")),
-      },
-      {
-        title: "manage.sidemenu.upload",
-        icon: BsCloudUploadFill,
-        to: "/@manage/tasks/upload",
-        role: UserRole.GENERAL,
-        component: lazy(() => import("./tasks/Upload")),
-      },
-      {
-        title: "manage.sidemenu.copy",
-        icon: IoCopy,
-        to: "/@manage/tasks/copy",
-        role: UserRole.GENERAL,
-        component: lazy(() => import("./tasks/Copy")),
-      },
-      {
-        title: "manage.sidemenu.move",
-        icon: IoMove,
-        to: "/@manage/tasks/move",
-        role: UserRole.GENERAL,
-        component: lazy(() => import("./tasks/Move")),
-      },
-      {
-        title: "manage.sidemenu.decompress",
-        icon: TbArchive,
-        to: "/@manage/tasks/decompress",
-        role: UserRole.GENERAL,
-        component: lazy(() => import("./tasks/Decompress")),
       },
     ],
   },
