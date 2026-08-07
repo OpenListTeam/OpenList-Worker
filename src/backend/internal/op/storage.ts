@@ -4,8 +4,11 @@ import { Onedrive } from "../../drivers/onedrive/driver"
 import { AliyundriveOpen } from "../../drivers/aliyundrive_open/driver"
 import { GoogleDrive } from "../../drivers/google_drive/driver"
 import { QuarkDriver } from "../../drivers/quark/driver"
-import { BaiduDriver } from "../../drivers/baidu_netdisk/driver"
 import { Pan123Driver } from "../../drivers/123pan/driver"
+import {
+  BaiduDriver,
+  normalizeBaiduAddition,
+} from "../../drivers/baidu_netdisk/driver"
 
 // LocalDriver is not available in Cloudflare Workers (no fs module).
 // When running in Node.js container mode, import dynamically on first use.
@@ -85,13 +88,6 @@ export async function getDriver(
   ) {
     driver = new QuarkDriver(parseAddition(storageConfig))
     await driver.init?.()
-  } else if (
-    normDriver === "baidunetdisk" ||
-    normDriver === "baidu" ||
-    normDriver === "baiduyun"
-  ) {
-    driver = new BaiduDriver(parseAddition(storageConfig))
-    await driver.init?.()
   } else if (normDriver === "123pan" || normDriver === "123") {
     const addition = parseAddition(storageConfig)
     driver = new Pan123Driver(addition, async (token: string) => {
@@ -113,6 +109,34 @@ export async function getDriver(
         await saveDb(db)
       } catch (e) {
         console.warn("[123Pan] failed to persist access_token:", e)
+      }
+    })
+    await driver.init?.()
+  } else if (
+    normDriver === "baidunetdisk" ||
+    normDriver === "baidu" ||
+    normDriver === "baiduyun"
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new BaiduDriver(addition, async (tokens) => {
+      // Persist refreshed tokens (and normalized defaults) back to the
+      // storage config so cold starts skip OAuth entirely.
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        stAddition.access_token = tokens.access_token
+        stAddition.refresh_token = tokens.refresh_token
+        st.addition = JSON.stringify(normalizeBaiduAddition(stAddition))
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[baidu_netdisk] failed to persist token:", e)
       }
     })
     await driver.init?.()

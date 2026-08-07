@@ -22,7 +22,7 @@ OpenListNext 是 [OpenList](https://github.com/OpenListTeam/OpenList) 的定制�
 - 🔗 文件永久链接、直链下载、分享链接（含提取码）
 - 🌙 黑暗模式、国际化（中 / 英）
 - 🔐 JWT 认证、密码保护、后台管理
-- ☁️ 多网盘驱动：夸克网盘、阿里云盘、Google Drive、OneDrive、百度网盘、本地文件系统
+- ☁️ 多网盘驱动：夸克网盘、阿里云盘、Google Drive、OneDrive、百度网盘、123 云盘、本地文件系统
 - ⚡ 边缘部署：Cloudflare Workers / Vercel / Serverless 开箱即用
 
 ---
@@ -49,7 +49,8 @@ OpenListNext 是 [OpenList](https://github.com/OpenListTeam/OpenList) 的定制�
                        │ 存储驱动接口 (StorageDriver)
 ┌──────────────────────▼──────────────────────────────┐
 │     存储驱动层：Local · Quark · AliyundriveOpen ·    │
-│                 GoogleDrive · Onedrive · BaiduNetdisk│
+│           GoogleDrive · Onedrive · BaiduNetdisk      │
+│                   · 123Pan                           │
 └──────────────────────┬──────────────────────────────┘
                        │ 持久化
         ┌──────────────┴───────────────┐
@@ -168,7 +169,7 @@ OpenListNext 是以下项目的分支 / 衍生实现：
 | **OpenList**          | 本项目的上游原版（Go 后端）             | [github.com/OpenListTeam/OpenList](https://github.com/OpenListTeam/OpenList) |
 | **OpenList Docs**     | 官方文档（配置 / 驱动 / FAQ）           | [doc.oplist.org](https://doc.oplist.org/)                                    |
 | **AList**             | OpenList 的前身，开箱即用的文件列表程序 | [github.com/alist-org/alist](https://github.com/alist-org/alist)             |
-| **OpenList 在线 API** | 百度网盘等驱动的 token 获取服务         | [api.oplist.org](https://api.oplist.org/)                                    |
+| **OpenList 在线 API** | 部分网盘驱动的 token 获取服务           | [api.oplist.org](https://api.oplist.org/)                                    |
 
 ---
 

@@ -150,8 +150,8 @@ adminRouter.get("/driver/names", (c) => {
       "GoogleDrive",
       "Onedrive",
       "Quark",
-      "BaiduNetdisk",
       "123Pan",
+      "BaiduNetdisk",
     ],
   })
 })
@@ -545,10 +545,18 @@ const driverConfigs: Record<string, any> = {
         help: "true",
       },
       {
+        name: "access_token",
+        type: "string",
+        default: "",
+        required: true,
+        help: "访问令牌（必填）。通过 https://api.oplist.org/ 获取。若令牌失效，挂载时会自动根据 refresh_token 通过在线 API 换新并持久化。",
+      },
+      {
         name: "use_online_api",
         type: "bool",
         default: "true",
         required: false,
+        help: "使用在线 API 刷新 token（无需 ClientID/ClientSecret）",
       },
       {
         name: "api_url_address",
@@ -579,7 +587,7 @@ const driverConfigs: Record<string, any> = {
         name: "custom_crack_ua",
         type: "string",
         default: "netdisk",
-        required: false,
+        required: true,
       },
       {
         name: "order_by",
@@ -613,18 +621,21 @@ const driverConfigs: Record<string, any> = {
         type: "number",
         default: "60",
         required: false,
+        help: "per-slice upload timeout in seconds",
       },
       {
         name: "custom_upload_part_size",
         type: "number",
         default: "0",
         required: false,
+        help: "0 for auto",
       },
       {
         name: "use_dynamic_upload_api",
         type: "bool",
-        default: "false",
+        default: "true",
         required: false,
+        help: "dynamically get upload api domain, when enabled, the 'Upload API' setting will be used as a fallback if failed to get",
       },
       {
         name: "upload_api",
@@ -633,7 +644,7 @@ const driverConfigs: Record<string, any> = {
         required: false,
       },
       {
-        name: "low_bandwidth_upload_mode",
+        name: "low_bandwith_upload_mode",
         type: "bool",
         default: "false",
         required: false,

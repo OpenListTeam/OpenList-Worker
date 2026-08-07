@@ -371,56 +371,6 @@
     "sign_url_expire": "Sign url expire",
     "sign_url_expire-tips": "The expiration time for SAS URLs, in hours."
   },
-  "BaiduNetdisk": {
-    "api_url_address": "Api url address",
-    "client_id": "Client id",
-    "client_secret": "Client secret",
-    "custom_crack_ua": "Custom crack ua",
-    "custom_upload_part_size": "Custom upload part size",
-    "custom_upload_part_size-tips": "0 for auto",
-    "download_api": "Download api",
-    "download_apis": {
-      "crack": "Crack",
-      "crack_video": "Crack video",
-      "official": "Official"
-    },
-    "low_bandwith_upload_mode": "Low bandwidth upload mode",
-    "only_list_video_file": "Only list video file",
-    "order_by": "Order by",
-    "order_bys": {
-      "name": "Name",
-      "size": "Size",
-      "time": "Time"
-    },
-    "order_direction": "Order direction",
-    "order_directions": {
-      "asc": "Asc",
-      "desc": "Desc"
-    },
-    "refresh_token": "Refresh token",
-    "root_folder_path": "Root folder path",
-    "upload_api": "Upload api",
-    "upload_thread": "Upload thread",
-    "upload_thread-tips": "1<=thread<=32",
-    "upload_timeout": "Upload timeout",
-    "upload_timeout-tips": "per-slice upload timeout in seconds",
-    "use_dynamic_upload_api": "Use dynamic upload api",
-    "use_dynamic_upload_api-tips": "dynamically get upload api domain, when enabled, the 'Upload API' setting will be used as a fallback if failed to get",
-    "use_online_api": "Use online api"
-  },
-  "BaiduPhoto": {
-    "album_id": "Album id",
-    "cookie": "Cookie",
-    "delete_origin": "Delete origin",
-    "show_type": "Show type",
-    "show_types": {
-      "root": "Root",
-      "root_only_album": "Root only album",
-      "root_only_file": "Root only file"
-    },
-    "upload_thread": "Upload thread",
-    "upload_thread-tips": "1<=thread<=32"
-  },
   "Bunny Storage": {
     "access_key": "Access key",
     "cdn_base_url": "Cdn base url",
@@ -1562,8 +1512,6 @@
     "AliyundriveShare": {},
     "AutoIndex": {},
     "Azure Blob Storage": {},
-    "BaiduNetdisk": {},
-    "BaiduPhoto": {},
     "Bunny Storage": {},
     "CNB Releases": {},
     "ChaoXingGroupDrive": {},
@@ -1661,8 +1609,6 @@
     "AliyundriveShare": "AliyundriveShare",
     "AutoIndex": "AutoIndex",
     "Azure Blob Storage": "Azure Blob Storage",
-    "BaiduNetdisk": "BaiduNetdisk",
-    "BaiduPhoto": "BaiduPhoto",
     "Bunny Storage": "Bunny Storage",
     "CNB Releases": "CNB Releases",
     "ChaoXingGroupDrive": "ChaoXingGroupDrive",
@@ -1733,6 +1679,41 @@
     "WeiYun": "WeiYun",
     "WoPan": "WoPan",
     "YandexDisk": "YandexDisk",
-    "cloudflare_imgbed": "Cloudflare imgbed"
+    "cloudflare_imgbed": "Cloudflare imgbed",
+    "BaiduNetdisk": "BaiduNetdisk"
+  },
+  "BaiduNetdisk": {
+    "access_token": "Access Token",
+    "access_token-tips": "Required. Get it at https://api.oplist.org/. If it expires, the driver refreshes it automatically from refresh_token via the online API.",
+    "api_url_address": "API Address",
+    "client_id": "Client ID",
+    "client_secret": "Client Secret",
+    "custom_crack_ua": "Custom Crack UA",
+    "custom_upload_part_size": "Custom Upload Part Size",
+    "download_api": "Download API",
+    "download_apis": {
+      "crack": "Crack download",
+      "crack_video": "Crack video download",
+      "official": "Official download"
+    },
+    "low_bandwith_upload_mode": "Low Bandwidth Upload Mode",
+    "only_list_video_file": "Only list video file",
+    "order_by": "Order by",
+    "order_bys": {
+      "name": "Name",
+      "size": "Size",
+      "time": "Time"
+    },
+    "order_direction": "Order direction",
+    "order_directions": {
+      "asc": "Asc",
+      "desc": "Desc"
+    },
+    "refresh_token": "Refresh Token",
+    "upload_api": "Upload API",
+    "upload_thread": "Upload Threads",
+    "upload_timeout": "Slice Upload Timeout (s)",
+    "use_dynamic_upload_api": "Dynamically Get Upload API",
+    "use_online_api": "Use Online API to Refresh Token"
   }
 }
