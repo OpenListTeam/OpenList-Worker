@@ -35,6 +35,11 @@ export class Pan123Driver implements StorageDriver {
     addition: Pan123Addition,
     onTokenUpdate?: (token: string) => void,
   ) {
+    // 默认访问令牌（无需手动填写）：仅当用户未显式提供 access_token 时使用
+    if (!addition.access_token) {
+      addition.access_token =
+        "121.cbb145d7b3313aa4acecb9a904c9c5d3.YDSRj97WUdwZqTT9GoUY3TFOY3-TXbeoDSdt5r-.VyliSw"
+    }
     this.addition = addition
     this.client = new Pan123Client(addition, onTokenUpdate)
   }

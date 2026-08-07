@@ -780,6 +780,30 @@ async function saveToKv(
   return false
 }
 
+// 已知的旧默认值 → 当前默认值迁移表。
+// 修复「开发环境(无 KV，用新默认值)与生产环境(KV 里保存了旧默认值)不一致」：
+// 早期默认 logo/favicon 为空或 res.oplist.org 旧地址、site_title=OpenList、
+// home_icon=openlist，品牌统一后默认值已更新，但已写入 KV 的旧值不会被
+// ensureDefaultSettings 的「仅补缺失 key」逻辑覆盖，导致 prod 显示旧图标/标题。
+const LEGACY_SETTING_MIGRATIONS: Record<string, { from: any[]; to: string }> = {
+  logo: {
+    from: ["", "https://res.oplist.org/logo/logo.png"],
+    to: "/logo.png",
+  },
+  favicon: {
+    from: ["", "https://res.oplist.org/logo/logo.svg"],
+    to: "/favicon.png",
+  },
+  site_title: {
+    from: ["OpenList"],
+    to: "OpenListNext",
+  },
+  home_icon: {
+    from: ["openlist", "oplist"],
+    to: "openlistnext",
+  },
+}
+
 const ensureDefaultSettings = (db: any) => {
   if (!db) return
   if (!db.settings) {
@@ -787,9 +811,16 @@ const ensureDefaultSettings = (db: any) => {
   }
   let modified = false
   for (const defSetting of defaultDb.settings) {
-    const exists = db.settings.some((s: any) => s.key === defSetting.key)
-    if (!exists) {
+    const existing = db.settings.find((s: any) => s.key === defSetting.key)
+    if (!existing) {
       db.settings.push(JSON.parse(JSON.stringify(defSetting)))
+      modified = true
+      continue
+    }
+    // 旧默认值迁移：KV 中保存的值若等于已知旧默认值，更新为当前默认
+    const migration = LEGACY_SETTING_MIGRATIONS[defSetting.key]
+    if (migration && migration.from.includes(existing.value)) {
+      existing.value = migration.to
       modified = true
     }
   }
