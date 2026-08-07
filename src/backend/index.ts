@@ -28,12 +28,20 @@ app.route("/p", rawRouter)
 app.all("*", async (c) => {
   const env = c.env as any
   if (env && env.ASSETS && typeof env.ASSETS.fetch === "function") {
+    const url = new URL(c.req.url)
     const res = await env.ASSETS.fetch(c.req.raw)
     if (res.status !== 404) {
+      // 修复「部署新版本后生产环境仍是旧界面」：index.html 若不设缓存头，
+      // 会被 Cloudflare 边缘/浏览器长期缓存，导致旧 HTML 引用旧 hash 的 JS/CSS。
+      // 只对 HTML 入口 no-cache（JS/CSS 带 hash 可安全长期缓存）。
+      if (url.pathname === "/" || url.pathname === "/index.html") {
+        const headers = new Headers(res.headers)
+        headers.set("Cache-Control", "no-cache, must-revalidate")
+        return new Response(res.body, { status: res.status, headers })
+      }
       return res
     }
     // SPA fallback: return index.html for non-asset routes (e.g. /login, /manage)
-    const url = new URL(c.req.url)
     const indexReq = new Request(`${url.origin}/index.html`, c.req.raw)
     return env.ASSETS.fetch(indexReq)
   }
