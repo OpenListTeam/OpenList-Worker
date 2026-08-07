@@ -16,10 +16,7 @@ ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin"
 VITE_API_URL = "/api"
 
-[[kv_namespaces]]
-binding = "OPENLISTNEXT_KV"
-id = "eca2b892a2e1450f8254644a0b3127fa"
-
-
-
+# KV namespace 绑定由 scripts/deploy.js 自动检测/创建并写入（无需手动配置）。
+# 直接运行 `npm run deploy` 即可自动完成绑定；若直接 `wrangler deploy`，
+# 站点将以内存模式运行（配置不持久化）。
 
