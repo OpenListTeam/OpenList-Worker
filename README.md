@@ -141,7 +141,7 @@ npm run deploy:worker
 npm run dev:worker   # wrangler dev
 ```
 
-`npm run deploy` 会自动完成：检测 `OPENLISTNEXT_KV` 命名空间 → 不存在则自动创建 → 把最新 id 写入 `wrangler.toml` → 构建前端 → `wrangler deploy`，全程无需手动填写 KV id。
+`npm run deploy` 会自动完成：检测 `OPENLISTNEXT_KV` namespace（不存在则自动创建）→ 构建前端 → `wrangler deploy`。`wrangler.toml` 只声明绑定、**不存储 KV id**，由 wrangler 4.x 的 Automatic provisioning 在部署时自动创建/关联同名 namespace——全程无需手动填写 KV id。
 
 部署完成后静态资源由 Workers 的 `ASSETS` binding 托管，API 由 Hono 后端处理，配置数据持久化在 KV 中。
 

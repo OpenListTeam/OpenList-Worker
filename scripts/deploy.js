@@ -2,38 +2,42 @@
 /**
  * OpenListNext 一键部署脚本（Cloudflare Workers）
  *
- * 自动完成 KV namespace 绑定，无需手动填写 id 或编辑 wrangler.toml：
- *   1. 检测 wrangler.toml 中已有的 KV id
- *   2. 通过 `wrangler kv namespace list` 查找名为 OPENLISTNEXT_KV 的 namespace
- *   3. 不存在则自动 `wrangler kv namespace create OPENLISTNEXT_KV`
- *   4. 自动把最新 id 写入 wrangler.toml（仅更新 id，不动其他配置）
- *   5. 执行 `wrangler deploy`
+ * wrangler.toml 只声明绑定（[[kv_namespaces]] binding = "OPENLISTNEXT_KV"），
+ * **不存储 id** —— wrangler 4.x 的 Automatic provisioning 会在部署时自动
+ * 创建/关联同名 KV namespace，无需手动填写 id。
+ *
+ * 本脚本额外做两件事：
+ *   1. 检测云端是否已有 OPENLISTNEXT_KV namespace；没有则显式创建
+ *      （确保资源存在；兼容不支持自动配置的旧版 wrangler）
+ *   2. 构建前端 + wrangler deploy
  *
  * 用法：
- *   node scripts/deploy.js          # 自动部署
- *   node scripts/deploy.js --kv     # 仅确保 KV 绑定（不部署）
+ *   node scripts/deploy.js          # 自动部署（构建 + 确保 KV + deploy）
+ *   node scripts/deploy.js --kv     # 仅确保 KV namespace 存在（不部署）
+ *   node scripts/deploy.js --skip-build  跳过前端构建（默认自动构建）
  *   node scripts/deploy.js --help   # 帮助
  */
 import { execSync } from "node:child_process"
-import { readFileSync, writeFileSync, existsSync } from "node:fs"
+import { existsSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, "..")
-const CONFIG = path.join(ROOT, "wrangler.toml")
 const KV_TITLE = "OPENLISTNEXT_KV"
-const KV_BINDING = "OPENLISTNEXT_KV"
 
 const args = process.argv.slice(2)
 if (args.includes("--help") || args.includes("-h")) {
   console.log(`
-OpenListNext 一键部署脚本
+OpenListNext 一键部署脚本（KV 自动绑定，无需手动填写 id）
 
-  node scripts/deploy.js          自动部署（确保 KV 绑定 + wrangler deploy）
-  node scripts/deploy.js --kv     仅确保 KV 绑定，不部署
+  node scripts/deploy.js          自动部署（确保 KV 存在 + 构建 + wrangler deploy）
+  node scripts/deploy.js --kv     仅确保 KV namespace 存在，不部署
   node scripts/deploy.js --skip-build  跳过前端构建（默认自动构建）
   node scripts/deploy.js --help   显示帮助
+
+说明：wrangler.toml 只声明 binding（不存 id），由 wrangler 4.x 的
+Automatic provisioning 在部署时自动创建/关联 KV namespace。
 `)
   process.exit(0)
 }
@@ -56,25 +60,6 @@ function run(cmd, opts = {}) {
   }
 }
 
-function readToml() {
-  return existsSync(CONFIG) ? readFileSync(CONFIG, "utf8") : ""
-}
-
-function extractKvId(toml) {
-  // 在 [[kv_namespaces]] 块内找 id = "..."
-  const blockMatch = toml.match(/\[\[kv_namespaces\]\][\s\S]*?(?=\n\[|$)/)
-  if (!blockMatch) return null
-  const idMatch = blockMatch[0].match(/id\s*=\s*"([^"]+)"/)
-  return idMatch ? idMatch[1].trim() : null
-}
-
-function extractKvBinding(toml) {
-  const blockMatch = toml.match(/\[\[kv_namespaces\]\][\s\S]*?(?=\n\[|$)/)
-  if (!blockMatch) return null
-  const bMatch = blockMatch[0].match(/binding\s*=\s*"([^"]+)"/)
-  return bMatch ? bMatch[1].trim() : null
-}
-
 /** 解析 `wrangler kv namespace list` 的表格输出，返回 { id: title } 映射
  *  注意：wrangler 4.x 在 Windows 输出 Unicode 竖线 │，其他平台为 | */
 function parseNamespaceList(stdout) {
@@ -95,32 +80,9 @@ function parseCreatedId(stdout) {
   return m ? m[1] : null
 }
 
-/** 更新 wrangler.toml 中的 KV id；无 kv_namespaces 块则追加 */
-function updateTomlId(toml, id) {
-  const kvBlockRe = /(\[\[kv_namespaces\]\][\s\S]*?id\s*=\s*)"([^"]*)"/m
-  if (kvBlockRe.test(toml)) {
-    return toml.replace(kvBlockRe, `$1"${id}"`)
-  }
-  // 无 kv_namespaces 块 → 在文件末尾追加
-  const block = `\n[[kv_namespaces]]\nbinding = "${KV_BINDING}"\nid = "${id}"\n`
-  return toml.replace(/\s*$/, "") + block
-}
-
-function main() {
-  // --- 1. 读取现有配置 ---
-  let toml = readToml()
-  const existingId = extractKvId(toml)
-  const existingBinding = extractKvBinding(toml)
-  if (existingId) {
-    console.log(`[KV] wrangler.toml 已有绑定 ${KV_BINDING} id=${existingId}`)
-  } else {
-    console.log(
-      `[KV] wrangler.toml 未配置 ${KV_BINDING} 绑定，将自动创建并写入`,
-    )
-  }
-
-  // --- 2. 查询云端 namespace ---
-  console.log("\n[KV] 正在查询 Cloudflare 上的 KV namespace ...")
+/** 确保 OPENLISTNEXT_KV namespace 存在（不存在则创建）。
+ *  注意：只创建云端资源，不修改 wrangler.toml —— id 由 wrangler 自动配置。 */
+function ensureKvNamespace() {
   let listOut = ""
   try {
     listOut = run("npx wrangler kv namespace list", { silent: true })
@@ -134,40 +96,47 @@ function main() {
   }
 
   const namespaces = parseNamespaceList(listOut)
-  let matchedTitle = Object.keys(namespaces).find(
+  const matchedTitle = Object.keys(namespaces).find(
     (t) => t === KV_TITLE || t.includes(KV_TITLE),
   )
-  let cloudId = matchedTitle ? namespaces[matchedTitle] : null
-  if (cloudId) {
-    console.log(`[KV] 找到 namespace "${matchedTitle}" id=${cloudId}`)
-  } else {
-    console.log(`[KV] 未找到名为 ${KV_TITLE} 的 namespace，正在创建 ...`)
-    const createOut = run(`npx wrangler kv namespace create ${KV_TITLE}`, {
-      silent: true,
-    })
-    console.log(createOut.trim())
-    cloudId = parseCreatedId(createOut)
-    if (!cloudId) {
-      console.error("[错误] 无法从创建结果中解析 KV namespace id")
-      process.exit(1)
-    }
-  }
-
-  // --- 3. 更新 wrangler.toml（仅在 id 变化或块缺失时写文件）---
-  const newToml = updateTomlId(readToml(), cloudId)
-  if (newToml !== readToml()) {
-    writeFileSync(CONFIG, newToml, "utf8")
-    console.log(`[KV] 已更新 wrangler.toml: id = "${cloudId}"`)
-  } else {
-    console.log(`[KV] wrangler.toml 无需更新`)
-  }
-
-  if (onlyKv) {
-    console.log("\n✅ KV 绑定就绪，执行 `node scripts/deploy.js` 完成部署")
+  if (matchedTitle) {
+    console.log(
+      `[KV] 找到 namespace "${matchedTitle}" (id=${namespaces[matchedTitle]})，` +
+        `部署时由 wrangler Automatic provisioning 自动绑定`,
+    )
     return
   }
 
-  // --- 4. 构建前端（可选）---
+  console.log(`[KV] 未找到名为 ${KV_TITLE} 的 namespace，正在创建 ...`)
+  const createOut = run(`npx wrangler kv namespace create ${KV_TITLE}`, {
+    silent: true,
+  })
+  console.log(createOut.trim())
+  const id = parseCreatedId(createOut)
+  if (!id) {
+    console.error("[错误] 无法从创建结果中解析 KV namespace id")
+    process.exit(1)
+  }
+  console.log(
+    `[KV] 已创建 namespace ${KV_TITLE} (id=${id})。` +
+      `wrangler.toml 无需改动 —— wrangler 4.x 部署时会自动绑定同名 namespace。`,
+  )
+}
+
+function main() {
+  console.log(
+    `[KV] wrangler.toml 仅声明绑定（不存 id），由 wrangler 自动配置。`,
+  )
+
+  // 确保 KV namespace 存在（兜底创建，不写 wrangler.toml）
+  ensureKvNamespace()
+
+  if (onlyKv) {
+    console.log("\n✅ KV namespace 已就绪，执行 `npm run deploy` 完成部署")
+    return
+  }
+
+  // 构建前端（可选）
   if (!skipBuild) {
     console.log("\n[构建] 正在构建前端静态资源 ...")
     run("npx vite build")
@@ -175,7 +144,7 @@ function main() {
     console.log("\n[构建] 跳过前端构建（--skip-build）")
   }
 
-  // --- 5. 部署 ---
+  // 部署（wrangler 4.x Automatic provisioning 自动创建/关联 KV）
   console.log("\n[部署] 正在部署到 Cloudflare Workers ...")
   run("npx wrangler deploy")
 
