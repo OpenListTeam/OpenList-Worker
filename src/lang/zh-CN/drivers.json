@@ -1682,7 +1682,8 @@
     "WoPan": "WoPan",
     "YandexDisk": "YandexDisk",
     "cloudflare_imgbed": "Cloudflare imgbed",
-    "BaiduNetdisk": "BaiduNetdisk"
+    "BaiduNetdisk": "BaiduNetdisk",
+    "115Open": "115Open"
   },
   "BaiduNetdisk": {
     "access_token": "访问令牌",
@@ -1717,5 +1718,29 @@
     "upload_timeout": "分片上传超时（秒）",
     "use_dynamic_upload_api": "动态获取上传域名",
     "use_online_api": "使用在线 API 刷新令牌"
+  },
+  "115Open": {
+    "access_token": "访问令牌",
+    "access_token-tips": "必填。通过 115 开放平台获取；失效时自动用 refresh_token 刷新并持久化。",
+    "refresh_token": "刷新令牌",
+    "refresh_token-tips": "必填。通过 115 开放平台获取；access_token 失效时自动刷新。",
+    "root_id": "根文件夹 ID",
+    "root_id-tips": "默认 0（根目录）",
+    "order_by": "排序字段",
+    "order_bys": {
+      "file_name": "文件名",
+      "file_size": "文件大小",
+      "file_type": "文件类型",
+      "user_utime": "修改时间"
+    },
+    "order_direction": "排序方向",
+    "order_directions": {
+      "asc": "升序",
+      "desc": "降序"
+    },
+    "page_size": "分页大小",
+    "page_size-tips": "列表每页大小（1~1150）",
+    "limit_rate": "请求限速",
+    "limit_rate-tips": "所有 API 请求限速（[limit]r/1s），0 表示不限速"
   }
 }

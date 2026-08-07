@@ -1682,7 +1682,8 @@
     "WoPan": "WoPan",
     "YandexDisk": "YandexDisk",
     "cloudflare_imgbed": "Cloudflare imgbed",
-    "BaiduNetdisk": "BaiduNetdisk"
+    "BaiduNetdisk": "BaiduNetdisk",
+    "115Open": "115Open"
   },
   "BaiduNetdisk": {
     "access_token": "Access Token",
@@ -1717,5 +1718,29 @@
     "upload_timeout": "Slice Upload Timeout (s)",
     "use_dynamic_upload_api": "Dynamically Get Upload API",
     "use_online_api": "Use Online API to Refresh Token"
+  },
+  "115Open": {
+    "access_token": "Access Token",
+    "access_token-tips": "Required. Get it from 115 Open Platform; auto-refreshed via refresh_token when expired.",
+    "refresh_token": "Refresh Token",
+    "refresh_token-tips": "Required. Get it from 115 Open Platform; used to auto-refresh access_token.",
+    "root_id": "Root Folder ID",
+    "root_id-tips": "Default 0 (root)",
+    "order_by": "Order by",
+    "order_bys": {
+      "file_name": "File name",
+      "file_size": "File size",
+      "file_type": "File type",
+      "user_utime": "Modified time"
+    },
+    "order_direction": "Order direction",
+    "order_directions": {
+      "asc": "Asc",
+      "desc": "Desc"
+    },
+    "page_size": "Page Size",
+    "page_size-tips": "List API per page size (1~1150)",
+    "limit_rate": "Request Rate Limit",
+    "limit_rate-tips": "Limit all API request rate ([limit]r/1s), 0 = unlimited"
   }
 }

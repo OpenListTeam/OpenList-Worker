@@ -263,6 +263,25 @@ const AddOrEdit = () => {
           try {
             const { id, disabled, modified, status, ...obj }: Storage =
               JSON.parse(text)
+            // 驱动名归一化：兼容 OpenList Go 原版导出（如 "115 Open" → "115Open"、
+            // "Baidu Netdisk" → "BaiduNetdisk"），避免导入后驱动不匹配
+            const normDriver = (obj.driver || "")
+              .replace(/\s+/g, "")
+              .toLowerCase()
+              .replace(/_/g, "")
+            const available = Object.keys(drivers())
+            const matched = available.find(
+              (d) =>
+                d.toLowerCase() === normDriver ||
+                d.toLowerCase().replace(/[^a-z0-9]/g, "") === normDriver,
+            )
+            if (matched) obj.driver = matched
+            if (!available.some((d) => d === obj.driver)) {
+              notify.error(
+                `未知驱动类型 "${obj.driver}"，可用驱动：${available.join(", ")}`,
+              )
+              return
+            }
             setStorage(obj)
             setAddition(JSON.parse(obj.addition))
             setImportOpened(false)

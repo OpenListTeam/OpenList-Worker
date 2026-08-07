@@ -9,6 +9,7 @@ import {
   BaiduDriver,
   normalizeBaiduAddition,
 } from "../../drivers/baidu_netdisk/driver"
+import { Pan115Driver } from "../../drivers/115open/driver"
 
 // LocalDriver is not available in Cloudflare Workers (no fs module).
 // When running in Node.js container mode, import dynamically on first use.
@@ -137,6 +138,33 @@ export async function getDriver(
         await saveDb(db)
       } catch (e) {
         console.warn("[baidu_netdisk] failed to persist token:", e)
+      }
+    })
+    await driver.init?.()
+  } else if (
+    normDriver === "115open" ||
+    normDriver === "115" ||
+    normDriver === "115pan"
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new Pan115Driver(addition, async (tokens) => {
+      // 持久化刷新后的 access_token / refresh_token，避免冷启动重复刷新
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        stAddition.access_token = tokens.access_token
+        stAddition.refresh_token = tokens.refresh_token
+        st.addition = JSON.stringify(stAddition)
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[115open] failed to persist token:", e)
       }
     })
     await driver.init?.()

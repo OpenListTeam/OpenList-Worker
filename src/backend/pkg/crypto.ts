@@ -132,6 +132,25 @@ export async function hmacSha256(
   return hexEncode(sig)
 }
 
+/** HMAC-SHA1（base64 输出，阿里云 OSS V1 签名使用） */
+export async function hmacSha1Base64(
+  data: string,
+  key: string,
+): Promise<string> {
+  const keyMat = await crypto.subtle.importKey(
+    "raw",
+    toBytes(key),
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"],
+  )
+  const sig = await crypto.subtle.sign("HMAC", keyMat, toBytes(data))
+  const bytes = new Uint8Array(sig)
+  let binary = ""
+  for (const b of bytes) binary += String.fromCharCode(b)
+  return btoa(binary)
+}
+
 // ─── AES-256-GCM helpers ─────────────────────────────────────────────────────
 
 async function deriveKey(password: string): Promise<CryptoKey> {

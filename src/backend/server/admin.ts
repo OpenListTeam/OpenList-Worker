@@ -152,6 +152,7 @@ adminRouter.get("/driver/names", (c) => {
       "Quark",
       "123Pan",
       "BaiduNetdisk",
+      "115Open",
     ],
   })
 })
@@ -659,6 +660,73 @@ const driverConfigs: Record<string, any> = {
       no_upload: false,
       need_ms: false,
       default_root: "/",
+    },
+  },
+  "115Open": {
+    name: "115Open",
+    default_mount_path: "/115",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "access_token",
+        type: "string",
+        default:
+          "e4mvi.43f51ee687247d07f386048e903ae6b7.3a9175e14e8e4b254ab81462866f9111e2bdc9984324da30a2b8e2bdfad74ff1",
+        required: true,
+        help: "访问令牌（必填）。通过 115 开放平台获取；失效时自动用 refresh_token 刷新并持久化。",
+      },
+      {
+        name: "refresh_token",
+        type: "string",
+        default: "",
+        required: true,
+        help: "刷新令牌（必填）。通过 115 开放平台获取；access_token 失效时自动刷新。",
+      },
+      {
+        name: "root_id",
+        type: "string",
+        default: "0",
+        required: false,
+        help: "根文件夹 ID，默认 0（根目录）",
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "file_name,file_size,user_utime,file_type",
+        default: "file_name",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "asc,desc",
+        default: "asc",
+        required: false,
+      },
+      {
+        name: "page_size",
+        type: "number",
+        default: "200",
+        required: false,
+        help: "list api per page size (1~1150)",
+      },
+      {
+        name: "limit_rate",
+        type: "float",
+        default: "1",
+        required: false,
+        help: "limit all api request rate ([limit]r/1s)，0 表示不限速",
+      },
+    ],
+    config: {
+      name: "115Open",
+      local_sort: true,
+      only_local: false,
+      only_proxy: true,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "0",
     },
   },
 }
