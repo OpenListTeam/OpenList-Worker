@@ -30,6 +30,12 @@ export class Pan123Driver implements StorageDriver {
   private addition: Pan123Addition
   /** cache: physical path → folder FileId (string) */
   private pathIdCache = new Map<string, string>()
+  /**
+   * Cloudflare Workers subrequest 预算（免费版单次 invocation 最多 50 个子请求）。
+   * 所有分页/路径解析调用共享该预算；超出时截断并告警，避免
+   * "Too many subrequests by single Worker invocation" 错误。
+   */
+  private budget = { used: 0, limit: 45 }
 
   constructor(
     addition: Pan123Addition,
@@ -51,7 +57,8 @@ export class Pan123Driver implements StorageDriver {
   /**
    * Resolve a physical path ("0/a/b") to the FileId of its last folder.
    * Walks the tree from the root id, listing each level to find the
-   * folder by name, caching results.
+   * folder by name, caching results. Each level consumes at most one
+   * page of subrequests (findName early-termination).
    */
   private async resolveFolderId(physicalPath: string): Promise<string> {
     const rootId = this.client.getRootId()
@@ -84,8 +91,12 @@ export class Pan123Driver implements StorageDriver {
 
     for (let i = cachedLen; i < segs.length; i++) {
       const name = segs[i]
-      const files = await this.client.getFiles(parentId)
-      const folder = files.find((f) => f.Type === 1 && f.FileName === name)
+      const files = await this.client.getFiles(parentId, {
+        findName: name,
+        findIsDir: true,
+        budget: this.budget,
+      })
+      const folder = files[0]
       if (!folder) {
         throw new Error(`folder not found: ${name}`)
       }
@@ -112,7 +123,10 @@ export class Pan123Driver implements StorageDriver {
     const name = segs[segs.length - 1]
     const parentPath = "/" + segs.slice(0, segs.length - 1).join("/")
     const parentId = await this.resolveFolderId(parentPath)
-    const files = await this.client.getFiles(parentId)
+    const files = await this.client.getFiles(parentId, {
+      findName: name,
+      budget: this.budget,
+    })
     const file = files.find(
       (f) => String(f.FileId) === name || f.FileName === name,
     )
@@ -121,8 +135,10 @@ export class Pan123Driver implements StorageDriver {
   }
 
   async list(_virtualPath: string, physicalPath: string): Promise<FileItem[]> {
+    // 每次外部调用重置 subrequest 预算（45 页上限，低于 CF 50 次限制）
+    this.budget.used = 0
     const folderId = await this.resolveFolderId(physicalPath)
-    const files = await this.client.getFiles(folderId)
+    const files = await this.client.getFiles(folderId, { budget: this.budget })
     const items = files.map(pan123FileToFileItem)
     return sortFileItems(
       items,
@@ -132,6 +148,8 @@ export class Pan123Driver implements StorageDriver {
   }
 
   async get(_virtualPath: string, physicalPath: string): Promise<FileItem> {
+    // 每次外部调用重置 subrequest 预算
+    this.budget.used = 0
     const segs = String(physicalPath || "")
       .split("/")
       .filter(Boolean)
@@ -188,6 +206,7 @@ export class Pan123Driver implements StorageDriver {
   }
 
   async mkdir(_virtualPath: string, physicalPath: string): Promise<void> {
+    this.budget.used = 0
     const segs = String(physicalPath || "")
       .split("/")
       .filter(Boolean)
@@ -202,6 +221,7 @@ export class Pan123Driver implements StorageDriver {
     physicalPath: string,
     newName: string,
   ): Promise<void> {
+    this.budget.used = 0
     const { file } = await this.resolveFile(physicalPath)
     await this.client.rename(String(file.FileId), newName)
   }
@@ -211,6 +231,7 @@ export class Pan123Driver implements StorageDriver {
     physicalPath: string,
     _names: string[],
   ): Promise<void> {
+    this.budget.used = 0
     const { file } = await this.resolveFile(physicalPath)
     await this.client.remove(String(file.FileId), file)
   }
@@ -222,6 +243,7 @@ export class Pan123Driver implements StorageDriver {
     srcPhysical: string,
     _dstPhysical: string,
   ): Promise<void> {
+    this.budget.used = 0
     const { file } = await this.resolveFile(srcPhysical)
     const dstParts = String(dstDir).split("/").filter(Boolean)
     const targetParentId = await this.resolveFolderId("/" + dstParts.join("/"))

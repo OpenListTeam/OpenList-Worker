@@ -141,7 +141,9 @@ export class Pan123Client {
     if (this.addition.access_token) {
       this.accessToken = this.addition.access_token
       try {
-        await this.userInfo()
+        // skipLoginRetry=true：token 校验请求遇到 401 直接抛错，
+        // 防止 request() 的 401 分支再次调用 login() 造成无限递归
+        await this.userInfo(true)
         return // token is valid
       } catch {
         // token invalid/expired — fall through to password login
@@ -180,7 +182,10 @@ export class Pan123Client {
     })
     const data = (await res.json()) as Pan123LoginResp
     if (data.code !== 200) {
-      throw new Error(data.message || `login failed: code ${data.code}`)
+      throw new Error(
+        `123 网盘登录失败（${data.message || `code ${data.code}`}）：` +
+          `访问令牌已失效且账号密码登录失败。请在存储设置中填入有效的访问令牌或正确的账号密码。`,
+      )
     }
     this.accessToken = data.data?.token || ""
     if (!this.accessToken) throw new Error("login returned empty token")
@@ -196,6 +201,7 @@ export class Pan123Client {
     method: "GET" | "POST",
     body?: any,
     respType?: any,
+    skipLoginRetry = false,
   ): Promise<any> {
     const doReq = async (): Promise<any> => {
       const signed = getApi(url)
@@ -221,8 +227,10 @@ export class Pan123Client {
     let data = await doReq()
     const code = data?.code
     if (code !== 0 && code !== 200) {
-      // 401 → token expired, retry login once
-      if (code === 401) {
+      // 401 → token expired, retry login once.
+      // skipLoginRetry=true（login 内部校验 token 时）直接抛错，
+      // 避免 login → userInfo → 401 → login 无限递归。
+      if (code === 401 && !skipLoginRetry) {
         await this.login()
         data = await doReq()
         const retryCode = data?.code
@@ -238,25 +246,64 @@ export class Pan123Client {
 
   // ---- User info ----
 
-  public async userInfo(): Promise<Pan123UserInfoResp["data"]> {
-    const data = (await this.request(UserInfo, "GET")) as Pan123UserInfoResp
+  public async userInfo(
+    skipLoginRetry = false,
+  ): Promise<Pan123UserInfoResp["data"]> {
+    const data = (await this.request(
+      UserInfo,
+      "GET",
+      undefined,
+      undefined,
+      skipLoginRetry,
+    )) as Pan123UserInfoResp
     return data.data
   }
 
   // ---- Files ----
 
-  public async getFiles(parentId: string): Promise<Pan123File[]> {
+  /**
+   * 分页获取文件列表。
+   * - findName/findIsDir：提前终止模式——在分页中查找目标项，命中立即返回（只含命中项），
+   *   避免为解析路径而拉取全部分页（减少 Cloudflare subrequest）。
+   * - budget：共享 subrequest 预算（used/limit）。超过 limit 时截断并告警，
+   *   防止单次 invocation 超过 Cloudflare Workers 的 50 次子请求上限。
+   */
+  public async getFiles(
+    parentId: string,
+    opts?: {
+      findName?: string
+      findIsDir?: boolean
+      maxPages?: number
+      budget?: { used: number; limit: number }
+    },
+  ): Promise<Pan123File[]> {
     const files: Pan123File[] = []
     let page = 1
-    const orderBy = this.addition.order_by || "file_id"
-    const orderDirection = this.addition.order_direction || "desc"
+    const maxPages = opts?.maxPages ?? 45
     for (;;) {
+      // Cloudflare Workers subrequest 预算检查
+      if (opts?.budget) {
+        if (opts.budget.used >= opts.budget.limit) {
+          console.warn(
+            `[123Pan] 已达 Cloudflare subrequest 预算上限(${opts.budget.limit} 次)，结果已截断（目录文件过多或路径过深）`,
+          )
+          break
+        }
+        opts.budget.used++
+      }
+      if (page > maxPages) {
+        console.warn(
+          `[123Pan] 分页超过 ${maxPages} 页，结果可能不完整（目录文件过多）`,
+        )
+        break
+      }
+
       const query = new URLSearchParams({
         driveId: "0",
         limit: "100",
         next: "0",
-        orderBy,
-        orderDirection,
+        orderBy: this.addition.order_by || "file_id",
+        orderDirection: this.addition.order_direction || "desc",
         parentFileId: parentId,
         trashed: "false",
         SearchData: "",
@@ -270,6 +317,17 @@ export class Pan123Client {
       const resp = (await this.request(url, "GET")) as Pan123FilesResp
       const list = resp.data?.InfoList || []
       files.push(...list)
+
+      // 提前终止：目标项命中立即返回
+      if (opts?.findName) {
+        const hit = list.find(
+          (f) =>
+            f.FileName === opts.findName &&
+            (opts.findIsDir === undefined || (f.Type === 1) === opts.findIsDir),
+        )
+        if (hit) return [hit]
+      }
+
       if (list.length === 0 || resp.data.Next === "-1") break
       page++
     }
