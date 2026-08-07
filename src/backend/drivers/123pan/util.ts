@@ -183,8 +183,9 @@ export class Pan123Client {
     const data = (await res.json()) as Pan123LoginResp
     if (data.code !== 200) {
       throw new Error(
-        `123 网盘登录失败（${data.message || `code ${data.code}`}）：` +
-          `访问令牌已失效且账号密码登录失败。请在存储设置中填入有效的访问令牌或正确的账号密码。`,
+        `123 网盘登录失败（${data.message || `code ${data.code}`}）。` +
+          `解决方案：① 先在 https://www.123pan.com/ 用此账号登录一次或修改密码，解除账号安全风险；` +
+          `② 确认手机号/密码正确；③ 若仍失败（如数据中心 IP 触发风控），请在存储设置中填入有效的访问令牌 access_token。`,
       )
     }
     this.accessToken = data.data?.token || ""

@@ -657,6 +657,16 @@ let memoryDb: any = null
 let globalEnvCtx: any = null
 
 /**
+ * 在请求处理开始时注入当前环境的 KV binding 上下文。
+ * CF Workers 每个实例的模块级 globalEnvCtx 初始为 null，且请求会被负载均衡到
+ * 不同实例——若不设置，getDb()/saveDb() 会退回内存模式，导致 KV 中的配置
+ * （含网盘账号密码、access_token）读取/持久化失败。
+ */
+export function setEnvCtx(env: any) {
+  if (env) globalEnvCtx = env
+}
+
+/**
  * Universal KV Storage Adapter for Cloudflare Workers
  */
 export function getKvBinding(envCtx?: any): {
