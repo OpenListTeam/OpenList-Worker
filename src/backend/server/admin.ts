@@ -482,10 +482,9 @@ const driverConfigs: Record<string, any> = {
       {
         name: "access_token",
         type: "string",
-        default:
-          "121.cbb145d7b3313aa4acecb9a904c9c5d3.YDSRj97WUdwZqTT9GoUY3TFOY3-TXbeoDSdt5r-.VyliSw",
+        default: "",
         required: false,
-        help: "登录令牌（可选，默认已内置，无需自行填写）。填入自己的令牌可覆盖默认值；跳过密码登录可避免境外 IP 触发风控。",
+        help: "登录令牌（可选，自动持久化，无需手动填写）。仅需填写上方 123 网盘手机号和密码，登录后自动获取并保存，跳过重复登录可避免境外 IP 触发风控。",
       },
       {
         name: "root_id",

@@ -94,7 +94,7 @@
     "root_folder_id": "Root folder id",
     "username": "Username",
     "access_token": "访问令牌",
-    "access_token-tips": "可选——默认已内置，无需自行填写。填入自己的令牌可覆盖默认值；跳过密码登录可避免境外 IP 触发风控。"
+    "access_token-tips": "可选——自动持久化，无需手动填写。仅需填写上方 123 网盘手机号和密码，登录后自动获取并保存，跳过重复登录可避免境外 IP 触发风控。"
   },
   "123PanLink": {
     "origin_urls": "Origin urls",

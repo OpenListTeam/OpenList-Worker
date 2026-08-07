@@ -94,7 +94,7 @@
     "root_folder_id": "Root folder id",
     "username": "Username",
     "access_token": "Access Token",
-    "access_token-tips": "Optional — a default token is built in, no need to fill in. Provide your own to override; skips password login to avoid overseas-IP risk control."
+    "access_token-tips": "Optional — auto-persisted, no need to fill in. Just fill in the 123 Cloud Drive phone number and password above; the token is fetched and saved after login, skipping repeated logins to avoid overseas-IP risk control."
   },
   "123PanLink": {
     "origin_urls": "Origin urls",

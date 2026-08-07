@@ -41,11 +41,8 @@ export class Pan123Driver implements StorageDriver {
     addition: Pan123Addition,
     onTokenUpdate?: (token: string) => void,
   ) {
-    // 默认访问令牌（无需手动填写）：仅当用户未显式提供 access_token 时使用
-    if (!addition.access_token) {
-      addition.access_token =
-        "121.cbb145d7b3313aa4acecb9a904c9c5d3.YDSRj97WUdwZqTT9GoUY3TFOY3-TXbeoDSdt5r-.VyliSw"
-    }
+    // 官方驱动方式：必填 123 网盘手机号 + 密码登录（无默认令牌）。
+    // access_token 为登录后自动持久化的会话令牌（可选，用户无需手动填写）。
     this.addition = addition
     this.client = new Pan123Client(addition, onTokenUpdate)
   }
