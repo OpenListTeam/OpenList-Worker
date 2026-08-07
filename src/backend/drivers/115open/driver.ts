@@ -57,6 +57,12 @@ export class Pan115Driver implements StorageDriver {
   private fidCache = new Map<string, string>()
   /** CF subrequest 预算 */
   private budget = { used: 0, limit: SUBREQUEST_LIMIT }
+  /**
+   * 下载链接缓存（Go LinkCacheMode=UA 等价）：按 文件ID+UA 缓存，TTL 30 分钟。
+   * 115 免费用户 downurl 接口有每日配额（code 406），缓存显著减少调用次数。
+   */
+  private linkCache = new Map<string, { url: string; expire: number }>()
+  private static readonly LINK_TTL_MS = 30 * 60 * 1000
 
   constructor(
     addition: Pan115Addition,
@@ -184,8 +190,8 @@ export class Pan115Driver implements StorageDriver {
         return info.file_id
       }
     } catch (e: any) {
-      if (e?.code !== ERR_OBJECT_NOT_FOUND) throw e
-      // 路径查询失败 → 逐层解析
+      // folder/get_info 只支持目录路径：参数错误(990002)/不存在(430004) → 回退逐层
+      if (e?.code !== ERR_OBJECT_NOT_FOUND && e?.code !== 990002) throw e
     }
     // 逐层解析
     const segs = clean.split("/").filter(Boolean)
@@ -215,7 +221,7 @@ export class Pan115Driver implements StorageDriver {
     return cid
   }
 
-  /** 解析物理路径 → 文件（Go getFromParent 逻辑） */
+  /** 解析物理路径 → 文件（Go getFromParent 逻辑：列父目录匹配，拿完整 pick_code） */
   private async resolveFile(physicalPath: string): Promise<Pan115File> {
     const clean =
       "/" +
@@ -224,50 +230,30 @@ export class Pan115Driver implements StorageDriver {
         .filter(Boolean)
         .join("/")
     const segs = clean.split("/").filter(Boolean)
-    const name = segs[segs.length - 1]
-    const parentPath = "/" + segs.slice(0, segs.length - 1).join("/")
+    const name = segs.pop() || ""
+    if (!name) throw new Error(`file not found: ${clean}`)
+    const parentPath = "/" + segs.join("/")
 
-    // 先尝试 GetFolderInfoByPath（Go Get）
-    const fullPath = `/${this.getRootId() === "0" ? "" : this.getRootId()}${clean}`
-    try {
-      if (!this.reserve()) throw new Error("budget")
-      const info = await this.client.getFolderInfoByPath(fullPath)
-      if (info.file_id && info.file_name) {
-        return {
-          fid: info.file_id,
-          pid: "",
-          fc: info.file_category === "1" ? "1" : "0",
-          fn: info.file_name,
-          pc: info.pick_code,
-          sha1: info.sha1,
-          fs: info.size_byte,
-          upt: parseInt(info.utime, 10) || 0,
-          uppt: parseInt(info.ptime, 10) || 0,
-          thumbnail: "",
-          ico: "",
-          aid: "1",
-          fco: "",
-          uet: 0,
-        }
-      }
-    } catch (e: any) {
-      if (e?.code !== ERR_OBJECT_NOT_FOUND) throw e
-    }
-
-    // 回退：列出父目录匹配（Go getFromParent）
     const parentId = await this.resolveFolderId(parentPath)
-    if (!this.reserve()) throw new Error("subrequest budget exceeded")
-    const { files } = await this.client.getFiles({
-      cid: parentId,
-      limit: Math.max(this.pageSize, 1000),
-      offset: 0,
-      asc: true,
-      o: "file_name",
-      showDir: true,
-    })
-    const file = files.find((f) => f.fn === name)
-    if (!file) throw new Error(`file not found: ${name}`)
-    return file
+    // 分页列出父目录找文件（列表接口返回完整 pick_code；
+    // folder/get_info 只支持目录路径，对文件路径不可用）
+    let offset = 0
+    for (;;) {
+      if (!this.reserve()) throw new Error("subrequest budget exceeded")
+      const { files, count } = await this.client.getFiles({
+        cid: parentId,
+        limit: Math.max(this.pageSize, 1000),
+        offset,
+        asc: true,
+        o: "file_name",
+        showDir: true,
+      })
+      const hit = files.find((f) => f.fn === name)
+      if (hit) return hit
+      if (files.length === 0 || offset + files.length >= count) break
+      offset += this.pageSize
+    }
+    throw new Error(`file not found: ${name}`)
   }
 
   async get(_virtualPath: string, physicalPath: string): Promise<FileItem> {
@@ -293,15 +279,34 @@ export class Pan115Driver implements StorageDriver {
     const item = pan115FileToFileItem(file)
     if (file.fc !== "0" && file.pc) {
       try {
-        if (!this.reserve()) throw new Error("subrequest budget exceeded")
-        const resp = await this.client.downUrl(file.pc, OPENLIST_UA)
-        const entry = resp[file.fid]
-        if (entry?.url?.url) {
-          item.raw_url = entry.url.url
+        // 链接缓存（Go LinkCacheMode=UA）：同一 文件+UA 复用链接，节省 downurl 配额
+        const cacheKey = `${file.fid}|${OPENLIST_UA}`
+        const cached = this.linkCache.get(cacheKey)
+        if (cached && cached.expire > Date.now()) {
+          item.raw_url = cached.url
           item.raw_url_headers = { "User-Agent": OPENLIST_UA }
+        } else {
+          if (!this.reserve()) throw new Error("subrequest budget exceeded")
+          const resp = await this.client.downUrl(file.pc, OPENLIST_UA)
+          const entry = resp[file.fid]
+          if (entry?.url?.url) {
+            item.raw_url = entry.url.url
+            item.raw_url_headers = { "User-Agent": OPENLIST_UA }
+            this.linkCache.set(cacheKey, {
+              url: entry.url.url,
+              expire: Date.now() + Pan115Driver.LINK_TTL_MS,
+            })
+          }
         }
       } catch (e: any) {
-        console.warn(`[115open] downUrl warning for ${file.fn}:`, e.message)
+        const msg = String(e?.message || e)
+        if (msg.includes("406")) {
+          console.warn(
+            "[115open] downurl 配额用尽（406）：已使用缓存或稍后重试",
+          )
+        } else {
+          console.warn(`[115open] downUrl warning for ${file.fn}:`, e.message)
+        }
       }
     }
     return item
