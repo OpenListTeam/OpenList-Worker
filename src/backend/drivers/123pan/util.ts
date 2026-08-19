@@ -150,6 +150,14 @@ export class Pan123Client {
         this.accessToken = ""
       }
     }
+    // 无 token 或 token 失效：需要账号密码
+    if (!this.addition.username || !this.addition.password) {
+      throw new Error(
+        "123 网盘登录凭证缺失：请填写 123 网盘手机号 + 密码；" +
+          "若部署环境（如 Cloudflare Workers 数据中心 IP）密码登录会被风控，" +
+          "请直接填写有效的访问令牌 access_token（在本机浏览器登录 https://www.123pan.com/ 后从开发者工具获取）。",
+      )
+    }
     await this.signIn()
   }
 
@@ -184,8 +192,12 @@ export class Pan123Client {
     if (data.code !== 200) {
       throw new Error(
         `123 网盘登录失败（${data.message || `code ${data.code}`}）。` +
-          `解决方案：① 先在 https://www.123pan.com/ 用此账号登录一次或修改密码，解除账号安全风险；` +
-          `② 确认手机号/密码正确；③ 若仍失败（如数据中心 IP 触发风控），请在存储设置中填入有效的访问令牌 access_token。`,
+          `当前部署环境的出口 IP 被 123 判定为境外/陌生设备（如 Cloudflare Workers 数据中心 IP），` +
+          `账号密码登录会被风控拦截。可靠方案：` +
+          `① 在本机浏览器登录 https://www.123pan.com/（登录一次或修改密码可解除账号风险），` +
+          `打开开发者工具 → Application/Network → 复制请求头中的 Bearer 令牌，填入存储设置的 access_token 字段` +
+          `（令牌有效期内 API 请求不受 IP 风控影响）；` +
+          `② 或将该网盘部署到境内服务器（Node 容器模式）后使用账号密码。`,
       )
     }
     this.accessToken = data.data?.token || ""

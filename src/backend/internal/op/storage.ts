@@ -10,6 +10,11 @@ import {
   normalizeBaiduAddition,
 } from "../../drivers/baidu_netdisk/driver"
 import { Pan115Driver } from "../../drivers/115open/driver"
+import { GithubDriver } from "../../drivers/github/driver"
+import {
+  ThunderDriver,
+  ThunderExpertDriver,
+} from "../../drivers/thunder/driver"
 
 // LocalDriver is not available in Cloudflare Workers (no fs module).
 // When running in Node.js container mode, import dynamically on first use.
@@ -165,6 +170,64 @@ export async function getDriver(
         await saveDb(db)
       } catch (e) {
         console.warn("[115open] failed to persist token:", e)
+      }
+    })
+    await driver.init?.()
+  } else if (
+    normDriver === "github" ||
+    normDriver === "githubapi" ||
+    normDriver === "github_api"
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new GithubDriver(addition)
+    await driver.init?.()
+  } else if (normDriver === "thunderexpert") {
+    const addition = parseAddition(storageConfig)
+    driver = new ThunderExpertDriver(addition, async (tokens) => {
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        if (tokens.refresh_token)
+          stAddition.refresh_token = tokens.refresh_token
+        if (tokens.captcha_token)
+          stAddition.captcha_token = tokens.captcha_token
+        if (tokens.device_id) stAddition.device_id = tokens.device_id
+        st.addition = JSON.stringify(stAddition)
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[thunderexpert] failed to persist token:", e)
+      }
+    })
+    await driver.init?.()
+  } else if (normDriver === "thunder" || normDriver === "xunlei") {
+    const addition = parseAddition(storageConfig)
+    driver = new ThunderDriver(addition, async (tokens) => {
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        if (tokens.refresh_token)
+          stAddition.refresh_token = tokens.refresh_token
+        if (tokens.captcha_token)
+          stAddition.captcha_token = tokens.captcha_token
+        if (tokens.device_id) stAddition.device_id = tokens.device_id
+        st.addition = JSON.stringify(stAddition)
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[thunder] failed to persist token:", e)
       }
     })
     await driver.init?.()

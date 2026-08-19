@@ -1742,5 +1742,51 @@
     "page_size-tips": "列表每页大小（1~1150）",
     "limit_rate": "请求限速",
     "limit_rate-tips": "所有 API 请求限速（[limit]r/1s），0 表示不限速"
+  },
+  "Thunder": {
+    "username": "用户名/手机号",
+    "password": "密码",
+    "root_folder_id": "根文件夹 ID",
+    "root_folder_id-tips": "留空为网盘根目录",
+    "captcha_token": "验证码 Token",
+    "credit_key": "信任密钥",
+    "credit_key-tips": "触发安全验证时生成的信任密钥",
+    "device_id": "设备 ID",
+    "device_id-tips": "32位十六进制字符串，留空将基于账号密码自动生成",
+    "space": "远程设备 ID",
+    "space-tips": "挂载远程设备时填写对应设备 ID，留空为个人云盘",
+    "order_by": "排序字段",
+    "order_direction": "排序方向"
+  },
+  "ThunderExpert": {
+    "login_type": "登录方式",
+    "login_types": {
+      "user": "用户名密码",
+      "refresh_token": "RefreshToken 刷新令牌"
+    },
+    "sign_type": "签名算法类型",
+    "sign_types": {
+      "algorithms": "内置算法摘要",
+      "captcha_sign": "动态 Captcha 签名"
+    },
+    "username": "用户名/手机号",
+    "password": "密码",
+    "refresh_token": "RefreshToken",
+    "algorithms": "算法签名列表",
+    "captcha_sign": "Captcha 签名",
+    "timestamp": "时间戳",
+    "captcha_token": "验证码 Token",
+    "credit_key": "信任密钥",
+    "device_id": "设备 ID",
+    "client_id": "Client ID",
+    "client_secret": "Client Secret",
+    "client_version": "客户端版本",
+    "package_name": "包名",
+    "user_agent": "User-Agent",
+    "download_user_agent": "下载 User-Agent",
+    "use_video_url": "优先使用视频媒体流直链",
+    "space": "远程设备 ID",
+    "order_by": "排序字段",
+    "order_direction": "排序方向"
   }
 }

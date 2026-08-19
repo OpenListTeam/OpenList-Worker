@@ -170,3 +170,32 @@ npx wrangler secret put JWT_SECRET
 > [!TIP]
 > **资源配额**：
 > Cloudflare Workers 免费版计划每日包含 100,000 次免费请求，并支持最多 1,000 次 KV 写操作与 100,000 次 KV 读操作。
+
+## 网盘驱动与 Cloudflare Workers 出口 IP 风控
+
+> [!WARNING]
+> **123 云盘（123Pan）在 CF Workers 上的登录风控**：
+> 123 云盘官方禁止在数据中心/陌生设备 IP 上挂载账号，其**登录接口**会对
+> Cloudflare Workers 的境外数据中心出口 IP 触发风控：
+>
+> ```
+> 当前账号存在境外登录风险，请使用短信验证码或者微信进行登录。
+> ```
+>
+> **这是 123 服务端策略，Go 原版 OpenList 部署到 CF Workers 同样会触发**
+> （OpenList 官方文档也提示该驱动"需要开启本地代理以防止反盗链检测"）。
+
+### 可靠方案（按推荐顺序）
+
+1. **使用有效 access_token（推荐）**：
+   - 在**本机浏览器**登录 https://www.123pan.com/（本机 IP 不受风控）
+   - 打开开发者工具（F12）→ Network → 任意 API 请求 → 复制请求头中的
+     `Authorization: Bearer <token>` 值
+   - 填入存储设置的 **access_token** 字段（令牌有效期内 API 请求不受登录风控影响）
+2. **部署到境内服务器**：使用 `npm run build && npm run start`（Node 容器模式）
+   部署到境内 VPS/家用主机，出口 IP 为境内宽带，账号密码可直接登录
+3. 若账号曾触发风控：先在 https://www.123pan.com/ 登录一次或修改密码解除账号风险
+
+> [!NOTE]
+> 其他驱动（夸克、阿里云盘、OneDrive、Google Drive、115、百度网盘）的 token 类
+> 凭证不受登录 IP 风控影响，CF Workers 部署可直接使用。
