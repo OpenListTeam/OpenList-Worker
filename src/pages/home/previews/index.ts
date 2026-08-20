@@ -312,7 +312,7 @@ export const getPreviews = (
     ObjType[searchParams["type"]?.toUpperCase() as keyof typeof ObjType]
   const effectiveType =
     typeOverride ||
-    (file.type && file.type !== ObjType.UNKNOWN
+    (file.type && (file.type as number) !== ObjType.UNKNOWN
       ? file.type
       : getObjTypeByName(file.name))
   const res: PreviewComponent[] = []

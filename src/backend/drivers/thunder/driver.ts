@@ -338,7 +338,7 @@ export class ThunderDriver implements StorageDriver {
       const uploadRes = await fetch(uploadUrl, {
         method: "PUT",
         headers,
-        body: content,
+        body: content as any,
       })
 
       if (!uploadRes.ok) {

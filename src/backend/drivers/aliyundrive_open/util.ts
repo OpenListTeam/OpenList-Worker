@@ -347,7 +347,10 @@ export class AliyunOpenClient {
     })
     const uploadUrl = createResp.part_info_list?.[0]?.upload_url
     if (!uploadUrl) return
-    const putRes = await fetch(uploadUrl, { method: "PUT", body: content })
+    const putRes = await fetch(uploadUrl, {
+      method: "PUT",
+      body: content as any,
+    })
     if (!putRes.ok) {
       throw new Error(`[AliyundriveOpen] Upload failed: ${putRes.status}`)
     }

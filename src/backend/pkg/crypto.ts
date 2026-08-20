@@ -13,7 +13,7 @@ function hexEncode(buf: ArrayBuffer): string {
     .join("")
 }
 
-function toBytes(data: string | Uint8Array): Uint8Array {
+function toBytes(data: string | Uint8Array): any {
   if (typeof data === "string") return new TextEncoder().encode(data)
   return data
 }
@@ -196,9 +196,9 @@ export async function decrypt(
   const cipherBuf = fromHex(cipherHex)
   const ck = await deriveKey(key)
   const plainBuf = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
+    { name: "AES-GCM", iv: iv as any },
     ck,
-    cipherBuf,
+    cipherBuf as any,
   )
   return new TextDecoder().decode(plainBuf)
 }

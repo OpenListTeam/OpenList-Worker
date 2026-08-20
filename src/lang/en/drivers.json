@@ -141,10 +141,22 @@
   },
   "189Cloud": {
     "cookie": "Cookie",
-    "cookie-tips": "Fill in the cookie if need captcha",
+    "cookie-tips": "Fill in the cookie if need captcha or device lock verification",
     "password": "Password",
     "root_folder_id": "Root folder id",
-    "username": "Username"
+    "root_folder_id-tips": "Default is -11 (Personal cloud root directory)",
+    "username": "Username",
+    "order_by": "Order by",
+    "order_bys": {
+      "lastOpTime": "Last Op Time",
+      "filename": "File name",
+      "fileSize": "File size"
+    },
+    "order_direction": "Order direction",
+    "order_directions": {
+      "asc": "Asc",
+      "desc": "Desc"
+    }
   },
   "189CloudPC": {
     "access_token": "Access token",
@@ -737,22 +749,37 @@
   },
   "Lanzou": {
     "account": "Account",
+    "account-tips": "Phone number or UID, only required in account mode",
     "baseUrl": "BaseUrl",
     "baseUrl-tips": "basic URL for file operation",
     "cookie": "Cookie",
     "cookie-tips": "about 15 days valid, ignore if shareUrl is used",
     "password": "Password",
+    "password-tips": "Login password, only required in account mode",
     "repair_file_info": "Repair file info",
     "repair_file_info-tips": "To use webdav, you need to enable it",
     "root_folder_id": "Root folder id",
+    "root_folder_id-tips": "Default is -1 for personal cloud; fill in share ID (e.g. b00xxxx) for public share URL",
     "shareUrl": "ShareUrl",
     "shareUrl-tips": "used to get the sharing page",
     "share_password": "Share password",
-    "type": "Type",
+    "share_password-tips": "Password for accessing the shared link or folder",
+    "type": "Mount Type",
     "types": {
-      "account": "Account",
-      "cookie": "Cookie",
-      "url": "Url"
+      "cookie": "Cookie (Recommended)",
+      "account": "Account & Password",
+      "url": "Public Share URL"
+    },
+    "order_by": "Order by",
+    "order_bys": {
+      "name": "File name",
+      "size": "File size",
+      "time": "Modified time"
+    },
+    "order_direction": "Order direction",
+    "order_directions": {
+      "asc": "Asc",
+      "desc": "Desc"
     },
     "user_agent": "User agent"
   },

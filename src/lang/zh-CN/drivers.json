@@ -140,11 +140,23 @@
     "username": "Username"
   },
   "189Cloud": {
-    "cookie": "Cookie",
-    "cookie-tips": "Fill in the cookie if need captcha",
-    "password": "Password",
-    "root_folder_id": "Root folder id",
-    "username": "Username"
+    "cookie": "Cookie 凭据",
+    "cookie-tips": "若遇到滑块验证码或设备保护，可在浏览器登录后填入 Cookie 凭据",
+    "password": "密码",
+    "root_folder_id": "根目录 ID",
+    "root_folder_id-tips": "默认为 -11（个人云根目录）",
+    "username": "用户名",
+    "order_by": "排序字段",
+    "order_bys": {
+      "lastOpTime": "修改时间",
+      "filename": "文件名",
+      "fileSize": "文件大小"
+    },
+    "order_direction": "排序方向",
+    "order_directions": {
+      "asc": "升序",
+      "desc": "降序"
+    }
   },
   "189CloudPC": {
     "access_token": "Access token",
@@ -736,25 +748,40 @@
     "username": "Username"
   },
   "Lanzou": {
-    "account": "Account",
-    "baseUrl": "BaseUrl",
-    "baseUrl-tips": "basic URL for file operation",
-    "cookie": "Cookie",
-    "cookie-tips": "about 15 days valid, ignore if shareUrl is used",
-    "password": "Password",
-    "repair_file_info": "Repair file info",
-    "repair_file_info-tips": "To use webdav, you need to enable it",
-    "root_folder_id": "Root folder id",
-    "shareUrl": "ShareUrl",
-    "shareUrl-tips": "used to get the sharing page",
-    "share_password": "Share password",
-    "type": "Type",
+    "account": "账号",
+    "account-tips": "手机号或 UID，仅 account 模式需填写",
+    "baseUrl": "API 基础域名",
+    "baseUrl-tips": "用于文件操作的基础 API 域名，默认为 https://pc.woozooo.com",
+    "cookie": "Cookie 凭据",
+    "cookie-tips": "含 ylogin, phpdisk_info 等，cookie 模式需填写，有效期约 15 天",
+    "password": "密码",
+    "password-tips": "登录密码，仅 account 模式需填写",
+    "repair_file_info": "修正文件信息",
+    "repair_file_info-tips": "通过 HEAD 请求修正文件精确大小与修改时间（配合 WebDAV 时建议开启）",
+    "root_folder_id": "根目录 ID",
+    "root_folder_id-tips": "个人盘根目录默认填 -1；若为公开分享链接则填分享链接 ID（如 b00xxxx）",
+    "shareUrl": "分享页面域名",
+    "shareUrl-tips": "用于解析公开分享页面的域名，默认为 https://pan.lanzoui.com",
+    "share_password": "提取码 / 访问密码",
+    "share_password-tips": "访问分享目录或文件所需的提取码，无密码留空",
+    "type": "挂载模式",
     "types": {
-      "account": "Account",
-      "cookie": "Cookie",
-      "url": "Url"
+      "cookie": "Cookie 模式 (推荐)",
+      "account": "账号密码模式",
+      "url": "公开分享链接模式"
     },
-    "user_agent": "User agent"
+    "order_by": "排序字段",
+    "order_bys": {
+      "name": "文件名",
+      "size": "文件大小",
+      "time": "修改时间"
+    },
+    "order_direction": "排序方向",
+    "order_directions": {
+      "asc": "升序",
+      "desc": "降序"
+    },
+    "user_agent": "User-Agent 请求头"
   },
   "LenovoNasShare": {
     "host": "Host",
