@@ -25,11 +25,16 @@ export class Onedrive implements StorageDriver {
   order_direction: string = "asc"
 
   accessToken: string = ""
+  onTokenUpdate?: (token: string) => void
 
-  constructor(addition?: Partial<Addition>) {
+  constructor(
+    addition?: Partial<Addition>,
+    onTokenUpdate?: (token: string) => void,
+  ) {
     if (addition) {
       Object.assign(this, addition)
     }
+    this.onTokenUpdate = onTokenUpdate
   }
 
   async init(): Promise<void> {
@@ -96,13 +101,21 @@ export class Onedrive implements StorageDriver {
     if (suffix) {
       return `${apiBase}/drive/root:/${encoded}:/${suffix}`
     }
-    return `${apiBase}/drive/root:/${encoded}`
+    return `${apiBase}/drive/root:/${encoded}:`
   }
 
   async list(virtualPath: string, physicalPath: string): Promise<FileItem[]> {
     const files = await getFiles(this, physicalPath)
     const items = files.map((f) => {
       const obj = fileToObj(f, "")
+      let rawUrl = f["@microsoft.graph.downloadUrl"] || obj.url || ""
+      if (this.custom_host && rawUrl) {
+        try {
+          const u = new URL(rawUrl)
+          u.host = this.custom_host
+          rawUrl = u.toString()
+        } catch {}
+      }
       return {
         name: obj.name,
         size: obj.size,
@@ -110,6 +123,8 @@ export class Onedrive implements StorageDriver {
         modified: obj.modified,
         sign: "",
         type: obj.isFolder ? 1 : 0,
+        thumb: obj.thumbnail || "",
+        raw_url: rawUrl,
       }
     })
     return sortFileItems(items, this.order_by, this.order_direction)
@@ -118,6 +133,14 @@ export class Onedrive implements StorageDriver {
   async get(virtualPath: string, physicalPath: string): Promise<FileItem> {
     const f = await getFile(this, physicalPath)
     const obj = fileToObj(f, "")
+    let rawUrl = f["@microsoft.graph.downloadUrl"] || obj.url || ""
+    if (this.custom_host && rawUrl) {
+      try {
+        const u = new URL(rawUrl)
+        u.host = this.custom_host
+        rawUrl = u.toString()
+      } catch {}
+    }
     return {
       name: obj.name,
       size: obj.size,
@@ -125,6 +148,8 @@ export class Onedrive implements StorageDriver {
       modified: obj.modified,
       sign: "",
       type: obj.isFolder ? 1 : 0,
+      thumb: obj.thumbnail || "",
+      raw_url: rawUrl,
     }
   }
 

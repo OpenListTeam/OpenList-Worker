@@ -21,6 +21,7 @@ export async function refreshToken(
     }
     d.accessToken = data.access_token
     d.refresh_token = data.refresh_token
+    ;(d as any).onTokenUpdate?.(d.refresh_token)
     return
   }
 
@@ -50,6 +51,7 @@ export async function refreshToken(
   }
   d.refresh_token = data.refresh_token
   d.accessToken = data.access_token
+  ;(d as any).onTokenUpdate?.(d.refresh_token)
 }
 
 export async function requestApi<T>(
@@ -123,7 +125,7 @@ export function buildUrl(
   if (suffix) {
     return `${api}/drive/root:/${encoded}:/${suffix}`
   }
-  return `${api}/drive/root:/${encoded}`
+  return `${api}/drive/root:/${encoded}:`
 }
 
 export async function getFiles(
@@ -135,7 +137,11 @@ export async function getFiles(
     ? `${hostMap.api}/v1.0/sites/${d.site_id}`
     : `${hostMap.api}/v1.0/me`
 
-  const childrenUrl = buildUrl(apiBase, reqPath, "children")
+  const childrenUrl = buildUrl(
+    apiBase,
+    reqPath,
+    "children?$top=1000&$expand=thumbnails($select=medium)&$select=id,name,size,fileSystemInfo,@microsoft.graph.downloadUrl,file,folder,parentReference",
+  )
   let nextLink: string | undefined = childrenUrl
 
   const res: File[] = []

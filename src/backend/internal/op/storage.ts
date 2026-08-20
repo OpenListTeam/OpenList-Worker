@@ -67,10 +67,32 @@ export async function getDriver(
   }
 
   let driver: StorageDriver
-  console.log("getDriver: driverName=", driverName)
-
-  if (normDriver === "onedrive") {
-    driver = new Onedrive(parseAddition(storageConfig))
+  if (
+    normDriver === "onedrive" ||
+    normDriver === "onedriveapp" ||
+    normDriver === "onedrivesb"
+  ) {
+    driver = new Onedrive(
+      parseAddition(storageConfig),
+      async (refreshToken) => {
+        try {
+          const db = await getDb()
+          const st = (db.storages || []).find(
+            (s: any) => s.id === storageConfig?.id,
+          )
+          if (!st) return
+          const stAddition =
+            typeof st.addition === "string"
+              ? JSON.parse(st.addition || "{}")
+              : st.addition || {}
+          stAddition.refresh_token = refreshToken
+          st.addition = JSON.stringify(stAddition)
+          await saveDb(db)
+        } catch (e) {
+          console.warn("[Onedrive] failed to persist refresh token:", e)
+        }
+      },
+    )
     try {
       await driver.init?.()
     } catch (e) {
