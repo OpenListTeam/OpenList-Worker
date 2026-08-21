@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import { verify } from "hono/jwt"
 import { getDb, saveDb, defaultDb, getKvStatus } from "../internal/model/db"
+import { getDriver } from "../internal/op/storage"
 import { JWT_SECRET } from "./middlewares"
 
 export const adminRouter = new Hono()
@@ -72,6 +73,24 @@ adminRouter.post("/storage/create", async (c) => {
     status: "work",
     modified: new Date().toISOString(),
   }
+
+  if (!newStorage.disabled) {
+    try {
+      const driver = await getDriver(newStorage.driver, newStorage)
+      await driver.init?.()
+      newStorage.status = "work"
+    } catch (e: any) {
+      newStorage.status = e.message || String(e)
+      db.storages.push(newStorage)
+      await saveDb(db, c.env)
+      return c.json({
+        code: 500,
+        message: e.message || String(e),
+        data: newStorage,
+      })
+    }
+  }
+
   db.storages.push(newStorage)
   await saveDb(db, c.env)
   return c.json({ code: 200, message: "success", data: newStorage })
@@ -100,12 +119,29 @@ adminRouter.post("/storage/update", async (c) => {
 
   const idx = db.storages.findIndex((s: any) => s.id === body.id)
   if (idx !== -1) {
-    db.storages[idx] = {
+    const updatedStorage = {
       ...db.storages[idx],
       ...body,
       mount_path: mountPath,
       modified: new Date().toISOString(),
     }
+    if (!updatedStorage.disabled) {
+      try {
+        const driver = await getDriver(updatedStorage.driver, updatedStorage)
+        await driver.init?.()
+        updatedStorage.status = "work"
+      } catch (e: any) {
+        updatedStorage.status = e.message || String(e)
+        db.storages[idx] = updatedStorage
+        await saveDb(db, c.env)
+        return c.json({
+          code: 500,
+          message: e.message || String(e),
+          data: { id: updatedStorage.id },
+        })
+      }
+    }
+    db.storages[idx] = updatedStorage
     await saveDb(db, c.env)
   }
   return c.json({ code: 200, message: "success", data: null })
@@ -125,6 +161,20 @@ adminRouter.post("/storage/enable", async (c) => {
   const s = db.storages.find((s: any) => s.id === id)
   if (s) {
     s.disabled = false
+    s.modified = new Date().toISOString()
+    try {
+      const driver = await getDriver(s.driver, s)
+      await driver.init?.()
+      s.status = "work"
+    } catch (e: any) {
+      s.status = e.message || String(e)
+      await saveDb(db, c.env)
+      return c.json({
+        code: 500,
+        message: e.message || String(e),
+        data: null,
+      })
+    }
     await saveDb(db, c.env)
   }
   return c.json({ code: 200, message: "success", data: null })

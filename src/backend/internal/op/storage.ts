@@ -43,7 +43,7 @@ export async function getDriver(
   driverName: string,
   storageConfig?: any,
 ): Promise<StorageDriver> {
-  const normDriver = (driverName || "").toLowerCase().replace(/_/g, "")
+  const normDriver = (driverName || "").toLowerCase().replace(/[^a-z0-9]/g, "")
   if (normDriver === "local") {
     // Only available in Node.js container — not in Cloudflare Workers
     if (typeof process !== "undefined" && process.release?.name === "node") {
@@ -328,9 +328,36 @@ export async function listItems(
 
   if (resolved.storage) {
     driverName = resolved.storage.driver
-    const driver = await getDriver(driverName, resolved.storage)
-    // Get raw items from driver
-    items = await driver.list(virtualPath, resolved.physical!)
+    try {
+      const driver = await getDriver(driverName, resolved.storage)
+      // Get raw items from driver
+      items = await driver.list(virtualPath, resolved.physical!)
+      if (resolved.storage.status !== "work") {
+        resolved.storage.status = "work"
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === resolved.storage?.id,
+        )
+        if (st) {
+          st.status = "work"
+          await saveDb(db)
+        }
+      }
+    } catch (e: any) {
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === resolved.storage?.id,
+        )
+        if (st) {
+          st.status = e.message || String(e)
+          await saveDb(db)
+        }
+      } catch (persistErr) {
+        console.warn("Failed to persist storage status:", persistErr)
+      }
+      throw e
+    }
   } else if (!resolved.isVirtual) {
     throw new Error("failed get storage: storage not found")
   }

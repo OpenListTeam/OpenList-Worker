@@ -73,7 +73,7 @@ rawRouter.get("/*", async (c) => {
     if (resolved.storage) {
       const normDriver = (resolved.storage.driver || "")
         .toLowerCase()
-        .replace(/_/g, "")
+        .replace(/[^a-z0-9]/g, "")
 
       // Remote cloud drivers: fetch download link via driver.get()
       if (normDriver !== "local") {

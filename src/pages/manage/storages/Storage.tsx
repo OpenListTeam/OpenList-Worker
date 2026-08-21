@@ -172,13 +172,14 @@ export function StorageListItem(props: StorageProps) {
       <Td>
         <StorageUsage details={props.storage.mount_details} />
       </Td>
-      <Td>
-        {t(
+      <Td
+        css={{ wordBreak: "break-all" }}
+        innerHTML={t(
           `storages.table_fields.status.${props.storage.status}`,
           undefined,
           props.storage.status,
         )}
-      </Td>
+      />
       <Td>{props.storage.remark}</Td>
       <Td>
         <HStack spacing="$2">
