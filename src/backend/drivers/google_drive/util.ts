@@ -397,15 +397,24 @@ export class GoogleDriveClient {
     let currentId = this.getRootFolderId()
 
     for (let i = 0; i < parts.length; i++) {
-      const part = parts[i]
+      const rawPart = parts[i]
+      const decodedPart = (() => {
+        try {
+          return decodeURIComponent(rawPart)
+        } catch {
+          return rawPart
+        }
+      })()
       const subPath = parts.slice(0, i + 1).join("/")
       if (this.pathCache.has(subPath)) {
         currentId = this.pathCache.get(subPath)!
         continue
       }
       const items = await this.listFiles(currentId)
-      const target = items.find((f) => f.name === part)
-      if (!target) throw new Error(`[GoogleDrive] Path '${part}' not found`)
+      const target = items.find(
+        (f) => f.name === rawPart || f.name === decodedPart || f.id === rawPart,
+      )
+      if (!target) throw new Error(`[GoogleDrive] Path '${rawPart}' not found`)
       currentId = target.id
       this.pathCache.set(subPath, currentId)
     }

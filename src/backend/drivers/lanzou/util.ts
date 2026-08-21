@@ -31,17 +31,19 @@ export class LanzouClient {
   }
 
   public getBaseUrl(): string {
-    return (this.addition.baseUrl || "https://pc.woozooo.com").replace(
-      /\/$/,
-      "",
-    )
+    return (
+      this.addition.baseUrl ||
+      (this.addition as any).base_url ||
+      "https://pc.woozooo.com"
+    ).replace(/\/$/, "")
   }
 
   public getShareUrl(): string {
-    return (this.addition.shareUrl || "https://pan.lanzoui.com").replace(
-      /\/$/,
-      "",
-    )
+    return (
+      this.addition.shareUrl ||
+      (this.addition as any).share_url ||
+      "https://pan.lanzoui.com"
+    ).replace(/\/$/, "")
   }
 
   public getUserAgent(): string {
@@ -186,13 +188,22 @@ export class LanzouClient {
     url: string,
     method: "GET" | "POST" = "GET",
     body?: Record<string, string>,
+    customReferer?: string,
   ): Promise<string> {
     let vs = ""
 
+    const defaultReferer =
+      url.startsWith(this.getShareUrl()) ||
+      url.includes("ajaxm.php") ||
+      url.includes("filemoreajax.php")
+        ? this.getShareUrl()
+        : this.getBaseUrl()
+
     for (let retry = 0; retry < 3; retry++) {
       const headers: Record<string, string> = {
-        Referer: this.getBaseUrl(),
+        Referer: customReferer || defaultReferer,
         "User-Agent": this.getUserAgent(),
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
       }
 
       let cookieStr = this.cookie
@@ -373,7 +384,7 @@ export class LanzouClient {
     // 匹配子文件夹
     const subFolderMatches = Array.from(
       sharePageData.matchAll(
-        /(?:folderlink|mbxfolder)[^>]+href="\/([^"]+)"[^>]*>(.+?)<\//gi,
+        /(?:folderlink|mbxfolder)[^>]*href=["']\/?([^"']+)["'][^>]*>(.+?)<\//gi,
       ),
     )
     for (const m of subFolderMatches) {
@@ -424,14 +435,17 @@ export class LanzouClient {
     shareId: string,
     pwd: string = "",
     cachedPageData?: string,
+    customShareDomain?: string,
   ): Promise<LanzouFileOrFolder> {
     const cleanShareId = shareId.replace(/^\//, "")
+    const shareBaseDomain = (customShareDomain || this.getShareUrl()).replace(
+      /\/+$/,
+      "",
+    )
+    const sharePageUrl = `${shareBaseDomain}/${cleanShareId}`
     let pageData = cachedPageData
     if (!pageData) {
-      pageData = await this.request(
-        `${this.getShareUrl()}/${cleanShareId}`,
-        "GET",
-      )
+      pageData = await this.request(sharePageUrl, "GET")
     }
 
     pageData = removeNotes(pageData)
@@ -450,59 +464,93 @@ export class LanzouClient {
 
     if (needsPassword) {
       const fnCode = getJSFunctionByName(pageData, "down_p")
-      param = htmlJsonToMap(fnCode)
+      param = htmlJsonToMap(fnCode, pageData)
       param["p"] = pwd || this.addition.share_password || ""
 
-      const fileIdMatch = fnCode.match(/'\/ajaxm\.php\?file=(\d+)'/)
+      const fileIdMatch =
+        fnCode.match(/['"]?\/?ajaxm\.php\?file=(\d+)['"]?/) ||
+        pageData.match(/['"]?\/?ajaxm\.php\?file=(\d+)['"]?/) ||
+        fnCode.match(/file\s*[:=]\s*['"]?(\d+)['"]?/) ||
+        pageData.match(/file\s*[:=]\s*['"]?(\d+)['"]?/) ||
+        fnCode.match(/var\s+file_id\s*=\s*['"]?(\d+)['"]?/) ||
+        pageData.match(/var\s+file_id\s*=\s*['"]?(\d+)['"]?/)
       const fileId = fileIdMatch ? fileIdMatch[1] : ""
       if (!fileId) throw new Error("[Lanzou] 未找到文件 ID")
 
       const resStr = await this.request(
-        `${this.getShareUrl()}/ajaxm.php?file=${fileId}`,
+        `${shareBaseDomain}/ajaxm.php?file=${fileId}`,
         "POST",
         param,
+        sharePageUrl,
       )
-      const resp: LanzouShareResp<string> = JSON.parse(resStr)
+      let resp: LanzouShareResp<string>
+      try {
+        resp = JSON.parse(resStr)
+      } catch {
+        throw new Error(`[Lanzou] ajaxm.php 响应格式错误: ${resStr}`)
+      }
       if (resp.zt !== 1) {
-        throw new Error(resp.info || "[Lanzou] 密码错误或提取链接失败")
+        throw new Error(
+          resp.info ||
+            resp.text ||
+            `[Lanzou] 密码错误或提取链接失败 (zt=${resp.zt})`,
+        )
       }
 
       fileResult.name_all = resp.inf || "download"
       baseUrl = `${resp.dom}/file`
       downloadUrl = `${baseUrl}/${resp.url}`
     } else {
-      const iframeMatch = pageData.match(/<iframe.*?src="(.+?)"/i)
+      const iframeMatch =
+        pageData.match(/<iframe[^>]*?src=["']([^"']+)["']/i) ||
+        pageData.match(/href=["'](\/fn\?[^"']+)["']/i) ||
+        pageData.match(/["'](\/fn\?[^"']+)["']/i)
       if (!iframeMatch) {
         throw new Error("[Lanzou] 未找到下载页面 iframe 参数")
       }
 
       const iframePath = iframeMatch[1]
+      const iframeFullUrl = `${shareBaseDomain}${iframePath.startsWith("/") ? "" : "/"}${iframePath}`
       const nextPageData = await this.request(
-        `${this.getShareUrl()}${iframePath.startsWith("/") ? "" : "/"}${iframePath}`,
+        iframeFullUrl,
         "GET",
+        undefined,
+        sharePageUrl,
       )
       const cleanNextPage = removeNotes(nextPageData)
-      param = htmlJsonToMap(cleanNextPage)
+      param = htmlJsonToMap(cleanNextPage, cleanNextPage)
 
-      const fileIdMatch = cleanNextPage.match(/'\/ajaxm\.php\?file=(\d+)'/)
+      const fileIdMatch =
+        cleanNextPage.match(/['"]?\/?ajaxm\.php\?file=(\d+)['"]?/) ||
+        cleanNextPage.match(/file\s*[:=]\s*['"]?(\d+)['"]?/) ||
+        cleanNextPage.match(/file=(\d+)/) ||
+        cleanNextPage.match(/var\s+file_id\s*=\s*['"]?(\d+)['"]?/)
       const fileId = fileIdMatch ? fileIdMatch[1] : ""
       if (!fileId) throw new Error("[Lanzou] 未找到文件 ID")
 
       const resStr = await this.request(
-        `${this.getShareUrl()}/ajaxm.php?file=${fileId}`,
+        `${shareBaseDomain}/ajaxm.php?file=${fileId}`,
         "POST",
         param,
+        iframeFullUrl,
       )
-      const resp: LanzouShareResp = JSON.parse(resStr)
+      let resp: LanzouShareResp
+      try {
+        resp = JSON.parse(resStr)
+      } catch {
+        throw new Error(`[Lanzou] ajaxm.php 响应格式错误: ${resStr}`)
+      }
       if (resp.zt !== 1) {
-        throw new Error(resp.info || "[Lanzou] 提取链接失败")
+        throw new Error(
+          resp.info || resp.text || `[Lanzou] 提取链接失败 (zt=${resp.zt})`,
+        )
       }
 
       baseUrl = `${resp.dom}/file`
       downloadUrl = `${baseUrl}/${resp.url}`
 
       const nameMatch = pageData.match(
-        /<title>(.+?) - 蓝奏云<\/title>|id="filenajax">(.+?)<\/div>|var filename = '(.+?)';|<div class="filethetext".+?>([^<>]+?)<\/div>/i,
+        /<title>(.+?) - 蓝奏云<\/title>|id="filenajax">(.+?)<\/div>|var filename = ['"](.+?)['"];|<div style="font-size[^>]*>([^<>]+)<\/div>|<div class="filethetext"[^>]*>([^<>]+)<\/div>/i,
       )
       if (nameMatch) {
         for (let i = 1; i < nameMatch.length; i++) {
@@ -529,7 +577,7 @@ export class LanzouClient {
       const headers: Record<string, string> = {
         Referer: baseUrl,
         "User-Agent": this.getUserAgent(),
-        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
       }
       let c = "down_ip=1"
       if (vs) c += `; acw_sc__v2=${vs}`
@@ -541,12 +589,27 @@ export class LanzouClient {
         redirect: "manual",
       })
 
-      if (probeRes.status === 302) {
+      if (
+        probeRes.status === 301 ||
+        probeRes.status === 302 ||
+        probeRes.status === 303 ||
+        probeRes.status === 307 ||
+        probeRes.status === 308
+      ) {
         const loc = probeRes.headers.get("location")
         if (loc) {
-          realDirectUrl = loc
+          realDirectUrl = new URL(loc, downloadUrl).toString()
           break
         }
+      }
+
+      if (
+        probeRes.status === 200 &&
+        probeRes.url &&
+        probeRes.url !== downloadUrl
+      ) {
+        realDirectUrl = probeRes.url
+        break
       }
 
       const bodyText = await probeRes.text()
@@ -557,16 +620,21 @@ export class LanzouClient {
 
       // 二次验证 ajax.php 兜底
       try {
-        const ajaxParam = htmlJsonToMap(bodyText)
+        const ajaxParam = htmlJsonToMap(bodyText, bodyText)
         ajaxParam["el"] = "2"
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+
         const ajaxResStr = await this.request(
           `${baseUrl}/ajax.php`,
           "POST",
           ajaxParam,
+          baseUrl,
         )
         const ajaxData = JSON.parse(ajaxResStr)
         if (ajaxData.url) {
-          realDirectUrl = ajaxData.url
+          realDirectUrl = ajaxData.url.startsWith("http")
+            ? ajaxData.url
+            : new URL(ajaxData.url, baseUrl).toString()
           break
         }
       } catch {}

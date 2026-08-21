@@ -171,19 +171,45 @@ export function calcAcwScV2(htmlContent: string): string {
 }
 
 function findJSVarFunc(key: string, data: string): string {
+  if (!key || !data) return ""
   if (key !== "sasign") {
+    // 1. var key = 'val'; or let key = "val"; or const key = val;
     const match = data.match(
-      new RegExp(`var\\s+${key}\\s*=\\s*['"]?(.+?)['"]?;`),
+      new RegExp(
+        `(?:var|let|const)\\s+${key}\\s*=\\s*['"]?([\\s\\S]*?)['"]?;`,
+        "i",
+      ),
     )
-    return match ? match[1] : ""
+    if (match) {
+      return match[1].trim().replace(/^['"]|['"]$/g, "")
+    }
+
+    // 2. key = 'val';
+    const match2 = data.match(
+      new RegExp(`(?:^|[;,\\s])${key}\\s*=\\s*['"]?([\\s\\S]*?)['"]?;`, "im"),
+    )
+    if (match2) {
+      return match2[1].trim().replace(/^['"]|['"]$/g, "")
+    }
+
+    // 3. 'key' : 'val'
+    const match3 = data.match(
+      new RegExp(`['"]?${key}['"]?\\s*:\\s*['"]?([\\s\\S]*?)['"]?`, "i"),
+    )
+    return match3 ? match3[1].trim().replace(/^['"]|['"]$/g, "") : ""
   } else {
     const matches = Array.from(
-      data.matchAll(new RegExp(`var\\s+${key}\\s*=\\s*['"]?(.+?)['"]?;`, "g")),
+      data.matchAll(
+        new RegExp(
+          `(?:var|let|const)?\\s*${key}\\s*=\\s*['"]?([\\s\\S]*?)['"]?;`,
+          "gi",
+        ),
+      ),
     )
     if (matches.length === 3) {
-      return matches[1][1]
+      return matches[1][1].trim().replace(/^['"]|['"]$/g, "")
     } else if (matches.length > 0) {
-      return matches[0][1]
+      return matches[0][1].trim().replace(/^['"]|['"]$/g, "")
     }
   }
   return ""
@@ -191,29 +217,69 @@ function findJSVarFunc(key: string, data: string): string {
 
 function jsonToMap(data: string, html: string): Record<string, string> {
   const param: Record<string, string> = {}
-  const matches = data.matchAll(findKVReg)
+  // Matches: 'key':'val', key:'val', 'key':varName, "key":"val", etc.
+  const kvRegex = /['"]?([a-zA-Z0-9_$]+)['"]?\s*:\s*(['"]?([^'",}\s]+)['"]?)/g
+  const matches = data.matchAll(kvRegex)
   for (const kv of matches) {
     const k = kv[1]
     const rawVal = kv[2]
     const v = kv[3]
-    if (v === "" || rawVal.includes("'") || /^\d+$/.test(rawVal)) {
+    if (!v) {
+      param[k] = ""
+    } else if (
+      rawVal.includes("'") ||
+      rawVal.includes('"') ||
+      /^\d+$/.test(rawVal)
+    ) {
       param[k] = v
     } else {
-      param[k] = findJSVarFunc(v, html)
+      const resolved = findJSVarFunc(v, html)
+      param[k] = resolved !== "" ? resolved : v
     }
   }
   return param
 }
 
-/**
- * 解析 HTML 中内嵌的 data: { ... } 对象并解析变量
- */
-export function htmlJsonToMap(html: string): Record<string, string> {
-  const match = html.match(findDataReg)
-  if (!match || match.length < 2) {
-    throw new Error("[Lanzou] 未能找到请求参数 data 对象")
+function formToMap(formData: string): Record<string, string> {
+  const param: Record<string, string> = {}
+  const pairs = formData.split("&")
+  for (const pair of pairs) {
+    const [k, v] = pair.split("=")
+    if (k) param[decodeURIComponent(k)] = decodeURIComponent(v || "")
   }
-  return jsonToMap(match[1], html)
+  return param
+}
+
+/**
+ * 解析 HTML 中内嵌的 data: { ... } 对象或 data : '...' 表单字符串并解析变量
+ */
+export function htmlJsonToMap(
+  html: string,
+  fullHtml?: string,
+): Record<string, string> {
+  const contextHtml = fullHtml || html
+  // 1. 尝试匹配最长 data : { ... } 对象
+  const dataMatches = Array.from(html.matchAll(/data\s*:\s*({[\s\S]*?})/g))
+  if (dataMatches.length > 0) {
+    let bestMatch = dataMatches[0][1]
+    for (const m of dataMatches) {
+      if (m[1].length > bestMatch.length) {
+        bestMatch = m[1]
+      }
+    }
+    const res = jsonToMap(bestMatch, contextHtml)
+    if (Object.keys(res).length > 0) {
+      return res
+    }
+  }
+
+  // 2. 尝试匹配 data : 'key=val&...' 字符串
+  const formMatch = html.match(/data\s*:\s*['"]([^'"]+)['"]/)
+  if (formMatch && formMatch[1].includes("=")) {
+    return formToMap(formMatch[1])
+  }
+
+  throw new Error("[Lanzou] 未能找到请求参数 data 对象")
 }
 
 /**

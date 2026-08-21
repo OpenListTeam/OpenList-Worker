@@ -97,7 +97,16 @@ export class Onedrive implements StorageDriver {
       }
       return `${apiBase}/drive/root`
     }
-    const encoded = trimmed.split("/").map(encodeURIComponent).join("/")
+    const encoded = trimmed
+      .split("/")
+      .map((p) => {
+        try {
+          return encodeURIComponent(decodeURIComponent(p))
+        } catch {
+          return encodeURIComponent(p)
+        }
+      })
+      .join("/")
     if (suffix) {
       return `${apiBase}/drive/root:/${encoded}:/${suffix}`
     }

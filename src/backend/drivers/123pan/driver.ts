@@ -87,15 +87,30 @@ export class Pan123Driver implements StorageDriver {
     }
 
     for (let i = cachedLen; i < segs.length; i++) {
-      const name = segs[i]
+      const rawName = segs[i]
+      const decodedName = (() => {
+        try {
+          return decodeURIComponent(rawName)
+        } catch {
+          return rawName
+        }
+      })()
+
       const files = await this.client.getFiles(parentId, {
-        findName: name,
+        findName: decodedName,
         findIsDir: true,
         budget: this.budget,
       })
-      const folder = files[0]
+      const folder = files.find(
+        (f) =>
+          f.Type === 1 &&
+          (f.FileName === rawName ||
+            f.FileName === decodedName ||
+            String(f.FileId) === rawName ||
+            String(f.FileId) === decodedName),
+      )
       if (!folder) {
-        throw new Error(`folder not found: ${name}`)
+        throw new Error(`folder not found: ${rawName}`)
       }
       parentId = String(folder.FileId)
       prefix = "/" + segs.slice(0, i + 1).join("/")
@@ -117,18 +132,29 @@ export class Pan123Driver implements StorageDriver {
       .split("/")
       .filter(Boolean)
     if (segs.length === 0) throw new Error("invalid path")
-    const name = segs[segs.length - 1]
+    const rawName = segs[segs.length - 1]
+    const decodedName = (() => {
+      try {
+        return decodeURIComponent(rawName)
+      } catch {
+        return rawName
+      }
+    })()
     const parentPath = "/" + segs.slice(0, segs.length - 1).join("/")
     const parentId = await this.resolveFolderId(parentPath)
     const files = await this.client.getFiles(parentId, {
-      findName: name,
+      findName: decodedName,
       budget: this.budget,
     })
     const file = files.find(
-      (f) => String(f.FileId) === name || f.FileName === name,
+      (f) =>
+        String(f.FileId) === rawName ||
+        String(f.FileId) === decodedName ||
+        f.FileName === rawName ||
+        f.FileName === decodedName,
     )
-    if (!file) throw new Error(`file not found: ${name}`)
-    return { file, parentId, name }
+    if (!file) throw new Error(`file not found: ${rawName}`)
+    return { file, parentId, name: rawName }
   }
 
   async list(_virtualPath: string, physicalPath: string): Promise<FileItem[]> {
@@ -167,39 +193,19 @@ export class Pan123Driver implements StorageDriver {
       }
     }
 
-    try {
-      const { file } = await this.resolveFile(physicalPath)
-      const item = pan123FileToFileItem(file)
-      if (file.Type !== 1) {
-        try {
-          item.raw_url = await this.client.getDownloadLink(file)
-        } catch (e: any) {
-          console.warn(
-            `[123Pan] getDownloadLink warning for ${file.FileName}:`,
-            e.message,
-          )
-        }
-      }
-      return item
-    } catch (e) {
-      // Fallback: path may be a folder not resolvable via parent listing
-      // (e.g. cached elsewhere). Probe it as a folder id.
-      const lastSeg = segs[segs.length - 1]
+    const { file } = await this.resolveFile(physicalPath)
+    const item = pan123FileToFileItem(file)
+    if (file.Type !== 1) {
       try {
-        await this.client.getFiles(lastSeg)
-        return {
-          name: lastSeg,
-          size: 0,
-          is_dir: true,
-          modified: new Date().toISOString(),
-          sign: lastSeg,
-          type: 1,
-          raw_url: "",
-        }
-      } catch {
-        throw e
+        item.raw_url = await this.client.getDownloadLink(file)
+      } catch (e: any) {
+        console.warn(
+          `[123Pan] getDownloadLink warning for ${file.FileName}:`,
+          e.message,
+        )
       }
     }
+    return item
   }
 
   async mkdir(_virtualPath: string, physicalPath: string): Promise<void> {

@@ -43,23 +43,38 @@ export class QuarkDriver implements StorageDriver {
   }
 
   async get(_virtualPath: string, physicalPath: string): Promise<FileItem> {
-    const fileId = await this.resolveFileId(physicalPath)
     const parts = physicalPath.split("/").filter(Boolean)
-    const name = parts[parts.length - 1] || "root"
+    const fileId = await this.resolveFileId(physicalPath)
+    const rawName = parts[parts.length - 1] || "root"
+    const decodedName = (() => {
+      try {
+        return decodeURIComponent(rawName)
+      } catch {
+        return rawName
+      }
+    })()
     const parentPath = "/" + parts.slice(0, parts.length - 1).join("/")
     const parentId = await this.resolveFileId(parentPath)
 
     const files = await this.client.getFiles(parentId)
-    const file = files.find((f) => f.fid === fileId || f.file_name === name)
+    const file = files.find(
+      (f) =>
+        f.fid === fileId ||
+        f.file_name === rawName ||
+        f.file_name === decodedName,
+    )
 
     let downloadLink = ""
     let downloadHeaders: Record<string, string> | undefined
     try {
-      const linkRes = await this.client.getDownloadUrl(fileId, name)
+      const linkRes = await this.client.getDownloadUrl(fileId, decodedName)
       downloadLink = linkRes.url
       downloadHeaders = linkRes.headers
     } catch (e: any) {
-      console.warn(`[Quark/UC] getDownloadUrl warning for ${name}:`, e.message)
+      console.warn(
+        `[Quark/UC] getDownloadUrl warning for ${rawName}:`,
+        e.message,
+      )
     }
 
     if (file) {
@@ -74,7 +89,7 @@ export class QuarkDriver implements StorageDriver {
     try {
       await this.client.getFiles(fileId)
       return {
-        name,
+        name: decodedName || "root",
         size: 0,
         is_dir: true,
         modified: new Date().toISOString(),
@@ -85,7 +100,7 @@ export class QuarkDriver implements StorageDriver {
     } catch {}
 
     return {
-      name,
+      name: decodedName || "root",
       size: 0,
       is_dir: false,
       modified: new Date().toISOString(),
@@ -165,21 +180,29 @@ export class QuarkDriver implements StorageDriver {
     let currentId = this.client.getRootFolderId()
 
     for (let i = 0; i < parts.length; i++) {
-      const part = parts[i]
-      const subPath = parts.slice(0, i + 1).join("/")
-      if (this.pathFileIdCache.has(subPath)) {
-        currentId = this.pathFileIdCache.get(subPath)!
-        continue
-      }
+      const rawPart = parts[i]
+      const decodedPart = (() => {
+        try {
+          return decodeURIComponent(rawPart)
+        } catch {
+          return rawPart
+        }
+      })()
 
       const items = await this.client.getFiles(currentId)
-      const target = items.find((f) => f.file_name === part)
+      const target = items.find(
+        (f) =>
+          f.file_name === rawPart ||
+          f.file_name === decodedPart ||
+          f.fid === rawPart,
+      )
       if (!target) {
         throw new Error(
-          `[Quark/UC] Path '${part}' not found in folder '${currentId}'`,
+          `[Quark/UC] Path '${rawPart}' not found in folder '${currentId}'`,
         )
       }
       currentId = target.fid
+      const subPath = "/" + parts.slice(0, i + 1).join("/")
       this.pathFileIdCache.set(subPath, currentId)
     }
 

@@ -177,6 +177,11 @@ rawRouter.get("/*", async (c) => {
               )
               return c.redirect(fileItem.raw_url, 302)
             }
+          } else {
+            return c.text(
+              `File not found or no download link available: ${reqPath}`,
+              404,
+            )
           }
         } catch (e: any) {
           console.error(

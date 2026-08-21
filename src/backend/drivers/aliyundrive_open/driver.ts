@@ -156,15 +156,26 @@ export class AliyundriveOpen implements StorageDriver {
     const parts = clean.split("/")
     let currentId = this.client.getRootFolderId()
     for (let i = 0; i < parts.length; i++) {
-      const part = parts[i]
+      const rawPart = parts[i]
+      const decodedPart = (() => {
+        try {
+          return decodeURIComponent(rawPart)
+        } catch {
+          return rawPart
+        }
+      })()
       const subPath = parts.slice(0, i + 1).join("/")
       if (this.pathFileIdCache.has(subPath)) {
         currentId = this.pathFileIdCache.get(subPath)!
         continue
       }
       const items = await this.client.listFiles(currentId)
-      const target = items.find((f) => f.name === part)
-      if (!target) throw new Error(`[AliyundriveOpen] Path '${part}' not found`)
+      const target = items.find(
+        (f) =>
+          f.name === rawPart || f.name === decodedPart || f.file_id === rawPart,
+      )
+      if (!target)
+        throw new Error(`[AliyundriveOpen] Path '${rawPart}' not found`)
       currentId = target.file_id
       this.pathFileIdCache.set(subPath, currentId)
     }

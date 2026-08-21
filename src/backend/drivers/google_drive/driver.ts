@@ -51,6 +51,7 @@ export class GoogleDrive implements StorageDriver {
       const item = googleFileToFileItem(file)
       // Attach download URL + auth header
       item.raw_url = this.client.getDownloadUrl(fileId)
+      item.raw_url_headers = this.client.getDownloadHeaders()
       return item
     }
     // Fallback: the path may be a folder that isn't found via getFile

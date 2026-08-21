@@ -197,8 +197,15 @@ export class Pan115Driver implements StorageDriver {
     const segs = clean.split("/").filter(Boolean)
     let cid = rootId
     let prefix = ""
-    for (const seg of segs) {
-      prefix = `${prefix}/${seg}`
+    for (const rawSeg of segs) {
+      const decodedSeg = (() => {
+        try {
+          return decodeURIComponent(rawSeg)
+        } catch {
+          return rawSeg
+        }
+      })()
+      prefix = `${prefix}/${rawSeg}`
       const cachedId = this.fidCache.get(prefix)
       if (cachedId) {
         cid = cachedId
@@ -213,8 +220,12 @@ export class Pan115Driver implements StorageDriver {
         o: "file_name",
         showDir: true,
       })
-      const folder = files.find((f) => f.fc === "0" && f.fn === seg)
-      if (!folder) throw new Error(`folder not found: ${seg}`)
+      const folder = files.find(
+        (f) =>
+          f.fc === "0" &&
+          (f.fn === rawSeg || f.fn === decodedSeg || f.fid === rawSeg),
+      )
+      if (!folder) throw new Error(`folder not found: ${rawSeg}`)
       cid = folder.fid
       this.fidCache.set(prefix, cid)
     }
@@ -230,8 +241,15 @@ export class Pan115Driver implements StorageDriver {
         .filter(Boolean)
         .join("/")
     const segs = clean.split("/").filter(Boolean)
-    const name = segs.pop() || ""
-    if (!name) throw new Error(`file not found: ${clean}`)
+    const rawName = segs.pop() || ""
+    if (!rawName) throw new Error(`file not found: ${clean}`)
+    const decodedName = (() => {
+      try {
+        return decodeURIComponent(rawName)
+      } catch {
+        return rawName
+      }
+    })()
     const parentPath = "/" + segs.join("/")
 
     const parentId = await this.resolveFolderId(parentPath)
@@ -248,12 +266,18 @@ export class Pan115Driver implements StorageDriver {
         o: "file_name",
         showDir: true,
       })
-      const hit = files.find((f) => f.fn === name)
+      const hit = files.find(
+        (f) =>
+          f.fn === rawName ||
+          f.fn === decodedName ||
+          f.fid === rawName ||
+          f.fid === decodedName,
+      )
       if (hit) return hit
       if (files.length === 0 || offset + files.length >= count) break
       offset += this.pageSize
     }
-    throw new Error(`file not found: ${name}`)
+    throw new Error(`file not found: ${rawName}`)
   }
 
   async get(_virtualPath: string, physicalPath: string): Promise<FileItem> {

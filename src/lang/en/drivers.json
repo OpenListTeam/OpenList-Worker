@@ -1436,6 +1436,17 @@
     "vendors": {
       "other": "Other",
       "sharepoint": "Sharepoint"
+    },
+    "order_by": "Order by",
+    "order_bys": {
+      "name": "Name",
+      "size": "Size",
+      "modified": "Modified"
+    },
+    "order_direction": "Order direction",
+    "order_directions": {
+      "asc": "Asc",
+      "desc": "Desc"
     }
   },
   "WeiYun": {

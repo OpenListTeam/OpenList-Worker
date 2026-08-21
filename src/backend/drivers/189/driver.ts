@@ -112,16 +112,30 @@ export class Cloud189Driver implements StorageDriver {
     }
 
     for (let i = cachedLen; i < segs.length; i++) {
-      const name = segs[i]
+      const rawName = segs[i]
+      const decodedName = (() => {
+        try {
+          return decodeURIComponent(rawName)
+        } catch {
+          return rawName
+        }
+      })()
+
       const { folders } = await this.client.getFiles(parentId, {
-        findName: name,
+        findName: decodedName,
         findIsDir: true,
         budget: this.budget,
       })
 
-      const folder = folders.find((f) => f.name === name)
+      const folder = folders.find(
+        (f) =>
+          f.name === rawName ||
+          f.name === decodedName ||
+          String(f.id) === rawName ||
+          String(f.id) === decodedName,
+      )
       if (!folder) {
-        throw new Error(`[189Cloud] 目录未找到: ${name}`)
+        throw new Error(`[189Cloud] 目录未找到: ${rawName}`)
       }
 
       parentId = String(folder.id)
@@ -145,26 +159,45 @@ export class Cloud189Driver implements StorageDriver {
       .filter(Boolean)
     if (segs.length === 0) throw new Error("[189Cloud] 路径无效")
 
-    const name = segs[segs.length - 1]
+    const rawName = segs[segs.length - 1]
+    const decodedName = (() => {
+      try {
+        return decodeURIComponent(rawName)
+      } catch {
+        return rawName
+      }
+    })()
     const parentPath = "/" + segs.slice(0, segs.length - 1).join("/")
     const parentId = await this.resolveFolderId(parentPath)
 
     const { files, folders } = await this.client.getFiles(parentId, {
-      findName: name,
+      findName: decodedName,
       budget: this.budget,
     })
 
-    const file = files.find((f) => f.name === name || String(f.id) === name)
+    const file = files.find(
+      (f) =>
+        f.name === rawName ||
+        f.name === decodedName ||
+        String(f.id) === rawName ||
+        String(f.id) === decodedName,
+    )
     if (file) {
       return { file, parentId, isDir: false }
     }
 
-    const folder = folders.find((f) => f.name === name || String(f.id) === name)
+    const folder = folders.find(
+      (f) =>
+        f.name === rawName ||
+        f.name === decodedName ||
+        String(f.id) === rawName ||
+        String(f.id) === decodedName,
+    )
     if (folder) {
       return { file: folder, parentId, isDir: true }
     }
 
-    throw new Error(`[189Cloud] 文件或目录未找到: ${name}`)
+    throw new Error(`[189Cloud] 文件或目录未找到: ${rawName}`)
   }
 
   async list(_virtualPath: string, physicalPath: string): Promise<FileItem[]> {
@@ -212,37 +245,18 @@ export class Cloud189Driver implements StorageDriver {
       }
     }
 
-    try {
-      const { file, isDir } = await this.resolveFile(physicalPath)
-      if (isDir) {
-        return pan189FolderToFileItem(file as FolderItem189)
-      }
-
-      const item = pan189FileToFileItem(file as FileItem189)
-      try {
-        item.raw_url = await this.client.getDownloadUrl(String(file.id))
-      } catch (e: any) {
-        console.warn(`[189Cloud] 获取 ${file.name} 下载地址失败:`, e.message)
-      }
-      return item
-    } catch (e) {
-      // 容错：直接尝试作为 folderId 探测
-      const lastSeg = segs[segs.length - 1]
-      try {
-        await this.client.getFiles(lastSeg)
-        return {
-          name: lastSeg,
-          size: 0,
-          is_dir: true,
-          modified: new Date().toISOString(),
-          sign: lastSeg,
-          type: 1,
-          raw_url: "",
-        }
-      } catch {
-        throw e
-      }
+    const { file, isDir } = await this.resolveFile(physicalPath)
+    if (isDir) {
+      return pan189FolderToFileItem(file as FolderItem189)
     }
+
+    const item = pan189FileToFileItem(file as FileItem189)
+    try {
+      item.raw_url = await this.client.getDownloadUrl(String(file.id))
+    } catch (e: any) {
+      console.warn(`[189Cloud] 获取 ${file.name} 下载地址失败:`, e.message)
+    }
+    return item
   }
 
   async mkdir(_virtualPath: string, physicalPath: string): Promise<void> {

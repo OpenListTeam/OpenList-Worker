@@ -132,11 +132,24 @@ export class BaiduDriver implements StorageDriver {
     }
     // Find the file by listing its parent (Baidu has no path lookup API)
     const parent = dirname(bp)
-    const name = basename(bp)
+    const rawName = basename(bp)
+    const decodedName = (() => {
+      try {
+        return decodeURIComponent(rawName)
+      } catch {
+        return rawName
+      }
+    })()
     const files = await this.client.getFiles(parent)
-    const file = files.find((f) => f.server_filename === name || f.path === bp)
+    const file = files.find(
+      (f) =>
+        f.server_filename === rawName ||
+        f.server_filename === decodedName ||
+        f.path === bp ||
+        String(f.fs_id) === rawName,
+    )
     if (!file) {
-      throw new Error(`file not found: ${name}`)
+      throw new Error(`file not found: ${rawName}`)
     }
     this.pathCache.set(file.path, { fsId: file.fs_id, parent })
     const item = baiduFileToFileItem(file)

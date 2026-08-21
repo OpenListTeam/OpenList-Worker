@@ -247,6 +247,7 @@ adminRouter.get("/driver/names", (c) => {
       "ThunderExpert",
       "189Cloud",
       "Lanzou",
+      "WebDav",
     ],
   })
 })
@@ -1265,6 +1266,74 @@ const driverConfigs: Record<string, any> = {
       no_upload: false,
       need_ms: false,
       default_root: "-1",
+    },
+  },
+  WebDav: {
+    name: "WebDav",
+    default_mount_path: "/webdav",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "vendor",
+        type: "select",
+        options: "other,sharepoint",
+        default: "other",
+        required: true,
+      },
+      {
+        name: "address",
+        type: "string",
+        default: "",
+        required: true,
+      },
+      {
+        name: "username",
+        type: "string",
+        default: "",
+        required: true,
+      },
+      {
+        name: "password",
+        type: "string",
+        default: "",
+        required: true,
+      },
+      {
+        name: "root_folder_path",
+        type: "string",
+        default: "/",
+        required: false,
+      },
+      {
+        name: "tls_insecure_skip_verify",
+        type: "bool",
+        default: "false",
+        required: false,
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "name,size,modified",
+        default: "name",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "asc,desc",
+        default: "asc",
+        required: false,
+      },
+    ],
+    config: {
+      name: "WebDav",
+      local_sort: true,
+      only_local: false,
+      only_proxy: true,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "/",
     },
   },
 }

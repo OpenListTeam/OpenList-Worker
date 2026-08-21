@@ -41,7 +41,7 @@
 - [ ] PikPak
 - [ ] Seafile
 - [ ] 又拍云对象存储 (Upyun)
-- [ ] WebDAV
+- [x] WebDAV - _Implemented (PROPFIND/MKCOL/MOVE/COPY/DELETE/PUT/GET, Basic/Digest/SharePoint SAML auth)_
 - [ ] Teambition
 - [ ] MediaFire
 - [ ] 分秒帧 (Fenmiao)
