@@ -145,8 +145,8 @@ export const getPagination = (): {
   type: "all" | "pagination" | "load_more" | "auto_load_more"
 } => {
   return {
-    type: (getSetting("pagination_type") || "all") as any,
-    size: getSettingNumber("default_page_size", 30),
+    type: (getSetting("pagination_type") || "pagination") as any,
+    size: getSettingNumber("default_page_size", 20),
   }
 }
 

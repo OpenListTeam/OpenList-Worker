@@ -1,19 +1,18 @@
+import { Flex, HStack, IconButton, Input, Text } from "@hope-ui/solid"
 import {
-  Box,
-  Button,
-  HStack,
-  IconButton,
-  Select,
-  SelectContent,
-  SelectListbox,
-  SelectOption,
-  SelectOptionText,
-  SelectTrigger,
-} from "@hope-ui/solid"
-import { createMemo, For, mergeProps, Show } from "solid-js"
+  createEffect,
+  createMemo,
+  createSignal,
+  mergeProps,
+  Show,
+} from "solid-js"
 import { createStore } from "solid-js/store"
-import { FaSolidAngleLeft, FaSolidAngleRight } from "solid-icons/fa"
-import { TbSelector } from "solid-icons/tb"
+import {
+  FaSolidAngleLeft,
+  FaSolidAngleRight,
+  FaSolidAnglesLeft,
+  FaSolidAnglesRight,
+} from "solid-icons/fa"
 
 export interface PaginatorProps {
   colorScheme?:
@@ -24,7 +23,6 @@ export interface PaginatorProps {
     | "info"
     | "warning"
     | "danger"
-  // size?: "xs" | "sm" | "lg" | "xl" | "md";
   defaultCurrent?: number
   onChange?: (current: number) => void
   hideOnSinglePage?: boolean
@@ -33,11 +31,12 @@ export interface PaginatorProps {
   maxShowPage?: number
   setResetCallback?: (callback: () => void) => void
 }
+
 export const Paginator = (props: PaginatorProps) => {
   const merged = mergeProps(
     {
-      maxShowPage: 4,
-      defaultPageSize: 30,
+      colorScheme: "accent" as const,
+      defaultPageSize: 20,
       defaultCurrent: 1,
       hideOnSinglePage: true,
     },
@@ -47,143 +46,153 @@ export const Paginator = (props: PaginatorProps) => {
     pageSize: merged.defaultPageSize,
     current: merged.defaultCurrent,
   })
+
+  const [inputVal, setInputVal] = createSignal(String(merged.defaultCurrent))
+
+  createEffect(() => {
+    if (merged.defaultCurrent !== undefined) {
+      setStore("current", merged.defaultCurrent)
+      setInputVal(String(merged.defaultCurrent))
+    }
+  })
+  createEffect(() => {
+    if (merged.defaultPageSize !== undefined) {
+      setStore("pageSize", merged.defaultPageSize)
+    }
+  })
   merged.setResetCallback?.(() => {
     setStore("current", merged.defaultCurrent)
+    setInputVal(String(merged.defaultCurrent))
   })
+
   const pages = createMemo(() => {
-    return Math.ceil(merged.total / store.pageSize)
+    return Math.max(1, Math.ceil(merged.total / store.pageSize))
   })
-  const leftPages = createMemo(() => {
-    const current = store.current
-    const min = Math.max(2, current - Math.floor(merged.maxShowPage / 2))
-    return Array.from({ length: current - min }, (_, i) => min + i)
-  })
-  const rightPages = createMemo(() => {
-    const current = store.current
-    const max = Math.min(
-      pages() - 1,
-      current + Math.floor(merged.maxShowPage / 2),
-    )
-    return Array.from({ length: max - current }, (_, i) => current + 1 + i)
-  })
-  const allPages = createMemo(() => {
-    return Array.from({ length: pages() }, (_, i) => 1 + i)
-  })
+
   const size = {
     "@initial": "sm",
     "@md": "md",
   } as const
+
   const onPageChange = (page: number) => {
-    setStore("current", page)
-    merged.onChange?.(page)
+    const target = Math.max(1, Math.min(pages(), page))
+    setStore("current", target)
+    setInputVal(String(target))
+    if (target !== merged.defaultCurrent) {
+      merged.onChange?.(target)
+    }
   }
+
+  const handleJump = () => {
+    const val = parseInt(inputVal(), 10)
+    if (!isNaN(val)) {
+      onPageChange(val)
+    } else {
+      setInputVal(String(store.current))
+    }
+  }
+
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Enter") {
+      handleJump()
+    }
+  }
+
   return (
     <Show when={!merged.hideOnSinglePage || pages() > 1}>
-      <HStack spacing="$1">
-        <Show when={store.current !== 1}>
-          <Button
-            size={size}
-            colorScheme={merged.colorScheme}
-            onClick={() => {
-              onPageChange(1)
-            }}
-            px="$3"
-          >
-            1
-          </Button>
+      <Flex
+        w="$full"
+        justifyContent="flex-end"
+        alignItems="center"
+        class="paginator-wrapper"
+      >
+        <HStack spacing="$1" alignItems="center" class="paginator-bar">
+          {/* First Page */}
           <IconButton
             size={size}
+            variant="subtle"
+            icon={<FaSolidAnglesLeft />}
+            aria-label="First page"
+            colorScheme={merged.colorScheme}
+            disabled={store.current <= 1}
+            onClick={() => onPageChange(1)}
+            w="2rem !important"
+          />
+
+          {/* Previous Page */}
+          <IconButton
+            size={size}
+            variant="subtle"
             icon={<FaSolidAngleLeft />}
-            aria-label="Previous"
+            aria-label="Previous page"
             colorScheme={merged.colorScheme}
-            onClick={() => {
-              onPageChange(store.current - 1)
-            }}
+            disabled={store.current <= 1}
+            onClick={() => onPageChange(store.current - 1)}
             w="2rem !important"
           />
-        </Show>
-        <For each={leftPages()}>
-          {(page) => (
-            <Button
-              size={size}
-              colorScheme={merged.colorScheme}
-              onClick={() => {
-                onPageChange(page)
-              }}
-              px={page > 10 ? "$2_5" : "$3"}
-            >
-              {page}
-            </Button>
-          )}
-        </For>
-        <Select
-          size={size}
-          variant="unstyled"
-          defaultValue={store.current}
-          onChange={(page) => {
-            onPageChange(+page)
-          }}
-        >
-          <SelectTrigger
-            as={Button}
-            size={size}
-            width="auto"
-            px="$1"
-            variant="solid"
-            colorScheme={merged.colorScheme}
+
+          {/* Page Input & Total Display */}
+          <HStack
+            spacing="$1"
+            alignItems="center"
+            px="$2"
+            py="$0_5"
+            rounded="$md"
+            border="1px solid"
+            borderColor="$neutral6"
+            bgColor="$neutral2"
           >
-            <Box px={store.current > 10 ? "$1_5" : "$2"}>{store.current}</Box>
-            <TbSelector />
-          </SelectTrigger>
-          <SelectContent minW="80px">
-            <SelectListbox>
-              <For each={allPages()}>
-                {(page) => (
-                  <SelectOption value={page}>
-                    <SelectOptionText px="$2">{page}</SelectOptionText>
-                  </SelectOption>
-                )}
-              </For>
-            </SelectListbox>
-          </SelectContent>
-        </Select>
-        <For each={rightPages()}>
-          {(page) => (
-            <Button
+            <Input
               size={size}
-              colorScheme={merged.colorScheme}
-              onClick={() => {
-                onPageChange(page)
+              w="48px"
+              h="26px"
+              textAlign="center"
+              variant="unstyled"
+              p="$0"
+              fontWeight="medium"
+              value={inputVal()}
+              onInput={(e) => {
+                const val = e.currentTarget.value.replace(/[^0-9]/g, "")
+                setInputVal(val)
               }}
-              px={page > 10 ? "$2_5" : "$3"}
+              onKeyDown={handleKeyDown}
+              onBlur={handleJump}
+              aria-label="Page number"
+            />
+            <Text
+              size="sm"
+              color="$neutral11"
+              css={{ whiteSpace: "nowrap", userSelect: "none" }}
             >
-              {page}
-            </Button>
-          )}
-        </For>
-        <Show when={store.current !== pages()}>
+              / {pages()}
+            </Text>
+          </HStack>
+
+          {/* Next Page */}
           <IconButton
             size={size}
+            variant="subtle"
             icon={<FaSolidAngleRight />}
-            aria-label="Next"
+            aria-label="Next page"
             colorScheme={merged.colorScheme}
-            onClick={() => {
-              onPageChange(store.current + 1)
-            }}
+            disabled={store.current >= pages()}
+            onClick={() => onPageChange(store.current + 1)}
             w="2rem !important"
           />
-          <Button
+
+          {/* Last Page */}
+          <IconButton
             size={size}
+            variant="subtle"
+            icon={<FaSolidAnglesRight />}
+            aria-label="Last page"
             colorScheme={merged.colorScheme}
-            onClick={() => {
-              onPageChange(pages())
-            }}
-            px={pages() > 10 ? "$2_5" : "$3"}
-          >
-            {pages()}
-          </Button>
-        </Show>
-      </HStack>
+            disabled={store.current >= pages()}
+            onClick={() => onPageChange(pages())}
+            w="2rem !important"
+          />
+        </HStack>
+      </Flex>
     </Show>
   )
 }

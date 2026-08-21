@@ -41,7 +41,7 @@
     "lint": "tsc -p tsconfig.json --noEmit",
     "format": "prettier --ignore-path .gitignore -w \"src/**/*.{js,ts,json,css,tsx,jsx}\""
   },
-  "license": "MIT",
+  "license": "AGPL-3.0",
   "devDependencies": {
     "@crowdin/cli": "^4.14.3",
     "@types/bencode": "^2.0.4",

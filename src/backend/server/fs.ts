@@ -83,6 +83,22 @@ fsRouter.post("/dirs", async (c) => {
 fsRouter.post("/list", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const reqPath = body.path || "/"
+  const page = parseInt(body.page, 10) || 1
+  const perPage = parseInt(body.per_page, 10) || 0
+
+  const paginateItems = <T>(items: T[]) => {
+    const total = items.length
+    if (perPage <= 0) {
+      return { content: items, total }
+    }
+    const pageNum = Math.max(1, page)
+    const start = (pageNum - 1) * perPage
+    const end = start + perPage
+    return {
+      content: items.slice(start, end),
+      total,
+    }
+  }
 
   try {
     // Share path: /@s/{shareId}/...
@@ -135,12 +151,13 @@ fsRouter.post("/list", async (c) => {
             }
           }
         }
+        const { content, total } = paginateItems(items)
         return c.json({
           code: 200,
           message: "success",
           data: {
-            content: items,
-            total: items.length,
+            content,
+            total,
             readme: shareRes.share.readme || "",
             header: shareRes.share.header || "",
             write: false,
@@ -162,12 +179,13 @@ fsRouter.post("/list", async (c) => {
         thumb: item.thumb || "",
         type: item.type ?? 0,
       }))
+      const { content: pagedContent, total } = paginateItems(normalized)
       return c.json({
         code: 200,
         message: "success",
         data: {
-          content: normalized,
-          total: normalized.length,
+          content: pagedContent,
+          total,
           readme: shareRes.share.readme || "",
           header: shareRes.share.header || "",
           write: false,
@@ -189,12 +207,13 @@ fsRouter.post("/list", async (c) => {
       thumb: item.thumb || "",
       type: item.type ?? 0,
     }))
+    const { content: pagedContent, total } = paginateItems(normalized)
     return c.json({
       code: 200,
       message: "success",
       data: {
-        content: normalized,
-        total: normalized.length,
+        content: pagedContent,
+        total,
         readme: "",
         header: "",
         write: true,

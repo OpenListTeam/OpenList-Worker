@@ -173,7 +173,7 @@ OpenListNext 是以下项目的分支 / 衍生实现：
 
 ## 📄 许可证
 
-[MIT](LICENSE)
+[AGPL-3.0 License](LICENSE)
 
 ---
 

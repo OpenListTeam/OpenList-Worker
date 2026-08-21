@@ -48,7 +48,7 @@ const ImageLayout = (props: { images: StoreObj[] }) => {
         fallback={<Heading m="$2">{t("home.no_images")}</Heading>}
       >
         <Flex w="$full" gap="$1" flexWrap="wrap" class="image-images">
-          <For each={objStore.objs}>
+          <For each={props.images}>
             {(obj, i) => {
               return <ImageItem obj={obj} index={i()} />
             }}

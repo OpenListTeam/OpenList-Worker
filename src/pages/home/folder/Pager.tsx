@@ -1,4 +1,4 @@
-import { Button, Text } from "@hope-ui/solid"
+import { Button, Flex, Text } from "@hope-ui/solid"
 import { Match, onCleanup, onMount, Show, Switch } from "solid-js"
 import { FullLoading, Paginator } from "~/components"
 import { getGlobalPage, usePath, useRouter, useT } from "~/hooks"
@@ -8,15 +8,23 @@ const Pagination = () => {
   const pagination = getPagination()
   const { pathname, setSearchParams } = useRouter()
   return (
-    <Paginator
-      total={objStore.total}
-      defaultCurrent={getGlobalPage()}
-      defaultPageSize={pagination.size}
-      onChange={(page) => {
-        clearHistory(pathname(), page)
-        setSearchParams({ page })
-      }}
-    />
+    <Flex
+      w="$full"
+      justifyContent="flex-end"
+      alignItems="center"
+      mt="$3"
+      pr="$1"
+    >
+      <Paginator
+        total={objStore.total}
+        defaultCurrent={getGlobalPage()}
+        defaultPageSize={pagination.size}
+        onChange={(page) => {
+          clearHistory(pathname(), page)
+          setSearchParams({ page })
+        }}
+      />
+    </Flex>
   )
 }
 const LoadMore = () => {

@@ -324,7 +324,7 @@
       "help": "Default items per page",
       "type": "number",
       "group": 4,
-      "value": "30"
+      "value": "20"
     },
     {
       "key": "pagination_type",
