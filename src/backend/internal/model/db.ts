@@ -119,22 +119,6 @@ export const defaultDb = {
       group: 2,
       flag: 0,
     },
-    {
-      key: "customize_head",
-      value: "",
-      type: "text",
-      help: "Custom Head HTML/CSS",
-      group: 2,
-      flag: 0,
-    },
-    {
-      key: "customize_body",
-      value: "",
-      type: "text",
-      help: "Custom Body Script",
-      group: 2,
-      flag: 0,
-    },
 
     // Group 3: PREVIEW (https://doc.oplist.org/configuration/preview)
     {
@@ -525,78 +509,76 @@ export const defaultDb = {
     },
 
     // Group 14: OTHER (https://doc.oplist.org/configuration/other)
-    // Aria2
+    // 115 / 123 / PikPak / Thunder Temp Directories
     {
-      key: "aria2_uri",
-      value: "http://localhost:6800/jsonrpc",
-      type: "string",
-      help: "Aria2 RPC Address",
-      group: 14,
-      flag: 0,
-    },
-    {
-      key: "aria2_secret",
+      key: "115_temp_dir",
       value: "",
       type: "string",
-      help: "Aria2 RPC Token / Secret",
+      help: "115 Temp Directory",
       group: 14,
       flag: 0,
     },
     {
-      key: "aria2_path",
+      key: "115_open_temp_dir",
       value: "",
       type: "string",
-      help: "Aria2 Download Path",
+      help: "115 Open Temp Directory",
       group: 14,
       flag: 0,
     },
     {
-      key: "aria2_keep_files",
-      value: "false",
-      type: "bool",
-      help: "Aria2 Keep Files After Download",
-      group: 14,
-      flag: 0,
-    },
-
-    // qBittorrent
-    {
-      key: "qbittorrent_url",
-      value: "http://localhost:8080",
-      type: "string",
-      help: "qBittorrent Web UI URL",
-      group: 14,
-      flag: 0,
-    },
-    {
-      key: "qbittorrent_seed_time",
-      value: "0",
-      type: "number",
-      help: "qBittorrent Seed Time Limit (Minutes)",
-      group: 14,
-      flag: 0,
-    },
-    {
-      key: "qbittorrent_path",
+      key: "123_temp_dir",
       value: "",
       type: "string",
-      help: "qBittorrent Download Path",
+      help: "123 Pan Temp Directory",
       group: 14,
       flag: 0,
     },
     {
-      key: "qbittorrent_username",
+      key: "123_open_temp_dir",
       value: "",
       type: "string",
-      help: "qBittorrent Username",
+      help: "123 Open Temp Directory",
       group: 14,
       flag: 0,
     },
     {
-      key: "qbittorrent_password",
+      key: "123_open_callback_url",
       value: "",
       type: "string",
-      help: "qBittorrent Password",
+      help: "123 Open Callback URL",
+      group: 14,
+      flag: 0,
+    },
+    {
+      key: "pikpak_temp_dir",
+      value: "",
+      type: "string",
+      help: "PikPak Temp Directory",
+      group: 14,
+      flag: 0,
+    },
+    {
+      key: "thunder_temp_dir",
+      value: "",
+      type: "string",
+      help: "Thunder Temp Directory",
+      group: 14,
+      flag: 0,
+    },
+    {
+      key: "thunder_browser_temp_dir",
+      value: "",
+      type: "string",
+      help: "Thunder Browser Temp Directory",
+      group: 14,
+      flag: 0,
+    },
+    {
+      key: "thunderx_temp_dir",
+      value: "",
+      type: "string",
+      help: "ThunderX Temp Directory",
       group: 14,
       flag: 0,
     },
@@ -819,21 +801,57 @@ const ensureDefaultSettings = (db: any) => {
     db.settings = []
   }
   let modified = false
+  const newSettings: any[] = []
+  const seenKeys = new Set<string>()
+
   for (const defSetting of defaultDb.settings) {
-    const existing = db.settings.find((s: any) => s.key === defSetting.key)
-    if (!existing) {
-      db.settings.push(JSON.parse(JSON.stringify(defSetting)))
+    seenKeys.add(defSetting.key)
+    const matching = db.settings.filter((s: any) => s.key === defSetting.key)
+    if (matching.length === 0) {
+      newSettings.push(JSON.parse(JSON.stringify(defSetting)))
       modified = true
-      continue
-    }
-    // 旧默认值迁移：KV 中保存的值若等于已知旧默认值，更新为当前默认
-    const migration = LEGACY_SETTING_MIGRATIONS[defSetting.key]
-    if (migration && migration.from.includes(existing.value)) {
-      existing.value = migration.to
-      modified = true
+    } else {
+      // If duplicates existed in KV/storage, pick the one with non-empty value if available
+      const chosen =
+        matching.find((s: any) => s.value && s.value.trim() !== "") ||
+        matching[0]
+      if (
+        chosen.group !== defSetting.group ||
+        chosen.help !== defSetting.help ||
+        chosen.type !== defSetting.type ||
+        chosen.options !== defSetting.options ||
+        chosen.flag !== defSetting.flag
+      ) {
+        chosen.group = defSetting.group
+        chosen.help = defSetting.help
+        chosen.type = defSetting.type
+        chosen.options = defSetting.options
+        chosen.flag = defSetting.flag
+        modified = true
+      }
+      if (matching.length > 1) {
+        modified = true
+      }
+      // 旧默认值迁移：KV 中保存的值若等于已知旧默认值，更新为当前默认
+      const migration = LEGACY_SETTING_MIGRATIONS[defSetting.key]
+      if (migration && migration.from.includes(chosen.value)) {
+        chosen.value = migration.to
+        modified = true
+      }
+      newSettings.push(chosen)
     }
   }
-  if (modified) {
+
+  // Preserve any custom user-added settings not present in defaultDb
+  for (const s of db.settings) {
+    if (s.key && !seenKeys.has(s.key)) {
+      seenKeys.add(s.key)
+      newSettings.push(s)
+    }
+  }
+
+  if (modified || newSettings.length !== db.settings.length) {
+    db.settings = newSettings
     saveDb(db).catch(() => {})
   }
 }

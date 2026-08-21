@@ -54,6 +54,17 @@ function thunderFileToFileItem(
   }
 }
 
+export function generateThunderDeviceId(addition?: any): string {
+  if (addition?.device_id && addition.device_id.trim().length === 32) {
+    return addition.device_id.trim()
+  }
+  const seed = `${addition?.username || ""}${addition?.password || ""}`
+  if (seed.trim()) {
+    return md5(seed)
+  }
+  return md5(Math.random().toString(36) + Date.now().toString(36))
+}
+
 export class ThunderDriver implements StorageDriver {
   protected client: ThunderClient
   protected addition: ThunderAddition | ThunderExpertAddition
@@ -67,10 +78,8 @@ export class ThunderDriver implements StorageDriver {
     this.addition = addition
     this.onPersistCallback = onPersistCallback
 
-    const deviceId =
-      addition.device_id && addition.device_id.length === 32
-        ? addition.device_id
-        : md5(`${addition.username || ""}${addition.password || ""}`)
+    const deviceId = generateThunderDeviceId(addition)
+    addition.device_id = deviceId
 
     this.client = new ThunderClient({
       deviceId,
@@ -357,12 +366,8 @@ export class ThunderExpertDriver extends ThunderDriver {
   ) {
     super(addition, onPersistCallback)
 
-    const deviceId =
-      addition.device_id && addition.device_id.length === 32
-        ? addition.device_id
-        : md5(
-            addition.device_id || addition.username || "default_thunder_device",
-          )
+    const deviceId = generateThunderDeviceId(addition)
+    addition.device_id = deviceId
 
     const algorithms =
       addition.sign_type === "captcha_sign"

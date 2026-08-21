@@ -44,6 +44,33 @@ adminRouter.get("/storage/get", async (c) => {
   return c.json({ code: 200, message: "success", data: storage })
 })
 
+const ensureStorageAdditionDeviceId = (
+  driverName: string,
+  additionStr: string,
+): string => {
+  const norm = (driverName || "").toLowerCase()
+  if (norm.includes("thunder") || norm.includes("xunlei")) {
+    try {
+      const addition = JSON.parse(additionStr || "{}")
+      if (
+        !addition.device_id ||
+        typeof addition.device_id !== "string" ||
+        addition.device_id.trim().length !== 32
+      ) {
+        const rand32 =
+          typeof crypto !== "undefined" &&
+          typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID().replace(/-/g, "")
+            : Math.random().toString(16).substring(2).padEnd(16, "0") +
+              Math.random().toString(16).substring(2).padEnd(16, "0")
+        addition.device_id = rand32.slice(0, 32)
+        return JSON.stringify(addition)
+      }
+    } catch {}
+  }
+  return additionStr
+}
+
 adminRouter.post("/storage/create", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const db = await getDb(c.env)
@@ -64,8 +91,14 @@ adminRouter.post("/storage/create", async (c) => {
     })
   }
 
+  const newAddition = ensureStorageAdditionDeviceId(
+    body.driver,
+    body.addition || "{}",
+  )
+
   const newStorage = {
     ...body,
+    addition: newAddition,
     mount_path: mountPath,
     id: db.storages.length
       ? Math.max(...db.storages.map((s: any) => s.id)) + 1
@@ -119,9 +152,15 @@ adminRouter.post("/storage/update", async (c) => {
 
   const idx = db.storages.findIndex((s: any) => s.id === body.id)
   if (idx !== -1) {
+    const updatedAddition = ensureStorageAdditionDeviceId(
+      body.driver || db.storages[idx].driver,
+      body.addition || db.storages[idx].addition || "{}",
+    )
+
     const updatedStorage = {
       ...db.storages[idx],
       ...body,
+      addition: updatedAddition,
       mount_path: mountPath,
       modified: new Date().toISOString(),
     }
@@ -1269,14 +1308,30 @@ adminRouter.get("/setting/list", async (c) => {
 adminRouter.post("/setting/save", async (c) => {
   const body = await c.req.json().catch(() => [])
   const db = await getDb(c.env)
+  if (!db.settings) {
+    db.settings = []
+  }
   for (const item of body) {
     const idx = db.settings.findIndex((s: any) => s.key === item.key)
     if (idx !== -1) {
       db.settings[idx].value = item.value
+      if (item.group !== undefined) {
+        db.settings[idx].group = item.group
+      }
     } else {
       db.settings.push(item)
     }
   }
+
+  // Deduplicate any duplicates by key
+  const seenKeys = new Set<string>()
+  db.settings = db.settings.filter((s: any) => {
+    if (!s.key) return false
+    if (seenKeys.has(s.key)) return false
+    seenKeys.add(s.key)
+    return true
+  })
+
   await saveDb(db, c.env)
   return c.json({ code: 200, message: "success", data: null })
 })
@@ -1293,6 +1348,8 @@ adminRouter.post("/setting/default", async (c) => {
   const groupDefaults = defaultDb.settings.filter(
     (s: any) => s.group === groupNum,
   )
+  const groupKeys = new Set(groupDefaults.map((s: any) => s.key))
+  db.settings = db.settings.filter((s: any) => !groupKeys.has(s.key))
   db.settings.push(...JSON.parse(JSON.stringify(groupDefaults)))
 
   await saveDb(db, c.env)
@@ -1308,6 +1365,100 @@ adminRouter.post("/setting/delete", async (c) => {
   db.settings = (db.settings || []).filter((s: any) => s.key !== key)
   await saveDb(db, c.env)
   return c.json({ code: 200, message: "success", data: null })
+})
+
+const updateSettingValue = async (
+  env: any,
+  pairs: Record<string, string | undefined>,
+  group = 14,
+) => {
+  const db = await getDb(env)
+  if (!db.settings) {
+    db.settings = []
+  }
+  for (const [k, v] of Object.entries(pairs)) {
+    if (v === undefined) continue
+    const idx = db.settings.findIndex((s: any) => s.key === k)
+    if (idx !== -1) {
+      db.settings[idx].value = v
+    } else {
+      db.settings.push({
+        key: k,
+        value: v,
+        type: "string",
+        help: k,
+        group,
+        flag: 0,
+      })
+    }
+  }
+  await saveDb(db, env)
+}
+
+adminRouter.post("/setting/set_115", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  await updateSettingValue(c.env, { "115_temp_dir": body.temp_dir || "" })
+  return c.json({ code: 200, message: "success", data: "success" })
+})
+
+adminRouter.post("/setting/set_115_open", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  await updateSettingValue(c.env, { "115_open_temp_dir": body.temp_dir || "" })
+  return c.json({ code: 200, message: "success", data: "success" })
+})
+
+adminRouter.post("/setting/set_123_pan", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  await updateSettingValue(c.env, {
+    "123_pan_temp_dir": body.temp_dir || "",
+    "123_temp_dir": body.temp_dir || "",
+  })
+  return c.json({ code: 200, message: "success", data: "success" })
+})
+
+adminRouter.post("/setting/set_123_open", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  await updateSettingValue(c.env, {
+    "123_open_temp_dir": body.temp_dir || "",
+    "123_open_callback_url": body.callback_url || "",
+  })
+  return c.json({ code: 200, message: "success", data: "success" })
+})
+
+adminRouter.post("/setting/set_pikpak", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  await updateSettingValue(c.env, { pikpak_temp_dir: body.temp_dir || "" })
+  return c.json({ code: 200, message: "success", data: "success" })
+})
+
+adminRouter.post("/setting/set_thunder", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  await updateSettingValue(c.env, { thunder_temp_dir: body.temp_dir || "" })
+  return c.json({ code: 200, message: "success", data: "success" })
+})
+
+adminRouter.post("/setting/set_thunder_browser", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  await updateSettingValue(c.env, {
+    thunder_browser_temp_dir: body.temp_dir || "",
+  })
+  return c.json({ code: 200, message: "success", data: "success" })
+})
+
+adminRouter.post("/setting/set_thunderx", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  await updateSettingValue(c.env, { thunderx_temp_dir: body.temp_dir || "" })
+  return c.json({ code: 200, message: "success", data: "success" })
+})
+
+adminRouter.post("/setting/reset_token", async (c) => {
+  const newToken =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID().replace(/-/g, "")
+      : Math.random().toString(36).substring(2) +
+        Math.random().toString(36).substring(2)
+  await updateSettingValue(c.env, { token: newToken })
+  return c.json({ code: 200, message: "success", data: newToken })
 })
 
 adminRouter.get("/meta/list", async (c) => {

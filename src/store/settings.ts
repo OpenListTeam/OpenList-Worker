@@ -2,6 +2,43 @@ import { ext, recordToArray, strToRegExp } from "~/utils"
 
 const settings: Record<string, string> = {}
 
+const injectCustomContent = (
+  containerId: string,
+  content: string | undefined,
+  parent: HTMLElement | null,
+) => {
+  if (typeof document === "undefined" || !parent) return
+  let container = document.getElementById(containerId)
+  if (!container) {
+    container = document.createElement("div")
+    container.id = containerId
+    parent.appendChild(container)
+  }
+  container.innerHTML = ""
+  if (!content || !content.trim()) return
+
+  try {
+    const range = document.createRange()
+    range.selectNode(container)
+    const fragment = range.createContextualFragment(content)
+
+    // Re-create script elements so that the browser executes them
+    const scripts = Array.from(fragment.querySelectorAll("script"))
+    scripts.forEach((oldScript) => {
+      const newScript = document.createElement("script")
+      Array.from(oldScript.attributes).forEach((attr) => {
+        newScript.setAttribute(attr.name, attr.value)
+      })
+      newScript.textContent = oldScript.textContent
+      oldScript.parentNode?.replaceChild(newScript, oldScript)
+    })
+
+    container.appendChild(fragment)
+  } catch (err) {
+    console.error(`Failed to inject custom content for #${containerId}:`, err)
+  }
+}
+
 export const setSettings = (items: Record<string, string>) => {
   Object.keys(items).forEach((key) => {
     settings[key] = items[key]
@@ -13,6 +50,23 @@ export const setSettings = (items: Record<string, string>) => {
     "color: #fff; background: #70c6be",
     "",
   )
+
+  if (typeof document !== "undefined") {
+    if (settings["customize_head"] !== undefined) {
+      injectCustomContent(
+        "customize-head",
+        settings["customize_head"],
+        document.head,
+      )
+    }
+    if (settings["customize_body"] !== undefined) {
+      injectCustomContent(
+        "customize-body",
+        settings["customize_body"],
+        document.body,
+      )
+    }
+  }
 }
 
 export const getSetting = (key: string) => settings[key] ?? ""

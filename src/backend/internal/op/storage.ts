@@ -205,51 +205,72 @@ export async function getDriver(
     const addition = parseAddition(storageConfig)
     driver = new GithubDriver(addition)
     await driver.init?.()
-  } else if (normDriver === "thunderexpert") {
+  } else if (
+    normDriver === "thunderexpert" ||
+    normDriver === "thunderbrowserexpert" ||
+    normDriver === "thunderxexpert"
+  ) {
     const addition = parseAddition(storageConfig)
     driver = new ThunderExpertDriver(addition, async (tokens) => {
       try {
+        if (tokens.device_id) addition.device_id = tokens.device_id
+        if (tokens.refresh_token) addition.refresh_token = tokens.refresh_token
+        if (tokens.captcha_token) addition.captcha_token = tokens.captcha_token
+        storageConfig.addition = JSON.stringify(addition)
+
         const db = await getDb()
         const st = (db.storages || []).find(
           (s: any) => s.id === storageConfig?.id,
         )
-        if (!st) return
-        const stAddition =
-          typeof st.addition === "string"
-            ? JSON.parse(st.addition || "{}")
-            : st.addition || {}
-        if (tokens.refresh_token)
-          stAddition.refresh_token = tokens.refresh_token
-        if (tokens.captcha_token)
-          stAddition.captcha_token = tokens.captcha_token
-        if (tokens.device_id) stAddition.device_id = tokens.device_id
-        st.addition = JSON.stringify(stAddition)
-        await saveDb(db)
+        if (st) {
+          const stAddition =
+            typeof st.addition === "string"
+              ? JSON.parse(st.addition || "{}")
+              : st.addition || {}
+          if (tokens.refresh_token)
+            stAddition.refresh_token = tokens.refresh_token
+          if (tokens.captcha_token)
+            stAddition.captcha_token = tokens.captcha_token
+          if (tokens.device_id) stAddition.device_id = tokens.device_id
+          st.addition = JSON.stringify(stAddition)
+          await saveDb(db)
+        }
       } catch (e) {
         console.warn("[thunderexpert] failed to persist token:", e)
       }
     })
     await driver.init?.()
-  } else if (normDriver === "thunder" || normDriver === "xunlei") {
+  } else if (
+    normDriver === "thunder" ||
+    normDriver === "xunlei" ||
+    normDriver === "thunderbrowser" ||
+    normDriver === "thunderx"
+  ) {
     const addition = parseAddition(storageConfig)
     driver = new ThunderDriver(addition, async (tokens) => {
       try {
+        if (tokens.device_id) addition.device_id = tokens.device_id
+        if (tokens.refresh_token) addition.refresh_token = tokens.refresh_token
+        if (tokens.captcha_token) addition.captcha_token = tokens.captcha_token
+        storageConfig.addition = JSON.stringify(addition)
+
         const db = await getDb()
         const st = (db.storages || []).find(
           (s: any) => s.id === storageConfig?.id,
         )
-        if (!st) return
-        const stAddition =
-          typeof st.addition === "string"
-            ? JSON.parse(st.addition || "{}")
-            : st.addition || {}
-        if (tokens.refresh_token)
-          stAddition.refresh_token = tokens.refresh_token
-        if (tokens.captcha_token)
-          stAddition.captcha_token = tokens.captcha_token
-        if (tokens.device_id) stAddition.device_id = tokens.device_id
-        st.addition = JSON.stringify(stAddition)
-        await saveDb(db)
+        if (st) {
+          const stAddition =
+            typeof st.addition === "string"
+              ? JSON.parse(st.addition || "{}")
+              : st.addition || {}
+          if (tokens.refresh_token)
+            stAddition.refresh_token = tokens.refresh_token
+          if (tokens.captcha_token)
+            stAddition.captcha_token = tokens.captcha_token
+          if (tokens.device_id) stAddition.device_id = tokens.device_id
+          st.addition = JSON.stringify(stAddition)
+          await saveDb(db)
+        }
       } catch (e) {
         console.warn("[thunder] failed to persist token:", e)
       }
