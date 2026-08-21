@@ -781,7 +781,8 @@
       "asc": "升序",
       "desc": "降序"
     },
-    "user_agent": "User-Agent 请求头"
+    "user_agent": "用户代理",
+    "user_agent-tips": "发送给蓝奏云 API 与直链解析时携带的客户端 User-Agent"
   },
   "LenovoNasShare": {
     "host": "Host",

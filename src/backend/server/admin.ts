@@ -1236,6 +1236,14 @@ const driverConfigs: Record<string, any> = {
         help: "分享页面解析域名",
       },
       {
+        name: "user_agent",
+        type: "string",
+        default:
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/142.0.0.0 OpenList/42",
+        required: true,
+        help: "发送给蓝奏云 API 与直链解析时携带的客户端 User-Agent",
+      },
+      {
         name: "repair_file_info",
         type: "bool",
         default: "false",
