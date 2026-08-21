@@ -292,6 +292,7 @@ export class Pan123Client {
   ): Promise<Pan123File[]> {
     const files: Pan123File[] = []
     let page = 1
+    let nextToken = "0"
     const maxPages = opts?.maxPages ?? 45
     for (;;) {
       // Cloudflare Workers subrequest 预算检查
@@ -314,7 +315,7 @@ export class Pan123Client {
       const query = new URLSearchParams({
         driveId: "0",
         limit: "100",
-        next: "0",
+        next: nextToken,
         orderBy: this.addition.order_by || "file_id",
         orderDirection: this.addition.order_direction || "desc",
         parentFileId: parentId,
@@ -341,7 +342,9 @@ export class Pan123Client {
         if (hit) return [hit]
       }
 
-      if (list.length === 0 || resp.data.Next === "-1") break
+      const nextVal = String(resp.data?.Next ?? "-1")
+      if (!resp.data || list.length === 0 || nextVal === "-1") break
+      nextToken = nextVal
       page++
     }
     return files

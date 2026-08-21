@@ -347,7 +347,7 @@ export async function getDriver(
 
 export async function listItems(
   virtualPath: string,
-): Promise<{ content: FileItem[]; provider: string }> {
+): Promise<{ content: FileItem[]; provider: string; storage?: any }> {
   const resolved = await resolvePath(virtualPath)
   let items: FileItem[] = []
   let driverName = "Virtual"
@@ -421,7 +421,7 @@ export async function listItems(
     }
   })
 
-  return { content: items, provider: driverName }
+  return { content: items, provider: driverName, storage: resolved.storage }
 }
 
 export async function getItem(

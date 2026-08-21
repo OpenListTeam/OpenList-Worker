@@ -152,10 +152,12 @@ export const usePath = () => {
     force?: boolean,
     onlyList = false,
   ) => {
+    const currentPagination = getPagination()
     if (!size) {
-      size = pagination.size
+      size =
+        objStore.page_size > 0 ? objStore.page_size : currentPagination.size
     }
-    if (size !== undefined && pagination.type === "all") {
+    if (size !== undefined && currentPagination.type === "all") {
       size = undefined
     }
     if (!onlyList && !shouldKeepState())
@@ -165,6 +167,9 @@ export const usePath = () => {
       resp,
       (data) => {
         setGlobalPage(index ?? 1)
+        if (data.page_size) {
+          ObjStore.setPageSize(data.page_size)
+        }
         if (append) {
           appendObjs(data.content)
         } else {
@@ -226,9 +231,10 @@ export const usePath = () => {
       const path = pathname()
       const scroll = window.scrollY
       clearHistory(path, globalPage)
+      const currentPagination = getPagination()
       if (
-        pagination.type === "load_more" ||
-        pagination.type === "auto_load_more"
+        currentPagination.type === "load_more" ||
+        currentPagination.type === "auto_load_more"
       ) {
         const page = globalPage
         resetGlobalPage()
@@ -242,6 +248,13 @@ export const usePath = () => {
       window.scroll({ top: scroll, behavior: "smooth" })
     },
     loadMore,
-    allLoaded: () => globalPage >= Math.ceil(objStore.total / pagination.size),
+    allLoaded: () => {
+      const effectiveSize =
+        objStore.page_size > 0 ? objStore.page_size : getPagination().size
+      return (
+        globalPage >=
+        Math.max(1, Math.ceil(objStore.total / (effectiveSize || 20)))
+      )
+    },
   }
 }

@@ -157,7 +157,7 @@ export class Pan115Driver implements StorageDriver {
         this.fidCache.set(f.fid, f.fid)
       }
       if (items.length >= count || files.length === 0) break
-      offset += this.pageSize
+      offset += files.length
     }
     return sortFileItems(
       items,
@@ -275,7 +275,7 @@ export class Pan115Driver implements StorageDriver {
       )
       if (hit) return hit
       if (files.length === 0 || offset + files.length >= count) break
-      offset += this.pageSize
+      offset += files.length
     }
     throw new Error(`file not found: ${rawName}`)
   }

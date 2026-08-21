@@ -197,8 +197,10 @@ export class QuarkClient {
     while (true) {
       query._page = String(page)
       const resp = await this.request<QuarkSortResp>("/file/sort", "GET", query)
+      const list = resp?.data?.list || []
+      if (list.length === 0) break
 
-      for (const file of resp.data.list) {
+      for (const file of list) {
         // HTML-unescape file names (the Go source does html.UnescapeString)
         file.file_name = unescapeHtml(file.file_name)
 
@@ -213,7 +215,8 @@ export class QuarkClient {
       }
 
       const total = resp.metadata?.total ?? 0
-      if (page * size >= total) break
+      if (total > 0 && page * size >= total) break
+      if (list.length < size) break
       page++
     }
 

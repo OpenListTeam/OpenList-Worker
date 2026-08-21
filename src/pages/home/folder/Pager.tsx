@@ -1,12 +1,17 @@
 import { Button, Flex, Text } from "@hope-ui/solid"
-import { Match, onCleanup, onMount, Show, Switch } from "solid-js"
+import { createMemo, Match, onCleanup, onMount, Show, Switch } from "solid-js"
 import { FullLoading, Paginator } from "~/components"
 import { getGlobalPage, usePath, useRouter, useT } from "~/hooks"
 import { clearHistory, getPagination, objStore, State } from "~/store"
 
 const Pagination = () => {
-  const pagination = getPagination()
   const { pathname, setSearchParams } = useRouter()
+  const pageSize = createMemo(() => {
+    if (objStore.page_size && objStore.page_size > 0) {
+      return objStore.page_size
+    }
+    return getPagination().size
+  })
   return (
     <Flex
       w="$full"
@@ -18,7 +23,7 @@ const Pagination = () => {
       <Paginator
         total={objStore.total}
         defaultCurrent={getGlobalPage()}
-        defaultPageSize={pagination.size}
+        defaultPageSize={pageSize()}
         onChange={(page) => {
           clearHistory(pathname(), page)
           setSearchParams({ page })
@@ -73,19 +78,19 @@ const AutoLoadMore = () => {
 }
 
 export const Pager = () => {
-  const pagination = getPagination()
+  const paginationType = createMemo(() => getPagination().type)
   return (
     <Switch>
       <Match when={objStore.state === State.FetchingMore}>
         <FullLoading py="$2" size="md" thickness={3} />
       </Match>
-      <Match when={pagination.type === "pagination"}>
+      <Match when={paginationType() === "pagination"}>
         <Pagination />
       </Match>
-      <Match when={pagination.type === "load_more"}>
+      <Match when={paginationType() === "load_more"}>
         <LoadMore />
       </Match>
-      <Match when={pagination.type === "auto_load_more"}>
+      <Match when={paginationType() === "auto_load_more"}>
         <AutoLoadMore />
       </Match>
     </Switch>

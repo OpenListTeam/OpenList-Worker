@@ -40,6 +40,7 @@ export interface Storage {
   web_proxy: boolean
   webdav_policy: WebdavPolicy
   disabled: boolean
+  page_size?: number
   mount_details?: MountDetails
 }
 

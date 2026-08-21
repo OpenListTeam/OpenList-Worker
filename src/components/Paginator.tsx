@@ -66,7 +66,8 @@ export const Paginator = (props: PaginatorProps) => {
   })
 
   const pages = createMemo(() => {
-    return Math.max(1, Math.ceil(merged.total / store.pageSize))
+    const validSize = Math.max(1, Math.floor(store.pageSize || 20))
+    return Math.max(1, Math.ceil(merged.total / validSize))
   })
 
   const size = {

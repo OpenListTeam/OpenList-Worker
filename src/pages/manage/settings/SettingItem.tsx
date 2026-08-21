@@ -56,9 +56,27 @@ const Item = (props: ItemProps) => {
         <Match when={[Type.String, Type.Number].includes(props.type)}>
           <Input
             type={props.type === Type.Number ? "number" : ""}
+            min={
+              props.type === Type.Number
+                ? props.key.includes("page_size")
+                  ? 1
+                  : 0
+                : undefined
+            }
+            step={props.type === Type.Number ? 1 : undefined}
             id={props.key}
             value={props.value}
-            onInput={(e) => props.onChange?.(e.currentTarget.value)}
+            onInput={(e) => {
+              if (
+                props.type === Type.Number &&
+                props.key.includes("page_size")
+              ) {
+                const clean = e.currentTarget.value.replace(/[^0-9]/g, "")
+                props.onChange?.(clean)
+              } else {
+                props.onChange?.(e.currentTarget.value)
+              }
+            }}
             readOnly={props.flag === Flag.READONLY}
           />
         </Match>

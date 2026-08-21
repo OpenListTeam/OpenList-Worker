@@ -195,7 +195,7 @@ fsRouter.post("/list", async (c) => {
       })
     }
 
-    const { content, provider } = await listItems(reqPath)
+    const { content, provider, storage } = await listItems(reqPath)
     // Normalize each item to the full Obj shape expected by the frontend
     const normalized = content.map((item: any) => ({
       name: item.name,
@@ -207,7 +207,38 @@ fsRouter.post("/list", async (c) => {
       thumb: item.thumb || "",
       type: item.type ?? 0,
     }))
-    const { content: pagedContent, total } = paginateItems(normalized)
+
+    let storagePageSize = 0
+    if (storage) {
+      storagePageSize = parseInt(storage.page_size, 10) || 0
+      if (!storagePageSize && storage.addition) {
+        try {
+          const addition =
+            typeof storage.addition === "string"
+              ? JSON.parse(storage.addition)
+              : storage.addition
+          storagePageSize = parseInt(addition?.page_size, 10) || 0
+        } catch {}
+      }
+    }
+
+    const effectivePerPage =
+      perPage > 0 ? perPage : storagePageSize > 0 ? storagePageSize : 0
+    const paginateStorageItems = <T>(items: T[]) => {
+      const total = items.length
+      if (effectivePerPage <= 0) {
+        return { content: items, total }
+      }
+      const pageNum = Math.max(1, page)
+      const start = (pageNum - 1) * effectivePerPage
+      const end = start + effectivePerPage
+      return {
+        content: items.slice(start, end),
+        total,
+      }
+    }
+
+    const { content: pagedContent, total } = paginateStorageItems(normalized)
     return c.json({
       code: 200,
       message: "success",
@@ -219,6 +250,7 @@ fsRouter.post("/list", async (c) => {
         write: true,
         write_content_bypass: false,
         provider,
+        page_size: effectivePerPage > 0 ? effectivePerPage : undefined,
       },
     })
   } catch (err: any) {

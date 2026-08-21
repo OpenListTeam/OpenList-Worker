@@ -17,6 +17,8 @@
     "remark": "备注",
     "cache_expiration": "缓存生存时长",
     "cache_expiration-tips": "该存储下缓存文件的生存时长 (单位：分钟)",
+    "page_size": "单页展示数量",
+    "page_size-tips": "该网盘的独立分页大小设置（0 或留空表示使用站点全局默认分页大小）",
     "custom_cache_policies": "自定义缓存策略",
     "custom_cache_policies-tips": "针对不同文件路径或类型的自定义缓存规则 (单位：分钟)",
     "down_proxy_url": "代理下载 URL",

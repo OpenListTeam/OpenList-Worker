@@ -19,6 +19,7 @@ export type FsListResp = Resp<{
   write: boolean
   write_content_bypass: boolean
   provider: string
+  page_size?: number
   direct_upload_tools?: string[]
 }>
 

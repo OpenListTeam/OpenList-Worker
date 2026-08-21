@@ -17,6 +17,8 @@
     "remark": "Remark",
     "cache_expiration": "Cache Expiration",
     "cache_expiration-tips": "The cache expiration time for this storage (minutes)",
+    "page_size": "Page Size",
+    "page_size-tips": "Items per page for this storage (0 or empty means follow global default)",
     "custom_cache_policies": "Custom Cache Policies",
     "custom_cache_policies-tips": "The cache expiration rules for this storage (minutes)",
     "down_proxy_url": "Download Proxy URL",

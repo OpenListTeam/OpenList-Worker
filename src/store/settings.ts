@@ -1,6 +1,7 @@
+import { createStore } from "solid-js/store"
 import { ext, recordToArray, strToRegExp } from "~/utils"
 
-const settings: Record<string, string> = {}
+const [settings, setSettingsStore] = createStore<Record<string, string>>({})
 
 const injectCustomContent = (
   containerId: string,
@@ -40,9 +41,7 @@ const injectCustomContent = (
 }
 
 export const setSettings = (items: Record<string, string>) => {
-  Object.keys(items).forEach((key) => {
-    settings[key] = items[key]
-  })
+  setSettingsStore(items)
   const version = settings["version"] || "Unknown"
   console.log(
     `%c OpenListNext %c ${version} %c https://github.com/OpenListTeam/OpenList`,
@@ -77,7 +76,10 @@ export const getSettingBool = (key: string) => {
 export const getSettingNumber = (key: string, defaultV?: number) => {
   const value = getSetting(key)
   if (value) {
-    return Number(value)
+    const num = Math.floor(Number(value))
+    if (!isNaN(num) && num >= 1) {
+      return num
+    }
   }
   return defaultV ?? 0
 }
@@ -144,9 +146,10 @@ export const getPagination = (): {
   size: number
   type: "all" | "pagination" | "load_more" | "auto_load_more"
 } => {
+  const rawSize = getSettingNumber("default_page_size", 20)
   return {
     type: (getSetting("pagination_type") || "pagination") as any,
-    size: getSettingNumber("default_page_size", 20),
+    size: rawSize >= 1 ? rawSize : 20,
   }
 }
 

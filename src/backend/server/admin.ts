@@ -263,6 +263,13 @@ const COMMON_FIELDS = [
   { name: "order", type: "number", default: "0", required: false, help: "" },
   { name: "remark", type: "string", default: "", required: false, help: "" },
   { name: "cache_expiration", type: "number", default: "30", required: false },
+  {
+    name: "page_size",
+    type: "number",
+    default: "0",
+    required: false,
+    help: "1",
+  },
 ]
 
 const driverConfigs: Record<string, any> = {

@@ -410,8 +410,14 @@ export class LanzouClient {
       } catch {
         break
       }
-      const list: any[] = resp.text || []
-      if (list.length === 0) break
+      if (
+        resp.zt !== 1 ||
+        !Array.isArray(resp.text) ||
+        resp.text.length === 0
+      ) {
+        break
+      }
+      const list: any[] = resp.text
 
       files.push(
         ...list.map((item) => ({

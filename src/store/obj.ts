@@ -24,6 +24,7 @@ const initialObjStore = {
 
   objs: [] as StoreObj[],
   total: 0,
+  page_size: 0,
 
   readme: "",
   header: "",
@@ -63,22 +64,13 @@ export const ObjStore = {
   setTotal: (total: number) => {
     setObjStore("total", total)
   },
+  setPageSize: (size: number) => setObjStore("page_size", size),
   setReadme: (readme: string) => setObjStore("readme", readme),
   setHeader: (header: string) => setObjStore("header", header),
   setRelated: (related: Obj[]) => setObjStore("related", related),
   setWrite: (write: boolean) => setObjStore("write", write),
   setWriteContentBypass: (write_content_bypass: boolean) =>
     setObjStore("write_content_bypass", write_content_bypass),
-  // setGetResp: (resp: FsGetResp) => {
-  //   setObjStore("obj", resp.data);
-  //   setObjs(resp.data.related);
-  //   setObjStore("readme", resp.data.readme);
-  // },
-  // setListResp: (resp: FsListResp) => {
-  //   setObjs(resp.data.content);
-  //   setObjStore("readme", resp.data.readme);
-  //   setObjStore("write", resp.data.write);
-  // },
   setState: (state: State) => setObjStore("state", state),
   setDirectUploadTools: (tools?: string[]) =>
     setObjStore("direct_upload_tools", tools),
