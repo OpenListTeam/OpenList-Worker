@@ -14,16 +14,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Enable corepack and install pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@9.15.4 --activate
-          pnpm --version
+      - name: Install pnpm
+        run: npm install -g pnpm@9.15.4
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
