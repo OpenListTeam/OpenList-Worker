@@ -132,7 +132,7 @@ export class S3Client {
   }
 
   private get bucketUrl(): string {
-    const ep = this.endpoint.replace(/\/+$/, "")
+    const ep = this.normalizedEndpoint
     if (this.pathStyle) {
       return `${ep}/${this.bucket}`
     }
@@ -140,7 +140,7 @@ export class S3Client {
   }
 
   private getSigningUrl(key: string): string {
-    const ep = this.endpoint.replace(/\/+$/, "")
+    const ep = this.normalizedEndpoint
     const encodedKey = key.split("/").map(encodeURIComponent).join("/")
 
     if (this.pathStyle) {
@@ -149,8 +149,16 @@ export class S3Client {
     return `https://${this.bucket}.${ep.replace(/^https?:\/\//, "")}/${encodedKey}`
   }
 
+  private get normalizedEndpoint(): string {
+    let ep = this.endpoint.replace(/\/+$/, "")
+    if (!/^https?:\/\//i.test(ep)) {
+      ep = `https://${ep}`
+    }
+    return ep
+  }
+
   private buildBaseUrl(): string {
-    const ep = this.endpoint.replace(/\/+$/, "")
+    const ep = this.normalizedEndpoint
     if (this.pathStyle) {
       return `${ep}/${this.bucket}`
     }

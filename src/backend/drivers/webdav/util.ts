@@ -25,53 +25,58 @@ function getAuthHeader(addition: WebDavAddition): string {
   return `Basic ${btoa(credentials)}`
 }
 
-function xmlTag(xml: string, tag: string): string | null {
-  const regex = new RegExp(`<[^>]*:${tag}[^>]*>([^<]*)</[^>]*:${tag}>`, "i")
-  const match = xml.match(regex)
-  if (match) return match[1]
-  const regex2 = new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`, "i")
-  const match2 = xml.match(regex2)
-  return match2 ? match2[1] : null
+function getTag(xml: string, localName: string): string | null {
+  const nsRe = new RegExp(`<[^>]*:${localName}[^>]*>([\\s\\S]*?)</[^>]*:${localName}>`, "i")
+  const m1 = xml.match(nsRe)
+  if (m1) return m1[1].trim()
+  const noNsRe = new RegExp(`<${localName}[^>]*>([\\s\\S]*?)</${localName}>`, "i")
+  const m2 = xml.match(noNsRe)
+  return m2 ? m2[1].trim() : null
+}
+
+function hasChildTag(xml: string, parentLocal: string, childLocal: string): boolean {
+  const re1 = new RegExp(`<[^>]*:${parentLocal}[^>]*>[\\s\\S]*?<[^>]*:${childLocal}[^>]*/?>[\\s\\S]*?</[^>]*:${parentLocal}>`, "i")
+  if (re1.test(xml)) return true
+  const re2 = new RegExp(`<${parentLocal}[^>]*>[\\s\\S]*?<${childLocal}[^>]*/?>[\\s\\S]*?</${parentLocal}>`, "i")
+  return re2.test(xml)
+}
+
+function getNestedBlock(xml: string, outerLocal: string, innerLocal: string): string | null {
+  const re = new RegExp(`<[^>]*${outerLocal}[^>]*>([\\s\\S]*?)</[^>]*${outerLocal}>`, "i")
+  const m = xml.match(re)
+  if (!m) return null
+  const inner = new RegExp(`<[^>]*${innerLocal}[^>]*>([\\s\\S]*?)</[^>]*${innerLocal}>`, "i")
+  const m2 = m[1].match(inner)
+  return m2 ? m2[1] : null
 }
 
 function parsePropfindXml(xml: string): WebDavResource[] {
   const items: WebDavResource[] = []
-  // Split by <d:response> or <D:response> or <response>
-  const responseBlocks = xml.split(/<[^>]*:response[^>]*>/i).slice(1)
-
-  for (const block of responseBlocks) {
-    const endIdx = block.toLowerCase().indexOf("</")
-    const section = endIdx !== -1 ? block.slice(0, endIdx) : block
-
-    // Extract href (may be <d:href> or <D:href>)
-    const hrefMatch = section.match(/<[^>]*:href[^>]*>([^<]*)</i) ||
-      section.match(/<href[^>]*>([^<]*)</i)
-    const href = hrefMatch ? hrefMatch[1] : ""
+  const re = /<[^>]*response[^>]*>([\s\S]*?)<\/[^>]*response>/gi
+  let m: RegExpExecArray | null
+  while ((m = re.exec(xml)) !== null) {
+    const block = m[1]
+    const href = getTag(block, "href") || ""
     if (!href) continue
-
-    // Check for 404 status in propstat
-    if (section.includes("404")) continue
-
-    const displayName = xmlTag(section, "displayname") || ""
-    const hasCollection = /<[^>]*collection[^>]*\/?\s*>/i.test(section)
-    const contentLength = parseInt(
-      xmlTag(section, "getcontentlength") || "0", 10,
-    ) || 0
-    const lastModified = xmlTag(section, "getlastmodified") || ""
-    const contentType = xmlTag(section, "getcontenttype") || ""
-    const etag = (xmlTag(section, "getetag") || "").replace(/"/g, "")
-
+    const propBlock = getNestedBlock(block, "propstat", "prop") || ""
+    const status = getTag(block, "status") || ""
+    if (status.includes("404")) continue
+    const displayName = getTag(propBlock, "displayname") || ""
+    const isCollection = hasChildTag(propBlock, "resourcetype", "collection")
+    const contentLength = parseInt(getTag(propBlock, "getcontentlength") || "0", 10) || 0
+    const lastModified = getTag(propBlock, "getlastmodified") || ""
+    const contentType = getTag(propBlock, "getcontenttype") || ""
+    const etag = (getTag(propBlock, "getetag") || "").replace(/"/g, "")
     items.push({
       href,
       displayName,
-      resourceType: hasCollection ? "collection" : "",
+      resourceType: isCollection ? "collection" : "",
       contentLength,
       lastModified,
       contentType,
       etag,
     })
   }
-
   return items
 }
 

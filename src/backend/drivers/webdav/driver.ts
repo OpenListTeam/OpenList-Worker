@@ -50,21 +50,19 @@ export class WebDavDriver implements StorageDriver {
     const davPath = this.client.resolvePath(physicalPath)
     const resources = await this.client.propfind(davPath, 1)
 
-    // First resource is the directory itself (Depth 0), skip it
+    // With Depth:1, server returns the directory itself + its direct children.
+    // Filter out the directory itself by matching href.
+    const dirHref = davPath.endsWith("/") ? davPath : `${davPath}/`
     const items: FileItem[] = []
-    for (let i = 0; i < resources.length; i++) {
-      const r = resources[i]
-      const itemPath = cleanPath(decodeURIComponent(r.href))
-      const rootPath = cleanPath(this.addition.root_folder_path || "/")
 
-      // Skip the directory itself (first item at Depth 0)
-      if (i === 0 && r.resourceType === "collection") continue
+    for (const r of resources) {
+      // Normalize href for comparison
+      const rHref = r.href.endsWith("/") ? r.href : `${r.href}/`
+      const dHref = dirHref.endsWith("/") ? dirHref : `${dirHref}/`
 
-      // Skip items that are at root level when listing root
-      const itemDir = dirname(itemPath)
-      if (itemDir === rootPath && physicalPath === "/") {
-        // This is a direct child of root, include it
-      }
+      // Skip the directory itself (href matches the requested path)
+      if (rHref === dHref || rHref === `${dHref}`) continue
+      if (r.resourceType === "collection" && decodeURIComponent(r.href).replace(/\/$/, "") === davPath.replace(/\/$/, "")) continue
 
       items.push(resourceToFileItem(r))
     }
