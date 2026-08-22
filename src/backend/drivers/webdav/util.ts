@@ -213,11 +213,13 @@ export class WebDavClient {
     return resources.length > 0 ? resources[0] : null
   }
 
-  /** Extract the path portion from the address URL (e.g. "https://dav.koofr.net/dav/Koofr" → "/dav/Koofr") */
+  /** Extract the path portion from the address URL, preserving leading slash.
+   *  e.g. "https://dav.koofr.net/dav/Koofr" → "/dav/Koofr"
+   *  Must keep leading slash because server PROPFIND hrefs always start with "/" */
   get addressPath(): string {
     try {
       const u = new URL(this.addition.address)
-      return cleanPath(u.pathname)
+      return u.pathname.replace(/\/+$/, "") || "/"
     } catch {
       return "/"
     }
