@@ -44,6 +44,9 @@
   "license": "AGPL-3.0",
   "devDependencies": {
     "@crowdin/cli": "^4.14.3",
+    "@rolldown/binding-linux-x64-gnu": "1.2.2",
+    "@rolldown/binding-linux-x64-musl": "1.2.2",
+    "@rolldown/binding-win32-x64-msvc": "1.2.2",
     "@types/bencode": "^2.0.4",
     "@types/crypto-js": "^4.2.2",
     "@types/mark.js": "^8.11.12",
