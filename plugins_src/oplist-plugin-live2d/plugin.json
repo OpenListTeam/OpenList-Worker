@@ -1,0 +1,72 @@
+{
+  "id": "oplist-plugin-live2d",
+  "name": "Live2D 动态看板娘",
+  "version": "1.0.1",
+  "description": "在页面角落嵌入可爱的 Live2D 互动看板娘，支持语音气泡互动、多款精美角色切换、一键隐藏与全屏问候交互。",
+  "author": "OpenList Contributors",
+  "homepage": "https://openlistnext.org",
+  "repository": "https://github.com/openlistnext/plugin-live2d",
+  "type": "ui",
+  "enabled": true,
+  "high_privilege": false,
+  "permissions": ["dom:inject"],
+  "tags": ["Live2D", "看板娘", "二次元", "挂件", "萌系"],
+  "config_schema": [
+    {
+      "key": "model",
+      "label": "看板娘预设模型",
+      "type": "select",
+      "options": [
+        "shizuku (静久 - 经典学生装)",
+        "koharu (小春 - 可爱萝莉)",
+        "haruto (春人 - 正太管家)",
+        "tororo (白猫 - 萌宠幼猫)",
+        "hijiki (黑猫 - 傲娇小黑)",
+        "wanko (狗狗 - 呆萌幼犬)",
+        "unitychan (Unity酱 - 活力少女)",
+        "z16 (战舰少女Z16)",
+        "hibiki (响 - 银发舰娘)",
+        "izumi (泉 - 和风少女)"
+      ],
+      "defaultValue": "shizuku (静久 - 经典学生装)",
+      "description": "选择喜爱的 Live2D 看板娘角色模型"
+    },
+    {
+      "key": "cdn_source",
+      "label": "CDN 加速镜像",
+      "type": "select",
+      "options": ["fastly.jsdelivr.net", "cdn.jsdelivr.net", "unpkg.com", "npm.elemecdn.com"],
+      "defaultValue": "fastly.jsdelivr.net",
+      "description": "选择适合网络环境的静态资源加速镜像"
+    },
+    {
+      "key": "position",
+      "label": "屏幕显示位置",
+      "type": "select",
+      "options": ["left-bottom (左下角)", "right-bottom (右下角)"],
+      "defaultValue": "left-bottom (左下角)",
+      "description": "设置看板娘在屏幕上的贴边显示位置"
+    },
+    {
+      "key": "welcome_text",
+      "label": "初始问候语",
+      "type": "string",
+      "defaultValue": "欢迎来到 OpenListNext！有什么想要查看的文件吗？",
+      "description": "看板娘登场时气泡中显示的问候语"
+    },
+    {
+      "key": "enable_hitokoto",
+      "label": "点击看板娘时显示趣味语录",
+      "type": "bool",
+      "defaultValue": true,
+      "description": "开启后点击看板娘身体会随机触发趣味对话"
+    }
+  ],
+  "config_values": {
+    "model": "shizuku (静久 - 经典学生装)",
+    "cdn_source": "fastly.jsdelivr.net",
+    "position": "left-bottom (左下角)",
+    "welcome_text": "欢迎来到 OpenListNext！有什么想要查看的文件吗？",
+    "enable_hitokoto": true
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "title": "Plugins",
+  "name": "Plugin Name",
+  "type": "Type",
+  "version": "Version",
+  "author": "Author",
+  "status_col": "Status",
+  "empty_desc": "No description provided",
+  "subtitle": "Manage and configure OpenListNext extensions with ZIP file upload and third-party URL installation",
+  "search_placeholder": "Search plugins by name, ID, description, or permissions...",
+  "filter_type": "Filter by type",
+  "types": {
+    "all": "All Types",
+    "ui": "UI & Widgets",
+    "preview": "Previewers",
+    "tool": "Tools",
+    "theme": "Themes & Effects",
+    "integration": "Integrations",
+    "system": "System Core"
+  },
+  "status": {
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "builtin": "Built-in",
+    "custom": "Custom",
+    "high_privilege": "High Privilege"
+  },
+  "actions": {
+    "install": "Install Plugin",
+    "reinstall": "Reinstall",
+    "uninstall": "Uninstall",
+    "config": "Settings",
+    "view_details": "Details",
+    "enable": "Enable",
+    "disable": "Disable",
+    "export": "Export Config",
+    "import": "Import Config",
+    "refresh": "Refresh",
+    "save": "Save Settings",
+    "cancel": "Cancel",
+    "install_url": "Install via URL"
+  },
+  "install_modal": {
+    "install_type": "Installation Source",
+    "zip_tab": "Upload ZIP Package",
+    "url_tab": "Install via URL",
+    "zip_file_label": "Plugin ZIP Package",
+    "zip_drop_title": "Click to select or drag & drop plugin ZIP file here",
+    "zip_drop_help": "Supports open-source plugin archives containing plugin.json / manifest.json",
+    "url_label": "Plugin Manifest URL",
+    "url_placeholder": "e.g.: https://raw.githubusercontent.com/.../plugin.json",
+    "url_help": "Supports open-source plugin JSON manifest links (GitHub Raw, jsDelivr, unpkg, etc.)",
+    "high_privilege_label": "Grant System High Privilege (Root / Admin Privileges)",
+    "high_privilege_help": "Allows direct access to low-level filesystem APIs, storage driver reloading, full site settings read/write, and raw HTTP requests",
+    "fetch_and_install": "Fetch and Install"
+  },
+  "config_modal": {
+    "title": "Plugin Configuration",
+    "no_config": "No configuration parameters required for this plugin.",
+    "save_success": "Plugin configuration saved successfully"
+  },
+  "delete_confirm": "Are you sure you want to uninstall and remove this plugin? This cannot be undone.",
+  "import_modal": {
+    "title": "Import Plugins Backup",
+    "paste_json": "Paste plugins JSON data here",
+    "import_success": "Plugins imported successfully"
+  },
+  "empty_installed": "No plugins installed yet. Click 'Install Plugin' to upload a ZIP package or install from URL."
+}

@@ -21,7 +21,8 @@
     "ldap": "LDAP 认证",
     "s3": "S3 服务",
     "ftp": "FTP 服务",
-    "traffic": "流量统计"
+    "traffic": "流量统计",
+    "plugins": "插件管理"
   },
   "title": "OpenListNext 管理后台",
   "not_admin": "您当前非管理员账号，请使用管理员账号登录后台。",

@@ -2168,3 +2168,272 @@ adminRouter.get("/scan/progress", (c) => {
     data: { total: 0, current: 0, speed: 0 },
   })
 })
+
+// --- Plugin Management API ---
+adminRouter.get("/plugin/list", async (c) => {
+  const db = await getDb(c.env)
+  if (!db.plugins) db.plugins = []
+  return c.json({
+    code: 200,
+    message: "success",
+    data: {
+      content: db.plugins,
+      total: db.plugins.length,
+    },
+  })
+})
+
+adminRouter.get("/plugin/get", async (c) => {
+  const id = c.req.query("id")
+  if (!id) {
+    return c.json({ code: 400, message: "id is required", data: null })
+  }
+  const db = await getDb(c.env)
+  if (!db.plugins) db.plugins = []
+  const plugin = db.plugins.find((p: any) => p.id === id)
+  if (!plugin) {
+    return c.json({ code: 404, message: "Plugin not found", data: null })
+  }
+  return c.json({ code: 200, message: "success", data: plugin })
+})
+
+adminRouter.post("/plugin/install", async (c) => {
+  try {
+    const body = await c.req.json()
+    let pluginData = body
+
+    // Support install by manifest URL
+    if (body.manifest_url && typeof body.manifest_url === "string") {
+      try {
+        const resp = await fetch(body.manifest_url)
+        if (!resp.ok) {
+          return c.json({
+            code: 400,
+            message: `Failed to fetch plugin manifest from URL: HTTP ${resp.status}`,
+            data: null,
+          })
+        }
+        const fetchedManifest = await resp.json()
+        pluginData = { ...fetchedManifest, ...body }
+      } catch (err: any) {
+        return c.json({
+          code: 400,
+          message: `Network error fetching plugin manifest: ${err.message || String(err)}`,
+          data: null,
+        })
+      }
+    }
+
+    if (!pluginData.id || !pluginData.name) {
+      return c.json({
+        code: 400,
+        message: "Plugin id and name are required",
+        data: null,
+      })
+    }
+
+    const db = await getDb(c.env)
+    if (!db.plugins) db.plugins = []
+
+    const existingIndex = db.plugins.findIndex(
+      (p: any) => p.id === pluginData.id,
+    )
+    const now = new Date().toISOString()
+    const newPlugin = {
+      id: pluginData.id,
+      name: pluginData.name,
+      version: pluginData.version || "1.0.0",
+      description: pluginData.description || "",
+      author: pluginData.author || "Unknown",
+      homepage: pluginData.homepage || "",
+      repository: pluginData.repository || "",
+      icon: pluginData.icon || "",
+      type: pluginData.type || "ui",
+      enabled:
+        pluginData.enabled !== undefined ? Boolean(pluginData.enabled) : true,
+      high_privilege: Boolean(pluginData.high_privilege),
+      permissions: Array.isArray(pluginData.permissions)
+        ? pluginData.permissions
+        : [],
+      entry_url: pluginData.entry_url || "",
+      script_content: pluginData.script_content || "",
+      style_content: pluginData.style_content || "",
+      config_schema: pluginData.config_schema || [],
+      config_values:
+        pluginData.config_values || pluginData.default_config || {},
+      target_hooks: pluginData.target_hooks || ["global"],
+      is_builtin: Boolean(pluginData.is_builtin),
+      tags: pluginData.tags || [],
+      created_at:
+        existingIndex >= 0 ? db.plugins[existingIndex].created_at : now,
+      updated_at: now,
+    }
+
+    if (existingIndex >= 0) {
+      db.plugins[existingIndex] = newPlugin
+    } else {
+      db.plugins.push(newPlugin)
+    }
+
+    await saveDb(db, c.env)
+    return c.json({
+      code: 200,
+      message: "Plugin installed successfully",
+      data: newPlugin,
+    })
+  } catch (err: any) {
+    return c.json({
+      code: 500,
+      message: err.message || "Failed to install plugin",
+      data: null,
+    })
+  }
+})
+
+adminRouter.post("/plugin/update", async (c) => {
+  try {
+    const body = await c.req.json()
+    if (!body.id) {
+      return c.json({ code: 400, message: "Plugin id is required", data: null })
+    }
+
+    const db = await getDb(c.env)
+    if (!db.plugins) db.plugins = []
+
+    const index = db.plugins.findIndex((p: any) => p.id === body.id)
+    if (index === -1) {
+      return c.json({ code: 404, message: "Plugin not found", data: null })
+    }
+
+    const current = db.plugins[index]
+    const updated = {
+      ...current,
+      ...body,
+      id: current.id, // prevent ID mutation
+      updated_at: new Date().toISOString(),
+    }
+
+    db.plugins[index] = updated
+    await saveDb(db, c.env)
+
+    return c.json({
+      code: 200,
+      message: "Plugin updated successfully",
+      data: updated,
+    })
+  } catch (err: any) {
+    return c.json({
+      code: 500,
+      message: err.message || "Failed to update plugin",
+      data: null,
+    })
+  }
+})
+
+adminRouter.post("/plugin/toggle", async (c) => {
+  try {
+    const body = await c.req.json()
+    if (!body.id) {
+      return c.json({ code: 400, message: "Plugin id is required", data: null })
+    }
+
+    const db = await getDb(c.env)
+    if (!db.plugins) db.plugins = []
+
+    const index = db.plugins.findIndex((p: any) => p.id === body.id)
+    if (index === -1) {
+      return c.json({ code: 404, message: "Plugin not found", data: null })
+    }
+
+    const targetEnabled =
+      body.enabled !== undefined
+        ? Boolean(body.enabled)
+        : !db.plugins[index].enabled
+
+    db.plugins[index].enabled = targetEnabled
+    db.plugins[index].updated_at = new Date().toISOString()
+    await saveDb(db, c.env)
+
+    return c.json({
+      code: 200,
+      message: targetEnabled ? "Plugin enabled" : "Plugin disabled",
+      data: { id: body.id, enabled: targetEnabled },
+    })
+  } catch (err: any) {
+    return c.json({
+      code: 500,
+      message: err.message || "Failed to toggle plugin",
+      data: null,
+    })
+  }
+})
+
+adminRouter.post("/plugin/delete", async (c) => {
+  try {
+    const queryId = c.req.query("id")
+    let id = queryId
+    if (!id) {
+      try {
+        const body = await c.req.json()
+        id = body.id
+      } catch {}
+    }
+
+    if (!id) {
+      return c.json({ code: 400, message: "Plugin id is required", data: null })
+    }
+
+    const db = await getDb(c.env)
+    if (!db.plugins) db.plugins = []
+
+    const initialLen = db.plugins.length
+    db.plugins = db.plugins.filter((p: any) => p.id !== id)
+
+    if (db.plugins.length === initialLen) {
+      return c.json({ code: 404, message: "Plugin not found", data: null })
+    }
+
+    await saveDb(db, c.env)
+    return c.json({
+      code: 200,
+      message: "Plugin deleted successfully",
+      data: null,
+    })
+  } catch (err: any) {
+    return c.json({
+      code: 500,
+      message: err.message || "Failed to delete plugin",
+      data: null,
+    })
+  }
+})
+
+adminRouter.post("/plugin/batch_save", async (c) => {
+  try {
+    const body = await c.req.json()
+    const plugins = Array.isArray(body) ? body : body.plugins
+    if (!Array.isArray(plugins)) {
+      return c.json({
+        code: 400,
+        message: "plugins array is required",
+        data: null,
+      })
+    }
+
+    const db = await getDb(c.env)
+    db.plugins = plugins
+    await saveDb(db, c.env)
+
+    return c.json({
+      code: 200,
+      message: "Plugins saved successfully",
+      data: { count: plugins.length },
+    })
+  } catch (err: any) {
+    return c.json({
+      code: 500,
+      message: err.message || "Failed to batch save plugins",
+      data: null,
+    })
+  }
+})

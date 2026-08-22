@@ -12,6 +12,7 @@ import settings_other from "./settings_other.json"
 import shares from "./shares.json"
 import storages from "./storages.json"
 import users from "./users.json"
+import plugins from "./plugins.json"
 
 export default {
   ...index,
@@ -28,4 +29,5 @@ export default {
   shares,
   storages,
   users,
+  plugins,
 }

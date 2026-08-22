@@ -47,6 +47,14 @@ const hide_routes: Route[] = [
     to: "/messenger",
     component: lazy(() => import("./messenger/Messenger")),
   },
+  {
+    to: "/plugins/add",
+    component: lazy(() => import("./plugins/AddPlugin")),
+  },
+  {
+    to: "/plugins/config/:id",
+    component: lazy(() => import("./plugins/ConfigPlugin")),
+  },
 ]
 
 const Placeholder = (props: { title: string; to: string }) => {

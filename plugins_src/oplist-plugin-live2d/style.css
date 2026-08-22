@@ -1,0 +1,202 @@
+/* Live2D Companion Container */
+.oplist-live2d-container {
+  position: fixed;
+  bottom: 0;
+  z-index: 9999;
+  user-select: none;
+  pointer-events: auto;
+  transition:
+    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.3s ease;
+}
+
+.oplist-live2d-container.position-left {
+  left: 12px;
+}
+
+.oplist-live2d-container.position-right {
+  right: 12px;
+}
+
+/* Dialog Speech Bubble */
+.oplist-live2d-dialog {
+  position: absolute;
+  top: -65px;
+  left: 50%;
+  transform: translateX(-50%) translateY(10px) scale(0.92);
+  width: 220px;
+  min-height: 48px;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 14px;
+  padding: 10px 14px;
+  box-shadow:
+    0 10px 25px -5px rgba(0, 0, 0, 0.1),
+    0 8px 10px -6px rgba(0, 0, 0, 0.06);
+  color: #1f2937;
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 500;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: auto;
+  z-index: 10000;
+}
+
+/* Dark Mode Adaptation */
+[data-theme="dark"] .oplist-live2d-dialog,
+.dark .oplist-live2d-dialog {
+  background: rgba(30, 32, 38, 0.88);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #f3f4f6;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+}
+
+.oplist-live2d-dialog.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+
+.oplist-live2d-dialog::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 12px;
+  height: 12px;
+  background: inherit;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"] .oplist-live2d-dialog::after,
+.dark .oplist-live2d-dialog::after {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.oplist-live2d-dialog .dialog-close {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: 14px;
+  color: #9ca3af;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px;
+  transition: color 0.2s;
+}
+
+.oplist-live2d-dialog .dialog-close:hover {
+  color: #ef4444;
+}
+
+/* Body & Canvas */
+.oplist-live2d-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+#oplist-live2d-canvas {
+  cursor: grab;
+  transition: filter 0.2s;
+}
+
+#oplist-live2d-canvas:active {
+  cursor: grabbing;
+}
+
+/* Interactive Hover Toolbar */
+.oplist-live2d-tools {
+  position: absolute;
+  top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  opacity: 0;
+  transform: translateX(10px);
+  transition: all 0.25s ease;
+  pointer-events: none;
+}
+
+.oplist-live2d-container.position-left .oplist-live2d-tools {
+  right: -28px;
+}
+
+.oplist-live2d-container.position-right .oplist-live2d-tools {
+  left: -28px;
+}
+
+.oplist-live2d-container:hover .oplist-live2d-tools {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.oplist-live2d-tools .tool-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+[data-theme="dark"] .oplist-live2d-tools .tool-btn,
+.dark .oplist-live2d-tools .tool-btn {
+  background: rgba(45, 48, 56, 0.9);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.oplist-live2d-tools .tool-btn:hover {
+  transform: scale(1.18);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
+  background: #3b82f6;
+  color: #fff;
+  border-color: #3b82f6;
+}
+
+/* Minimized Recall Button */
+.oplist-live2d-toggle-btn {
+  position: fixed;
+  bottom: 24px;
+  z-index: 9998;
+  padding: 8px 14px;
+  background: #3b82f6;
+  color: #ffffff;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+  transition: all 0.25s ease;
+  user-select: none;
+}
+
+.oplist-live2d-toggle-btn.position-left {
+  left: 20px;
+}
+
+.oplist-live2d-toggle-btn.position-right {
+  right: 20px;
+}
+
+.oplist-live2d-toggle-btn:hover {
+  transform: translateY(-3px) scale(1.05);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.5);
+  background: #2563eb;
+}

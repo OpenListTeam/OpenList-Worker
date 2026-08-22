@@ -136,3 +136,14 @@ publicRouter.get("/offline_download_tools", (c) => {
     data: [], // Serverless environment: no background download tools
   })
 })
+
+publicRouter.get("/plugins", async (c) => {
+  const db = await getDb(c.env)
+  const plugins = db.plugins || []
+  const activePlugins = plugins.filter((p: any) => p.enabled)
+  return c.json({
+    code: 200,
+    message: "success",
+    data: activePlugins,
+  })
+})

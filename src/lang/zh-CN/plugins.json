@@ -1,0 +1,69 @@
+{
+  "title": "插件系统",
+  "name": "插件名称",
+  "type": "类型",
+  "version": "版本",
+  "author": "作者",
+  "status_col": "状态",
+  "empty_desc": "暂无插件描述信息",
+  "subtitle": "管理与配置 OpenListNext 扩展插件，支持 ZIP 压缩包上传与第三方开源插件 URL 安装",
+  "search_placeholder": "搜索插件名称、唯一标识、描述或权限...",
+  "filter_type": "类型筛选",
+  "types": {
+    "all": "全部类型",
+    "ui": "界面与组件",
+    "preview": "预览扩展",
+    "tool": "功能工具",
+    "theme": "主题特效",
+    "integration": "服务集成",
+    "system": "系统核心"
+  },
+  "status": {
+    "enabled": "已启用",
+    "disabled": "已停用",
+    "builtin": "内置插件",
+    "custom": "自定义插件",
+    "high_privilege": "系统高权限"
+  },
+  "actions": {
+    "install": "安装插件",
+    "reinstall": "重新安装",
+    "uninstall": "卸载",
+    "config": "参数设置",
+    "view_details": "详情",
+    "enable": "启用",
+    "disable": "停用",
+    "export": "导出配置",
+    "import": "导入配置",
+    "refresh": "刷新",
+    "save": "保存设置",
+    "cancel": "取消",
+    "install_url": "通过 URL 安装"
+  },
+  "install_modal": {
+    "install_type": "安装方式",
+    "zip_tab": "ZIP 压缩包上传",
+    "url_tab": "URL 远程安装",
+    "zip_file_label": "插件 ZIP 压缩包",
+    "zip_drop_title": "点击选择或拖拽插件 ZIP 文件至此处",
+    "zip_drop_help": "支持包含 plugin.json / manifest.json 的开源插件压缩包",
+    "url_label": "插件清单 (Manifest) URL",
+    "url_placeholder": "例如: https://raw.githubusercontent.com/.../plugin.json",
+    "url_help": "支持第三方开源插件 JSON 清单链接 (GitHub Raw, jsDelivr, unpkg 等)",
+    "high_privilege_label": "授予系统高权限 (Root / Admin Privileges)",
+    "high_privilege_help": "开启后插件可直接访问底层的全局文件系统 API、存储驱动控制、全站配置读写及 HTTP 请求特权",
+    "fetch_and_install": "拉取并安装"
+  },
+  "config_modal": {
+    "title": "插件参数配置",
+    "no_config": "该插件无需额外配置参数。",
+    "save_success": "插件参数保存成功"
+  },
+  "delete_confirm": "确定要卸载并删除此插件吗？此操作无法撤销。",
+  "import_modal": {
+    "title": "导入插件备份",
+    "paste_json": "请粘贴插件 JSON 数据",
+    "import_success": "成功导入插件"
+  },
+  "empty_installed": "暂未安装任何插件，您可以点击右上角「安装插件」上传 ZIP 插件包或通过 URL 安装第三方开源插件。"
+}
