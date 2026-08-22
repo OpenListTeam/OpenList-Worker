@@ -17,6 +17,7 @@ import {
   ThunderExpertDriver,
 } from "../../drivers/thunder/driver"
 import { LanzouDriver } from "../../drivers/lanzou/driver"
+import { Cloud189Driver } from "../../drivers/189/driver"
 import { WebdavDriver } from "../../drivers/webdav/driver"
 import { WoPanDriver, normalizeWoPanAddition } from "../../drivers/wopan/driver"
 import { S3Driver, normalizeS3Addition } from "../../drivers/s3/driver"
@@ -307,6 +308,33 @@ export async function getDriver(
         await saveDb(db)
       } catch (e) {
         console.warn("[Lanzou] failed to persist cookie:", e)
+      }
+    })
+    await driver.init?.()
+  } else if (
+    normDriver === "189" ||
+    normDriver === "189cloud" ||
+    normDriver === "cloud189" ||
+    normDriver === "ctyun" ||
+    normDriver === "189pan"
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new Cloud189Driver(addition, async (cookie) => {
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        stAddition.cookie = cookie
+        st.addition = JSON.stringify(stAddition)
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[189Cloud] failed to persist cookie:", e)
       }
     })
     await driver.init?.()
