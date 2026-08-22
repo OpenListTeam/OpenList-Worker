@@ -1,44 +1,44 @@
 {
   "name": "openlistnext",
-  "installCommand": "pnpm install --no-frozen-lockfile",
+  "installCommand": "rm -f pnpm-lock.yaml && pnpm install --no-frozen-lockfile",
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist",
   "nodeVersion": "22.11.0",
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api/[...route]"
+      "source": "/api/*",
+      "destination": "/api/:splat"
     },
     {
-      "source": "/d/(.*)",
-      "destination": "/api/[...route]"
+      "source": "/d/*",
+      "destination": "/api/:splat"
     },
     {
-      "source": "/p/(.*)",
-      "destination": "/api/[...route]"
+      "source": "/p/*",
+      "destination": "/api/:splat"
     },
     {
-      "source": "/sd/(.*)",
-      "destination": "/api/[...route]"
+      "source": "/sd/*",
+      "destination": "/api/:splat"
     },
     {
-      "source": "/((?!api/|d/|sd/|p/).*)",
+      "source": "/*",
       "destination": "/index.html"
     }
   ],
   "headers": [
     {
-      "source": "/assets/(.*)",
+      "source": "/assets/*",
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "public,max-age=31536000,immutable"
+          "value": "public, max-age=31536000, immutable"
         }
       ]
     },
     {
-      "source": "/api/(.*)",
+      "source": "/api/*",
       "headers": [
         {
           "key": "Cache-Control",
@@ -48,12 +48,10 @@
     }
   ],
   "cloudFunctions": {
-    "nodejs": {
-      "maxDuration": 120,
-      "includeFiles": [
-        "public_data/**"
-      ]
-    }
+    "includeFiles": [
+      "public_data/*"
+    ],
+    "maxDuration": 120
   },
   "schedules": [
     {
