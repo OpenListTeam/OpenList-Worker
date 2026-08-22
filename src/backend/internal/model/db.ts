@@ -648,12 +648,12 @@ export function setEnvCtx(env: any) {
 }
 
 /**
- * Universal KV Storage Adapter for EdgeOne Makers / Cloudflare Workers
+ * Universal KV / Blob Storage Adapter for EdgeOne Makers & Cloudflare Workers
  */
 export function getKvBinding(envCtx?: any): {
   binding: any
   platform: string
-  mode: "binding" | "api" | "none"
+  mode: "binding" | "blob" | "api" | "none"
 } {
   if (envCtx) {
     globalEnvCtx = envCtx
@@ -664,42 +664,58 @@ export function getKvBinding(envCtx?: any): {
     (typeof process !== "undefined" ? process.env : {})
   const g = typeof globalThis !== "undefined" ? (globalThis as any) : {}
 
-  // 允许通过环境变量指定自定义绑定的 KV 变量名
+  // 1. 检测 EdgeOne Blob 存储 (单项上限 25MB，支持任意环境)
+  if (
+    typeof g.getStore === "function" ||
+    (env && typeof env.getStore === "function")
+  ) {
+    try {
+      const getStoreFn =
+        typeof g.getStore === "function" ? g.getStore : env.getStore
+      const blobStore =
+        getStoreFn("openlistnext_db") || getStoreFn("openlistnext")
+      if (blobStore && typeof blobStore.get === "function") {
+        return {
+          binding: blobStore,
+          platform: "EdgeOne Blob 存储 (openlistnext_db)",
+          mode: "blob",
+        }
+      }
+    } catch {}
+  }
+
+  // 2. 检测 KV 命名空间绑定
   const customKvName =
     (env && (env.EDGEONE_KV_NAME || env.KV_NAMESPACE || env.KV_NAME)) ||
     g.EDGEONE_KV_NAME ||
     g.KV_NAMESPACE
 
   const candidates = [
-    customKvName,
-    "EDGEONE_KV",
-    "edgeone_kv",
-    "EO_KV",
-    "eo_kv",
-    "OPENLISTNEXT_KV",
-    "openlistnext_kv",
-    "OPENLISTNEXT_KV_ID",
-    "KV",
-    "kv",
-    "CF_KV",
-    "cf_kv",
-    "DATABASE_KV",
-    "database_kv",
-    "openlist_kv",
-    "OPENLIST_KV",
-  ].filter(Boolean) as string[]
+    ...(customKvName ? [{ key: customKvName, name: customKvName }] : []),
+    { key: "EDGEONE_KV", name: "EDGEONE_KV" },
+    { key: "EO_KV", name: "EO_KV" },
+    { key: "OPENLISTNEXT_KV", name: "OPENLISTNEXT_KV" },
+    { key: "OPENLISTNEXT_KV_ID", name: "OPENLISTNEXT_KV_ID" },
+    { key: "KV", name: "KV" },
+    { key: "CF_KV", name: "CF_KV" },
+    { key: "DATABASE_KV", name: "DATABASE_KV" },
+  ]
 
-  for (const name of candidates) {
-    const b = (env && env[name]) || g[name]
-    if (b && typeof b.get === "function" && typeof b.put === "function") {
+  for (const c of candidates) {
+    const b = (env && env[c.key]) || g[c.key]
+    if (
+      b &&
+      typeof b.get === "function" &&
+      (typeof b.put === "function" || typeof b.set === "function")
+    ) {
       const isEdgeOne =
-        name.toLowerCase().includes("edgeone") ||
-        name.toLowerCase().includes("eo") ||
+        c.key.startsWith("EDGEONE") ||
+        c.key.startsWith("EO") ||
         Boolean(env && (env.EDGEONE || env.EO_REGION || env.EDGEONE_KV_NAME)) ||
-        Boolean(g.EDGEONE_KV || g.EO_KV || g.edgeone_kv)
+        Boolean(g.EDGEONE_KV || g.EO_KV)
       const platformName = isEdgeOne
-        ? `EdgeOne KV (${name})`
-        : `Cloudflare / EdgeOne KV (${name})`
+        ? `EdgeOne KV (${c.name})`
+        : `Cloudflare / EdgeOne KV (${c.name})`
 
       return {
         binding: b,
@@ -709,26 +725,7 @@ export function getKvBinding(envCtx?: any): {
     }
   }
 
-  // 动态扫描 env / globalThis 下任意实现了 get 和 put 的 KV 对象
-  if (env && typeof env === "object") {
-    for (const key of Object.keys(env)) {
-      const b = env[key]
-      if (
-        b &&
-        typeof b === "object" &&
-        typeof b.get === "function" &&
-        typeof b.put === "function"
-      ) {
-        return {
-          binding: b,
-          platform: `EdgeOne / Cloudflare KV (${key})`,
-          mode: "binding",
-        }
-      }
-    }
-  }
-
-  // Cloudflare REST API Check
+  // 3. Cloudflare REST API 模式
   const cfAccountId =
     env.CF_ACCOUNT_ID ||
     (typeof process !== "undefined" ? process.env.CF_ACCOUNT_ID : "")
@@ -763,28 +760,32 @@ async function readFromKv(
   if (mode === "none" || !binding) return null
 
   try {
-    if (mode === "binding") {
+    if (mode === "blob") {
+      // Blob 存储支持直接获取 JSON 或 text
+      if (typeof binding.getJSON === "function") {
+        const val = await binding.getJSON(key)
+        if (val) return val
+      }
+      const val = await binding.get(key)
+      if (val) {
+        if (typeof val === "object" && !(val instanceof Blob)) return val
+        const text =
+          typeof val.text === "function" ? await val.text() : String(val)
+        return JSON.parse(text)
+      }
+    } else if (mode === "binding") {
       let val: any = null
       try {
+        // Cloudflare KV 支持 (key, "text")，EdgeOne KV 支持 (key)
         val = await binding.get(key, "text")
       } catch {
-        try {
-          val = await binding.get(key)
-        } catch {}
+        val = await binding.get(key)
       }
       if (val === undefined || val === null) {
-        try {
-          val = await binding.get(key)
-        } catch {}
+        val = await binding.get(key)
       }
-      if (!val) return null
-      if (typeof val === "object") return val
-      if (typeof val === "string") {
-        try {
-          return JSON.parse(val)
-        } catch {
-          return null
-        }
+      if (val) {
+        return typeof val === "string" ? JSON.parse(val) : val
       }
     } else if (binding.type === "cf_rest") {
       const url = `https://api.cloudflare.com/client/v4/accounts/${binding.accountId}/storage/kv/namespaces/${binding.namespaceId}/values/${key}`
@@ -797,7 +798,7 @@ async function readFromKv(
       }
     }
   } catch (err) {
-    console.error("[KV Store] Error reading key:", key, err)
+    console.error("[KV/Blob Store] Error reading key:", key, err)
   }
   return null
 }
@@ -813,9 +814,28 @@ async function saveToKv(
   const valStr = JSON.stringify(data)
 
   try {
-    if (mode === "binding") {
-      await binding.put(key, valStr)
-      return true
+    if (mode === "blob") {
+      if (typeof binding.setJSON === "function") {
+        await binding.setJSON(key, data)
+        return true
+      }
+      if (typeof binding.put === "function") {
+        await binding.put(key, valStr)
+        return true
+      }
+      if (typeof binding.set === "function") {
+        await binding.set(key, valStr)
+        return true
+      }
+    } else if (mode === "binding") {
+      if (typeof binding.put === "function") {
+        await binding.put(key, valStr)
+        return true
+      }
+      if (typeof binding.set === "function") {
+        await binding.set(key, valStr)
+        return true
+      }
     } else if (binding.type === "cf_rest") {
       const url = `https://api.cloudflare.com/client/v4/accounts/${binding.accountId}/storage/kv/namespaces/${binding.namespaceId}/values/${key}`
       const res = await fetch(url, {
@@ -829,7 +849,7 @@ async function saveToKv(
       return res.ok
     }
   } catch (err) {
-    console.error("[KV Store] Error writing key:", key, err)
+    console.error("[KV/Blob Store] Error writing key:", key, err)
   }
   return false
 }
@@ -867,7 +887,7 @@ const LEGACY_SETTING_MIGRATIONS: Record<string, { from: any[]; to: string }> = {
 
 const ensureDefaultSettings = (db: any) => {
   if (!db) return
-  if (!Array.isArray(db.settings)) {
+  if (!db.settings) {
     db.settings = []
   }
   let modified = false
@@ -914,7 +934,7 @@ const ensureDefaultSettings = (db: any) => {
 
   // Preserve any custom user-added settings not present in defaultDb
   for (const s of db.settings) {
-    if (s && s.key && !seenKeys.has(s.key)) {
+    if (s.key && !seenKeys.has(s.key)) {
       seenKeys.add(s.key)
       newSettings.push(s)
     }
@@ -928,14 +948,14 @@ const ensureDefaultSettings = (db: any) => {
 
 const ensureDefaultStorages = (db: any) => {
   if (!db) return
-  if (!Array.isArray(db.storages)) {
+  if (!db.storages) {
     db.storages = []
   }
 }
 
 const ensureDefaultShares = (db: any) => {
   if (!db) return
-  if (!Array.isArray(db.shares)) {
+  if (!db.shares) {
     db.shares = []
   }
 }
@@ -945,12 +965,12 @@ export const getDb = async (envCtx?: any) => {
     globalEnvCtx = envCtx
   }
 
-  // Priority 1: Cloudflare / EdgeOne KV Namespace Storage
+  // Priority 1: Cloudflare KV Namespace Storage
   const kvInfo = getKvBinding(envCtx)
   if (kvInfo.mode !== "none") {
     try {
       const kvConfig = await readFromKv(kvInfo, "openlistnext_config")
-      if (kvConfig && typeof kvConfig === "object") {
+      if (kvConfig) {
         memoryDb = kvConfig
         ensureDefaultSettings(memoryDb)
         ensureDefaultStorages(memoryDb)
@@ -988,7 +1008,6 @@ export const getDb = async (envCtx?: any) => {
 
   // Priority 3: In-Memory DB
   memoryDb = JSON.parse(JSON.stringify(defaultDb))
-  ensureDefaultSettings(memoryDb)
   ensureDefaultStorages(memoryDb)
   ensureDefaultShares(memoryDb)
   return memoryDb

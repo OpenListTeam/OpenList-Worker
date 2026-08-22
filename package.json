@@ -27,7 +27,7 @@
     "start": "node dist/api/[...route].js",
     "dev": "vite --port 3000 --host 0.0.0.0",
     "build": "vite build && npm run build:edge",
-    "build:edge": "esbuild api/[...route].ts edge-functions/api/[[route]].ts edge-functions/d/[[route]].ts edge-functions/p/[[route]].ts edge-functions/sd/[[route]].ts --bundle --platform=neutral --outdir=dist --minify --format=esm",
+    "build:edge": "node scripts/build-edge.mjs",
     "dev:worker": "wrangler dev",
     "deploy:worker": "wrangler deploy --yes",
     "deploy": "node scripts/deploy.js",

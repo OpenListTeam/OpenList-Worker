@@ -19,29 +19,15 @@ app.use("*", async (c, next) => {
 // 在 Serverless 环境中，所有逻辑都是无状态的且由请求触发。
 // 这里不应该初始化任何常驻的后台任务 (如 Cron 或 线程池)。
 
-// 挂载 API 到 /api 以及根路径（适配不同网关是否剥离 /api 前缀）
+// 挂载 API 到 /api
 const api = new Hono()
 setupRouter(api)
 app.route("/api", api)
-app.route("/", api)
 
 // Mount specific short paths at root for better compatibility
 app.route("/d", rawRouter)
 app.route("/sd", rawRouter)
 app.route("/p", rawRouter)
-
-// 全局异常捕获，避免抛出未捕获错误导致 500 HTML 报错
-app.onError((err, c) => {
-  console.error(`[Backend Error] ${c.req.method} ${c.req.path}:`, err)
-  return c.json(
-    {
-      code: 500,
-      message: err?.message || String(err),
-      data: null,
-    },
-    500,
-  )
-})
 
 // Catch-all handler for static assets & SPA frontend serving via Cloudflare Assets
 app.all("*", async (c) => {

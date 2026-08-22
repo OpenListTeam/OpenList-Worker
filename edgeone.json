@@ -1,7 +1,9 @@
 {
+  "name": "openlistnext",
+  "installCommand": "pnpm install --no-frozen-lockfile",
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist",
-  "installCommand": "pnpm install --no-frozen-lockfile",
+  "nodeVersion": "22.11.0",
   "cleanUrls": true,
   "rewrites": [
     {
@@ -21,8 +23,45 @@
       "destination": "/api/[...route]"
     },
     {
-      "source": "/*",
+      "source": "/((?!api/|d/|sd/|p/).*)",
       "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public,max-age=31536000,immutable"
+        }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    }
+  ],
+  "cloudFunctions": {
+    "nodejs": {
+      "maxDuration": 120,
+      "includeFiles": [
+        "public_data/**"
+      ]
+    }
+  },
+  "schedules": [
+    {
+      "name": "token-refresh",
+      "cron": "0 */6 * * *",
+      "path": "/api/task/refresh",
+      "method": "POST",
+      "timezone": "Asia/Shanghai"
     }
   ]
 }

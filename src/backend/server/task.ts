@@ -1,6 +1,48 @@
 import { Hono } from "hono"
+import { getDb, saveDb } from "../internal/model/db"
+import { getDriver } from "../internal/op/storage"
 
 export const taskRouter = new Hono()
+
+// 定时任务调度接口：刷新所有已启用网盘驱动的 Token / 状态并持久化
+taskRouter.all("/refresh", async (c) => {
+  const db = await getDb(c.env)
+  let refreshed = 0
+  let failed = 0
+  const results: any[] = []
+
+  for (const s of db.storages || []) {
+    if (s.disabled) continue
+    try {
+      const driver = await getDriver(s.driver, s)
+      await driver.init?.()
+      s.status = "work"
+      refreshed++
+      results.push({
+        id: s.id,
+        mount_path: s.mount_path,
+        driver: s.driver,
+        status: "ok",
+      })
+    } catch (err: any) {
+      failed++
+      results.push({
+        id: s.id,
+        mount_path: s.mount_path,
+        driver: s.driver,
+        status: "failed",
+        error: err?.message || String(err),
+      })
+    }
+  }
+
+  await saveDb(db, c.env)
+  return c.json({
+    code: 200,
+    message: "token refresh executed",
+    data: { refreshed, failed, total: db.storages?.length || 0, results },
+  })
+})
 
 // In-memory or stateless placeholder for task management in serverless
 const tasks: Record<string, any[]> = {
