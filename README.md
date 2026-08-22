@@ -22,7 +22,7 @@ OpenListNext 是 [OpenList](https://github.com/OpenListTeam/OpenList) 的定制�
 - 🔗 文件永久链接、直链下载、分享链接（含提取码）
 - 🌙 黑暗模式、国际化（中 / 英）
 - 🔐 JWT 认证、密码保护、后台管理
-- ☁️ 多网盘驱动：夸克网盘、阿里云盘、Google Drive、OneDrive、百度网盘、123 云盘、本地文件系统
+- ☁️ 多网盘驱动：夸克网盘、阿里云盘、Google Drive、OneDrive、百度网盘、123 云盘、S3 兼容存储（AWS S3 / MinIO / R2 / OSS / COS）、WebDAV、本地文件系统
 - ⚡ 边缘部署：Cloudflare Workers / Vercel / Serverless 开箱即用
 
 ---
@@ -50,7 +50,7 @@ OpenListNext 是 [OpenList](https://github.com/OpenListTeam/OpenList) 的定制�
 ┌──────────────────────▼──────────────────────────────┐
 │     存储驱动层：Local · Quark · AliyundriveOpen ·    │
 │           GoogleDrive · Onedrive · BaiduNetdisk      │
-│                   · 123Pan                           │
+│          · 123Pan · S3 · WebDAV                      │
 └──────────────────────┬──────────────────────────────┘
                        │ 持久化
         ┌──────────────┴───────────────┐

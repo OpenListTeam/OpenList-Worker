@@ -36,12 +36,19 @@
 - [x] 夸克网盘 (Quark Drive) - _Implemented + download headers (Cookie/Referer)_
 - [x] 百度网盘 (Baidu Netdisk) - _Re-ported from Go v4 driver (driver.go/util.go/types.go/meta.go): official/crack/crack_video download, chunked upload + rapid upload, MD5 obfuscation (EncryptMd5/DecryptMd5), vip slice sizes, dynamic upload domain, token persistence_
 - [x] S3 - _Re-implemented with Web Crypto API (AWS Signature v4), supports AWS S3 / MinIO / R2 / OSS / COS_
+  - 修复 SignatureDoesNotMatch: URL 双斜杠（`keyUrl('')` 尾部 `/` + `/?query`）→ 去掉多余 `/`
+  - 修复 deleteObjects: canonical path 误含 `?delete`、query string 缺少 `=`
+  - 重写 uriEncode 为 RFC 3986 规范（旧实现漏编码 `! ' ( )`）
+  - 路径段编码改用 uriEncode 替代 encodeURIComponent
+  - buildCanonicalQuery 排序改用 code-point 比较替代 localeCompare
 - [ ] 天翼云盘 (189Cloud)
 - [ ] FTP / SFTP
 - [ ] PikPak
 - [ ] Seafile
 - [ ] 又拍云对象存储 (Upyun)
-- [x] WebDAV
+- [x] WebDAV - _Implemented with PROPFIND/MKCOL/PUT/DELETE/MOVE/COPY_
+  - 修复路径嵌套重复: addressPath 用 `cleanPath()` 去掉前导 `/`，导致 self-entry 过滤失败，子目录列表出现多余父目录名
+  - 修复: addressPath 改用 `u.pathname` 保留前导 `/`
 - [ ] Teambition
 - [ ] MediaFire
 - [ ] 分秒帧 (Fenmiao)
@@ -58,7 +65,7 @@
 - [x] KV 持久化（OPENLISTNEXT_KV binding，wrangler.toml 已配置）
 - [x] 动态 base 移除（静态资源 /assets/\* 直接由 ASSETS binding 提供）
 - [x] 回归测试：scripts/test-workers-env.mts (11 项)
-- [x] 驱动注册：Local（守卫）/ Quark / BaiduNetdisk / 123Pan / Onedrive / AliyundriveOpen / GoogleDrive
+- [x] 驱动注册：Local（守卫）/ Quark / BaiduNetdisk / 123Pan / Onedrive / AliyundriveOpen / GoogleDrive / S3 / WebDAV
 
 ## Developer TODOs
 
@@ -78,3 +85,17 @@
 - [x] 中英文语言 JSON 完善（15 个文件 key 完全一致 + 代码引用 0 缺失）
 - [x] 生产构建修复（移除 vite-plugin-dynamic-base，资源路径恢复正常）
 - [x] 关于页面改为本地打包 README（离线可用）
+
+## Changelog
+
+### 2026-08-22
+
+- **fix(s3)**: 修复 SignatureDoesNotMatch (403)
+  - URL 构造双斜杠: `keyUrl('')` 返回 `.../bucket/`，`/?query` 再拼 `/` → `.../bucket//?query`，实际请求路径与签名路径不一致
+  - deleteObjects: canonical path 误含 `?delete`，query string `delete` 缺少 `=`
+  - uriEncode 重写为 RFC 3986 规范（旧 `encodeURIComponent` 漏编码 `! ' ( )`）
+  - 路径段编码统一用 `uriEncode` 替代 `encodeURIComponent`
+  - buildCanonicalQuery 排序从 `localeCompare` 改为 code-point 比较
+- **fix(webdav)**: 修复路径嵌套重复（Koofr/Koofr 双层文件夹）
+  - `addressPath` getter 用 `cleanPath()` 去掉前导 `/`，与服务器 href（始终以 `/` 开头）前缀匹配失败，self-entry 泄漏为子项
+  - 修复: `addressPath` 改用 `u.pathname` 保留前导 `/`
