@@ -7,6 +7,9 @@ import {
   CapacityResp189,
   AppConfResp189,
   EncryptConfResp189,
+  InitMultiUploadResp189,
+  UploadPart189,
+  UploadUrlsResp189,
 } from "./types"
 import {
   rsaEncode,
@@ -14,6 +17,7 @@ import {
   hmacSha1Hex,
   randomUUID189,
   randomNoCache,
+  md5Base64,
 } from "./crypto"
 
 /** Cookie 辅助函数 */
@@ -91,6 +95,7 @@ export class Pan189Client {
   private addition: Cloud189Addition
   private cookie: string = ""
   private sessionKey: string = ""
+  private rsa = { pubKey: "", pkId: "", expire: 0 }
   private onCookieUpdate?: (cookie: string) => void | Promise<void>
 
   constructor(
@@ -108,6 +113,10 @@ export class Pan189Client {
 
   public getRootId(): string {
     return this.addition.root_folder_id || "-11"
+  }
+
+  public setSessionKey(sessionKey: string): void {
+    this.sessionKey = sessionKey
   }
 
   /** Headers required when proxying a generated 189Cloud download URL. */
@@ -628,6 +637,160 @@ export class Pan189Client {
     }
 
     return downloadUrl
+  }
+
+  private async getSessionKey(): Promise<string> {
+    const resp = await this.request<any>(
+      "https://cloud.189.cn/v2/getUserBriefInfo.action",
+      { method: "GET" },
+    )
+    const sessionKey = String(resp.sessionKey || "")
+    if (!sessionKey) throw new Error("[189Cloud] 获取上传 SessionKey 失败")
+    return sessionKey
+  }
+
+  private async getResKey(): Promise<{ pubKey: string; pkId: string }> {
+    if (this.rsa.pubKey && this.rsa.pkId && this.rsa.expire > Date.now()) {
+      return this.rsa
+    }
+    const resp = await this.request<any>(
+      "https://cloud.189.cn/api/security/generateRsaKey.action",
+      { method: "GET" },
+    )
+    const pubKey = String(resp.pubKey || "")
+    const pkId = String(resp.pkId || "")
+    if (!pubKey || !pkId) throw new Error("[189Cloud] 获取上传 RSA 公钥失败")
+    this.rsa = {
+      pubKey,
+      pkId,
+      expire: Number(resp.expire) || Date.now() + 5 * 60_000,
+    }
+    return this.rsa
+  }
+
+  /** Call the encrypted upload.cloud.189.cn API used by OpenList. */
+  private async uploadRequest<T = any>(
+    uri: string,
+    form: Record<string, string>,
+  ): Promise<T> {
+    if (!this.sessionKey) this.sessionKey = await this.getSessionKey()
+    const requestDate = String(Date.now())
+    const requestId = randomUUID189()
+    const randomKey = randomUUID189("xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx").slice(
+      0,
+      16 + Math.floor(Math.random() * 17),
+    )
+    const params = Object.keys(form)
+      .sort()
+      .map((key) => `${key}=${form[key]}`)
+      .join("&")
+    const encryptedParams = aes128EcbEncryptHex(params, randomKey.slice(0, 16))
+    const signature = hmacSha1Hex(
+      `SessionKey=${this.sessionKey}&Operate=GET&RequestURI=${uri}&Date=${requestDate}&params=${encryptedParams}`,
+      randomKey,
+    )
+    const { pubKey, pkId } = await this.getResKey()
+    const headers: Record<string, string> = {
+      accept: "application/json;charset=UTF-8",
+      SessionKey: this.sessionKey,
+      Signature: signature,
+      "X-Request-Date": requestDate,
+      "X-Request-ID": requestId,
+      EncryptionText: rsaEncode(randomKey, pubKey, false),
+      PkId: pkId,
+    }
+    if (this.cookie) headers.Cookie = this.cookie
+
+    const response = await fetch(
+      `https://upload.cloud.189.cn${uri}?params=${encryptedParams}`,
+      { method: "GET", headers },
+    )
+    await this.updateCookie(response.headers)
+    const text = await response.text()
+    if (!response.ok) {
+      throw new Error(
+        `[189Cloud] 上传接口 HTTP ${response.status}: ${text.slice(0, 200)}`,
+      )
+    }
+    let data: any
+    try {
+      data = parseJsonPreservingIds(text)
+    } catch {
+      throw new Error(`[189Cloud] 上传接口返回无效响应: ${text.slice(0, 200)}`)
+    }
+    if (data.code !== "SUCCESS") {
+      throw new Error(
+        data.msg || data.message || `[189Cloud] 上传接口失败: ${uri}`,
+      )
+    }
+    return data as T
+  }
+
+  async createMultiUpload(
+    parentFolderId: string,
+    fileName: string,
+    fileSize: number,
+    fileMd5: string,
+  ): Promise<{
+    uploadFileId: string
+    fileDataExists: boolean
+    sessionKey: string
+  }> {
+    const sessionKey = await this.getSessionKey()
+    this.sessionKey = sessionKey
+    const sliceMd5 = fileMd5
+    const response = await this.uploadRequest<InitMultiUploadResp189>(
+      "/person/initMultiUpload",
+      {
+        parentFolderId,
+        fileName: encodeURIComponent(fileName).replace(/%20/g, "+"),
+        fileSize: String(fileSize),
+        sliceSize: String(10 * 1024 * 1024),
+        fileMd5,
+        sliceMd5,
+      },
+    )
+    const uploadFileId = String(response.data?.uploadFileId || "")
+    if (!uploadFileId)
+      throw new Error("[189Cloud] 创建上传会话失败：缺少 uploadFileId")
+    return {
+      uploadFileId,
+      fileDataExists: String(response.data?.fileDataExists || "0") === "1",
+      sessionKey,
+    }
+  }
+
+  async getMultiUploadUrls(
+    uploadFileId: string,
+    partNumber: number,
+    content: Uint8Array,
+  ): Promise<UploadPart189> {
+    const response = await this.uploadRequest<UploadUrlsResp189>(
+      "/person/getMultiUploadUrls",
+      {
+        partInfo: `${partNumber}-${md5Base64(content)}`,
+        uploadFileId,
+      },
+    )
+    const uploadPart = response.uploadUrls?.[`partNumber_${partNumber}`]
+    if (!uploadPart?.requestURL) {
+      throw new Error(`[189Cloud] 获取第 ${partNumber} 个分片上传地址失败`)
+    }
+    return uploadPart
+  }
+
+  async commitMultiUpload(
+    uploadFileId: string,
+    fileMd5: string,
+    sliceMd5: string,
+  ): Promise<void> {
+    await this.uploadRequest("/person/commitMultiUploadFile", {
+      uploadFileId,
+      fileMd5,
+      sliceMd5,
+      lazyCheck: "1",
+      opertype: "3",
+    })
   }
 
   /**

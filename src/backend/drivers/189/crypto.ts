@@ -241,6 +241,21 @@ export function hmacSha1Hex(data: string, key: string): string {
   return CryptoJS.HmacSHA1(data, key).toString(CryptoJS.enc.Hex)
 }
 
+/** MD5 helpers used by the 189Cloud multi-part upload protocol. */
+function toWordArray(data: Uint8Array | string) {
+  return typeof data === "string"
+    ? CryptoJS.enc.Utf8.parse(data)
+    : CryptoJS.lib.WordArray.create(data as any)
+}
+
+export function md5Hex(data: Uint8Array | string): string {
+  return CryptoJS.MD5(toWordArray(data)).toString(CryptoJS.enc.Hex)
+}
+
+export function md5Base64(data: Uint8Array | string): string {
+  return CryptoJS.MD5(toWordArray(data)).toString(CryptoJS.enc.Base64)
+}
+
 /**
  * 生成 189 专用的 UUID 格式随机字符串
  */

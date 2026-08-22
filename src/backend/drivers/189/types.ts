@@ -123,3 +123,11 @@ export interface UploadUrlsResp189 {
   code: string
   uploadUrls?: Record<string, UploadPart189>
 }
+
+export interface InitMultiUploadResp189 {
+  code?: string
+  data?: {
+    uploadFileId?: string | number
+    fileDataExists?: number | string
+  }
+}

@@ -410,3 +410,155 @@ test("driver initialization verifies that the root directory is readable", async
 
   await assert.rejects(() => driver.init(), /root directory is not readable/)
 })
+
+test("189Cloud chunked upload asks the browser for an MD5 before creating a session", async () => {
+  let fetches = 0
+  globalThis.fetch = (async () => {
+    fetches++
+    throw new Error("upload API must not be called without an MD5")
+  }) as typeof fetch
+
+  const driver = new Cloud189Driver({ username: "", password: "" })
+  const info = await (driver as any).createUploadSession(
+    "/",
+    "/",
+    "large.bin",
+    20 * 1024 * 1024,
+    "",
+  )
+
+  assert.equal(info.requiresMd5, true)
+  assert.equal(fetches, 0)
+})
+
+test("189Cloud chunked upload creates a portable encrypted session", async () => {
+  const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 1024 })
+  const pubKey = publicKey
+    .export({ type: "spki", format: "der" })
+    .toString("base64")
+  const calls: string[] = []
+
+  globalThis.fetch = (async (input, init) => {
+    const url = requestUrl(input)
+    calls.push(url)
+    if (url.includes("/v2/getUserBriefInfo.action")) {
+      return mockResponse(url, { res_code: 0, sessionKey: "session-key" })
+    }
+    if (url.includes("/api/security/generateRsaKey.action")) {
+      return mockResponse(url, {
+        res_code: 0,
+        pubKey,
+        pkId: "pk-id",
+        expire: Date.now() + 60_000,
+      })
+    }
+    if (url.startsWith("https://upload.cloud.189.cn/person/initMultiUpload?")) {
+      assert.equal(new Headers(init?.headers).get("SessionKey"), "session-key")
+      return mockResponse(url, {
+        code: "SUCCESS",
+        data: { uploadFileId: "upload-id", fileDataExists: 0 },
+      })
+    }
+    throw new Error(`unexpected fetch: ${url}`)
+  }) as typeof fetch
+
+  const driver = new Cloud189Driver({ username: "", password: "" })
+  const info = await (driver as any).createUploadSession(
+    "/",
+    "/",
+    "large.bin",
+    20 * 1024 * 1024,
+    "0123456789abcdef0123456789abcdef",
+  )
+  assert.equal(info.reuse, false)
+  assert.equal(info.partCount, 2)
+  assert.equal(info.chunkSize, 10 * 1024 * 1024)
+  const session = JSON.parse(
+    Buffer.from(info.session, "base64").toString("utf8"),
+  )
+  assert.equal(session.uploadFileId, "upload-id")
+  assert.equal(session.sessionKey, "session-key")
+  assert.ok(calls.some((url) => url.includes("/person/initMultiUpload?")))
+})
+
+test("189Cloud chunked upload forwards each part and commits its checksums", async () => {
+  const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 1024 })
+  const pubKey = publicKey
+    .export({ type: "spki", format: "der" })
+    .toString("base64")
+  let signedPutHeaders: Headers | undefined
+  const calls: string[] = []
+  globalThis.fetch = (async (input, init) => {
+    const url = requestUrl(input)
+    calls.push(url)
+    if (url.includes("/v2/getUserBriefInfo.action")) {
+      return mockResponse(url, { res_code: 0, sessionKey: "session-key" })
+    }
+    if (url.includes("/api/security/generateRsaKey.action")) {
+      return mockResponse(url, {
+        res_code: 0,
+        pubKey,
+        pkId: "pk-id",
+        expire: Date.now() + 60_000,
+      })
+    }
+    if (url.startsWith("https://upload.cloud.189.cn/person/initMultiUpload?")) {
+      return mockResponse(url, {
+        code: "SUCCESS",
+        data: { uploadFileId: "upload-id", fileDataExists: 0 },
+      })
+    }
+    if (
+      url.startsWith("https://upload.cloud.189.cn/person/getMultiUploadUrls?")
+    ) {
+      return mockResponse(url, {
+        code: "SUCCESS",
+        uploadUrls: {
+          partNumber_1: {
+            requestURL: "https://cdn.example/upload-part-1",
+            requestHeader:
+              "Content-Type=application/octet-stream&X-Test=ok%20value",
+          },
+        },
+      })
+    }
+    if (url === "https://cdn.example/upload-part-1") {
+      signedPutHeaders = new Headers(init?.headers)
+      return mockResponse(url, "", { status: 200 })
+    }
+    if (
+      url.startsWith(
+        "https://upload.cloud.189.cn/person/commitMultiUploadFile?",
+      )
+    ) {
+      assert.equal(new Headers(init?.headers).get("SessionKey"), "session-key")
+      return mockResponse(url, { code: "SUCCESS" })
+    }
+    throw new Error(`unexpected fetch: ${url}`)
+  }) as typeof fetch
+
+  const driver = new Cloud189Driver({ username: "", password: "" })
+  const info = await (driver as any).createUploadSession(
+    "/",
+    "/",
+    "small.txt",
+    5,
+    "5d41402abc4b2a76b9719d911017c592",
+  )
+  const part = await (driver as any).uploadPart(
+    info.session,
+    1,
+    Buffer.from("hello"),
+  )
+  assert.equal(part.partMd5, "5d41402abc4b2a76b9719d911017c592")
+  assert.equal(signedPutHeaders?.get("X-Test"), "ok value")
+
+  await (driver as any).completeUploadSession(info.session, [part.partMd5])
+  assert.ok(
+    calls.some((url) =>
+      url.startsWith(
+        "https://upload.cloud.189.cn/person/commitMultiUploadFile?",
+      ),
+    ),
+  )
+})

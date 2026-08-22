@@ -8,8 +8,46 @@ import {
 import { sortFileItems } from "../../internal/driver/sort"
 import { Cloud189Addition, FileItem189, FolderItem189 } from "./types"
 import { Pan189Client } from "./util"
+import { md5Hex } from "./crypto"
 
 const SUBREQUEST_LIMIT = 45
+const UPLOAD_CHUNK_SIZE = 10 * 1024 * 1024
+
+interface Cloud189UploadSession {
+  uploadFileId: string
+  sessionKey: string
+  fileMd5: string
+  size: number
+  partCount: number
+  chunkSize: number
+}
+
+function encodeUploadSession(session: Cloud189UploadSession): string {
+  return Buffer.from(JSON.stringify(session), "utf8").toString("base64")
+}
+
+function decodeUploadSession(token: string): Cloud189UploadSession {
+  try {
+    const session = JSON.parse(
+      Buffer.from(token, "base64").toString("utf8"),
+    ) as Cloud189UploadSession
+    if (
+      !session ||
+      !session.uploadFileId ||
+      !session.sessionKey ||
+      !session.fileMd5 ||
+      !Number.isInteger(session.partCount) ||
+      session.partCount < 1 ||
+      !Number.isInteger(session.chunkSize) ||
+      session.chunkSize < 1
+    ) {
+      throw new Error("invalid upload session")
+    }
+    return session
+  } catch {
+    throw new Error("[189Cloud] 上传会话无效或已损坏")
+  }
+}
 
 function parse189Date(dateStr: string): string {
   if (!dateStr) return new Date().toISOString()
@@ -320,9 +358,175 @@ export class Cloud189Driver implements StorageDriver {
     await this.client.copy(String(file.id), isDir, file.name, targetParentId)
   }
 
-  async put(): Promise<void> {
-    throw new Error(
-      "[189Cloud] Cloudflare Worker 环境暂不支持直接流式写入，请使用客户端或网页端进行大文件上传",
+  async put(
+    _virtualPath: string,
+    physicalPath: string,
+    content: Buffer,
+  ): Promise<void> {
+    const parts = String(physicalPath || "")
+      .split("/")
+      .filter(Boolean)
+    const fileName = parts.pop()
+    if (!fileName) throw new Error("[189Cloud] 上传路径无效")
+    const parentPath = "/" + parts.join("/")
+    const info = await this.createUploadSession(
+      parentPath,
+      parentPath,
+      fileName,
+      content.length,
+      md5Hex(content),
+    )
+    if (info.reuse) return
+
+    const partMd5s: string[] = []
+    for (let i = 1; i <= info.partCount; i++) {
+      const start = (i - 1) * info.chunkSize
+      const chunk = content.subarray(
+        start,
+        Math.min(start + info.chunkSize, content.length),
+      )
+      const result = await this.uploadPart(info.session, i, chunk)
+      partMd5s.push(result.partMd5)
+    }
+    await this.completeUploadSession(info.session, partMd5s)
+  }
+
+  // ---- 分片会话上传（与 OpenList 原 189Cloud 驱动一致）----
+
+  async createUploadSession(
+    _virtualDir: string,
+    physicalDir: string,
+    fileName: string,
+    size: number,
+    md5: string,
+  ): Promise<{
+    reuse: boolean
+    requiresMd5?: boolean
+    partCount: number
+    chunkSize: number
+    session: string
+  }> {
+    const chunkSize = UPLOAD_CHUNK_SIZE
+    const normalizedMd5 = String(md5 || "")
+      .trim()
+      .toLowerCase()
+    if (!/^[a-f0-9]{32}$/.test(normalizedMd5)) {
+      // The 189 API requires fileMd5 at init time. Ask the browser to hash
+      // the file so the Worker never needs to buffer the complete payload.
+      return {
+        reuse: false,
+        requiresMd5: true,
+        partCount: 0,
+        chunkSize,
+        session: "",
+      }
+    }
+
+    this.budget.used = 0
+    const partCount = Math.max(
+      1,
+      Math.ceil(Math.max(0, Number(size) || 0) / chunkSize),
+    )
+    const parentFolderId = await this.resolveFolderId(physicalDir || "/")
+    const upload = await this.client.createMultiUpload(
+      parentFolderId,
+      fileName,
+      Math.max(0, Number(size) || 0),
+      normalizedMd5,
+    )
+    if (upload.fileDataExists) {
+      await this.client.commitMultiUpload(
+        upload.uploadFileId,
+        normalizedMd5,
+        normalizedMd5,
+      )
+      return { reuse: true, partCount: 0, chunkSize, session: "" }
+    }
+
+    return {
+      reuse: false,
+      partCount,
+      chunkSize,
+      session: encodeUploadSession({
+        uploadFileId: upload.uploadFileId,
+        sessionKey: upload.sessionKey,
+        fileMd5: normalizedMd5,
+        size: Math.max(0, Number(size) || 0),
+        partCount,
+        chunkSize,
+      }),
+    }
+  }
+
+  async uploadPart(
+    sessionToken: string,
+    partNumber: number,
+    content: Buffer,
+  ): Promise<{ partMd5: string }> {
+    const session = decodeUploadSession(sessionToken)
+    if (
+      !Number.isInteger(partNumber) ||
+      partNumber < 1 ||
+      partNumber > session.partCount
+    ) {
+      throw new Error(`[189Cloud] 分片序号无效: ${partNumber}`)
+    }
+    this.client.setSessionKey(session.sessionKey)
+    const uploadData = await this.client.getMultiUploadUrls(
+      session.uploadFileId,
+      partNumber,
+      content,
+    )
+    let requestHeaders: Record<string, string> = {}
+    if (uploadData.requestHeader) {
+      let decoded = uploadData.requestHeader
+      try {
+        decoded = decodeURIComponent(decoded)
+      } catch {}
+      for (const item of decoded.split("&")) {
+        const separator = item.indexOf("=")
+        if (separator <= 0) continue
+        requestHeaders[item.slice(0, separator)] = item.slice(separator + 1)
+      }
+    }
+    const response = await fetch(uploadData.requestURL, {
+      method: "PUT",
+      headers: requestHeaders,
+      body: content as unknown as BodyInit,
+    })
+    if (!response.ok) {
+      const body = await response.text().catch(() => "")
+      throw new Error(
+        `[189Cloud] 上传第 ${partNumber}/${session.partCount} 分片失败: HTTP ${response.status} ${body}`,
+      )
+    }
+    return { partMd5: md5Hex(content) }
+  }
+
+  async completeUploadSession(
+    sessionToken: string,
+    partMd5s: string[] = [],
+  ): Promise<void> {
+    const session = decodeUploadSession(sessionToken)
+    this.client.setSessionKey(session.sessionKey)
+    const normalizedParts = partMd5s
+      .map((part) =>
+        String(part || "")
+          .trim()
+          .toLowerCase(),
+      )
+      .filter((part) => /^[a-f0-9]{32}$/.test(part))
+    if (normalizedParts.length !== session.partCount) {
+      throw new Error("[189Cloud] 分片校验信息不完整，无法提交上传")
+    }
+    const sliceMd5 =
+      session.partCount === 1
+        ? session.fileMd5
+        : md5Hex(normalizedParts.join("\n")).toUpperCase()
+    await this.client.commitMultiUpload(
+      session.uploadFileId,
+      session.fileMd5,
+      sliceMd5,
     )
   }
 }

@@ -34,28 +34,53 @@ export const ChunkedUpload: Upload = async (
   }
 
   setUpload("status", "uploading")
-  const createResp = await r.post(
-    "/fs/upload/create",
-    {
-      path: dirPath,
-      file_name: file.name,
-      size: file.size,
-      md5,
-    },
-    {
-      headers: {
-        Password: password(),
-        Overwrite: overwrite.toString(),
+  const createSession = (): Promise<any> =>
+    r.post(
+      "/fs/upload/create",
+      {
+        path: dirPath,
+        file_name: file.name,
+        size: file.size,
+        md5,
       },
-    },
-  )
+      {
+        headers: {
+          Password: password(),
+          Overwrite: overwrite.toString(),
+        },
+      },
+    ) as any
+
+  let createResp = await createSession()
   if (createResp.code !== 200) {
     throw new Error(createResp.message)
   }
-  const info = createResp.data
+  let info = createResp.data
+  // 189Cloud requires the complete MD5 during init. Hash in the browser and
+  // retry session creation; the Worker still only receives one chunk at a time.
+  if (info?.requiresMd5 && !md5) {
+    setUpload("status", "hashing")
+    const hashes = await calculateHash(file, (p) => {
+      setUpload("progress", p | 0)
+    })
+    md5 = hashes.md5
+    setUpload("status", "uploading")
+    createResp = await createSession()
+    if (createResp.code !== 200) {
+      throw new Error(createResp.message)
+    }
+    info = createResp.data
+  }
   // 存储不支持分片会话上传 → 回退到流式上传
   if (!info) {
-    return await StreamUpload(uploadPath, file, setUpload, asTask, overwrite, false)
+    return await StreamUpload(
+      uploadPath,
+      file,
+      setUpload,
+      asTask,
+      overwrite,
+      false,
+    )
   }
   // 秒传命中：文件已存在，直接完成
   if (info.reuse) {
@@ -67,13 +92,14 @@ export const ChunkedUpload: Upload = async (
 
   let oldTimestamp = new Date().valueOf()
   let oldLoaded = 0
+  const partMd5s: string[] = []
 
   // 逐片上传（顺序上传，保证分片顺序与会话一致）
   for (let i = 1; i <= totalParts; i++) {
     const start = (i - 1) * chunkSize
     const end = Math.min(start + chunkSize, file.size)
     const chunk = file.slice(start, end)
-    const partResp = await r.put("/fs/upload/part", chunk, {
+    const partResp: any = await r.put("/fs/upload/part", chunk, {
       headers: {
         "X-Upload-Session": session,
         "X-Part-Number": String(i),
@@ -101,12 +127,14 @@ export const ChunkedUpload: Upload = async (
         `[分片 ${i}/${totalParts}] ${partResp.message || "上传失败"}`,
       )
     }
+    if (partResp.data?.partMd5) partMd5s[i - 1] = partResp.data.partMd5
   }
 
   setUpload("status", "backending")
-  const completeResp = await r.post("/fs/upload/complete", {
+  const completeResp: any = await r.post("/fs/upload/complete", {
     path: dirPath,
     session,
+    partMd5s,
   })
   if (completeResp.code !== 200) {
     throw new Error(completeResp.message)

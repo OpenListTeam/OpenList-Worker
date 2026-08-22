@@ -537,8 +537,8 @@ fsRouter.put("/upload/part", async (c) => {
       throw new Error("storage does not support chunked upload")
     }
     const buffer = Buffer.from(await c.req.arrayBuffer())
-    await (driver as any).uploadPart(session, partNumber, buffer)
-    return c.json({ code: 200, message: "success", data: null })
+    const result = await (driver as any).uploadPart(session, partNumber, buffer)
+    return c.json({ code: 200, message: "success", data: result ?? null })
   } catch (e: any) {
     return c.json({ code: 500, message: e.message, data: null })
   }
@@ -547,7 +547,11 @@ fsRouter.put("/upload/part", async (c) => {
 fsRouter.post("/upload/complete", async (c) => {
   const denied = await requireWritePermission(c)
   if (denied) return denied
-  const { path: rawPath, session } = await c.req.json().catch(() => ({}))
+  const {
+    path: rawPath,
+    session,
+    partMd5s,
+  } = await c.req.json().catch(() => ({}))
   // 根目录上传时调用方可能传 ""，归一化为 "/"
   const dirPath = rawPath || "/"
   if (!session) {
@@ -566,7 +570,7 @@ fsRouter.post("/upload/complete", async (c) => {
     if (typeof (driver as any).completeUploadSession !== "function") {
       throw new Error("storage does not support chunked upload")
     }
-    await (driver as any).completeUploadSession(session)
+    await (driver as any).completeUploadSession(session, partMd5s)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: e.message, data: null })
