@@ -11,6 +11,7 @@ import {
   selectAll,
   selectedMsg,
   sortObjs,
+  userCan,
 } from "~/store"
 import { OrderBy } from "~/store"
 import { Col, cols, ListItem } from "./ListItem"
@@ -145,8 +146,11 @@ const ListLayout = () => {
     for (let i = 0; i < items.length; i++) {
       const item = items[i]
       if (item.kind === "file") {
-        bus.emit("tool", "upload")
-        e.preventDefault()
+        // 游客/无写权限用户不弹上传窗口（后端同样会以 403 拒绝）
+        if (objStore.write || userCan("write_content")) {
+          bus.emit("tool", "upload")
+          e.preventDefault()
+        }
         break
       }
     }

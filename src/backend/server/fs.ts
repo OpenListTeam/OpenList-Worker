@@ -12,8 +12,25 @@ import {
 } from "../internal/op/storage"
 import { resolveShare } from "../internal/op/share"
 import { resolvePath } from "../internal/model/db"
+import { getUserFromContext } from "./middlewares"
+import { canWrite } from "../pkg/permission"
 
 export const fsRouter = new Hono()
+
+// ---- 写操作权限校验 ----
+// 游客（未登录 / 无凭证 / token 无效）一律 403，普通用户需具备
+// WRITE_CONTENT 权限位，管理员放行。修复「任何人可匿名上传/删除文件」
+// 的安全漏洞，同时让 /fs/list 的 write 字段如实反映请求者身份。
+const permissionDenied = (c: any) =>
+  c.json({ code: 403, message: "Permission denied", data: null }, 403)
+
+const requireWritePermission = async (c: any): Promise<Response | null> => {
+  const user = await getUserFromContext(c)
+  if (!canWrite(user)) {
+    return permissionDenied(c)
+  }
+  return null
+}
 
 // GET sub-directories of a path (used by FolderTree in metas/storages editors)
 fsRouter.post("/dirs", async (c) => {
@@ -198,6 +215,9 @@ fsRouter.post("/list", async (c) => {
     }
 
     const { content, provider, storage } = await listItems(reqPath)
+    // write 按请求者身份如实返回：游客/无写权限用户为 false，
+    // 前端据此隐藏上传、新建文件夹等写操作入口
+    const writable = canWrite(await getUserFromContext(c))
     // Normalize each item to the full Obj shape expected by the frontend
     const normalized = content.map((item: any) => ({
       name: item.name,
@@ -249,7 +269,7 @@ fsRouter.post("/list", async (c) => {
         total,
         readme: "",
         header: "",
-        write: true,
+        write: writable,
         write_content_bypass: false,
         provider,
         page_size: effectivePerPage > 0 ? effectivePerPage : undefined,
@@ -343,7 +363,7 @@ fsRouter.post("/get", async (c) => {
         header: "",
         provider,
         related: [],
-        write: true,
+        write: canWrite(await getUserFromContext(c)),
         write_content_bypass: false,
       },
     })
@@ -353,6 +373,8 @@ fsRouter.post("/get", async (c) => {
 })
 
 fsRouter.post("/mkdir", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
   const body = await c.req.json().catch(() => ({}))
   const reqPath = body.path || "/"
   try {
@@ -364,6 +386,8 @@ fsRouter.post("/mkdir", async (c) => {
 })
 
 fsRouter.post("/rename", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
   const { path: oldPath, name: newName } = await c.req.json().catch(() => ({}))
   try {
     await renameItem(oldPath, newName)
@@ -374,6 +398,8 @@ fsRouter.post("/rename", async (c) => {
 })
 
 fsRouter.post("/remove", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
   const { dir, names } = await c.req.json().catch(() => ({}))
   try {
     await removeItems(dir, names)
@@ -384,6 +410,8 @@ fsRouter.post("/remove", async (c) => {
 })
 
 fsRouter.post("/move", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
   const { src_dir, dst_dir, names } = await c.req.json().catch(() => ({}))
   try {
     await moveItems(src_dir, dst_dir, names)
@@ -394,6 +422,8 @@ fsRouter.post("/move", async (c) => {
 })
 
 fsRouter.post("/copy", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
   const { src_dir, dst_dir, names } = await c.req.json().catch(() => ({}))
   try {
     await copyItems(src_dir, dst_dir, names)
@@ -404,6 +434,8 @@ fsRouter.post("/copy", async (c) => {
 })
 
 fsRouter.put("/put", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
   const reqPath = decodeURIComponent(c.req.header("File-Path") || "")
   try {
     const buffer = await c.req.arrayBuffer()
@@ -415,6 +447,8 @@ fsRouter.put("/put", async (c) => {
 })
 
 fsRouter.put("/form", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
   const reqPath = decodeURIComponent(c.req.header("File-Path") || "")
   try {
     const form = await c.req.formData()
@@ -440,6 +474,8 @@ fsRouter.put("/form", async (c) => {
 //      内存占用恒定，不受 CF Workers 请求体/内存上限约束。
 
 fsRouter.post("/upload/create", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
   const {
     path: dirPath,
     file_name,
@@ -477,6 +513,8 @@ fsRouter.post("/upload/create", async (c) => {
 })
 
 fsRouter.put("/upload/part", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
   const session = c.req.header("X-Upload-Session") || ""
   const partNumber = parseInt(c.req.header("X-Part-Number") || "0", 10)
   const dirPath = decodeURIComponent(c.req.header("Upload-Path") || "")
@@ -505,6 +543,8 @@ fsRouter.put("/upload/part", async (c) => {
 })
 
 fsRouter.post("/upload/complete", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
   const { path: dirPath, session } = await c.req.json().catch(() => ({}))
   if (!dirPath || !session) {
     return c.json({
