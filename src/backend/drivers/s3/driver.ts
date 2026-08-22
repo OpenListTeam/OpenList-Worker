@@ -33,7 +33,8 @@ export class S3Driver implements StorageDriver {
   }
 
   async init(): Promise<void> {
-    // Verify bucket access by attempting to list root
+    // Verify bucket access by attempting to list root.
+    // Non-fatal: log warning but allow mount even if check fails (e.g. SSL issues).
     try {
       const useV2 = this.addition.list_object_version !== "v1"
       if (useV2) {
@@ -42,7 +43,7 @@ export class S3Driver implements StorageDriver {
         await this.client.listObjectsV1("/", undefined, 1)
       }
     } catch (e: any) {
-      throw new Error(`S3 connection failed: ${e.message}`)
+      console.warn("[S3] init warning (non-fatal):", e.message)
     }
   }
 

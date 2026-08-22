@@ -25,39 +25,46 @@ function getAuthHeader(addition: WebDavAddition): string {
   return `Basic ${btoa(credentials)}`
 }
 
+function xmlTag(xml: string, tag: string): string | null {
+  const regex = new RegExp(`<[^>]*:${tag}[^>]*>([^<]*)</[^>]*:${tag}>`, "i")
+  const match = xml.match(regex)
+  if (match) return match[1]
+  const regex2 = new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`, "i")
+  const match2 = xml.match(regex2)
+  return match2 ? match2[1] : null
+}
+
 function parsePropfindXml(xml: string): WebDavResource[] {
-  const parser = new DOMParser()
-  const doc = parser.parseFromString(xml, "application/xml")
-  const responses = doc.querySelectorAll("response")
   const items: WebDavResource[] = []
+  // Split by <d:response> or <D:response> or <response>
+  const responseBlocks = xml.split(/<[^>]*:response[^>]*>/i).slice(1)
 
-  for (const resp of responses) {
-    const href = resp.querySelector("href")?.textContent || ""
-    const propstat = resp.querySelector("propstat")
-    if (!propstat) continue
+  for (const block of responseBlocks) {
+    const endIdx = block.toLowerCase().indexOf("</")
+    const section = endIdx !== -1 ? block.slice(0, endIdx) : block
 
-    const status = propstat.querySelector("status")?.textContent || ""
-    if (status.includes("404")) continue
+    // Extract href (may be <d:href> or <D:href>)
+    const hrefMatch = section.match(/<[^>]*:href[^>]*>([^<]*)</i) ||
+      section.match(/<href[^>]*>([^<]*)</i)
+    const href = hrefMatch ? hrefMatch[1] : ""
+    if (!href) continue
 
-    const prop = propstat.querySelector("prop")
-    if (!prop) continue
+    // Check for 404 status in propstat
+    if (section.includes("404")) continue
 
-    const displayName =
-      prop.querySelector("displayname")?.textContent || ""
-    const resourcetype = prop.querySelector("resourcetype")
-    const isCollection = !!resourcetype?.querySelector("collection")
-    const contentLength =
-      parseInt(prop.querySelector("getcontentlength")?.textContent || "0", 10) || 0
-    const lastModified =
-      prop.querySelector("getlastmodified")?.textContent || ""
-    const contentType =
-      prop.querySelector("getcontenttype")?.textContent || ""
-    const etag = prop.querySelector("getetag")?.textContent || ""
+    const displayName = xmlTag(section, "displayname") || ""
+    const hasCollection = /<[^>]*collection[^>]*\/?\s*>/i.test(section)
+    const contentLength = parseInt(
+      xmlTag(section, "getcontentlength") || "0", 10,
+    ) || 0
+    const lastModified = xmlTag(section, "getlastmodified") || ""
+    const contentType = xmlTag(section, "getcontenttype") || ""
+    const etag = (xmlTag(section, "getetag") || "").replace(/"/g, "")
 
     items.push({
       href,
       displayName,
-      resourceType: isCollection ? "collection" : "",
+      resourceType: hasCollection ? "collection" : "",
       contentLength,
       lastModified,
       contentType,
@@ -94,10 +101,6 @@ export class WebDavClient {
 
   private get rootPath(): string {
     return cleanPath(this.addition.root_folder_path || "/")
-  }
-
-  private get skipVerify(): boolean {
-    return !!this.addition.tls_insecure_skip_verify
   }
 
   private async request(
