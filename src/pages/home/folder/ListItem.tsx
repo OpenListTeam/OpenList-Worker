@@ -83,19 +83,41 @@ export const ListItem = (props: { obj: StoreObj; index: number }) => {
           openWithDoubleClick() || toggleWithClick() ? "default" : "pointer"
         }
         bgColor={props.obj.selected ? hoverColor() : undefined}
-        on:dblclick={() => {
+        onDblclick={() => {
           if (!openWithDoubleClick()) return
           selectIndex(props.index, true, true)
           to(pushHref(props.obj.name))
         }}
-        on:click={(e: MouseEvent) => {
-          e.preventDefault()
-          if (openWithDoubleClick()) return
-          if (e.ctrlKey || e.metaKey || e.shiftKey) return
-          if (!restoreSelectionCache()) return
-          if (toggleWithClick())
-            return selectIndex(props.index, !props.obj.selected)
-          to(pushHref(props.obj.name))
+        onClick={(e: MouseEvent) => {
+          // 所有「只拦截、不导航」的场景统一 preventDefault：
+          // router 在 document 上的全局锚点监听检测到 defaultPrevented
+          // 后会放弃导航，因此 preventDefault 即可完全拦截。
+          // - 双击的第二次 click（e.detail > 1）
+          // - 双击打开模式下的单击
+          // - 带 ctrl/meta/shift 的修饰键点击
+          if (
+            e.detail > 1 ||
+            openWithDoubleClick() ||
+            e.ctrlKey ||
+            e.metaKey ||
+            e.shiftKey
+          ) {
+            e.preventDefault()
+            return
+          }
+          if (!restoreSelectionCache()) {
+            e.preventDefault()
+            return
+          }
+          if (toggleWithClick()) {
+            e.preventDefault()
+            selectIndex(props.index, !props.obj.selected)
+            return
+          }
+          // 正常单击打开：这里不 preventDefault、也不手动 to()，
+          // 完全交给 <a> 锚点自身的导航（router 只会执行一次）。
+          // 从根本上避免「锚点导航 + to()」双重导航导致路径重复
+          // （曾导致 /文件名/文件名 → folder not found）。
         }}
         onMouseEnter={() => {
           setPathAs(props.obj.name, props.obj.is_dir, true)

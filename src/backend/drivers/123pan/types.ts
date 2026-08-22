@@ -18,9 +18,16 @@ export interface Pan123Addition {
   order_direction?: "asc" | "desc"
   /**
    * 已保存的登录令牌。设置后优先用令牌验证（避免境外 IP 风控）；
-   * 密码登录成功后会持久化回此字段。
+   * 密码登录或 cookie 解析成功后会持久化回此字段。
    */
   access_token?: string
+  /**
+   * 浏览器 Cookie（可选）。从 123 网盘网页登录后复制的 Cookie 字符串，
+   * 或仅粘贴 `Authorization: Bearer <token>` 中的 token / Bearer 值。
+   * 解析出其中的 JWT 后用作 Bearer 令牌，效果等同 access_token，
+   * 适合 Cloudflare Workers 等出口 IP 被风控、账号密码登录失败的环境。
+   */
+  cookie?: string
 }
 
 // --- API response types ---
@@ -85,4 +92,37 @@ export interface Pan123MkdirResp {
 export interface Pan123BaseResp {
   code: number
   message?: string
+}
+
+// --- 上传（S3 分片会话）响应类型 ---
+
+/** 创建上传会话（/file/upload_request, type=0）的返回 */
+export interface Pan123UploadResp {
+  code: number
+  message?: string
+  data: {
+    /** AWS 直传凭据（若有则走 AWS SDK 路径，本驱动不使用） */
+    AccessKeyId: string
+    SecretAccessKey: string
+    SessionToken: string
+    /** S3 预签名分片上传所需字段 */
+    Bucket: string
+    Key: string
+    UploadId: string
+    FileId: number
+    StorageNode: string
+    EndPoint: string
+    /** 命中秒传时为 true（文件已存在，无需实际上传） */
+    Reuse: boolean
+  }
+}
+
+/** 获取 S3 预签名 URL（/file/s3_upload_object/auth 或 /file/s3_repare_upload_parts_batch）的返回 */
+export interface Pan123S3PreSignedURLs {
+  code: number
+  message?: string
+  data: {
+    /** 分片号(字符串) → 该分片的预签名 PUT URL */
+    presignedUrls: Record<string, string>
+  }
 }

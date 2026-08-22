@@ -200,14 +200,40 @@ export const meUpdateHandler = async (c: any) => {
 export const meHandler = async (c: any) => {
   const authHeader = c.req.header("Authorization")
   if (!authHeader) {
-    return c.json(
-      {
-        code: 401,
-        message: "Unauthorized: Missing Authorization header",
-        data: null,
+    // 游客模式：未携带令牌时直接返回游客身份，允许免登录（无账号密码）浏览。
+    // 这样前端 UserOrGuest 不再收到 401，也不会弹出 “Unauthorized: Missing Authorization header”。
+    const { users } = await getOrInitUsers(c.env)
+    const guest = users.find((u: any) => u.username === "guest")
+    if (guest) {
+      return c.json({
+        code: 200,
+        message: "success",
+        data: {
+          id: guest.id,
+          username: guest.username,
+          role: guest.role,
+          permission: guest.permission ?? 0,
+          base_path: guest.base_path || "/",
+          disabled: !!guest.disabled,
+          sso_id: guest.sso_id || "",
+          allow_ldap: !!guest.allow_ldap,
+        },
+      })
+    }
+    return c.json({
+      code: 200,
+      message: "success",
+      data: {
+        id: 2,
+        username: "guest",
+        role: 1,
+        permission: 0,
+        base_path: "/",
+        disabled: false,
+        sso_id: "",
+        allow_ldap: false,
       },
-      401,
-    )
+    })
   }
   const token = authHeader.startsWith("Bearer ")
     ? authHeader.substring(7)

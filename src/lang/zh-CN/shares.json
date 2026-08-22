@@ -15,29 +15,29 @@
     "disabled": "已禁用",
     "invalid": "已失效",
     "work": "正常",
-    "denied": "No permission"
+    "denied": "无权限"
   },
-  "remark": "Remark",
-  "readme": "Description",
-  "header": "Header Description",
-  "order_by": "Order By",
+  "remark": "备注",
+  "readme": "描述",
+  "header": "Header 说明",
+  "order_by": "排序字段",
   "order_bys": {
-    "name": "Name",
-    "size": "Size",
-    "modified": "Modified"
+    "name": "名称",
+    "size": "大小",
+    "modified": "修改时间"
   },
-  "order_direction": "Order Direction",
+  "order_direction": "排序方向",
   "order_directions": {
-    "asc": "Ascending",
-    "desc": "Descending"
+    "asc": "升序",
+    "desc": "降序"
   },
-  "extract_folder": "Folder Order",
+  "extract_folder": "文件夹排序",
   "extract_folders": {
-    "front": "Folders on Top",
-    "back": "Folders at Bottom"
+    "front": "文件夹置顶",
+    "back": "文件夹置底"
   },
-  "input_password": "Please enter Share Code",
-  "copy_msg": "Copy link",
+  "input_password": "请输入分享码",
+  "copy_msg": "复制链接",
   "copy_url": "复制 URL",
-  "no_permission_tip": "To create a share, you need \"Share\" permission."
+  "no_permission_tip": "创建分享需要“分享”权限。"
 }

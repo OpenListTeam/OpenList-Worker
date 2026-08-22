@@ -6,8 +6,47 @@ import {
   calcFileType,
 } from "../../internal/driver/base"
 import { sortFileItems } from "../../internal/driver/sort"
-import { Pan123Addition, Pan123File } from "./types"
+import { Pan123Addition, Pan123File, Pan123UploadResp } from "./types"
 import { Pan123Client } from "./util"
+
+/** 分片会话上传：会话令牌中携带的数据（不透明地往返于前后端） */
+interface Pan123SessionData {
+  bucket: string
+  key: string
+  uploadId: string
+  fileId: number
+  storageNode: string
+  size: number
+  partCount: number
+  chunkSize: number
+}
+
+function encodeSession(s: Pan123SessionData): string {
+  return Buffer.from(JSON.stringify(s), "utf8").toString("base64")
+}
+
+function decodeSession(token: string): Pan123SessionData {
+  const s = JSON.parse(Buffer.from(token, "base64").toString("utf8"))
+  if (!s || !s.bucket || !s.key || !s.uploadId) {
+    throw new Error("[123Pan] invalid upload session")
+  }
+  return s as Pan123SessionData
+}
+
+function sessionToUpload(s: Pan123SessionData): Pan123UploadResp["data"] {
+  return {
+    AccessKeyId: "",
+    SecretAccessKey: "",
+    SessionToken: "",
+    Bucket: s.bucket,
+    Key: s.key,
+    UploadId: s.uploadId,
+    FileId: s.fileId,
+    StorageNode: s.storageNode,
+    EndPoint: "",
+    Reuse: false,
+  }
+}
 
 function pan123FileToFileItem(f: Pan123File): FileItem {
   const isDir = f.Type === 1
@@ -115,6 +154,82 @@ export class Pan123Driver implements StorageDriver {
       parentId = String(folder.FileId)
       prefix = "/" + segs.slice(0, i + 1).join("/")
       this.pathIdCache.set(prefix, parentId)
+    }
+    return parentId
+  }
+
+  /**
+   * 上传场景：确保目录存在，缺失的层级自动递归创建。
+   * 与 resolveFolderId 的区别是——目录不存在时不抛 "folder not found"，
+   * 而是调用 mkdir 创建。用于上传文件夹 / 上传到尚不存在的子目录。
+   */
+  private async ensureFolderId(physicalPath: string): Promise<string> {
+    const rootId = this.client.getRootId()
+    const clean =
+      "/" +
+      String(physicalPath || "")
+        .split("/")
+        .filter(Boolean)
+        .join("/")
+    if (clean === "/" || clean === `/${rootId}`) {
+      return rootId
+    }
+
+    const segs = clean.split("/").filter(Boolean)
+    let parentId = rootId
+    let prefix = ""
+    for (let i = 0; i < segs.length; i++) {
+      const rawName = segs[i]
+      const decodedName = (() => {
+        try {
+          return decodeURIComponent(rawName)
+        } catch {
+          return rawName
+        }
+      })()
+      prefix = "/" + segs.slice(0, i + 1).join("/")
+
+      let id = this.pathIdCache.get(prefix)
+      if (id === undefined) {
+        let files = await this.client.getFiles(parentId, {
+          findName: decodedName,
+          findIsDir: true,
+          budget: this.budget,
+        })
+        let folder = files.find(
+          (f) =>
+            f.Type === 1 &&
+            (f.FileName === rawName || f.FileName === decodedName),
+        )
+        if (folder) {
+          id = String(folder.FileId)
+        } else {
+          // 目录不存在：创建。并发上传多个文件时可能被别的请求抢先创建，
+          // mkdir 报"已存在"则忽略，随后重新查询拿到 FileId。
+          try {
+            const createdId = await this.client.mkdir(parentId, decodedName)
+            if (createdId) {
+              id = createdId
+            }
+          } catch {
+            // ignore: directory may already exist
+          }
+          if (id === undefined) {
+            files = await this.client.getFiles(parentId, {
+              findName: decodedName,
+              findIsDir: true,
+              budget: this.budget,
+            })
+            folder = files.find((f) => f.Type === 1 && f.FileName === decodedName)
+            if (!folder) {
+              throw new Error(`[123Pan] 自动创建目录失败: ${rawName}`)
+            }
+            id = String(folder.FileId)
+          }
+        }
+        this.pathIdCache.set(prefix, id)
+      }
+      parentId = id
     }
     return parentId
   }
@@ -257,9 +372,113 @@ export class Pan123Driver implements StorageDriver {
     throw new Error("[123Pan] Copy is not supported by 123 Cloud Drive API")
   }
 
-  async put(): Promise<void> {
-    throw new Error(
-      "[123Pan] Direct put not supported in stateless environment (requires S3 upload session)",
+  async put(
+    _virtualPath: string,
+    physicalPath: string,
+    content: Buffer,
+  ): Promise<void> {
+    this.budget.used = 0
+    const segs = String(physicalPath || "")
+      .split("/")
+      .filter(Boolean)
+    if (segs.length === 0) throw new Error("invalid upload path")
+    const rawName = segs[segs.length - 1]
+    const decodedName = (() => {
+      try {
+        return decodeURIComponent(rawName)
+      } catch {
+        return rawName
+      }
+    })()
+    const parentPath = "/" + segs.slice(0, segs.length - 1).join("/")
+    const parentId = await this.ensureFolderId(parentPath)
+    await this.client.uploadFile(parentId, decodedName, content)
+  }
+
+  // ---- 分片会话上传（解决大文件整体缓冲导致的内存/请求体超限卡死）----
+
+  /**
+   * 创建分片上传会话。前端逐片上传，每片独立 HTTP 请求：
+   * Worker 内存占用恒定（单片大小），不受 CF 请求体/内存上限约束，
+   * 且浏览器端能看到每片的真实上传进度。
+   * @param physicalDir 目标目录的物理路径（不含文件名）
+   * @param fileName 文件名
+   * @param size 文件总字节数
+   * @param md5 文件 MD5（启用秒传时由前端计算；可为空）
+   */
+  async createUploadSession(
+    _virtualDir: string,
+    physicalDir: string,
+    fileName: string,
+    size: number,
+    md5: string,
+  ): Promise<{
+    reuse: boolean
+    partCount: number
+    chunkSize: number
+    session: string
+  }> {
+    this.budget.used = 0
+    const parentId = await this.ensureFolderId(physicalDir || "/")
+    const upload = await this.client.createUpload(
+      fileName,
+      parentId,
+      size,
+      md5 || "",
+    )
+    const chunkSize = 16 * 1024 * 1024 // 16MB
+    // 秒传命中或未分配 Key：文件已存在，无需实际上传
+    if (upload.Reuse || upload.Key === "") {
+      return { reuse: true, partCount: 0, chunkSize, session: "" }
+    }
+    const partCount = Math.max(1, Math.ceil(size / chunkSize))
+    const session = encodeSession({
+      bucket: upload.Bucket,
+      key: upload.Key,
+      uploadId: upload.UploadId,
+      fileId: upload.FileId,
+      storageNode: upload.StorageNode,
+      size,
+      partCount,
+      chunkSize,
+    })
+    return { reuse: false, partCount, chunkSize, session }
+  }
+
+  /**
+   * 上传单个分片：获取该片的预签名 URL 并把内容转发给 123pan。
+   */
+  async uploadPart(
+    session: string,
+    partNumber: number,
+    content: Buffer,
+  ): Promise<void> {
+    this.budget.used = 0
+    const s = decodeSession(session)
+    const url = await this.client.getPartUploadUrl(
+      sessionToUpload(s),
+      partNumber,
+      s.partCount,
+    )
+    const res = await fetch(url, { method: "PUT", body: content })
+    if (res.status !== 200) {
+      const text = await res.text().catch(() => "")
+      throw new Error(
+        `[123Pan] 上传第 ${partNumber}/${s.partCount} 分片失败：HTTP ${res.status} ${text}`,
+      )
+    }
+  }
+
+  /**
+   * 完成分片上传会话。
+   */
+  async completeUploadSession(session: string): Promise<void> {
+    this.budget.used = 0
+    const s = decodeSession(session)
+    await this.client.completeUpload(
+      sessionToUpload(s),
+      s.size,
+      s.partCount > 1,
     )
   }
 }

@@ -17,7 +17,7 @@
   "task_status": "任务状态",
   "running": "运行中",
   "idle": "空闲",
-  "path_to_scan": "Path to scan",
-  "rate_limit": "Rate limit",
-  "start": "Start"
+  "path_to_scan": "扫描路径",
+  "rate_limit": "速率限制",
+  "start": "开始"
 }

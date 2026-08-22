@@ -8,10 +8,29 @@ import {
   moveItems,
   copyItems,
   putItem,
+  getDriver,
 } from "../internal/op/storage"
 import { resolveShare } from "../internal/op/share"
+import { resolvePath } from "../internal/model/db"
+import { getUserFromContext } from "./middlewares"
+import { canWrite } from "../pkg/permission"
 
 export const fsRouter = new Hono()
+
+// ---- 写操作权限校验 ----
+// 游客（未登录 / 无凭证 / token 无效）一律 403，普通用户需具备
+// WRITE_CONTENT 权限位，管理员放行。修复「任何人可匿名上传/删除文件」
+// 的安全漏洞，同时让 /fs/list 的 write 字段如实反映请求者身份。
+const permissionDenied = (c: any) =>
+  c.json({ code: 403, message: "Permission denied", data: null }, 403)
+
+const requireWritePermission = async (c: any): Promise<Response | null> => {
+  const user = await getUserFromContext(c)
+  if (!canWrite(user)) {
+    return permissionDenied(c)
+  }
+  return null
+}
 
 // GET sub-directories of a path (used by FolderTree in metas/storages editors)
 fsRouter.post("/dirs", async (c) => {
@@ -196,6 +215,9 @@ fsRouter.post("/list", async (c) => {
     }
 
     const { content, provider, storage } = await listItems(reqPath)
+    // write 按请求者身份如实返回：游客/无写权限用户为 false，
+    // 前端据此隐藏上传、新建文件夹等写操作入口
+    const writable = canWrite(await getUserFromContext(c))
     // Normalize each item to the full Obj shape expected by the frontend
     const normalized = content.map((item: any) => ({
       name: item.name,
@@ -247,7 +269,7 @@ fsRouter.post("/list", async (c) => {
         total,
         readme: "",
         header: "",
-        write: true,
+        write: writable,
         write_content_bypass: false,
         provider,
         page_size: effectivePerPage > 0 ? effectivePerPage : undefined,
@@ -341,7 +363,7 @@ fsRouter.post("/get", async (c) => {
         header: "",
         provider,
         related: [],
-        write: true,
+        write: canWrite(await getUserFromContext(c)),
         write_content_bypass: false,
       },
     })
@@ -351,6 +373,8 @@ fsRouter.post("/get", async (c) => {
 })
 
 fsRouter.post("/mkdir", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
   const body = await c.req.json().catch(() => ({}))
   const reqPath = body.path || "/"
   try {
@@ -362,6 +386,8 @@ fsRouter.post("/mkdir", async (c) => {
 })
 
 fsRouter.post("/rename", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
   const { path: oldPath, name: newName } = await c.req.json().catch(() => ({}))
   try {
     await renameItem(oldPath, newName)
@@ -372,6 +398,8 @@ fsRouter.post("/rename", async (c) => {
 })
 
 fsRouter.post("/remove", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
   const { dir, names } = await c.req.json().catch(() => ({}))
   try {
     await removeItems(dir, names)
@@ -382,6 +410,8 @@ fsRouter.post("/remove", async (c) => {
 })
 
 fsRouter.post("/move", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
   const { src_dir, dst_dir, names } = await c.req.json().catch(() => ({}))
   try {
     await moveItems(src_dir, dst_dir, names)
@@ -392,6 +422,8 @@ fsRouter.post("/move", async (c) => {
 })
 
 fsRouter.post("/copy", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
   const { src_dir, dst_dir, names } = await c.req.json().catch(() => ({}))
   try {
     await copyItems(src_dir, dst_dir, names)
@@ -402,10 +434,139 @@ fsRouter.post("/copy", async (c) => {
 })
 
 fsRouter.put("/put", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
   const reqPath = decodeURIComponent(c.req.header("File-Path") || "")
   try {
     const buffer = await c.req.arrayBuffer()
     await putItem(reqPath, Buffer.from(buffer))
+    return c.json({ code: 200, message: "success", data: null })
+  } catch (e: any) {
+    return c.json({ code: 500, message: e.message, data: null })
+  }
+})
+
+fsRouter.put("/form", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
+  const reqPath = decodeURIComponent(c.req.header("File-Path") || "")
+  try {
+    const form = await c.req.formData()
+    const file = form.get("file")
+    if (!file || typeof file === "string") {
+      return c.json({
+        code: 400,
+        message: "missing file in form data",
+        data: null,
+      })
+    }
+    const buffer = Buffer.from(await (file as File).arrayBuffer())
+    await putItem(reqPath, buffer)
+    return c.json({ code: 200, message: "success", data: null })
+  } catch (e: any) {
+    return c.json({ code: 500, message: e.message, data: null })
+  }
+})
+
+// ---- 分片会话上传：解决大文件整体缓冲导致的卡死/OOM ----
+// 流程：POST /fs/upload/create 建会话 → PUT /fs/upload/part 逐片上传
+//      → POST /fs/upload/complete 收尾。每片是独立 HTTP 请求，Worker
+//      内存占用恒定，不受 CF Workers 请求体/内存上限约束。
+
+fsRouter.post("/upload/create", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
+  const {
+    path: rawPath,
+    file_name,
+    size,
+    md5,
+  } = await c.req.json().catch(() => ({}))
+  // 根目录上传时调用方可能传 ""，归一化为 "/"
+  const dirPath = rawPath || "/"
+  if (!file_name) {
+    return c.json({
+      code: 400,
+      message: "path and file_name are required",
+      data: null,
+    })
+  }
+  try {
+    const resolved = await resolvePath(dirPath)
+    if (resolved.isVirtual) {
+      throw new Error("failed get storage: storage not found")
+    }
+    const driver = await getDriver(resolved.storage!.driver, resolved.storage)
+    if (typeof (driver as any).createUploadSession !== "function") {
+      // 当前存储不支持分片会话上传：返回 null，前端自动回退到流式上传
+      return c.json({ code: 200, message: "success", data: null })
+    }
+    const info = await (driver as any).createUploadSession(
+      dirPath,
+      resolved.physical!,
+      file_name,
+      Number(size) || 0,
+      md5 || "",
+    )
+    return c.json({ code: 200, message: "success", data: info })
+  } catch (e: any) {
+    return c.json({ code: 500, message: e.message, data: null })
+  }
+})
+
+fsRouter.put("/upload/part", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
+  const session = c.req.header("X-Upload-Session") || ""
+  const partNumber = parseInt(c.req.header("X-Part-Number") || "0", 10)
+  const dirPath = decodeURIComponent(c.req.header("Upload-Path") || "")
+  if (!session || !(partNumber >= 1) || !dirPath) {
+    return c.json({
+      code: 400,
+      message: "missing X-Upload-Session / X-Part-Number / Upload-Path",
+      data: null,
+    })
+  }
+  try {
+    const resolved = await resolvePath(dirPath)
+    if (resolved.isVirtual) {
+      throw new Error("failed get storage: storage not found")
+    }
+    const driver = await getDriver(resolved.storage!.driver, resolved.storage)
+    if (typeof (driver as any).uploadPart !== "function") {
+      throw new Error("storage does not support chunked upload")
+    }
+    const buffer = Buffer.from(await c.req.arrayBuffer())
+    await (driver as any).uploadPart(session, partNumber, buffer)
+    return c.json({ code: 200, message: "success", data: null })
+  } catch (e: any) {
+    return c.json({ code: 500, message: e.message, data: null })
+  }
+})
+
+fsRouter.post("/upload/complete", async (c) => {
+  const denied = await requireWritePermission(c)
+  if (denied) return denied
+  const { path: rawPath, session } = await c.req.json().catch(() => ({}))
+  // 根目录上传时调用方可能传 ""，归一化为 "/"
+  const dirPath = rawPath || "/"
+  if (!session) {
+    return c.json({
+      code: 400,
+      message: "path and session are required",
+      data: null,
+    })
+  }
+  try {
+    const resolved = await resolvePath(dirPath)
+    if (resolved.isVirtual) {
+      throw new Error("failed get storage: storage not found")
+    }
+    const driver = await getDriver(resolved.storage!.driver, resolved.storage)
+    if (typeof (driver as any).completeUploadSession !== "function") {
+      throw new Error("storage does not support chunked upload")
+    }
+    await (driver as any).completeUploadSession(session)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: e.message, data: null })

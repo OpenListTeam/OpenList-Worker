@@ -12,7 +12,7 @@
   "failed_restore_item": "[ {{item}} ] 恢复失败",
   "skip_existing_item": "[ {{item}} ] 已存在，跳过",
   "override": "覆盖",
-  "encrypt_password_placeholder": "Leave empty if you don't need encryption",
+  "encrypt_password_placeholder": "不需要加密请留空",
   "encrypt_password": "加密密码",
-  "wrong_encrypt_password": "Wrong encryption password"
+  "wrong_encrypt_password": "加密密码错误"
 }

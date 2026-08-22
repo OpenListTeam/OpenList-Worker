@@ -37,13 +37,11 @@ const useTitle = (title: string | (() => string)) => {
 }
 
 export const useObjTitle = () => {
-  const t = useT()
   const { pathname } = useRouter()
-  useTitle(
-    () =>
-      `${
-        pathname() === "/" ? t("manage.sidemenu.home") : pathBase(pathname())
-      } | ${getSetting("site_title")}`,
+  useTitle(() =>
+    pathname() === "/"
+      ? getSetting("site_title")
+      : `${pathBase(pathname())} | ${getSetting("site_title")}`,
   )
 }
 
