@@ -8,6 +8,8 @@ import {
   Pan123LoginResp,
   Pan123BaseResp,
   Pan123UserInfoResp,
+  Pan123UploadResp,
+  Pan123S3PreSignedURLs,
 } from "./types"
 
 const MAIN_API = "https://yun.123pan.com/b/api"
@@ -60,6 +62,12 @@ const Mkdir = MAIN_API + "/file/upload_request"
 const Move = MAIN_API + "/file/mod_pid"
 const Rename = MAIN_API + "/file/rename"
 const Trash = MAIN_API + "/file/trash"
+
+// --- 上传（S3 分片上传会话）---
+const UploadRequest = MAIN_API + "/file/upload_request"
+const S3Auth = MAIN_API + "/file/s3_upload_object/auth"
+const S3PreSignedUrls = MAIN_API + "/file/s3_repare_upload_parts_batch"
+const UploadCompleteV2 = MAIN_API + "/file/upload_complete/v2"
 
 // --- CRC32-based API path signing (Go signPath equivalent) ---
 
@@ -494,5 +502,164 @@ export class Pan123Client {
       operation: true,
       fileTrashInfoList: [file],
     })
+  }
+
+  // ---- 上传（S3 分片会话，无状态环境友好）----
+
+  /**
+   * 创建上传会话。返回 S3 分片上传所需的 Bucket/Key/UploadId/FileId/StorageNode。
+   * 若服务端命中秒传（Reuse）或未分配 Key，则无需实际上传。
+   */
+  public async createUpload(
+    fileName: string,
+    parentFileId: string,
+    size: number,
+    etag: string,
+  ): Promise<Pan123UploadResp["data"]> {
+    const body = {
+      driveId: 0,
+      duplicate: 2, // 2=覆盖 1=重命名 0=默认
+      etag,
+      fileName,
+      parentFileId,
+      size,
+      type: 0,
+    }
+    const resp = (await this.request(
+      UploadRequest,
+      "POST",
+      body,
+    )) as Pan123UploadResp
+    return resp.data
+  }
+
+  private async getS3Auth(
+    up: Pan123UploadResp["data"],
+    start: number,
+    end: number,
+  ): Promise<Pan123S3PreSignedURLs["data"]> {
+    const body = {
+      StorageNode: up.StorageNode,
+      bucket: up.Bucket,
+      key: up.Key,
+      partNumberEnd: end,
+      partNumberStart: start,
+      uploadId: up.UploadId,
+    }
+    const resp = (await this.request(
+      S3Auth,
+      "POST",
+      body,
+    )) as Pan123S3PreSignedURLs
+    return resp.data
+  }
+
+  private async getS3PreSignedUrls(
+    up: Pan123UploadResp["data"],
+    start: number,
+    end: number,
+  ): Promise<Pan123S3PreSignedURLs["data"]> {
+    const body = {
+      bucket: up.Bucket,
+      key: up.Key,
+      partNumberEnd: end,
+      partNumberStart: start,
+      uploadId: up.UploadId,
+      StorageNode: up.StorageNode,
+    }
+    const resp = (await this.request(
+      S3PreSignedUrls,
+      "POST",
+      body,
+    )) as Pan123S3PreSignedURLs
+    return resp.data
+  }
+
+  private async completeS3(
+    up: Pan123UploadResp["data"],
+    size: number,
+    isMultipart: boolean,
+  ): Promise<void> {
+    await this.request(UploadCompleteV2, "POST", {
+      StorageNode: up.StorageNode,
+      bucket: up.Bucket,
+      fileId: up.FileId,
+      fileSize: size,
+      isMultipart,
+      key: up.Key,
+      uploadId: up.UploadId,
+    })
+  }
+
+  /**
+   * 完整上传流程（替代直接 put 的“无状态环境不支持”报错）：
+   * 1. 计算 MD5（用于秒传/去重；失败则留空，服务端仍会新建上传）
+   * 2. 创建上传会话
+   * 3. 按 16MB 分片，逐片 PUT 到预签名 URL（无需 AWS SDK，适合 Cloudflare Workers 等无状态环境）
+   * 4. 通知服务端完成上传
+   */
+  public async uploadFile(
+    parentId: string,
+    fileName: string,
+    content: Buffer,
+  ): Promise<void> {
+    let etag = ""
+    try {
+      const cryptoMod = await import("node:crypto")
+      etag = cryptoMod.createHash("md5").update(content).digest("hex")
+    } catch {
+      etag = ""
+    }
+
+    const upload = await this.createUpload(
+      fileName,
+      parentId,
+      content.length,
+      etag,
+    )
+    // 秒传命中或未分配 Key：文件已存在，无需实际上传
+    if (upload.Reuse || upload.Key === "") {
+      return
+    }
+
+    const CHUNK = 16 * 1024 * 1024 // 16MB
+    let chunkCount = 1
+    if (content.length > CHUNK) {
+      chunkCount = Math.ceil(content.length / CHUNK)
+    }
+    let lastChunkSize = content.length % CHUNK
+    if (lastChunkSize === 0) lastChunkSize = CHUNK
+
+    // 获取各分片的预签名 PUT URL
+    // 注意：123pan S3 预签名接口的 partNumberStart/partNumberEnd 是 [start, end) 半开区间。
+    // 单片(end=2 覆盖第1片)；多片(end=chunkCount+1 覆盖 1..chunkCount 全部)。
+    let urls: Record<string, string>
+    if (chunkCount === 1) {
+      urls = (await this.getS3Auth(upload, 1, 2)).presignedUrls
+    } else {
+      urls = (await this.getS3PreSignedUrls(upload, 1, chunkCount + 1))
+        .presignedUrls
+    }
+
+    // 逐片上传
+    for (let cur = 1; cur <= chunkCount; cur++) {
+      const offset = (cur - 1) * CHUNK
+      const curSize = cur === chunkCount ? lastChunkSize : CHUNK
+      const url = urls[String(cur)]
+      if (!url) {
+        throw new Error(`[123Pan] 缺少第 ${cur} 分片的上传 URL`)
+      }
+      const chunk = content.subarray(offset, offset + curSize)
+      const res = await fetch(url, { method: "PUT", body: chunk })
+      if (res.status !== 200) {
+        const text = await res.text().catch(() => "")
+        throw new Error(
+          `[123Pan] 上传第 ${cur}/${chunkCount} 分片失败：HTTP ${res.status} ${text}`,
+        )
+      }
+    }
+
+    // 完成上传
+    await this.completeS3(upload, content.length, chunkCount > 1)
   }
 }

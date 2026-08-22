@@ -174,21 +174,21 @@
     "no_selected": "未选择文件"
   },
   "upload": {
-    "add_as_task": "Add as task",
-    "try_rapid": "Try rapid",
-    "upload-tips": "Drag files here to upload, or click:",
-    "release": "Release to upload",
-    "no_files_drag": "No files were dragged in.",
-    "upload_files": "Choose Files",
-    "upload_folder": "Choose Folder",
-    "hashing": "Hashing",
-    "pending": "Pending",
-    "uploading": "Uploading",
-    "backending": "Uploading in the backend",
-    "success": "Success",
-    "error": "Error",
-    "back": "Back to Upload",
-    "clear_done": "Clear Done"
+    "add_as_task": "添加为任务",
+    "try_rapid": "尝试秒传",
+    "upload-tips": "将文件拖到此处上传，或点击：",
+    "release": "松开以上传",
+    "no_files_drag": "没有拖入任何文件。",
+    "upload_files": "选择文件",
+    "upload_folder": "选择文件夹",
+    "hashing": "哈希计算中",
+    "pending": "等待中",
+    "uploading": "上传中",
+    "backending": "后台上传中",
+    "success": "成功",
+    "error": "失败",
+    "back": "返回上传",
+    "clear_done": "清除已完成"
   },
   "local_settings": {
     "aria2_rpc_url": "Aria2 RPC URL",
@@ -279,7 +279,7 @@
   "Loading storage, please wait": "Loading storage, please wait",
   "conflict_policy": {
     "cancel_if_exists": "Cancel if file exists",
-    "overwrite_existing": "Overwrite existing files",
+    "overwrite_existing": "覆盖已存在的文件",
     "skip_existing": "Skip existing files",
     "merge": "Only Copy new files and subdirectories"
   }

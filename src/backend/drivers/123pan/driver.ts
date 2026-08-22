@@ -257,9 +257,26 @@ export class Pan123Driver implements StorageDriver {
     throw new Error("[123Pan] Copy is not supported by 123 Cloud Drive API")
   }
 
-  async put(): Promise<void> {
-    throw new Error(
-      "[123Pan] Direct put not supported in stateless environment (requires S3 upload session)",
-    )
+  async put(
+    _virtualPath: string,
+    physicalPath: string,
+    content: Buffer,
+  ): Promise<void> {
+    this.budget.used = 0
+    const segs = String(physicalPath || "")
+      .split("/")
+      .filter(Boolean)
+    if (segs.length === 0) throw new Error("invalid upload path")
+    const rawName = segs[segs.length - 1]
+    const decodedName = (() => {
+      try {
+        return decodeURIComponent(rawName)
+      } catch {
+        return rawName
+      }
+    })()
+    const parentPath = "/" + segs.slice(0, segs.length - 1).join("/")
+    const parentId = await this.resolveFolderId(parentPath)
+    await this.client.uploadFile(parentId, decodedName, content)
   }
 }
