@@ -66,6 +66,19 @@ function getSetCookieHeaders(headers: Headers): string[] {
   return combined ? [combined] : []
 }
 
+/**
+ * 189Cloud returns file/folder IDs as JSON numbers. IDs exceed JavaScript's
+ * safe integer range, so protect the numeric token before parsing to retain
+ * the exact value used by subsequent API requests.
+ */
+function parseJsonPreservingIds(text: string): any {
+  const protectedText = text.replace(
+    /("id"\s*:\s*)(-?\d{16,})(?=\s*[,}])/g,
+    '$1"$2"',
+  )
+  return JSON.parse(protectedText)
+}
+
 const TRUSTED_REDIRECT_HOSTS = new Set(["cloud.189.cn", "open.e.189.cn"])
 
 function isTrustedHttpsUrl(value: URL): boolean {
@@ -388,7 +401,7 @@ export class Pan189Client {
     const text = await res.text()
     let data: any
     try {
-      data = JSON.parse(text)
+      data = parseJsonPreservingIds(text)
     } catch {
       throw new Error(`[189Cloud] 非预期响应: ${text.slice(0, 200)}`)
     }

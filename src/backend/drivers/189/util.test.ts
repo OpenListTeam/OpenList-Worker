@@ -294,6 +294,24 @@ test("malformed fileListAO is rejected instead of becoming an empty directory", 
   await assert.rejects(() => client.getFiles("-11"), /fileListAO.*数组/)
 })
 
+test("large 189Cloud file and folder ids are preserved exactly", async () => {
+  const folderId = "925521251969871401"
+  const fileId = "925521251969871402"
+
+  const body = `{"res_code":0,"res_message":"","fileListAO":{"count":2,"fileList":[{"id":${fileId},"name":"测试.txt","size":15,"lastOpTime":"2026-08-23 10:14:24"}],"folderList":[{"id":${folderId},"name":"Openlist","lastOpTime":"2026-08-23 10:15:00"}]}}`
+  globalThis.fetch = (async (input) =>
+    mockResponse(requestUrl(input), body, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof fetch
+
+  const client = new Pan189Client({ username: "", password: "" })
+  const result = await client.getFiles("-11")
+
+  assert.equal(result.files[0].id, fileId)
+  assert.equal(result.folders[0].id, folderId)
+})
+
 test("null file counts are rejected instead of becoming zero", async () => {
   globalThis.fetch = (async (input) =>
     mockResponse(
