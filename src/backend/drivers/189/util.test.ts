@@ -44,7 +44,7 @@ test("login preserves cookies from intermediate redirects", async () => {
     const url = requestUrl(input)
     cookiesSent.push(new Headers(init?.headers).get("cookie") || "")
 
-    if (url === loginUrl) {
+    if (url.startsWith(loginUrl)) {
       return mockResponse(url, "", {
         status: 302,
         headers: { location: authUrl },
@@ -88,7 +88,7 @@ test("login rejects redirects to untrusted hosts before sending cookies", async 
   globalThis.fetch = (async (input, init) => {
     const url = requestUrl(input)
     cookiesSent.push(new Headers(init?.headers).get("cookie") || "")
-    if (url === loginUrl) {
+    if (url.startsWith(loginUrl)) {
       return mockResponse(url, "", {
         status: 302,
         headers: { location: "https://attacker.example/collect" },
@@ -112,7 +112,7 @@ test("login rejects trusted-host redirects that downgrade to HTTP", async () => 
     "https://cloud.189.cn/api/portal/loginUrl.action?redirectURL=https%3A%2F%2Fcloud.189.cn%2Fmain.action"
 
   globalThis.fetch = (async (input) => {
-    if (requestUrl(input) === loginUrl) {
+    if (requestUrl(input).startsWith(loginUrl)) {
       return mockResponse(loginUrl, "", {
         status: 302,
         headers: { location: "http://cloud.189.cn/web/main" },
@@ -200,6 +200,48 @@ test("OAuth requests use cookies refreshed by the previous response", async () =
 
   await assert.rejects(() => client.login(), /expected test stop/)
   assert.match(encryptConfCookie, /(?:^|; )oauth=refreshed(?:;|$)/)
+})
+
+test("login retries a transient redirect without OAuth parameters", async () => {
+  const loginUrlPrefix =
+    "https://cloud.189.cn/api/portal/loginUrl.action?redirectURL="
+  const validUrl =
+    "https://open.e.189.cn/api/logbox/separate/web/index.html?appId=cloud&lt=lt-value&reqId=req-value"
+  let loginAttempts = 0
+
+  globalThis.fetch = (async (input) => {
+    const url = requestUrl(input)
+    if (url.startsWith(loginUrlPrefix)) {
+      loginAttempts++
+      if (loginAttempts === 1) {
+        return mockResponse(url, "", { status: 200 })
+      }
+      return mockResponse(url, "", {
+        status: 302,
+        headers: {
+          location: "https://open.e.189.cn/redirect-without-params",
+        },
+      })
+    }
+    if (url.endsWith("/redirect-without-params")) {
+      return mockResponse(url, "", {
+        status: 302,
+        headers: { location: validUrl },
+      })
+    }
+    if (url === validUrl) return mockResponse(url, "", { status: 200 })
+    throw new Error(`unexpected fetch: ${url}`)
+  }) as typeof fetch
+
+  const client = new Pan189Client({ username: "", password: "" })
+  const resolved = await (client as any).resolveLoginUrl(
+    "https://cloud.189.cn/api/portal/loginUrl.action?redirectURL=https%3A%2F%2Fcloud.189.cn%2Fmain.action",
+    { "User-Agent": "test" },
+  )
+
+  assert.equal(loginAttempts, 2)
+  assert.match(resolved, /[?&]lt=lt-value/)
+  assert.match(resolved, /[?&]reqId=req-value/)
 })
 
 test("API requests wait for refreshed cookies to be persisted", async () => {

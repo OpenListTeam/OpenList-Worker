@@ -190,8 +190,30 @@ export class Pan189Client {
     loginUrl: string,
     headers: Record<string, string>,
   ): Promise<string> {
-    const result = await this.followRedirectsWithCookies(loginUrl, headers)
-    return result.url
+    let lastUrl = loginUrl
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const requestUrl = new URL(loginUrl)
+      requestUrl.searchParams.set("noCache", randomNoCache())
+      const result = await this.followRedirectsWithCookies(
+        requestUrl.toString(),
+        headers,
+      )
+      lastUrl = result.url
+
+      const finalUrl = new URL(result.url, "https://open.e.189.cn")
+      const hasOAuthParams =
+        Boolean(finalUrl.searchParams.get("lt")) &&
+        Boolean(finalUrl.searchParams.get("reqId"))
+      const isLoggedIn =
+        result.url.includes("cloud.189.cn/web/main") ||
+        result.url.includes("cloud.189.cn/main.action")
+      if (hasOAuthParams || isLoggedIn) return result.url
+
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)))
+      }
+    }
+    return lastUrl
   }
 
   /**
