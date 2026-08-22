@@ -50,24 +50,34 @@ export class WebDavDriver implements StorageDriver {
     const davPath = this.client.resolvePath(physicalPath)
     const resources = await this.client.propfind(davPath, 1)
 
-    // With Depth:1, server returns the directory itself + its direct children.
-    // Filter out the directory itself by matching href.
-    const dirHref = davPath.endsWith("/") ? davPath : `${davPath}/`
-    const items: FileItem[] = []
+    // The server returns the requested directory itself + its children.
+    // Self entry href = addressPath + davPath (e.g. "/dav/Koofr/" + "" = "/dav/Koofr/")
+    // Children hrefs have one more segment (e.g. "/dav/Koofr/ioir-nav/")
+    // Strip the addressPath prefix from hrefs, then compare remaining path to davPath
+    // to identify the self entry.
+    const addressPath = this.client.addressPath
+    const items: WebDavResource[] = []
 
     for (const r of resources) {
-      // Normalize href for comparison
-      const rHref = r.href.endsWith("/") ? r.href : `${r.href}/`
-      const dHref = dirHref.endsWith("/") ? dirHref : `${dirHref}/`
+      const decodedHref = decodeURIComponent(r.href).replace(/\/+$/, "")
+      // Get the path relative to the address
+      const relativePath = decodedHref.startsWith(addressPath)
+        ? decodedHref.slice(addressPath.length)
+        : decodedHref
+      const normalizedRelative = relativePath.replace(/^\/+|\/+$/g, "")
+      const normalizedDav = davPath.replace(/^\/+|\/+$/g, "")
 
-      // Skip the directory itself (href matches the requested path)
-      if (rHref === dHref || rHref === `${dHref}`) continue
-      if (r.resourceType === "collection" && decodeURIComponent(r.href).replace(/\/$/, "") === davPath.replace(/\/$/, "")) continue
+      // Skip the directory itself
+      if (normalizedRelative === normalizedDav) continue
 
-      items.push(resourceToFileItem(r))
+      items.push(r)
     }
 
-    return sortFileItems(items, "name", "asc")
+    return sortFileItems(
+      items.map((r) => resourceToFileItem(r)),
+      "name",
+      "asc",
+    )
   }
 
   async get(_virtualPath: string, physicalPath: string): Promise<FileItem> {

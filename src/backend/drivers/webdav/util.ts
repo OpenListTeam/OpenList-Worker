@@ -213,6 +213,16 @@ export class WebDavClient {
     return resources.length > 0 ? resources[0] : null
   }
 
+  /** Extract the path portion from the address URL (e.g. "https://dav.koofr.net/dav/Koofr" → "/dav/Koofr") */
+  get addressPath(): string {
+    try {
+      const u = new URL(this.addition.address)
+      return cleanPath(u.pathname)
+    } catch {
+      return "/"
+    }
+  }
+
   resolvePath(virtualPath: string): string {
     const root = this.rootPath
     const rel = cleanPath(virtualPath)
