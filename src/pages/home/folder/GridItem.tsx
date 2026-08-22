@@ -67,6 +67,8 @@ export const GridItem = (props: { obj: StoreObj; index: number }) => {
           if (!restoreSelectionCache()) return
           if (toggleWithClick())
             return selectIndex(props.index, !props.obj.selected)
+          // 双击会触发两次 click，第二次（e.detail===2）跳过，避免文件夹被连续进入两层
+          if (e.detail > 1) return
           to(pushHref(props.obj.name))
         }}
         onMouseEnter={() => {

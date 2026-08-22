@@ -369,6 +369,22 @@ export const getPreviews = (
     component: lazy(() => import("./download")),
   }
 
+  // 脚本类文件（ps1/cmd/py/sh/bat 等可执行脚本）不进入预览/文本编辑器，直接显示下载页
+  const scriptExts = [
+    "ps1",
+    "psm1",
+    "cmd",
+    "bat",
+    "sh",
+    "bash",
+    "zsh",
+    "py",
+    "pyw",
+  ]
+  if (scriptExts.includes(ext(file.name).toLowerCase())) {
+    return [downloadComponent]
+  }
+
   // Condition for the new requirement: a large text file.
   const isLargeTextFile =
     file.type === ObjType.TEXT && file.size >= 1 * 1024 * 1024
