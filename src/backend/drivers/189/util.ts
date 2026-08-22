@@ -40,7 +40,7 @@ function mergeSetCookie(
 ): string {
   if (!setCookieHeader) return existingCookie
   let current = existingCookie
-  const entries = setCookieHeader.split(/,(?=[a-zA-Z0-9_\-]+=[^;]+)/)
+  const entries = setCookieHeader.split(/,(?=\s*[a-zA-Z0-9_\-]+=[^;]+)/)
   for (const entry of entries) {
     const main = entry.split(";")[0].trim()
     const eqIdx = main.indexOf("=")
@@ -53,15 +53,36 @@ function mergeSetCookie(
   return current
 }
 
+function getSetCookieHeaders(headers: Headers): string[] {
+  const withGetSetCookie = headers as Headers & {
+    getSetCookie?: () => string[]
+  }
+  if (typeof withGetSetCookie.getSetCookie === "function") {
+    const values = withGetSetCookie.getSetCookie()
+    if (values.length > 0) return values
+  }
+
+  const combined = headers.get("set-cookie")
+  return combined ? [combined] : []
+}
+
+const TRUSTED_REDIRECT_HOSTS = new Set(["cloud.189.cn", "open.e.189.cn"])
+
+function isTrustedHttpsUrl(value: URL): boolean {
+  return (
+    value.protocol === "https:" && TRUSTED_REDIRECT_HOSTS.has(value.hostname)
+  )
+}
+
 export class Pan189Client {
   private addition: Cloud189Addition
   private cookie: string = ""
   private sessionKey: string = ""
-  private onCookieUpdate?: (cookie: string) => void
+  private onCookieUpdate?: (cookie: string) => void | Promise<void>
 
   constructor(
     addition: Cloud189Addition,
-    onCookieUpdate?: (cookie: string) => void,
+    onCookieUpdate?: (cookie: string) => void | Promise<void>,
   ) {
     this.addition = addition
     this.cookie = (addition.cookie || "").trim()
@@ -76,25 +97,72 @@ export class Pan189Client {
     return this.addition.root_folder_id || "-11"
   }
 
-  private updateCookie(setCookie: string | null) {
-    if (!setCookie) return
-    const updated = mergeSetCookie(this.cookie, setCookie)
+  private async updateCookie(headers: Headers): Promise<void> {
+    const setCookies = getSetCookieHeaders(headers)
+    if (setCookies.length === 0) return
+
+    const updated = setCookies.reduce(
+      (cookie, setCookie) => mergeSetCookie(cookie, setCookie),
+      this.cookie,
+    )
     if (updated !== this.cookie) {
       this.cookie = updated
-      this.onCookieUpdate?.(this.cookie)
+      await this.onCookieUpdate?.(this.cookie)
     }
+  }
+
+  private async followRedirectsWithCookies(
+    initialUrl: string,
+    headers: Record<string, string>,
+  ): Promise<Response> {
+    let currentUrl = initialUrl
+
+    for (let redirectCount = 0; redirectCount <= 8; redirectCount++) {
+      const currentUrlObj = new URL(currentUrl)
+      if (!isTrustedHttpsUrl(currentUrlObj)) {
+        throw new Error(
+          currentUrlObj.protocol !== "https:"
+            ? `[189Cloud] 登录重定向必须使用 HTTPS: ${currentUrlObj.origin}`
+            : `[189Cloud] 不受信任的登录重定向地址: ${currentUrlObj.origin}`,
+        )
+      }
+      const requestHeaders: Record<string, string> = { ...headers }
+      if (redirectCount > 0) requestHeaders.Referer = currentUrl
+      if (this.cookie) requestHeaders.Cookie = this.cookie
+
+      const response = await fetch(currentUrl, {
+        method: "GET",
+        headers: requestHeaders,
+        redirect: "manual",
+      })
+      await this.updateCookie(response.headers)
+
+      const location = response.headers.get("location")
+      const isRedirect = response.status >= 300 && response.status < 400
+      if (!isRedirect || !location) return response
+      if (redirectCount === 8) {
+        throw new Error("[189Cloud] 登录重定向次数过多")
+      }
+
+      const nextUrl = new URL(location, currentUrl)
+      if (!isTrustedHttpsUrl(nextUrl)) {
+        throw new Error(
+          nextUrl.protocol !== "https:"
+            ? `[189Cloud] 登录重定向必须使用 HTTPS: ${nextUrl.origin}`
+            : `[189Cloud] 不受信任的登录重定向地址: ${nextUrl.origin}`,
+        )
+      }
+      currentUrl = nextUrl.toString()
+    }
+
+    throw new Error("[189Cloud] 登录重定向失败")
   }
 
   private async resolveLoginUrl(
     loginUrl: string,
     headers: Record<string, string>,
   ): Promise<string> {
-    const response = await fetch(loginUrl, {
-      method: "GET",
-      headers,
-      redirect: "follow",
-    })
-    this.updateCookie(response.headers.get("set-cookie"))
+    const response = await this.followRedirectsWithCookies(loginUrl, headers)
     return response.url || loginUrl
   }
 
@@ -144,36 +212,37 @@ export class Pan189Client {
     const reqId = urlObj.searchParams.get("reqId") || ""
     const appId = urlObj.searchParams.get("appId") || "cloud"
     if (!lt || !reqId) {
-      throw new Error(
-        "[189Cloud] 登录跳转参数不完整，未获取到 lt 或 reqId",
-      )
+      throw new Error("[189Cloud] 登录跳转参数不完整，未获取到 lt 或 reqId")
     }
 
-    const authHeaders: Record<string, string> = {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      lt,
-      reqid: reqId,
-      referer: redirectUrlStr,
-      origin: "https://open.e.189.cn",
-      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-      Accept: "application/json;charset=UTF-8",
+    const authHeaders = () => {
+      const result: Record<string, string> = {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        lt,
+        reqid: reqId,
+        referer: redirectUrlStr,
+        origin: "https://open.e.189.cn",
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        Accept: "application/json;charset=UTF-8",
+      }
+      if (this.cookie) result.Cookie = this.cookie
+      return result
     }
-    if (this.cookie) authHeaders["Cookie"] = this.cookie
 
     // 1. 获取 App 配置
     const appConfRes = await fetch(
       "https://open.e.189.cn/api/logbox/oauth2/appConf.do",
       {
         method: "POST",
-        headers: authHeaders,
+        headers: authHeaders(),
         body: new URLSearchParams({
           version: "2.0",
           appKey: appId,
         }),
       },
     )
-    this.updateCookie(appConfRes.headers.get("set-cookie"))
+    await this.updateCookie(appConfRes.headers)
     const appConf: AppConfResp189 = await appConfRes.json()
     if (appConf.result !== "0" || !appConf.data) {
       throw new Error(
@@ -186,13 +255,13 @@ export class Pan189Client {
       "https://open.e.189.cn/api/logbox/config/encryptConf.do",
       {
         method: "POST",
-        headers: authHeaders,
+        headers: authHeaders(),
         body: new URLSearchParams({
           appId,
         }),
       },
     )
-    this.updateCookie(encConfRes.headers.get("set-cookie"))
+    await this.updateCookie(encConfRes.headers)
     const encConf: EncryptConfResp189 = await encConfRes.json()
     if (encConf.result !== 0 || !encConf.data?.pubKey) {
       throw new Error(
@@ -234,13 +303,12 @@ export class Pan189Client {
       {
         method: "POST",
         headers: {
-          ...authHeaders,
-          Cookie: this.cookie,
+          ...authHeaders(),
         },
         body: new URLSearchParams(loginParams),
       },
     )
-    this.updateCookie(loginRes.headers.get("set-cookie"))
+    await this.updateCookie(loginRes.headers)
     const loginData = await loginRes.json()
     if (loginData.result !== 0) {
       const msg = loginData.msg || "登录失败"
@@ -258,15 +326,10 @@ export class Pan189Client {
 
     // 5. 跟随跳转完成授权
     if (loginData.toUrl) {
-      const authFinishRes = await fetch(loginData.toUrl, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          Cookie: this.cookie,
-        },
-        redirect: "follow",
+      await this.followRedirectsWithCookies(loginData.toUrl, {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       })
-      this.updateCookie(authFinishRes.headers.get("set-cookie"))
     }
   }
 
@@ -316,7 +379,7 @@ export class Pan189Client {
       body: reqBody,
     })
 
-    this.updateCookie(res.headers.get("set-cookie"))
+    await this.updateCookie(res.headers)
 
     const text = await res.text()
     let data: any
@@ -326,12 +389,11 @@ export class Pan189Client {
       throw new Error(`[189Cloud] 非预期响应: ${text.slice(0, 200)}`)
     }
 
-    // 检查 SessionKey 过期
-    if (
+    const invalidSession =
       data.errorCode === "InvalidSessionKey" ||
       data.res_code === "InvalidSessionKey" ||
-      data.res_code === 1010
-    ) {
+      String(data.res_code) === "1010"
+    if (invalidSession) {
       if (retry) {
         await this.login()
         return this.request<T>(url, {
@@ -339,15 +401,80 @@ export class Pan189Client {
           retryOnInvalidSession: false,
         })
       }
+      throw new Error(
+        data.errorMsg || data.res_message || "[189Cloud] 登录会话已失效",
+      )
     }
 
-    if (data.res_code !== undefined && data.res_code !== 0) {
+    if (data.errorCode) {
+      throw new Error(data.errorMsg || `[189Cloud] API 错误: ${data.errorCode}`)
+    }
+
+    if (!res.ok) {
+      throw new Error(
+        data.errorMsg ||
+          data.res_message ||
+          `[189Cloud] HTTP 请求失败 (${res.status})`,
+      )
+    }
+
+    if (data.res_code !== undefined && String(data.res_code) !== "0") {
       throw new Error(
         data.res_message || `189 API 错误 (res_code: ${data.res_code})`,
       )
     }
 
     return data as T
+  }
+
+  private async getFilesPage(
+    folderId: string,
+    pageNum: number,
+    pageSize: string,
+  ): Promise<FilesResp189> {
+    const orderBy = this.addition.order_by || "lastOpTime"
+    const descending =
+      (this.addition.order_direction || "desc") === "desc" ? "true" : "false"
+
+    const resp = await this.request<FilesResp189>(
+      "https://cloud.189.cn/api/open/file/listFiles.action",
+      {
+        method: "GET",
+        params: {
+          pageSize,
+          pageNum: String(pageNum),
+          mediaType: "0",
+          folderId: folderId || this.getRootId(),
+          iconOption: "5",
+          orderBy,
+          descending,
+        },
+      },
+    )
+
+    const rawCount: unknown = resp.fileListAO?.count
+    const count =
+      typeof rawCount === "number"
+        ? rawCount
+        : typeof rawCount === "string" && rawCount.trim() !== ""
+          ? Number(rawCount)
+          : NaN
+    if (
+      !resp.fileListAO ||
+      typeof resp.fileListAO !== "object" ||
+      Array.isArray(resp.fileListAO) ||
+      !Number.isFinite(count) ||
+      count < 0 ||
+      !Array.isArray(resp.fileListAO.fileList) ||
+      !Array.isArray(resp.fileListAO.folderList)
+    ) {
+      throw new Error("[189Cloud] 文件列表响应缺少有效的 fileListAO 数组字段")
+    }
+    return resp
+  }
+
+  async validateRoot(folderId: string): Promise<void> {
+    await this.getFilesPage(folderId, 1, "1")
   }
 
   /**
@@ -366,10 +493,6 @@ export class Pan189Client {
     let pageNum = 1
     const pageSize = "60"
 
-    const orderBy = this.addition.order_by || "lastOpTime"
-    const descending =
-      (this.addition.order_direction || "desc") === "desc" ? "true" : "false"
-
     while (true) {
       if (options?.budget) {
         if (options.budget.used >= options.budget.limit) {
@@ -381,24 +504,10 @@ export class Pan189Client {
         options.budget.used++
       }
 
-      const resp = await this.request<FilesResp189>(
-        "https://cloud.189.cn/api/open/file/listFiles.action",
-        {
-          method: "GET",
-          params: {
-            pageSize,
-            pageNum: String(pageNum),
-            mediaType: "0",
-            folderId: folderId || this.getRootId(),
-            iconOption: "5",
-            orderBy,
-            descending,
-          },
-        },
-      )
+      const resp = await this.getFilesPage(folderId, pageNum, pageSize)
 
-      const fileListAO = resp.fileListAO
-      if (!fileListAO || fileListAO.count === 0) {
+      const fileListAO = resp.fileListAO!
+      if (Number(fileListAO.count) === 0) {
         break
       }
 

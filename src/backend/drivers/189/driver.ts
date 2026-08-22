@@ -75,6 +75,7 @@ export class Cloud189Driver implements StorageDriver {
 
   async init(): Promise<void> {
     await this.client.login()
+    await this.client.validateRoot(this.client.getRootId())
   }
 
   /**

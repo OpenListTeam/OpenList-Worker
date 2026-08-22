@@ -33,6 +33,7 @@
     "deploy": "node scripts/deploy.js",
     "build:all": "npm run build",
     "serve": "vite preview",
+    "test:189": "tsx --test src/backend/drivers/189/*.test.ts",
     "sls:deploy": "serverless deploy",
     "sls:package": "serverless package",
     "sls:info": "serverless info",
