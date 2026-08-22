@@ -89,44 +89,13 @@ export class Pan189Client {
     loginUrl: string,
     headers: Record<string, string>,
   ): Promise<string> {
-    let currentUrl = loginUrl
-
-    for (let redirectCount = 0; redirectCount < 5; redirectCount++) {
-      const requestHeaders: Record<string, string> = {
-        ...headers,
-      }
-      if (redirectCount > 0) requestHeaders.Referer = currentUrl
-      if (this.cookie) requestHeaders.Cookie = this.cookie
-
-      const response = await fetch(currentUrl, {
-        method: "GET",
-        headers: requestHeaders,
-        redirect: "manual",
-      })
-      this.updateCookie(response.headers.get("set-cookie"))
-
-      const location = response.headers.get("location")
-      if (
-        !location ||
-        response.status < 300 ||
-        response.status >= 400
-      ) {
-        return response.url || currentUrl
-      }
-
-      const nextUrl = new URL(location, currentUrl).toString()
-      const nextUrlObj = new URL(nextUrl)
-      if (
-        nextUrlObj.searchParams.get("lt") &&
-        nextUrlObj.searchParams.get("reqId") &&
-        nextUrlObj.searchParams.get("appId")
-      ) {
-        return nextUrl
-      }
-      currentUrl = nextUrl
-    }
-
-    return currentUrl
+    const response = await fetch(loginUrl, {
+      method: "GET",
+      headers,
+      redirect: "follow",
+    })
+    this.updateCookie(response.headers.get("set-cookie"))
+    return response.url || loginUrl
   }
 
   /**
@@ -173,10 +142,10 @@ export class Pan189Client {
 
     const lt = urlObj.searchParams.get("lt") || ""
     const reqId = urlObj.searchParams.get("reqId") || ""
-    const appId = urlObj.searchParams.get("appId") || ""
-    if (!lt || !reqId || !appId) {
+    const appId = urlObj.searchParams.get("appId") || "cloud"
+    if (!lt || !reqId) {
       throw new Error(
-        "[189Cloud] 登录跳转参数不完整，未获取到 lt、reqId 或 appId",
+        "[189Cloud] 登录跳转参数不完整，未获取到 lt 或 reqId",
       )
     }
 
