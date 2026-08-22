@@ -31,20 +31,49 @@ export async function adminAuthMiddleware(
  * 权限判定统一走 pkg/permission.ts 的 canWrite()：
  * 管理员放行，普通用户按 WRITE_CONTENT 位，游客一律拒绝。
  */
-export async function getUserFromContext(
-  c: Context,
-): Promise<{
+export async function getUserFromContext(c: Context): Promise<{
+  id?: number
   role: number
   permission: number
   disabled?: boolean
   username?: string
+  base_path?: string
 } | null> {
   // 静态 API token：与 /admin 同等信任
   if (await checkAdminAuth(c)) {
-    return { role: 2, permission: 0, disabled: false, username: "api-token" }
+    return {
+      role: 2,
+      permission: 0,
+      disabled: false,
+      username: "api-token",
+      base_path: "/",
+    }
   }
   const authHeader = c.req.header("Authorization")
-  if (!authHeader) return null
+  if (!authHeader) {
+    try {
+      const db = await getDb(c.env)
+      const guest = (db.users || []).find((u: any) => u.username === "guest")
+      if (guest && !guest.disabled) {
+        return {
+          id: guest.id,
+          role: guest.role ?? 1,
+          permission: guest.permission ?? 0,
+          disabled: !!guest.disabled,
+          username: guest.username,
+          base_path: guest.base_path || "/",
+        }
+      }
+    } catch {}
+    return {
+      id: 2,
+      role: 1,
+      permission: 0,
+      disabled: false,
+      username: "guest",
+      base_path: "/",
+    }
+  }
   const token = authHeader.startsWith("Bearer ")
     ? authHeader.substring(7)
     : authHeader
@@ -56,10 +85,12 @@ export async function getUserFromContext(
     )
     if (!user || user.disabled) return null
     return {
+      id: user.id,
       role: user.role,
       permission: user.permission ?? 0,
       disabled: !!user.disabled,
       username: user.username,
+      base_path: user.base_path || "/",
     }
   } catch {
     return null

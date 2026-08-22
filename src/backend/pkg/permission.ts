@@ -76,3 +76,41 @@ export function canCopy(user?: UserPermissionObj | null): boolean {
 export function canRemove(user?: UserPermissionObj | null): boolean {
   return can(user, PermissionBit.DELETE)
 }
+
+/**
+ * 计算用户请求路径对应的实际存储路径（结合用户的根目录 base_path）：
+ * 1. 忽略以 /@s 开头的分享虚拟路径
+ * 2. 若用户 base_path 为空或 "/"，直接返回规范化后的 reqPath
+ * 3. 若用户 base_path 为非空路径（如 "/photos"），将 reqPath 拼接到 base_path 之后：
+ *    - reqPath = "/" 或 "" -> "/photos"
+ *    - reqPath = "/sub" -> "/photos/sub"
+ *    - reqPath = "sub" -> "/photos/sub"
+ */
+export function getActualPath(
+  user?: UserPermissionObj | null,
+  reqPath: string = "/",
+): string {
+  const p = reqPath || "/"
+  if (p.startsWith("/@s")) {
+    return p
+  }
+
+  let basePath = (user?.base_path || "/").trim()
+  if (!basePath || basePath === "/") {
+    return p.startsWith("/") ? p : `/${p}`
+  }
+
+  if (!basePath.startsWith("/")) {
+    basePath = `/${basePath}`
+  }
+  if (basePath.endsWith("/") && basePath.length > 1) {
+    basePath = basePath.replace(/\/+$/, "")
+  }
+
+  const cleanReq = p.startsWith("/") ? p : `/${p}`
+  if (cleanReq === "/") {
+    return basePath
+  }
+
+  return `${basePath}${cleanReq}`
+}

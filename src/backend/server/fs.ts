@@ -13,7 +13,7 @@ import {
 import { resolveShare } from "../internal/op/share"
 import { resolvePath } from "../internal/model/db"
 import { getUserFromContext } from "./middlewares"
-import { canWrite } from "../pkg/permission"
+import { canWrite, getActualPath, isAdmin } from "../pkg/permission"
 import { search } from "../internal/op/search"
 
 export const fsRouter = new Hono()
@@ -25,18 +25,14 @@ export const fsRouter = new Hono()
 const permissionDenied = (c: any) =>
   c.json({ code: 403, message: "Permission denied", data: null }, 403)
 
-const requireWritePermission = async (c: any): Promise<Response | null> => {
-  const user = await getUserFromContext(c)
-  if (!canWrite(user)) {
-    return permissionDenied(c)
-  }
-  return null
-}
-
 // GET sub-directories of a path (used by FolderTree in metas/storages editors)
 fsRouter.post("/dirs", async (c) => {
   const body = await c.req.json().catch(() => ({}))
-  const reqPath = body.path || "/"
+  const user = await getUserFromContext(c)
+  let reqPath = body.path || "/"
+  if (!body.force_root || !isAdmin(user)) {
+    reqPath = getActualPath(user, reqPath)
+  }
   try {
     // Share path support for completeness
     if (reqPath.startsWith("/@s")) {
@@ -102,7 +98,8 @@ fsRouter.post("/dirs", async (c) => {
 
 fsRouter.post("/list", async (c) => {
   const body = await c.req.json().catch(() => ({}))
-  const reqPath = body.path || "/"
+  const user = await getUserFromContext(c)
+  const reqPath = getActualPath(user, body.path || "/")
   const page = parseInt(body.page, 10) || 1
   const perPage = parseInt(body.per_page, 10) || 0
 
@@ -218,7 +215,7 @@ fsRouter.post("/list", async (c) => {
     const { content, provider, storage } = await listItems(reqPath)
     // write 按请求者身份如实返回：游客/无写权限用户为 false，
     // 前端据此隐藏上传、新建文件夹等写操作入口
-    const writable = canWrite(await getUserFromContext(c))
+    const writable = canWrite(user)
     // Normalize each item to the full Obj shape expected by the frontend
     const normalized = content.map((item: any) => ({
       name: item.name,
@@ -283,7 +280,8 @@ fsRouter.post("/list", async (c) => {
 
 fsRouter.post("/get", async (c) => {
   const body = await c.req.json().catch(() => ({}))
-  const reqPath = body.path || "/"
+  const user = await getUserFromContext(c)
+  const reqPath = getActualPath(user, body.path || "/")
   try {
     // Share path: /@s/{shareId}/...
     if (reqPath.startsWith("/@s")) {
@@ -364,7 +362,7 @@ fsRouter.post("/get", async (c) => {
         header: "",
         provider,
         related: [],
-        write: canWrite(await getUserFromContext(c)),
+        write: canWrite(user),
         write_content_bypass: false,
       },
     })
@@ -374,10 +372,10 @@ fsRouter.post("/get", async (c) => {
 })
 
 fsRouter.post("/mkdir", async (c) => {
-  const denied = await requireWritePermission(c)
-  if (denied) return denied
+  const user = await getUserFromContext(c)
+  if (!canWrite(user)) return permissionDenied(c)
   const body = await c.req.json().catch(() => ({}))
-  const reqPath = body.path || "/"
+  const reqPath = getActualPath(user, body.path || "/")
   try {
     await makeDirectory(reqPath)
     return c.json({ code: 200, message: "success", data: null })
@@ -387,11 +385,12 @@ fsRouter.post("/mkdir", async (c) => {
 })
 
 fsRouter.post("/rename", async (c) => {
-  const denied = await requireWritePermission(c)
-  if (denied) return denied
+  const user = await getUserFromContext(c)
+  if (!canWrite(user)) return permissionDenied(c)
   const { path: oldPath, name: newName } = await c.req.json().catch(() => ({}))
   try {
-    await renameItem(oldPath, newName)
+    const actualOldPath = getActualPath(user, oldPath || "/")
+    await renameItem(actualOldPath, newName)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: e.message, data: null })
@@ -399,11 +398,12 @@ fsRouter.post("/rename", async (c) => {
 })
 
 fsRouter.post("/remove", async (c) => {
-  const denied = await requireWritePermission(c)
-  if (denied) return denied
+  const user = await getUserFromContext(c)
+  if (!canWrite(user)) return permissionDenied(c)
   const { dir, names } = await c.req.json().catch(() => ({}))
   try {
-    await removeItems(dir, names)
+    const actualDir = getActualPath(user, dir || "/")
+    await removeItems(actualDir, names)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: e.message, data: null })
@@ -411,11 +411,13 @@ fsRouter.post("/remove", async (c) => {
 })
 
 fsRouter.post("/move", async (c) => {
-  const denied = await requireWritePermission(c)
-  if (denied) return denied
+  const user = await getUserFromContext(c)
+  if (!canWrite(user)) return permissionDenied(c)
   const { src_dir, dst_dir, names } = await c.req.json().catch(() => ({}))
   try {
-    await moveItems(src_dir, dst_dir, names)
+    const actualSrcDir = getActualPath(user, src_dir || "/")
+    const actualDstDir = getActualPath(user, dst_dir || "/")
+    await moveItems(actualSrcDir, actualDstDir, names)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: e.message, data: null })
@@ -423,11 +425,13 @@ fsRouter.post("/move", async (c) => {
 })
 
 fsRouter.post("/copy", async (c) => {
-  const denied = await requireWritePermission(c)
-  if (denied) return denied
+  const user = await getUserFromContext(c)
+  if (!canWrite(user)) return permissionDenied(c)
   const { src_dir, dst_dir, names } = await c.req.json().catch(() => ({}))
   try {
-    await copyItems(src_dir, dst_dir, names)
+    const actualSrcDir = getActualPath(user, src_dir || "/")
+    const actualDstDir = getActualPath(user, dst_dir || "/")
+    await copyItems(actualSrcDir, actualDstDir, names)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: e.message, data: null })
@@ -435,9 +439,10 @@ fsRouter.post("/copy", async (c) => {
 })
 
 fsRouter.put("/put", async (c) => {
-  const denied = await requireWritePermission(c)
-  if (denied) return denied
-  const reqPath = decodeURIComponent(c.req.header("File-Path") || "")
+  const user = await getUserFromContext(c)
+  if (!canWrite(user)) return permissionDenied(c)
+  const rawPath = decodeURIComponent(c.req.header("File-Path") || "")
+  const reqPath = getActualPath(user, rawPath)
   try {
     const buffer = await c.req.arrayBuffer()
     await putItem(reqPath, Buffer.from(buffer))
@@ -448,9 +453,10 @@ fsRouter.put("/put", async (c) => {
 })
 
 fsRouter.put("/form", async (c) => {
-  const denied = await requireWritePermission(c)
-  if (denied) return denied
-  const reqPath = decodeURIComponent(c.req.header("File-Path") || "")
+  const user = await getUserFromContext(c)
+  if (!canWrite(user)) return permissionDenied(c)
+  const rawPath = decodeURIComponent(c.req.header("File-Path") || "")
+  const reqPath = getActualPath(user, rawPath)
   try {
     const form = await c.req.formData()
     const file = form.get("file")
@@ -475,8 +481,8 @@ fsRouter.put("/form", async (c) => {
 //      内存占用恒定，不受 CF Workers 请求体/内存上限约束。
 
 fsRouter.post("/upload/create", async (c) => {
-  const denied = await requireWritePermission(c)
-  if (denied) return denied
+  const user = await getUserFromContext(c)
+  if (!canWrite(user)) return permissionDenied(c)
   const {
     path: rawPath,
     file_name,
@@ -484,7 +490,7 @@ fsRouter.post("/upload/create", async (c) => {
     md5,
   } = await c.req.json().catch(() => ({}))
   // 根目录上传时调用方可能传 ""，归一化为 "/"
-  const dirPath = rawPath || "/"
+  const dirPath = getActualPath(user, rawPath || "/")
   if (!file_name) {
     return c.json({
       code: 400,
@@ -516,11 +522,12 @@ fsRouter.post("/upload/create", async (c) => {
 })
 
 fsRouter.put("/upload/part", async (c) => {
-  const denied = await requireWritePermission(c)
-  if (denied) return denied
+  const user = await getUserFromContext(c)
+  if (!canWrite(user)) return permissionDenied(c)
   const session = c.req.header("X-Upload-Session") || ""
   const partNumber = parseInt(c.req.header("X-Part-Number") || "0", 10)
-  const dirPath = decodeURIComponent(c.req.header("Upload-Path") || "")
+  const rawDirPath = decodeURIComponent(c.req.header("Upload-Path") || "")
+  const dirPath = getActualPath(user, rawDirPath)
   if (!session || !(partNumber >= 1) || !dirPath) {
     return c.json({
       code: 400,
@@ -546,11 +553,11 @@ fsRouter.put("/upload/part", async (c) => {
 })
 
 fsRouter.post("/upload/complete", async (c) => {
-  const denied = await requireWritePermission(c)
-  if (denied) return denied
+  const user = await getUserFromContext(c)
+  if (!canWrite(user)) return permissionDenied(c)
   const { path: rawPath, session } = await c.req.json().catch(() => ({}))
   // 根目录上传时调用方可能传 ""，归一化为 "/"
-  const dirPath = rawPath || "/"
+  const dirPath = getActualPath(user, rawPath || "/")
   if (!session) {
     return c.json({
       code: 400,
@@ -575,7 +582,9 @@ fsRouter.post("/upload/complete", async (c) => {
 })
 
 fsRouter.post("/add_offline_download", async (c) => {
-  const { path: reqPath, urls } = await c.req.json().catch(() => ({}))
+  const user = await getUserFromContext(c)
+  const { path: rawPath, urls } = await c.req.json().catch(() => ({}))
+  const reqPath = getActualPath(user, rawPath || "/")
   if (!urls || urls.length === 0) {
     return c.json({ code: 400, message: "No URLs provided" })
   }
@@ -596,11 +605,13 @@ fsRouter.post("/add_offline_download", async (c) => {
 })
 
 fsRouter.post("/search", async (c) => {
+  const user = await getUserFromContext(c)
   const body = await c.req.json().catch(() => ({}))
+  const parentPath = getActualPath(user, body.parent || "/")
   try {
     const result = await search(
       {
-        parent: body.parent || "/",
+        parent: parentPath,
         keywords: body.keywords || "",
         scope: body.scope !== undefined ? parseInt(body.scope, 10) : 0,
         page: body.page ? parseInt(body.page, 10) : 1,
@@ -615,8 +626,9 @@ fsRouter.post("/search", async (c) => {
 })
 
 fsRouter.post("/other", async (c) => {
+  const user = await getUserFromContext(c)
   const body = await c.req.json().catch(() => ({}))
-  const reqPath = body.path || "/"
+  const reqPath = getActualPath(user, body.path || "/")
   const method = body.method
   if (!method) {
     return c.json(

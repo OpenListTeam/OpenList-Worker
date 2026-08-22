@@ -16,10 +16,10 @@ import {
   ThunderDriver,
   ThunderExpertDriver,
 } from "../../drivers/thunder/driver"
-import { Cloud189Driver } from "../../drivers/189/driver"
 import { LanzouDriver } from "../../drivers/lanzou/driver"
 import { WebdavDriver } from "../../drivers/webdav/driver"
 import { WoPanDriver, normalizeWoPanAddition } from "../../drivers/wopan/driver"
+import { S3Driver, normalizeS3Addition } from "../../drivers/s3/driver"
 
 // LocalDriver is not available in Cloudflare Workers (no fs module).
 // When running in Node.js container mode, import dynamically on first use.
@@ -284,33 +284,6 @@ export async function getDriver(
     })
     await driver.init?.()
   } else if (
-    normDriver === "189" ||
-    normDriver === "189cloud" ||
-    normDriver === "cloud189" ||
-    normDriver === "ctyun" ||
-    normDriver === "189pan"
-  ) {
-    const addition = parseAddition(storageConfig)
-    driver = new Cloud189Driver(addition, async (cookie) => {
-      try {
-        const db = await getDb()
-        const st = (db.storages || []).find(
-          (s: any) => s.id === storageConfig?.id,
-        )
-        if (!st) return
-        const stAddition =
-          typeof st.addition === "string"
-            ? JSON.parse(st.addition || "{}")
-            : st.addition || {}
-        stAddition.cookie = cookie
-        st.addition = JSON.stringify(stAddition)
-        await saveDb(db)
-      } catch (e) {
-        console.warn("[189Cloud] failed to persist cookie:", e)
-      }
-    })
-    await driver.init?.()
-  } else if (
     normDriver === "lanzou" ||
     normDriver === "lanzoupan" ||
     normDriver === "ilanzou" ||
@@ -340,6 +313,14 @@ export async function getDriver(
   } else if (normDriver === "webdav") {
     const addition = parseAddition(storageConfig)
     driver = new WebdavDriver(addition)
+    await driver.init?.()
+  } else if (
+    normDriver === "s3" ||
+    normDriver === "doge" ||
+    normDriver === "dogecloud"
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new S3Driver(addition, storageConfig.driver || "S3")
     await driver.init?.()
   } else if (
     normDriver === "wopan" ||
