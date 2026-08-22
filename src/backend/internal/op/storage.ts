@@ -17,6 +17,8 @@ import {
 } from "../../drivers/thunder/driver"
 import { Cloud189Driver } from "../../drivers/189/driver"
 import { LanzouDriver } from "../../drivers/lanzou/driver"
+import { WebDavDriver } from "../../drivers/webdav/driver"
+import { S3Driver } from "../../drivers/s3/driver"
 
 // LocalDriver is not available in Cloudflare Workers (no fs module).
 // When running in Node.js container mode, import dynamically on first use.
@@ -308,6 +310,12 @@ export async function getDriver(
         console.warn("[Lanzou] failed to persist cookie:", e)
       }
     })
+    await driver.init?.()
+  } else if (normDriver === "webdav") {
+    driver = new WebDavDriver(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (normDriver === "s3") {
+    driver = new S3Driver(parseAddition(storageConfig))
     await driver.init?.()
   } else {
     throw new Error(

@@ -12,7 +12,7 @@
 - [x] 黑暗模式 (Dark mode)
 - [x] 国际化 (i18n)
 - [x] 受保护的路由（密码保护和认证） (Protected routes) - _Implemented for admin login_
-- [ ] WebDAV (WebDAV) - _Not supported in JS backend yet_
+- [x] WebDAV (WebDAV) - _Implemented with PROPFIND/MKCOL/PUT/DELETE/MOVE/COPY_
 - [x] Docker 部署 (Docker deploy) - _Supported via container_
 - [x] Cloudflare Workers / Vercel 代理 - _Supported via entrypoints_
 - [x] 文件/文件夹打包下载 (File/folder archive download) - _Implemented via browser ZIP stream_
@@ -35,13 +35,13 @@
 - [x] 123云盘 (123Pan) - _Implemented + CRC32 sign + token-first login (avoids overseas risk control)_
 - [x] 夸克网盘 (Quark Drive) - _Implemented + download headers (Cookie/Referer)_
 - [x] 百度网盘 (Baidu Netdisk) - _Re-ported from Go v4 driver (driver.go/util.go/types.go/meta.go): official/crack/crack_video download, chunked upload + rapid upload, MD5 obfuscation (EncryptMd5/DecryptMd5), vip slice sizes, dynamic upload domain, token persistence_
-- [x] ~~S3~~ - **_Removed by request_**
+- [x] S3 - _Re-implemented with Web Crypto API (AWS Signature v4), supports AWS S3 / MinIO / R2 / OSS / COS_
 - [ ] 天翼云盘 (189Cloud)
 - [ ] FTP / SFTP
 - [ ] PikPak
 - [ ] Seafile
 - [ ] 又拍云对象存储 (Upyun)
-- [ ] WebDAV
+- [x] WebDAV
 - [ ] Teambition
 - [ ] MediaFire
 - [ ] 分秒帧 (Fenmiao)
@@ -74,6 +74,7 @@
 - [x] 所有网盘驱动统一 order_by/order_direction 排列设置（共享 sortFileItems）
 - [x] 品牌统一 OpenList → OpenListNext（站点标题/图标/标识符/KV 名称）
 - [x] 移除 S3 全部功能（驱动/路由/设置/前端菜单）
+- [x] 重新实现 S3 驱动（Web Crypto AWS Signature v4，兼容 Cloudflare Workers）
 - [x] 中英文语言 JSON 完善（15 个文件 key 完全一致 + 代码引用 0 缺失）
 - [x] 生产构建修复（移除 vite-plugin-dynamic-base，资源路径恢复正常）
 - [x] 关于页面改为本地打包 README（离线可用）
