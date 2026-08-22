@@ -85,6 +85,50 @@ export class Pan189Client {
     }
   }
 
+  private async resolveLoginUrl(
+    loginUrl: string,
+    headers: Record<string, string>,
+  ): Promise<string> {
+    let currentUrl = loginUrl
+
+    for (let redirectCount = 0; redirectCount < 5; redirectCount++) {
+      const requestHeaders: Record<string, string> = {
+        ...headers,
+      }
+      if (redirectCount > 0) requestHeaders.Referer = currentUrl
+      if (this.cookie) requestHeaders.Cookie = this.cookie
+
+      const response = await fetch(currentUrl, {
+        method: "GET",
+        headers: requestHeaders,
+        redirect: "manual",
+      })
+      this.updateCookie(response.headers.get("set-cookie"))
+
+      const location = response.headers.get("location")
+      if (
+        !location ||
+        response.status < 300 ||
+        response.status >= 400
+      ) {
+        return response.url || currentUrl
+      }
+
+      const nextUrl = new URL(location, currentUrl).toString()
+      const nextUrlObj = new URL(nextUrl)
+      if (
+        nextUrlObj.searchParams.get("lt") &&
+        nextUrlObj.searchParams.get("reqId") &&
+        nextUrlObj.searchParams.get("appId")
+      ) {
+        return nextUrl
+      }
+      currentUrl = nextUrl
+    }
+
+    return currentUrl
+  }
+
   /**
    * 登录天翼云盘：
    * 1. 尝试使用已有 Cookie 请求主页判断是否已登录
@@ -103,19 +147,10 @@ export class Pan189Client {
       headers["Cookie"] = this.cookie
     }
 
-    const res = await fetch(loginUrl, {
-      method: "GET",
-      headers,
-      redirect: "manual",
-    })
-
-    this.updateCookie(res.headers.get("set-cookie"))
-
-    const loc = res.headers.get("location") || ""
+    const redirectUrlStr = await this.resolveLoginUrl(loginUrl, headers)
     if (
-      loc.includes("cloud.189.cn/web/main") ||
-      loc.includes("cloud.189.cn/main.action") ||
-      res.url.includes("cloud.189.cn/web/main")
+      redirectUrlStr.includes("cloud.189.cn/web/main") ||
+      redirectUrlStr.includes("cloud.189.cn/main.action")
     ) {
       // 已经处于登录状态
       return
@@ -129,8 +164,6 @@ export class Pan189Client {
       throw new Error("[189Cloud] 账号或密码为空，且未提供有效 Cookie")
     }
 
-    // 从跳转链接中提取参数
-    const redirectUrlStr = loc || res.url
     let urlObj: URL
     try {
       urlObj = new URL(redirectUrlStr, "https://open.e.189.cn")
@@ -140,7 +173,12 @@ export class Pan189Client {
 
     const lt = urlObj.searchParams.get("lt") || ""
     const reqId = urlObj.searchParams.get("reqId") || ""
-    const appId = urlObj.searchParams.get("appId") || "cloud"
+    const appId = urlObj.searchParams.get("appId") || ""
+    if (!lt || !reqId || !appId) {
+      throw new Error(
+        "[189Cloud] 登录跳转参数不完整，未获取到 lt、reqId 或 appId",
+      )
+    }
 
     const authHeaders: Record<string, string> = {
       "User-Agent":
