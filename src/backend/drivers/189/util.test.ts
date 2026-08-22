@@ -562,3 +562,59 @@ test("189Cloud chunked upload forwards each part and commits its checksums", asy
     ),
   )
 })
+
+test("189Cloud retries init without MD5 when the API security check blacklists it", async () => {
+  const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 1024 })
+  const pubKey = publicKey
+    .export({ type: "spki", format: "der" })
+    .toString("base64")
+  const initParams: string[] = []
+  let initAttempts = 0
+
+  globalThis.fetch = (async (input) => {
+    const url = requestUrl(input)
+    if (url.includes("/v2/getUserBriefInfo.action")) {
+      return mockResponse(url, { res_code: 0, sessionKey: "session-key" })
+    }
+    if (url.includes("/api/security/generateRsaKey.action")) {
+      return mockResponse(url, {
+        res_code: 0,
+        pubKey,
+        pkId: "pk-id",
+        expire: Date.now() + 60_000,
+      })
+    }
+    if (url.startsWith("https://upload.cloud.189.cn/person/initMultiUpload?")) {
+      initAttempts++
+      initParams.push(new URL(url).searchParams.get("params") || "")
+      if (initAttempts === 1) {
+        return mockResponse(
+          url,
+          {
+            code: "InfoSecurityErrorCode",
+            msg: "file md5 is in black list,security check not pass",
+          },
+          { status: 403 },
+        )
+      }
+      return mockResponse(url, {
+        code: "SUCCESS",
+        data: { uploadFileId: "upload-id", fileDataExists: 0 },
+      })
+    }
+    throw new Error(`unexpected fetch: ${url}`)
+  }) as typeof fetch
+
+  const client = new Pan189Client({ username: "", password: "" })
+  const result = await client.createMultiUpload(
+    "-11",
+    "blocked.apk",
+    10,
+    "0123456789abcdef0123456789abcdef",
+  )
+
+  assert.equal(result.uploadFileId, "upload-id")
+  assert.equal(initAttempts, 2)
+  assert.match(initParams[0], /^[0-9a-f]+$/)
+  assert.match(initParams[1], /^[0-9a-f]+$/)
+})

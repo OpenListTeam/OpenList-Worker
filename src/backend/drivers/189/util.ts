@@ -738,18 +738,34 @@ export class Pan189Client {
   }> {
     const sessionKey = await this.getSessionKey()
     this.sessionKey = sessionKey
-    const sliceMd5 = fileMd5
-    const response = await this.uploadRequest<InitMultiUploadResp189>(
-      "/person/initMultiUpload",
-      {
-        parentFolderId,
-        fileName: encodeURIComponent(fileName).replace(/%20/g, "+"),
-        fileSize: String(fileSize),
-        sliceSize: String(10 * 1024 * 1024),
-        fileMd5,
-        sliceMd5,
-      },
-    )
+    const baseParams = {
+      parentFolderId,
+      fileName: encodeURIComponent(fileName).replace(/%20/g, "+"),
+      fileSize: String(fileSize),
+      sliceSize: String(10 * 1024 * 1024),
+    }
+    let response: InitMultiUploadResp189
+    try {
+      response = await this.uploadRequest<InitMultiUploadResp189>(
+        "/person/initMultiUpload",
+        { ...baseParams, fileMd5, sliceMd5: fileMd5 },
+      )
+    } catch (error: any) {
+      const message = String(error?.message || error)
+      if (
+        !/InfoSecurityErrorCode|file md5 is in black list|security check not pass/i.test(
+          message,
+        )
+      ) {
+        throw error
+      }
+      // Match OpenList's ordinary 189PC upload: omit MD5 during init so
+      // Tianyi's security filter does not reject the file before upload.
+      response = await this.uploadRequest<InitMultiUploadResp189>(
+        "/person/initMultiUpload",
+        { ...baseParams, lazyCheck: "1" },
+      )
+    }
     const uploadFileId = String(response.data?.uploadFileId || "")
     if (!uploadFileId)
       throw new Error("[189Cloud] 创建上传会话失败：缺少 uploadFileId")
