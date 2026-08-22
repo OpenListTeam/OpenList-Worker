@@ -312,6 +312,20 @@ test("large 189Cloud file and folder ids are preserved exactly", async () => {
   assert.equal(result.folders[0].id, folderId)
 })
 
+test("download headers include the current 189Cloud session cookie", () => {
+  const client = new Pan189Client({
+    username: "",
+    password: "",
+    cookie: "cookieUserSession=session-value",
+  })
+
+  assert.equal(
+    client.getDownloadHeaders().Cookie,
+    "cookieUserSession=session-value",
+  )
+  assert.equal(client.getDownloadHeaders().Referer, "https://cloud.189.cn/")
+})
+
 test("null file counts are rejected instead of becoming zero", async () => {
   globalThis.fetch = (async (input) =>
     mockResponse(

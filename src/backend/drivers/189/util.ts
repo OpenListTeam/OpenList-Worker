@@ -110,6 +110,17 @@ export class Pan189Client {
     return this.addition.root_folder_id || "-11"
   }
 
+  /** Headers required when proxying a generated 189Cloud download URL. */
+  public getDownloadHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      Referer: "https://cloud.189.cn/",
+    }
+    if (this.cookie) headers.Cookie = this.cookie
+    return headers
+  }
+
   private async updateCookie(headers: Headers): Promise<void> {
     const setCookies = getSetCookieHeaders(headers)
     if (setCookies.length === 0) return
@@ -583,11 +594,7 @@ export class Pan189Client {
     try {
       const probeRes = await fetch(downloadUrl, {
         method: "GET",
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          Referer: "https://cloud.189.cn/",
-        },
+        headers: this.getDownloadHeaders(),
         redirect: "manual",
       })
       const loc = probeRes.headers.get("location")

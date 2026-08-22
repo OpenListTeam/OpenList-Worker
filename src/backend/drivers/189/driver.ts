@@ -254,6 +254,7 @@ export class Cloud189Driver implements StorageDriver {
     const item = pan189FileToFileItem(file as FileItem189)
     try {
       item.raw_url = await this.client.getDownloadUrl(String(file.id))
+      item.raw_url_headers = this.client.getDownloadHeaders()
     } catch (e: any) {
       console.warn(`[189Cloud] 获取 ${file.name} 下载地址失败:`, e.message)
     }
