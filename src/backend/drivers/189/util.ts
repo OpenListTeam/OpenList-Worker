@@ -114,7 +114,7 @@ export class Pan189Client {
   private async followRedirectsWithCookies(
     initialUrl: string,
     headers: Record<string, string>,
-  ): Promise<Response> {
+  ): Promise<{ response: Response; url: string }> {
     let currentUrl = initialUrl
 
     for (let redirectCount = 0; redirectCount <= 8; redirectCount++) {
@@ -139,7 +139,11 @@ export class Pan189Client {
 
       const location = response.headers.get("location")
       const isRedirect = response.status >= 300 && response.status < 400
-      if (!isRedirect || !location) return response
+      if (!isRedirect || !location) {
+        // In Workers, Response.url can remain the original URL after a
+        // redirect. The URL we actually requested is authoritative here.
+        return { response, url: currentUrl }
+      }
       if (redirectCount === 8) {
         throw new Error("[189Cloud] 登录重定向次数过多")
       }
@@ -162,8 +166,8 @@ export class Pan189Client {
     loginUrl: string,
     headers: Record<string, string>,
   ): Promise<string> {
-    const response = await this.followRedirectsWithCookies(loginUrl, headers)
-    return response.url || loginUrl
+    const result = await this.followRedirectsWithCookies(loginUrl, headers)
+    return result.url
   }
 
   /**

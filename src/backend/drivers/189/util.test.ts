@@ -136,6 +136,8 @@ test("OAuth requests use cookies refreshed by the previous response", async () =
     .export({ type: "spki", format: "der" })
     .toString("base64")
   const loginUrlPrefix = "https://cloud.189.cn/api/portal/loginUrl.action"
+  const loginUrl =
+    "https://cloud.189.cn/api/portal/loginUrl.action?redirectURL=https%3A%2F%2Fcloud.189.cn%2Fmain.action"
   const authUrl =
     "https://open.e.189.cn/login?lt=lt-value&reqId=req-value&appId=cloud"
   let encryptConfCookie = ""
@@ -144,7 +146,14 @@ test("OAuth requests use cookies refreshed by the previous response", async () =
     const url = requestUrl(input)
     const requestCookie = new Headers(init?.headers).get("cookie") || ""
     if (url.startsWith(loginUrlPrefix)) {
-      return mockResponse(authUrl, "", { status: 200 })
+      return mockResponse(url, "", {
+        status: 302,
+        headers: { location: authUrl },
+      })
+    }
+    if (url === authUrl) {
+      // Some Worker runtimes expose the original URL on the final Response.
+      return mockResponse(loginUrl, "", { status: 200 })
     }
     if (url.endsWith("/oauth2/appConf.do")) {
       return mockResponse(
