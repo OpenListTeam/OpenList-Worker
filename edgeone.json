@@ -21,7 +21,7 @@
       "destination": "/api/[...route]"
     },
     {
-      "source": "/((?!api/|d/|sd/|p/).*)",
+      "source": "/*",
       "destination": "/index.html"
     }
   ]

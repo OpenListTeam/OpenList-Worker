@@ -671,32 +671,59 @@ export function getKvBinding(envCtx?: any): {
     g.KV_NAMESPACE
 
   const candidates = [
-    ...(customKvName ? [{ key: customKvName, name: customKvName }] : []),
-    { key: "EDGEONE_KV", name: "EDGEONE_KV" },
-    { key: "EO_KV", name: "EO_KV" },
-    { key: "OPENLISTNEXT_KV", name: "OPENLISTNEXT_KV" },
-    { key: "OPENLISTNEXT_KV_ID", name: "OPENLISTNEXT_KV_ID" },
-    { key: "KV", name: "KV" },
-    { key: "CF_KV", name: "CF_KV" },
-    { key: "DATABASE_KV", name: "DATABASE_KV" },
-  ]
+    customKvName,
+    "EDGEONE_KV",
+    "edgeone_kv",
+    "EO_KV",
+    "eo_kv",
+    "OPENLISTNEXT_KV",
+    "openlistnext_kv",
+    "OPENLISTNEXT_KV_ID",
+    "KV",
+    "kv",
+    "CF_KV",
+    "cf_kv",
+    "DATABASE_KV",
+    "database_kv",
+    "openlist_kv",
+    "OPENLIST_KV",
+  ].filter(Boolean) as string[]
 
-  for (const c of candidates) {
-    const b = (env && env[c.key]) || g[c.key]
+  for (const name of candidates) {
+    const b = (env && env[name]) || g[name]
     if (b && typeof b.get === "function" && typeof b.put === "function") {
       const isEdgeOne =
-        c.key.startsWith("EDGEONE") ||
-        c.key.startsWith("EO") ||
+        name.toLowerCase().includes("edgeone") ||
+        name.toLowerCase().includes("eo") ||
         Boolean(env && (env.EDGEONE || env.EO_REGION || env.EDGEONE_KV_NAME)) ||
-        Boolean(g.EDGEONE_KV || g.EO_KV)
+        Boolean(g.EDGEONE_KV || g.EO_KV || g.edgeone_kv)
       const platformName = isEdgeOne
-        ? `EdgeOne KV (${c.name})`
-        : `Cloudflare / EdgeOne KV (${c.name})`
+        ? `EdgeOne KV (${name})`
+        : `Cloudflare / EdgeOne KV (${name})`
 
       return {
         binding: b,
         platform: platformName,
         mode: "binding",
+      }
+    }
+  }
+
+  // 动态扫描 env / globalThis 下任意实现了 get 和 put 的 KV 对象
+  if (env && typeof env === "object") {
+    for (const key of Object.keys(env)) {
+      const b = env[key]
+      if (
+        b &&
+        typeof b === "object" &&
+        typeof b.get === "function" &&
+        typeof b.put === "function"
+      ) {
+        return {
+          binding: b,
+          platform: `EdgeOne / Cloudflare KV (${key})`,
+          mode: "binding",
+        }
       }
     }
   }
@@ -739,16 +766,25 @@ async function readFromKv(
     if (mode === "binding") {
       let val: any = null
       try {
-        // Cloudflare KV 支持 (key, "text")，EdgeOne KV 支持 (key)
         val = await binding.get(key, "text")
       } catch {
-        val = await binding.get(key)
+        try {
+          val = await binding.get(key)
+        } catch {}
       }
       if (val === undefined || val === null) {
-        val = await binding.get(key)
+        try {
+          val = await binding.get(key)
+        } catch {}
       }
-      if (val) {
-        return typeof val === "string" ? JSON.parse(val) : val
+      if (!val) return null
+      if (typeof val === "object") return val
+      if (typeof val === "string") {
+        try {
+          return JSON.parse(val)
+        } catch {
+          return null
+        }
       }
     } else if (binding.type === "cf_rest") {
       const url = `https://api.cloudflare.com/client/v4/accounts/${binding.accountId}/storage/kv/namespaces/${binding.namespaceId}/values/${key}`
@@ -831,7 +867,7 @@ const LEGACY_SETTING_MIGRATIONS: Record<string, { from: any[]; to: string }> = {
 
 const ensureDefaultSettings = (db: any) => {
   if (!db) return
-  if (!db.settings) {
+  if (!Array.isArray(db.settings)) {
     db.settings = []
   }
   let modified = false
@@ -878,7 +914,7 @@ const ensureDefaultSettings = (db: any) => {
 
   // Preserve any custom user-added settings not present in defaultDb
   for (const s of db.settings) {
-    if (s.key && !seenKeys.has(s.key)) {
+    if (s && s.key && !seenKeys.has(s.key)) {
       seenKeys.add(s.key)
       newSettings.push(s)
     }
@@ -892,14 +928,14 @@ const ensureDefaultSettings = (db: any) => {
 
 const ensureDefaultStorages = (db: any) => {
   if (!db) return
-  if (!db.storages) {
+  if (!Array.isArray(db.storages)) {
     db.storages = []
   }
 }
 
 const ensureDefaultShares = (db: any) => {
   if (!db) return
-  if (!db.shares) {
+  if (!Array.isArray(db.shares)) {
     db.shares = []
   }
 }
@@ -909,12 +945,12 @@ export const getDb = async (envCtx?: any) => {
     globalEnvCtx = envCtx
   }
 
-  // Priority 1: Cloudflare KV Namespace Storage
+  // Priority 1: Cloudflare / EdgeOne KV Namespace Storage
   const kvInfo = getKvBinding(envCtx)
   if (kvInfo.mode !== "none") {
     try {
       const kvConfig = await readFromKv(kvInfo, "openlistnext_config")
-      if (kvConfig) {
+      if (kvConfig && typeof kvConfig === "object") {
         memoryDb = kvConfig
         ensureDefaultSettings(memoryDb)
         ensureDefaultStorages(memoryDb)
@@ -952,6 +988,7 @@ export const getDb = async (envCtx?: any) => {
 
   // Priority 3: In-Memory DB
   memoryDb = JSON.parse(JSON.stringify(defaultDb))
+  ensureDefaultSettings(memoryDb)
   ensureDefaultStorages(memoryDb)
   ensureDefaultShares(memoryDb)
   return memoryDb
