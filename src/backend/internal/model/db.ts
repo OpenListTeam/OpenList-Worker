@@ -648,7 +648,7 @@ export function setEnvCtx(env: any) {
 }
 
 /**
- * Universal KV Storage Adapter for Cloudflare Workers
+ * Universal KV Storage Adapter for EdgeOne Makers / Cloudflare Workers
  */
 export function getKvBinding(envCtx?: any): {
   binding: any
@@ -664,7 +664,16 @@ export function getKvBinding(envCtx?: any): {
     (typeof process !== "undefined" ? process.env : {})
   const g = typeof globalThis !== "undefined" ? (globalThis as any) : {}
 
+  // 允许通过环境变量指定自定义绑定的 KV 变量名
+  const customKvName =
+    (env && (env.EDGEONE_KV_NAME || env.KV_NAMESPACE || env.KV_NAME)) ||
+    g.EDGEONE_KV_NAME ||
+    g.KV_NAMESPACE
+
   const candidates = [
+    ...(customKvName ? [{ key: customKvName, name: customKvName }] : []),
+    { key: "EDGEONE_KV", name: "EDGEONE_KV" },
+    { key: "EO_KV", name: "EO_KV" },
     { key: "OPENLISTNEXT_KV", name: "OPENLISTNEXT_KV" },
     { key: "OPENLISTNEXT_KV_ID", name: "OPENLISTNEXT_KV_ID" },
     { key: "KV", name: "KV" },
@@ -675,9 +684,18 @@ export function getKvBinding(envCtx?: any): {
   for (const c of candidates) {
     const b = (env && env[c.key]) || g[c.key]
     if (b && typeof b.get === "function" && typeof b.put === "function") {
+      const isEdgeOne =
+        c.key.startsWith("EDGEONE") ||
+        c.key.startsWith("EO") ||
+        Boolean(env && (env.EDGEONE || env.EO_REGION || env.EDGEONE_KV_NAME)) ||
+        Boolean(g.EDGEONE_KV || g.EO_KV)
+      const platformName = isEdgeOne
+        ? `EdgeOne KV (${c.name})`
+        : `Cloudflare / EdgeOne KV (${c.name})`
+
       return {
         binding: b,
-        platform: `Cloudflare Workers KV (${c.name})`,
+        platform: platformName,
         mode: "binding",
       }
     }
@@ -719,7 +737,16 @@ async function readFromKv(
 
   try {
     if (mode === "binding") {
-      const val = await binding.get(key, "text")
+      let val: any = null
+      try {
+        // Cloudflare KV 支持 (key, "text")，EdgeOne KV 支持 (key)
+        val = await binding.get(key, "text")
+      } catch {
+        val = await binding.get(key)
+      }
+      if (val === undefined || val === null) {
+        val = await binding.get(key)
+      }
       if (val) {
         return typeof val === "string" ? JSON.parse(val) : val
       }
