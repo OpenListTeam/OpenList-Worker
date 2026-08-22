@@ -103,9 +103,9 @@ export const defaultDb = {
     },
     {
       key: "home_container",
-      value: "hope_container",
+      value: "max_980px",
       type: "select",
-      options: "hope_container,max_980px",
+      options: "max_980px,hope_container",
       help: "Home Container Width",
       group: 2,
       flag: 0,
@@ -792,6 +792,13 @@ const LEGACY_SETTING_MIGRATIONS: Record<string, { from: any[]; to: string }> = {
   home_icon: {
     from: ["openlist", "oplist"],
     to: "openlistnext",
+  },
+  // 上游 OpenList 的 home_container 默认是 max_980px（内容限宽 980px 居中），
+  // 本项目早期误把默认值设为 hope_container（HopeUI Container 无 maxW，流式全宽），
+  // 导致首页文件列表横向铺满整屏。已写入 KV 的旧默认值需要迁移回限宽布局。
+  home_container: {
+    from: ["hope_container"],
+    to: "max_980px",
   },
 }
 

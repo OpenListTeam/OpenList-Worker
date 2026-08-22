@@ -62,7 +62,7 @@ const App: Component = () => {
             announcement:
               "欢迎使用 OpenListNext! (运行于 Serverless 离线 fallback 模式)",
             main_color: "#1890ff",
-            home_container: "hope_container",
+            home_container: "max_980px",
             home_icon: "openlistnext",
             settings_layout: "simple",
             version: "v4.2.3",
