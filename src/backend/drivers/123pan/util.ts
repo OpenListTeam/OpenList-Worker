@@ -507,6 +507,49 @@ export class Pan123Client {
   // ---- 上传（S3 分片会话，无状态环境友好）----
 
   /**
+   * 获取指定分片的预签名 PUT URL（供分片会话上传逐片使用）。
+   * 注意：123pan 的 partNumberStart/partNumberEnd 是 [start, end) 半开区间，
+   * 因此取第 n 片要传 (n, n+1)。
+   * @param totalParts 整个文件的总分片数；为 1 时走单文件 auth 接口
+   */
+  public async getPartUploadUrl(
+    up: Pick<
+      Pan123UploadResp["data"],
+      "Bucket" | "Key" | "UploadId" | "StorageNode"
+    >,
+    partNumber: number,
+    totalParts: number,
+  ): Promise<string> {
+    const data =
+      totalParts === 1
+        ? await this.getS3Auth(up as Pan123UploadResp["data"], partNumber, partNumber + 1)
+        : await this.getS3PreSignedUrls(
+            up as Pan123UploadResp["data"],
+            partNumber,
+            partNumber + 1,
+          )
+    const url = data.presignedUrls[String(partNumber)]
+    if (!url) {
+      throw new Error(`[123Pan] 未返回第 ${partNumber} 分片的上传 URL`)
+    }
+    return url
+  }
+
+  /**
+   * 通知服务端上传完成（供分片会话上传收尾使用）。
+   */
+  public async completeUpload(
+    up: Pick<
+      Pan123UploadResp["data"],
+      "Bucket" | "Key" | "UploadId" | "FileId" | "StorageNode"
+    >,
+    size: number,
+    isMultipart: boolean,
+  ): Promise<void> {
+    await this.completeS3(up as Pan123UploadResp["data"], size, isMultipart)
+  }
+
+  /**
    * 创建上传会话。返回 S3 分片上传所需的 Bucket/Key/UploadId/FileId/StorageNode。
    * 若服务端命中秒传（Reuse）或未分配 Key，则无需实际上传。
    */
