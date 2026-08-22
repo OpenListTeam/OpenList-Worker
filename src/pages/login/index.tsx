@@ -335,10 +335,9 @@ const Login = () => {
           colorScheme="accent"
           onClick={() => {
             changeToken()
-            to(
-              decodeURIComponent(searchParams.redirect || base_path || "/"),
-              true,
-            )
+            // 游客登录一律跳转到首页：忽略 redirect 参数，
+            // 避免退出登录后带着 /@manage 之类的 redirect 进入管理后台触发 401 循环
+            to(base_path || "/", true)
           }}
         >
           {t("login.use_guest")}

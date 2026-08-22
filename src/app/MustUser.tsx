@@ -1,16 +1,25 @@
 import { createSignal, JSXElement, Match, onMount, Switch } from "solid-js"
 import { Error, FullScreenLoading } from "~/components"
-import { useFetch, useT } from "~/hooks"
+import { useFetch, useT, useRouter } from "~/hooks"
 import { Me, setMe } from "~/store"
-import { PResp } from "~/types"
+import { PResp, UserMethods } from "~/types"
 import { r, handleResp, handleRespWithoutAuthAndNotify } from "~/utils"
 
 const MustUser = (props: { children: JSXElement }) => {
   const t = useT()
+  const { to } = useRouter()
   const [loading, data] = useFetch((): PResp<Me> => r.get("/me"), true)
   const [err, setErr] = createSignal<string>()
   onMount(async () => {
-    handleResp(await data(), setMe, setErr)
+    handleResp(await data(), (me) => {
+      // /me 在无令牌时会返回游客身份（免登录浏览首页），
+      // 但管理后台仅限登录用户访问：游客一律送回登录页
+      if (UserMethods.is_guest(me)) {
+        to("/@login", true)
+        return
+      }
+      setMe(me)
+    }, setErr)
   })
   return (
     <Switch fallback={props.children}>
