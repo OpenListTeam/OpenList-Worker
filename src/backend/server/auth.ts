@@ -18,13 +18,25 @@ import {
 export const authRouter = new Hono()
 export const meRouter = new Hono()
 
+import CryptoJS from "crypto-js"
+
 // Helper to hash password matching OpenListNext/AList specification
 export async function hashPassword(plainPassword: string): Promise<string> {
   const hash_salt = "https://github.com/alist-org/alist"
-  const msgBuffer = new TextEncoder().encode(`${plainPassword}-${hash_salt}`)
-  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer)
-  const hashArray = Array.from(new Uint8Array(hashBuffer))
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
+  const str = `${plainPassword}-${hash_salt}`
+  try {
+    if (
+      typeof crypto !== "undefined" &&
+      crypto.subtle &&
+      typeof crypto.subtle.digest === "function"
+    ) {
+      const msgBuffer = new TextEncoder().encode(str)
+      const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer)
+      const hashArray = Array.from(new Uint8Array(hashBuffer))
+      return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
+    }
+  } catch {}
+  return CryptoJS.SHA256(str).toString()
 }
 
 // Ensure admin user exists in DB KV space with a default password if unset
