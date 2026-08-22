@@ -159,6 +159,82 @@ export class Pan123Driver implements StorageDriver {
   }
 
   /**
+   * 上传场景：确保目录存在，缺失的层级自动递归创建。
+   * 与 resolveFolderId 的区别是——目录不存在时不抛 "folder not found"，
+   * 而是调用 mkdir 创建。用于上传文件夹 / 上传到尚不存在的子目录。
+   */
+  private async ensureFolderId(physicalPath: string): Promise<string> {
+    const rootId = this.client.getRootId()
+    const clean =
+      "/" +
+      String(physicalPath || "")
+        .split("/")
+        .filter(Boolean)
+        .join("/")
+    if (clean === "/" || clean === `/${rootId}`) {
+      return rootId
+    }
+
+    const segs = clean.split("/").filter(Boolean)
+    let parentId = rootId
+    let prefix = ""
+    for (let i = 0; i < segs.length; i++) {
+      const rawName = segs[i]
+      const decodedName = (() => {
+        try {
+          return decodeURIComponent(rawName)
+        } catch {
+          return rawName
+        }
+      })()
+      prefix = "/" + segs.slice(0, i + 1).join("/")
+
+      let id = this.pathIdCache.get(prefix)
+      if (id === undefined) {
+        let files = await this.client.getFiles(parentId, {
+          findName: decodedName,
+          findIsDir: true,
+          budget: this.budget,
+        })
+        let folder = files.find(
+          (f) =>
+            f.Type === 1 &&
+            (f.FileName === rawName || f.FileName === decodedName),
+        )
+        if (folder) {
+          id = String(folder.FileId)
+        } else {
+          // 目录不存在：创建。并发上传多个文件时可能被别的请求抢先创建，
+          // mkdir 报"已存在"则忽略，随后重新查询拿到 FileId。
+          try {
+            const createdId = await this.client.mkdir(parentId, decodedName)
+            if (createdId) {
+              id = createdId
+            }
+          } catch {
+            // ignore: directory may already exist
+          }
+          if (id === undefined) {
+            files = await this.client.getFiles(parentId, {
+              findName: decodedName,
+              findIsDir: true,
+              budget: this.budget,
+            })
+            folder = files.find((f) => f.Type === 1 && f.FileName === decodedName)
+            if (!folder) {
+              throw new Error(`[123Pan] 自动创建目录失败: ${rawName}`)
+            }
+            id = String(folder.FileId)
+          }
+        }
+        this.pathIdCache.set(prefix, id)
+      }
+      parentId = id
+    }
+    return parentId
+  }
+
+  /**
    * Resolve a physical path to a file: parent folder id + matching file.
    * physicalPath segments: rootId/name1/name2/.../targetName
    */
@@ -315,7 +391,7 @@ export class Pan123Driver implements StorageDriver {
       }
     })()
     const parentPath = "/" + segs.slice(0, segs.length - 1).join("/")
-    const parentId = await this.resolveFolderId(parentPath)
+    const parentId = await this.ensureFolderId(parentPath)
     await this.client.uploadFile(parentId, decodedName, content)
   }
 
@@ -343,7 +419,7 @@ export class Pan123Driver implements StorageDriver {
     session: string
   }> {
     this.budget.used = 0
-    const parentId = await this.resolveFolderId(physicalDir || "/")
+    const parentId = await this.ensureFolderId(physicalDir || "/")
     const upload = await this.client.createUpload(
       fileName,
       parentId,

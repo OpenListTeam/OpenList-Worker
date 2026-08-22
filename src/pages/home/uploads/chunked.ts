@@ -62,9 +62,8 @@ export const ChunkedUpload: Upload = async (
     return
   }
 
-  const { session, part_count, chunk_size } = info
-  const totalParts: number = part_count
-  const chunkSize: number = chunk_size
+  const { session, partCount, chunkSize } = info
+  const totalParts: number = partCount
 
   let oldTimestamp = new Date().valueOf()
   let oldLoaded = 0

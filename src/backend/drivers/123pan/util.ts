@@ -470,15 +470,16 @@ export class Pan123Client {
 
   // ---- File operations ----
 
-  public async mkdir(parentId: string, dirName: string): Promise<void> {
-    await this.request(Mkdir, "POST", {
+  public async mkdir(parentId: string, dirName: string): Promise<string> {
+    const resp = (await this.request(Mkdir, "POST", {
       driveId: 0,
       etag: "",
       fileName: dirName,
       parentFileId: parseInt(parentId, 10) || 0,
       size: 0,
       type: 1,
-    })
+    })) as Pan123MkdirResp
+    return resp.data?.FileId != null ? String(resp.data.FileId) : ""
   }
 
   public async rename(fileId: string, newName: string): Promise<void> {
