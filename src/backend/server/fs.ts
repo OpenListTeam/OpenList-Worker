@@ -477,12 +477,14 @@ fsRouter.post("/upload/create", async (c) => {
   const denied = await requireWritePermission(c)
   if (denied) return denied
   const {
-    path: dirPath,
+    path: rawPath,
     file_name,
     size,
     md5,
   } = await c.req.json().catch(() => ({}))
-  if (!dirPath || !file_name) {
+  // 根目录上传时调用方可能传 ""，归一化为 "/"
+  const dirPath = rawPath || "/"
+  if (!file_name) {
     return c.json({
       code: 400,
       message: "path and file_name are required",
@@ -545,8 +547,10 @@ fsRouter.put("/upload/part", async (c) => {
 fsRouter.post("/upload/complete", async (c) => {
   const denied = await requireWritePermission(c)
   if (denied) return denied
-  const { path: dirPath, session } = await c.req.json().catch(() => ({}))
-  if (!dirPath || !session) {
+  const { path: rawPath, session } = await c.req.json().catch(() => ({}))
+  // 根目录上传时调用方可能传 ""，归一化为 "/"
+  const dirPath = rawPath || "/"
+  if (!session) {
     return c.json({
       code: 400,
       message: "path and session are required",

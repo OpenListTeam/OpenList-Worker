@@ -20,7 +20,8 @@ export const ChunkedUpload: Upload = async (
   overwrite = false,
   rapid = false,
 ): Promise<Error | undefined> => {
-  const dirPath = pathDir(uploadPath)
+  // 根目录上传时 pathDir 返回 ""，归一化为 "/"，否则后端会报 path and file_name are required
+  const dirPath = pathDir(uploadPath) || "/"
 
   // 可选：计算 MD5 用于秒传
   let md5 = ""
