@@ -10,6 +10,7 @@ import {
   Pan123UserInfoResp,
   Pan123UploadResp,
   Pan123S3PreSignedURLs,
+  Pan123MkdirResp,
 } from "./types"
 
 const MAIN_API = "https://yun.123pan.com/b/api"
@@ -523,7 +524,11 @@ export class Pan123Client {
   ): Promise<string> {
     const data =
       totalParts === 1
-        ? await this.getS3Auth(up as Pan123UploadResp["data"], partNumber, partNumber + 1)
+        ? await this.getS3Auth(
+            up as Pan123UploadResp["data"],
+            partNumber,
+            partNumber + 1,
+          )
         : await this.getS3PreSignedUrls(
             up as Pan123UploadResp["data"],
             partNumber,
@@ -694,7 +699,7 @@ export class Pan123Client {
         throw new Error(`[123Pan] 缺少第 ${cur} 分片的上传 URL`)
       }
       const chunk = content.subarray(offset, offset + curSize)
-      const res = await fetch(url, { method: "PUT", body: chunk })
+      const res = await fetch(url, { method: "PUT", body: chunk as any })
       if (res.status !== 200) {
         const text = await res.text().catch(() => "")
         throw new Error(

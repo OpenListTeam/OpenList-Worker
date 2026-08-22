@@ -34,6 +34,42 @@ adminRouter.get("/storage/list", async (c) => {
   })
 })
 
+adminRouter.post("/storage/load_all", async (c) => {
+  const db = await getDb(c.env)
+  const results: any[] = []
+  let loaded = 0
+  let failed = 0
+
+  for (const storage of db.storages || []) {
+    if (storage.disabled) continue
+    try {
+      await getDriver(storage.driver, storage)
+      loaded++
+      results.push({
+        id: storage.id,
+        mount_path: storage.mount_path,
+        driver: storage.driver,
+        status: "ok",
+      })
+    } catch (e: any) {
+      failed++
+      results.push({
+        id: storage.id,
+        mount_path: storage.mount_path,
+        driver: storage.driver,
+        status: "failed",
+        error: e?.message || String(e),
+      })
+    }
+  }
+
+  return c.json({
+    code: 200,
+    message: "success",
+    data: { loaded, failed, results },
+  })
+})
+
 adminRouter.get("/storage/get", async (c) => {
   const id = parseInt(c.req.query("id") || "0", 10)
   const db = await getDb(c.env)
@@ -1455,6 +1491,70 @@ const driverConfigs: Record<string, any> = {
       default_root: "/",
     },
   },
+  WoPan: {
+    name: "WoPan",
+    default_mount_path: "/wopan",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "root_folder_id",
+        type: "string",
+        default: "0",
+        required: false,
+      },
+      {
+        name: "refresh_token",
+        type: "text",
+        default: "",
+        required: true,
+      },
+      {
+        name: "family_id",
+        type: "string",
+        default: "",
+        required: false,
+        help: "true",
+      },
+      {
+        name: "sort_rule",
+        type: "select",
+        options: "name_asc,name_desc,time_asc,time_desc,size_asc,size_desc",
+        default: "name_asc",
+        required: false,
+      },
+      {
+        name: "access_token",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "name,size,modified",
+        default: "name",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "asc,desc",
+        default: "asc",
+        required: false,
+      },
+    ],
+    config: {
+      name: "WoPan",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "0",
+      no_overwrite_upload: true,
+    },
+  },
 }
 
 adminRouter.get("/driver/list", (c) => {
@@ -1553,6 +1653,41 @@ adminRouter.post("/setting/delete", async (c) => {
   db.settings = (db.settings || []).filter((s: any) => s.key !== key)
   await saveDb(db, c.env)
   return c.json({ code: 200, message: "success", data: null })
+})
+
+function randomAdminToken(length = 32): string {
+  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+  let res = ""
+  for (let i = 0; i < length; i++) {
+    res += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return res
+}
+
+adminRouter.post("/setting/reset_token", async (c) => {
+  const db = await getDb(c.env)
+  const token = randomAdminToken(32)
+
+  const idx = (db.settings || []).findIndex((s: any) => s.key === "token")
+  if (idx !== -1) {
+    db.settings[idx].value = token
+    if (db.settings[idx].group !== 5 && db.settings[idx].group !== 0) {
+      db.settings[idx].group = 5
+    }
+  } else {
+    if (!db.settings) db.settings = []
+    db.settings.push({
+      key: "token",
+      value: token,
+      type: "string",
+      help: "115 / PikPak / Thunder Token",
+      group: 5,
+      flag: 0,
+    })
+  }
+
+  await saveDb(db, c.env)
+  return c.json({ code: 200, message: "success", data: token })
 })
 
 const updateSettingValue = async (

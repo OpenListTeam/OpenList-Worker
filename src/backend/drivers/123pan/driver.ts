@@ -220,7 +220,9 @@ export class Pan123Driver implements StorageDriver {
               findIsDir: true,
               budget: this.budget,
             })
-            folder = files.find((f) => f.Type === 1 && f.FileName === decodedName)
+            folder = files.find(
+              (f) => f.Type === 1 && f.FileName === decodedName,
+            )
             if (!folder) {
               throw new Error(`[123Pan] 自动创建目录失败: ${rawName}`)
             }
@@ -460,7 +462,7 @@ export class Pan123Driver implements StorageDriver {
       partNumber,
       s.partCount,
     )
-    const res = await fetch(url, { method: "PUT", body: content })
+    const res = await fetch(url, { method: "PUT", body: content as any })
     if (res.status !== 200) {
       const text = await res.text().catch(() => "")
       throw new Error(

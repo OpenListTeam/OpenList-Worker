@@ -1,5 +1,6 @@
 import { password } from "~/store"
 import { r, pathDir } from "~/utils"
+import { Resp } from "~/types"
 import { SetUpload, Upload } from "./types"
 import { calculateHash } from "./util"
 import { StreamUpload } from "./stream"
@@ -23,18 +24,20 @@ export const ChunkedUpload: Upload = async (
   // 根目录上传时 pathDir 返回 ""，归一化为 "/"，否则后端会报 path and file_name are required
   const dirPath = pathDir(uploadPath) || "/"
 
-  // 可选：计算 MD5 用于秒传
   let md5 = ""
   if (rapid) {
     setUpload("status", "hashing")
-    const hashes = await calculateHash(file, (p) => {
-      setUpload("progress", p | 0)
-    })
-    md5 = hashes.md5
+    try {
+      const hashes = await calculateHash(file, (p) => setUpload("progress", p))
+      md5 = hashes.md5
+    } catch {
+      // hash 计算失败时降级为普通无秒传分片上传
+      md5 = ""
+    }
   }
 
   setUpload("status", "uploading")
-  const createResp = await r.post(
+  const createResp = (await r.post(
     "/fs/upload/create",
     {
       path: dirPath,
@@ -48,14 +51,21 @@ export const ChunkedUpload: Upload = async (
         Overwrite: overwrite.toString(),
       },
     },
-  )
+  )) as unknown as Resp<any>
   if (createResp.code !== 200) {
     throw new Error(createResp.message)
   }
   const info = createResp.data
   // 存储不支持分片会话上传 → 回退到流式上传
   if (!info) {
-    return await StreamUpload(uploadPath, file, setUpload, asTask, overwrite, false)
+    return await StreamUpload(
+      uploadPath,
+      file,
+      setUpload,
+      asTask,
+      overwrite,
+      false,
+    )
   }
   // 秒传命中：文件已存在，直接完成
   if (info.reuse) {
@@ -73,7 +83,7 @@ export const ChunkedUpload: Upload = async (
     const start = (i - 1) * chunkSize
     const end = Math.min(start + chunkSize, file.size)
     const chunk = file.slice(start, end)
-    const partResp = await r.put("/fs/upload/part", chunk, {
+    const partResp = (await r.put("/fs/upload/part", chunk, {
       headers: {
         "X-Upload-Session": session,
         "X-Part-Number": String(i),
@@ -95,7 +105,7 @@ export const ChunkedUpload: Upload = async (
           }
         }
       },
-    })
+    })) as unknown as Resp<any>
     if (partResp.code !== 200) {
       throw new Error(
         `[分片 ${i}/${totalParts}] ${partResp.message || "上传失败"}`,
@@ -104,10 +114,10 @@ export const ChunkedUpload: Upload = async (
   }
 
   setUpload("status", "backending")
-  const completeResp = await r.post("/fs/upload/complete", {
+  const completeResp = (await r.post("/fs/upload/complete", {
     path: dirPath,
     session,
-  })
+  })) as unknown as Resp<any>
   if (completeResp.code !== 200) {
     throw new Error(completeResp.message)
   }

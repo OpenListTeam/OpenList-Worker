@@ -19,6 +19,7 @@ import {
 import { Cloud189Driver } from "../../drivers/189/driver"
 import { LanzouDriver } from "../../drivers/lanzou/driver"
 import { WebdavDriver } from "../../drivers/webdav/driver"
+import { WoPanDriver, normalizeWoPanAddition } from "../../drivers/wopan/driver"
 
 // LocalDriver is not available in Cloudflare Workers (no fs module).
 // When running in Node.js container mode, import dynamically on first use.
@@ -339,6 +340,34 @@ export async function getDriver(
   } else if (normDriver === "webdav") {
     const addition = parseAddition(storageConfig)
     driver = new WebdavDriver(addition)
+    await driver.init?.()
+  } else if (
+    normDriver === "wopan" ||
+    normDriver === "unicom" ||
+    normDriver === "unicomcloud" ||
+    normDriver === "woyun" ||
+    normDriver === "chinaunicom"
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new WoPanDriver(addition, async (accessToken, refreshToken) => {
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        stAddition.access_token = accessToken
+        stAddition.refresh_token = refreshToken
+        st.addition = JSON.stringify(normalizeWoPanAddition(stAddition))
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[WoPan] failed to persist tokens:", e)
+      }
+    })
     await driver.init?.()
   } else {
     throw new Error(

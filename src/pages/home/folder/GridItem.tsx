@@ -55,7 +55,7 @@ export const GridItem = (props: { obj: StoreObj; index: number }) => {
           openWithDoubleClick() || toggleWithClick() ? "default" : "pointer"
         }
         bgColor={props.obj.selected ? hoverColor() : undefined}
-        onDblclick={() => {
+        onDblClick={() => {
           if (!openWithDoubleClick()) return
           selectIndex(props.index, true, true)
           to(pushHref(props.obj.name))

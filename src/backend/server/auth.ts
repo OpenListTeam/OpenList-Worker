@@ -2,8 +2,21 @@ import { Hono } from "hono"
 import { sign, verify } from "hono/jwt"
 import { getDb, saveDb } from "../internal/model/db"
 import { JWT_SECRET } from "./middlewares"
+import {
+  generateTotpSecret,
+  generateTotpCode,
+  verifyTotpCode,
+  buildOtpauthUrl,
+  buildQrImageUrl,
+} from "../pkg/totp"
+import {
+  listUserSshKeys,
+  addUserSshKey,
+  deleteUserSshKey,
+} from "../internal/op/sshkey"
 
 export const authRouter = new Hono()
+export const meRouter = new Hono()
 
 // Helper to hash password matching OpenListNext/AList specification
 export async function hashPassword(plainPassword: string): Promise<string> {
@@ -15,7 +28,7 @@ export async function hashPassword(plainPassword: string): Promise<string> {
 }
 
 // Ensure admin user exists in DB KV space with a default password if unset
-async function getOrInitUsers(envCtx: any) {
+export async function getOrInitUsers(envCtx: any) {
   const db = await getDb(envCtx)
   if (!db.users || db.users.length === 0) {
     const defaultAdminHash = await hashPassword("admin")
@@ -50,6 +63,53 @@ async function getOrInitUsers(envCtx: any) {
   return { db, users: db.users }
 }
 
+export async function authUserFromReq(
+  c: any,
+): Promise<{ db: any; user: any } | null> {
+  const authHeader = c.req.header("Authorization")
+  if (!authHeader) return null
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.substring(7)
+    : authHeader
+  try {
+    const payload = await verify(token, JWT_SECRET, "HS256")
+    const db = await getDb(c.env)
+    if (!db.users) db.users = []
+    const user = db.users.find(
+      (u: any) => u.id === payload.id || u.username === payload.username,
+    )
+    if (!user) return null
+    return { db, user }
+  } catch {
+    return null
+  }
+}
+
+async function checkUserOtp(matchedUser: any, body: any) {
+  if (!matchedUser.otp_secret) {
+    return { ok: true, code: 200, httpStatus: 200 as const, message: "ok" }
+  }
+  const otpCode = String(body.otp_code || body.code || "").trim()
+  if (!otpCode) {
+    return {
+      ok: false,
+      code: 402,
+      httpStatus: 200 as const,
+      message: "OTP code required",
+    }
+  }
+  const valid = await verifyTotpCode(matchedUser.otp_secret, otpCode)
+  if (!valid) {
+    return {
+      ok: false,
+      code: 401,
+      httpStatus: 401 as const,
+      message: "Invalid OTP code",
+    }
+  }
+  return { ok: true, code: 200, httpStatus: 200 as const, message: "ok" }
+}
+
 // POST /api/auth/login
 authRouter.post("/login", async (c) => {
   const body = await c.req.json().catch(() => ({}))
@@ -75,6 +135,13 @@ authRouter.post("/login", async (c) => {
         (rawPassword === "admin" || hashedPassword === defaultAdminHash))
 
     if (isPasswordValid) {
+      const otpCheck = await checkUserOtp(matchedUser, body)
+      if (!otpCheck.ok) {
+        return c.json(
+          { code: otpCheck.code, message: otpCheck.message, data: null },
+          otpCheck.httpStatus,
+        )
+      }
       const payload = {
         id: matchedUser.id,
         username: matchedUser.username,
@@ -120,6 +187,13 @@ authRouter.post("/login/hash", async (c) => {
         inputHash === defaultAdminHash)
 
     if (isHashValid) {
+      const otpCheck = await checkUserOtp(matchedUser, body)
+      if (!otpCheck.ok) {
+        return c.json(
+          { code: otpCheck.code, message: otpCheck.message, data: null },
+          otpCheck.httpStatus,
+        )
+      }
       const payload = {
         id: matchedUser.id,
         username: matchedUser.username,
@@ -140,60 +214,34 @@ authRouter.post("/login/hash", async (c) => {
 
 // POST /api/me/update or /me/update
 export const meUpdateHandler = async (c: any) => {
-  const authHeader = c.req.header("Authorization")
-  if (!authHeader) {
+  const auth = await authUserFromReq(c)
+  if (!auth) {
     return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
   }
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.substring(7)
-    : authHeader
-  try {
-    const payload = await verify(token, JWT_SECRET, "HS256")
-    const body = await c.req.json().catch(() => ({}))
-    const db = await getDb(c.env)
-    if (!db.users) db.users = []
+  const { db, user } = auth
+  const body = await c.req.json().catch(() => ({}))
 
-    const userIdx = db.users.findIndex(
-      (u: any) => u.id === payload.id || u.username === payload.username,
+  if (body.username && body.username.trim() !== "") {
+    const newUsername = body.username.trim()
+    const exists = db.users.some(
+      (u: any) => u.id !== user.id && u.username === newUsername,
     )
-    if (userIdx === -1) {
-      return c.json({ code: 404, message: "User not found", data: null }, 404)
-    }
-
-    const user = db.users[userIdx]
-    if (body.username && body.username.trim() !== "") {
-      const newUsername = body.username.trim()
-      const exists = db.users.some(
-        (u: any) => u.id !== user.id && u.username === newUsername,
+    if (exists) {
+      return c.json(
+        { code: 400, message: "Username already exists", data: null },
+        400,
       )
-      if (exists) {
-        return c.json(
-          { code: 400, message: "Username already exists", data: null },
-          400,
-        )
-      }
-      user.username = newUsername
     }
-
-    if (body.password && body.password.trim() !== "") {
-      user.password = await hashPassword(body.password.trim())
-      user.pwd_update_at = new Date().toISOString()
-    }
-
-    db.users[userIdx] = user
-    await saveDb(db, c.env)
-
-    return c.json({ code: 200, message: "success", data: null })
-  } catch (e: any) {
-    return c.json(
-      {
-        code: 401,
-        message: `Unauthorized: ${e.message || "Invalid token"}`,
-        data: null,
-      },
-      401,
-    )
+    user.username = newUsername
   }
+
+  if (body.password && body.password.trim() !== "") {
+    user.password = await hashPassword(body.password.trim())
+    user.pwd_update_at = new Date().toISOString()
+  }
+
+  await saveDb(db, c.env)
+  return c.json({ code: 200, message: "success", data: null })
 }
 
 // GET /api/me
@@ -201,7 +249,6 @@ export const meHandler = async (c: any) => {
   const authHeader = c.req.header("Authorization")
   if (!authHeader) {
     // 游客模式：未携带令牌时直接返回游客身份，允许免登录（无账号密码）浏览。
-    // 这样前端 UserOrGuest 不再收到 401，也不会弹出 “Unauthorized: Missing Authorization header”。
     const { users } = await getOrInitUsers(c.env)
     const guest = users.find((u: any) => u.username === "guest")
     if (guest) {
@@ -217,6 +264,7 @@ export const meHandler = async (c: any) => {
           disabled: !!guest.disabled,
           sso_id: guest.sso_id || "",
           allow_ldap: !!guest.allow_ldap,
+          otp: false,
         },
       })
     }
@@ -232,6 +280,7 @@ export const meHandler = async (c: any) => {
         disabled: false,
         sso_id: "",
         allow_ldap: false,
+        otp: false,
       },
     })
   }
@@ -258,6 +307,7 @@ export const meHandler = async (c: any) => {
           disabled: !!dbUser.disabled,
           sso_id: dbUser.sso_id || "",
           allow_ldap: !!dbUser.allow_ldap,
+          otp: !!dbUser.otp_secret,
         },
       })
     }
@@ -274,6 +324,7 @@ export const meHandler = async (c: any) => {
         disabled: false,
         sso_id: "",
         allow_ldap: false,
+        otp: false,
       },
     })
   } catch (e: any) {
@@ -301,3 +352,125 @@ export const logoutHandler = (c: any) => {
 
 authRouter.get("/logout", logoutHandler)
 authRouter.post("/logout", logoutHandler)
+
+// POST /api/auth/2fa/generate — returns a fresh TOTP secret + QR image
+authRouter.post("/2fa/generate", async (c) => {
+  const auth = await authUserFromReq(c)
+  if (!auth) {
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  }
+  const { user } = auth
+  if (user.otp_secret) {
+    return c.json(
+      { code: 400, message: "2FA already enabled", data: null },
+      400,
+    )
+  }
+  const secret = generateTotpSecret()
+  const otpauth = buildOtpauthUrl(secret, user.username)
+  return c.json({
+    code: 200,
+    message: "success",
+    data: { qr: buildQrImageUrl(otpauth), secret },
+  })
+})
+
+// POST /api/auth/2fa/verify — validate a code against the generated secret,
+// then persist it on the user so future logins require the TOTP code.
+authRouter.post("/2fa/verify", async (c) => {
+  const auth = await authUserFromReq(c)
+  if (!auth) {
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  }
+  const { db, user } = auth
+  const body = await c.req.json().catch(() => ({}))
+  const code = String(body.code || "").trim()
+  const secret = String(body.secret || "").trim()
+  if (!secret) {
+    return c.json(
+      { code: 400, message: "Missing secret parameter", data: null },
+      400,
+    )
+  }
+  if (!/^[A-Z2-7]+$/i.test(secret)) {
+    return c.json(
+      { code: 400, message: "Invalid secret format", data: null },
+      400,
+    )
+  }
+  const valid = await verifyTotpCode(secret, code)
+  if (!valid) {
+    return c.json({ code: 400, message: "Invalid code", data: null }, 400)
+  }
+  user.otp_secret = secret.toUpperCase()
+  await saveDb(db, c.env)
+  return c.json({ code: 200, message: "success", data: null })
+})
+
+// Current user SSH Key sub-routes (/api/me/sshkey/*)
+meRouter.get("/sshkey/list", async (c) => {
+  const auth = await authUserFromReq(c)
+  if (!auth) {
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  }
+  const keys = await listUserSshKeys(auth.user.id, c.env)
+  return c.json({
+    code: 200,
+    message: "success",
+    data: { content: keys, total: keys.length },
+  })
+})
+
+meRouter.post("/sshkey/add", async (c) => {
+  const auth = await authUserFromReq(c)
+  if (!auth) {
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  }
+  const body = await c.req.json().catch(() => ({}))
+  try {
+    const key = await addUserSshKey(
+      auth.user.id,
+      body.key || body.public_key || "",
+      body.name || body.title || "",
+      c.env,
+    )
+    return c.json({
+      code: 200,
+      message: "success",
+      data: key,
+    })
+  } catch (err: any) {
+    return c.json(
+      {
+        code: 400,
+        message: err.message || "Failed to add SSH key",
+        data: null,
+      },
+      400,
+    )
+  }
+})
+
+meRouter.post("/sshkey/delete", async (c) => {
+  const auth = await authUserFromReq(c)
+  if (!auth) {
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  }
+  const id = c.req.query("id")
+  if (!id) {
+    return c.json(
+      { code: 400, message: "Missing id parameter", data: null },
+      400,
+    )
+  }
+  const removed = await deleteUserSshKey(auth.user.id, id, c.env)
+  if (!removed) {
+    return c.json({ code: 404, message: "SSH key not found", data: null }, 404)
+  }
+  const keys = await listUserSshKeys(auth.user.id, c.env)
+  return c.json({
+    code: 200,
+    message: "success",
+    data: keys,
+  })
+})

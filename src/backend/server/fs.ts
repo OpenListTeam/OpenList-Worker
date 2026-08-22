@@ -14,6 +14,7 @@ import { resolveShare } from "../internal/op/share"
 import { resolvePath } from "../internal/model/db"
 import { getUserFromContext } from "./middlewares"
 import { canWrite } from "../pkg/permission"
+import { search } from "../internal/op/search"
 
 export const fsRouter = new Hono()
 
@@ -592,4 +593,56 @@ fsRouter.post("/add_offline_download", async (c) => {
       "Offline download task received (Note: background processing limited in Serverless mode)",
     data: null,
   })
+})
+
+fsRouter.post("/search", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  try {
+    const result = await search(
+      {
+        parent: body.parent || "/",
+        keywords: body.keywords || "",
+        scope: body.scope !== undefined ? parseInt(body.scope, 10) : 0,
+        page: body.page ? parseInt(body.page, 10) : 1,
+        per_page: body.per_page ? parseInt(body.per_page, 10) : 30,
+      },
+      c.env,
+    )
+    return c.json({ code: 200, message: "success", data: result })
+  } catch (e: any) {
+    return c.json({ code: 500, message: e.message, data: null }, 500)
+  }
+})
+
+fsRouter.post("/other", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const reqPath = body.path || "/"
+  const method = body.method
+  if (!method) {
+    return c.json(
+      { code: 400, message: "Missing required parameter 'method'", data: null },
+      400,
+    )
+  }
+  try {
+    const resolved = await resolvePath(reqPath)
+    if (resolved.isVirtual || !resolved.storage) {
+      throw new Error("failed get storage: storage not found")
+    }
+    const driver = await getDriver(resolved.storage.driver, resolved.storage)
+    if (typeof (driver as any).other === "function") {
+      const data = await (driver as any).other(method, resolved.relative, body)
+      return c.json({ code: 200, message: "success", data })
+    }
+    return c.json(
+      {
+        code: 500,
+        message: `Driver '${resolved.storage.driver}' does not support other method '${method}'`,
+        data: null,
+      },
+      500,
+    )
+  } catch (e: any) {
+    return c.json({ code: 500, message: e.message, data: null }, 500)
+  }
 })

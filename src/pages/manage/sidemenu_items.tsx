@@ -90,6 +90,12 @@ export const side_menu_items: SideMenuItem[] = [
         to: "/@manage/settings/traffic",
         component: () => <CommonSettings group={Group.TRAFFIC} />,
       },
+      {
+        title: "manage.sidemenu.other",
+        icon: BsMedium,
+        to: "/@manage/settings/other",
+        component: lazy(() => import("./settings/Other")),
+      },
     ],
   },
   {

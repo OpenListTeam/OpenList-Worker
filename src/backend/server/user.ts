@@ -3,6 +3,7 @@ import { getDb, saveDb } from "../internal/model/db"
 import { hashPassword } from "./auth"
 import { verify } from "hono/jwt"
 import { JWT_SECRET } from "./middlewares"
+import { listUserSshKeys, deleteUserSshKey } from "../internal/op/sshkey"
 
 export const userRouter = new Hono()
 
@@ -19,6 +20,7 @@ userRouter.get("/list", async (c) => {
     sso_id: u.sso_id || "",
     allow_ldap: !!u.allow_ldap,
     pwd_update_at: u.pwd_update_at || "",
+    otp: !!u.otp_secret,
   }))
   return c.json({
     code: 200,
@@ -60,6 +62,7 @@ userRouter.get("/get", async (c) => {
       disabled: !!user.disabled,
       sso_id: user.sso_id || "",
       allow_ldap: !!user.allow_ldap,
+      otp: !!user.otp_secret,
     },
   })
 })
@@ -195,6 +198,58 @@ const deleteUserHandler = async (c: any) => {
 
 userRouter.post("/delete", deleteUserHandler)
 userRouter.post("/cancel", deleteUserHandler)
+
+// GET /api/admin/user/sshkey/list?uid=...
+userRouter.get("/sshkey/list", async (c) => {
+  const uid = parseInt(c.req.query("uid") || "0", 10)
+  const keys = await listUserSshKeys(uid, c.env)
+  return c.json({
+    code: 200,
+    message: "success",
+    data: { content: keys, total: keys.length },
+  })
+})
+
+// POST /api/admin/user/sshkey/delete?uid=...&id=...
+userRouter.post("/sshkey/delete", async (c) => {
+  const uid = parseInt(c.req.query("uid") || "0", 10)
+  const id = c.req.query("id")
+  if (!uid || !id) {
+    return c.json(
+      { code: 400, message: "Missing uid or id parameter", data: null },
+      400,
+    )
+  }
+  const removed = await deleteUserSshKey(uid, id, c.env)
+  if (!removed) {
+    return c.json({ code: 404, message: "SSH key not found", data: null }, 404)
+  }
+  const keys = await listUserSshKeys(uid, c.env)
+  return c.json({
+    code: 200,
+    message: "success",
+    data: keys,
+  })
+})
+
+// POST /api/admin/user/cancel_2fa?id=... — admin disables a user's 2FA
+userRouter.post("/cancel_2fa", async (c) => {
+  const id = parseInt(c.req.query("id") || "0", 10)
+  if (!id) {
+    return c.json(
+      { code: 400, message: "Missing id parameter", data: null },
+      400,
+    )
+  }
+  const db = await getDb(c.env)
+  const user = (db.users || []).find((u: any) => u.id === id)
+  if (!user) {
+    return c.json({ code: 404, message: "User not found", data: null }, 404)
+  }
+  delete user.otp_secret
+  await saveDb(db, c.env)
+  return c.json({ code: 200, message: "success", data: null })
+})
 
 // POST /api/user/update_pwd
 export const updatePwdHandler = async (c: any) => {

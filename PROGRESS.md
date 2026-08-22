@@ -37,6 +37,7 @@
 - [x] 百度网盘 (Baidu Netdisk) - _Re-ported from Go v4 driver (driver.go/util.go/types.go/meta.go): official/crack/crack_video download, chunked upload + rapid upload, MD5 obfuscation (EncryptMd5/DecryptMd5), vip slice sizes, dynamic upload domain, token persistence_
 - [x] ~~S3~~ - **_Removed by request_**
 - [ ] 天翼云盘 (189Cloud)
+- [x] 联通网盘 (WoPan) - _Implemented (Re-ported from Go wopan driver + wopan-sdk-go: AES-128-CBC encryption, MD5 sign, token refresh, list/get/mkdir/rename/remove/move/copy, 8MB chunked upload2C, personal & family spaces)_
 - [ ] FTP / SFTP
 - [ ] PikPak
 - [ ] Seafile
@@ -77,3 +78,8 @@
 - [x] 中英文语言 JSON 完善（15 个文件 key 完全一致 + 代码引用 0 缺失）
 - [x] 生产构建修复（移除 vite-plugin-dynamic-base，资源路径恢复正常）
 - [x] 关于页面改为本地打包 README（离线可用）
+- [x] TOTP 两步验证 (2FA) (RFC 6238 纯 Web Crypto 实现：密钥生成、二维码、登录拦截、动态校验与管理解除)
+- [x] SSH 密钥管理 (OpenSSH 公钥解析、SHA256 指纹计算、用户密钥列表与删除)
+- [x] 跨存储多级全局递归搜索 (`/api/fs/search`)
+- [x] 存储全量并发预热与装配 (`/api/admin/storage/load_all`)
+- [x] 后台“其他设置”页面与全局 Token 重置 (`Other.tsx` + `/admin/setting/reset_token`)

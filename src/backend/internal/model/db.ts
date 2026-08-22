@@ -1107,3 +1107,16 @@ export async function getMetas() {
   const db = await getDb()
   return db.metas || []
 }
+
+export interface User {
+  id: number
+  username: string
+  password?: string
+  role?: number
+  base_path?: string
+  permission?: number
+  disabled?: boolean
+  otp_secret?: string
+  ssh_keys?: any[]
+  [key: string]: any
+}

@@ -1,0 +1,10 @@
+<svg width="1252" height="1252" viewBox="225 225 800 800" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 左侧倾斜的线条 (缩短) -->
+  <path d="M 475 300 L 325 950" stroke="#70c6be" stroke-width="120"/>
+  <!-- 右侧倾斜的线条 (缩短) -->
+  <path d="M 925 300 L 775 950" stroke="#70c6be" stroke-width="120"/>
+  <!-- 中间倾斜的连接线 (缩短) -->
+  <path d="M 475 300 L 775 950" stroke="#1ba0d8" stroke-width="120"/>
+ </g>
+</svg>

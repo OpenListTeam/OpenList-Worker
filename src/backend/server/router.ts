@@ -1,7 +1,13 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { fsRouter } from "./fs"
-import { authRouter, meHandler, meUpdateHandler, logoutHandler } from "./auth"
+import {
+  authRouter,
+  meRouter,
+  meHandler,
+  meUpdateHandler,
+  logoutHandler,
+} from "./auth"
 import { adminRouter } from "./admin"
 import { rawRouter } from "./raw"
 import { publicRouter } from "./public"
@@ -42,6 +48,7 @@ export function setupRouter(app: Hono) {
   app.route("/p", rawRouter)
 
   // Current user handler queried directly by the frontend
+  app.route("/me", meRouter)
   app.get("/me", meHandler)
   app.post("/me/update", meUpdateHandler)
   app.post("/user/update_pwd", updatePwdHandler)
