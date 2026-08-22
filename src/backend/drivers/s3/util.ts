@@ -42,9 +42,9 @@ function formatDate(date: Date): { dateStamp: string; amzDate: string } {
 }
 
 function uriEncode(input: string): string {
-  return encodeURIComponent(input)
-    .replace(/\*/g, "%2A")
-    .replace(/\+/g, "%2B")
+  return input.replace(/[^A-Za-z0-9\-._~]/g, (c) => {
+    return "%" + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")
+  })
 }
 
 function parseXmlTag(xml: string, tag: string): string | null {
@@ -123,20 +123,20 @@ export class S3Client {
 
   private keyUrl(key: string): string {
     const ep = this.normalizedEndpoint
-    const k = key ? key.split("/").map(encodeURIComponent).join("/") : ""
+    const k = key ? key.split("/").map(uriEncode).join("/") : ""
     if (this.pathStyle) return `${ep}/${this.bucket}/${k}`
     return `https://${this.host}/${k}`
   }
 
   private canonicalPath(key: string): string {
-    const k = key ? key.split("/").map(encodeURIComponent).join("/") : ""
+    const k = key ? key.split("/").map(uriEncode).join("/") : ""
     if (this.pathStyle) return `/${this.bucket}/${k}`
     return `/${k}`
   }
 
   private buildCanonicalQuery(params: Record<string, string>): string {
     return Object.entries(params)
-      .sort(([a], [b]) => a.localeCompare(b))
+      .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
       .map(([k, v]) => `${uriEncode(k)}=${uriEncode(v)}`)
       .join("&")
   }
@@ -231,7 +231,7 @@ export class S3Client {
 
     const queryString = this.buildCanonicalQuery(params)
     const cPath = this.canonicalPath("")
-    const url = `${this.keyUrl("")}/?${queryString}`
+    const url = `${this.keyUrl("")}?${queryString}`
 
     const authHeaders = await this.signRequest("GET", cPath, queryString)
     const resp = await fetch(url, { headers: authHeaders })
@@ -275,7 +275,7 @@ export class S3Client {
 
     const queryString = this.buildCanonicalQuery(params)
     const cPath = this.canonicalPath("")
-    const url = `${this.keyUrl("")}/?${queryString}`
+    const url = `${this.keyUrl("")}?${queryString}`
 
     const authHeaders = await this.signRequest("GET", cPath, queryString)
     const resp = await fetch(url, { headers: authHeaders })
@@ -377,9 +377,9 @@ ${keys.map((k) => `  <Object><Key>${escapeXml(k)}</Key></Object>`).join("\n")}
 </Delete>`
 
     const payload = encoder.encode(body)
-    const queryString = "delete"
-    const cPath = this.canonicalPath("") + "?delete"
-    const url = `${this.keyUrl("")}/?delete`
+    const cPath = this.canonicalPath("")
+    const queryString = "delete="
+    const url = `${this.keyUrl("")}?delete`
 
     const authHeaders = await this.signRequest("POST", cPath, queryString, {}, payload)
     const resp = await fetch(url, {
@@ -396,7 +396,7 @@ ${keys.map((k) => `  <Object><Key>${escapeXml(k)}</Key></Object>`).join("\n")}
 
   async copyObject(srcKey: string, dstKey: string): Promise<void> {
     const url = this.keyUrl(dstKey)
-    const copySource = `/${this.bucket}/${srcKey.split("/").map(encodeURIComponent).join("/")}`
+    const copySource = `/${this.bucket}/${srcKey.split("/").map(uriEncode).join("/")}`
 
     const authHeaders = await this.signRequest("PUT", this.canonicalPath(dstKey), "", {
       "x-amz-copy-source": copySource,
