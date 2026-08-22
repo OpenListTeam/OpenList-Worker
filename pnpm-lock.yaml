@@ -177,6 +177,15 @@ importers:
       '@crowdin/cli':
         specifier: ^4.14.3
         version: 4.15.0
+      '@rolldown/binding-linux-x64-gnu':
+        specifier: 1.2.2
+        version: 1.2.2
+      '@rolldown/binding-linux-x64-musl':
+        specifier: 1.2.2
+        version: 1.2.2
+      '@rolldown/binding-win32-x64-msvc':
+        specifier: 1.2.2
+        version: 1.2.2
       '@types/bencode':
         specifier: ^2.0.4
         version: 2.0.4
@@ -5676,11 +5685,9 @@ snapshots:
   '@rolldown/binding-linux-s390x-gnu@1.2.2':
     optional: true
 
-  '@rolldown/binding-linux-x64-gnu@1.2.2':
-    optional: true
+  '@rolldown/binding-linux-x64-gnu@1.2.2': {}
 
-  '@rolldown/binding-linux-x64-musl@1.2.2':
-    optional: true
+  '@rolldown/binding-linux-x64-musl@1.2.2': {}
 
   '@rolldown/binding-openharmony-arm64@1.2.2':
     optional: true
@@ -5688,8 +5695,7 @@ snapshots:
   '@rolldown/binding-win32-arm64-msvc@1.2.2':
     optional: true
 
-  '@rolldown/binding-win32-x64-msvc@1.2.2':
-    optional: true
+  '@rolldown/binding-win32-x64-msvc@1.2.2': {}
 
   '@rolldown/pluginutils@1.0.1': {}
 
