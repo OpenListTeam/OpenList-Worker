@@ -687,6 +687,13 @@ const driverConfigs: Record<string, any> = {
         help: "登录令牌（可选，自动持久化，无需手动填写）。仅需填写上方 123 网盘手机号和密码，登录后自动获取并保存，跳过重复登录可避免境外 IP 触发风控。",
       },
       {
+        name: "cookie",
+        type: "text",
+        default: "",
+        required: false,
+        help: "浏览器 Cookie（可选）。在 123 网盘网页登录后，从开发者工具复制请求头中的 Cookie 整串粘贴于此（含 sso-token），或从 Authorization: Bearer <token> 中复制 token/Bearer 值。解析出的 JWT 会作为 Bearer 令牌使用，效果等同访问令牌，适合账号密码登录被风控拦截的环境。",
+      },
+      {
         name: "root_id",
         type: "string",
         default: "0",

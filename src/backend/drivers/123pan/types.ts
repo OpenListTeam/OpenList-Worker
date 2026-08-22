@@ -18,9 +18,16 @@ export interface Pan123Addition {
   order_direction?: "asc" | "desc"
   /**
    * 已保存的登录令牌。设置后优先用令牌验证（避免境外 IP 风控）；
-   * 密码登录成功后会持久化回此字段。
+   * 密码登录或 cookie 解析成功后会持久化回此字段。
    */
   access_token?: string
+  /**
+   * 浏览器 Cookie（可选）。从 123 网盘网页登录后复制的 Cookie 字符串，
+   * 或仅粘贴 `Authorization: Bearer <token>` 中的 token / Bearer 值。
+   * 解析出其中的 JWT 后用作 Bearer 令牌，效果等同 access_token，
+   * 适合 Cloudflare Workers 等出口 IP 被风控、账号密码登录失败的环境。
+   */
+  cookie?: string
 }
 
 // --- API response types ---

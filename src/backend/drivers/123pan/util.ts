@@ -13,6 +13,46 @@ import {
 const MAIN_API = "https://yun.123pan.com/b/api"
 const LOGIN_API = "https://login.123pan.com/api"
 const SignIn = LOGIN_API + "/user/sign_in"
+
+// --- Cookie → token extraction ---
+
+/**
+ * 从浏览器 Cookie 字符串（或仅 Bearer/裸 JWT 值）中提取 123 网盘鉴权 JWT。
+ * 支持以下来源，按优先级返回首个命中的有效令牌：
+ *   1. 裸 `Bearer xxx` 或裸 JWT（`eyJ...` 形式）
+ *   2. Cookie 中的 `sso-token=`（123 网页登录令牌，即 Authorization 用的 JWT）
+ *   3. Cookie 中的 `token=` / `authorization=`
+ * 解析不到时返回空字符串，调用方应回退到账号密码登录。
+ */
+function extractTokenFromCookie(raw: string): string {
+  const s = (raw || "").trim()
+  if (!s) return ""
+
+  // 1) 纯 Bearer / 纯 JWT
+  if (/^Bearer\s+/i.test(s)) {
+    return s.replace(/^Bearer\s+/i, "").trim()
+  }
+  if (/^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(s)) {
+    return s
+  }
+
+  // 2) Cookie 字符串：拆成键值对再取令牌字段
+  const cookieMap: Record<string, string> = {}
+  for (const part of s.split(";")) {
+    const idx = part.indexOf("=")
+    if (idx < 0) continue
+    const k = part.slice(0, idx).trim()
+    const v = part.slice(idx + 1).trim()
+    if (k) cookieMap[k] = v
+  }
+  const pick = (key: string): string => {
+    const v = cookieMap[key] || ""
+    if (/^Bearer\s+/i.test(v)) return v.replace(/^Bearer\s+/i, "").trim()
+    return v
+  }
+  return pick("sso-token") || pick("token") || pick("authorization") || ""
+}
+
 const UserInfo = MAIN_API + "/user/info"
 const FileList = MAIN_API + "/file/list/new"
 const DownloadInfo = MAIN_API + "/file/download_info"
@@ -132,10 +172,11 @@ export class Pan123Client {
   // ---- Login ----
 
   /**
-   * Login strategy to avoid overseas-IP risk control:
-   * 1. If a saved access_token exists, validate it with getUserInfo first —
-   *    no password login needed when the token is still valid.
-   * 2. Only fall back to password login when the token is missing/expired.
+   * Login strategy to avoid overseas-IP risk control (precedence):
+   * 1. 显式 access_token —— 直接校验，有效即用（最高优先级）。
+   * 2. cookie —— 解析其中 JWT 作 Bearer 令牌并校验；成功后持久化，
+   *    适合出口 IP 被风控、账号密码登录失败的环境。
+   * 3. 账号密码 —— 仅在前两者都缺失/失效时回退。
    */
   public async login(): Promise<void> {
     if (this.addition.access_token) {
@@ -146,16 +187,35 @@ export class Pan123Client {
         await this.userInfo(true)
         return // token is valid
       } catch {
-        // token invalid/expired — fall through to password login
+        // token invalid/expired — fall through to cookie / password login
         this.accessToken = ""
       }
     }
-    // 无 token 或 token 失效：需要账号密码
+
+    // 2) 从浏览器 Cookie 解析令牌（等同于 access_token）
+    if (this.addition.cookie) {
+      const token = extractTokenFromCookie(this.addition.cookie)
+      if (token) {
+        this.accessToken = token
+        try {
+          await this.userInfo(true) // 校验令牌有效性（跳过登录重试，避免递归）
+          // 解析成功：持久化为 access_token，后续冷启动免 cookie 也可登录
+          this.addition.access_token = token
+          this.onTokenUpdate?.(token)
+          return
+        } catch {
+          this.accessToken = ""
+        }
+      }
+    }
+
+    // 3) 无 token / cookie 或均失效：需要账号密码
     if (!this.addition.username || !this.addition.password) {
       throw new Error(
         "123 网盘登录凭证缺失：请填写 123 网盘手机号 + 密码；" +
           "若部署环境（如 Cloudflare Workers 数据中心 IP）密码登录会被风控，" +
-          "请直接填写有效的访问令牌 access_token（在本机浏览器登录 https://www.123pan.com/ 后从开发者工具获取）。",
+          "可在「Cookie」字段粘贴浏览器登录后的 Cookie（含 sso-token），" +
+          "或填写有效的访问令牌 access_token（在本机浏览器登录 https://www.123pan.com/ 后从开发者工具获取）。",
       )
     }
     await this.signIn()
