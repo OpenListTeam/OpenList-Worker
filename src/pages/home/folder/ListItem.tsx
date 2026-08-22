@@ -83,19 +83,19 @@ export const ListItem = (props: { obj: StoreObj; index: number }) => {
           openWithDoubleClick() || toggleWithClick() ? "default" : "pointer"
         }
         bgColor={props.obj.selected ? hoverColor() : undefined}
-        on:dblclick={() => {
+        onDblclick={() => {
           if (!openWithDoubleClick()) return
           selectIndex(props.index, true, true)
           to(pushHref(props.obj.name))
         }}
-        on:click={(e: MouseEvent) => {
+        onClick={(e: MouseEvent) => {
           e.preventDefault()
           if (openWithDoubleClick()) return
           if (e.ctrlKey || e.metaKey || e.shiftKey) return
           if (!restoreSelectionCache()) return
           if (toggleWithClick())
             return selectIndex(props.index, !props.obj.selected)
-          // 双击会触发两次 click，第二次（e.detail===2）跳过，避免文件夹被连续进入两层
+          // 双击会触发两次 click，第二次（e.detail===2）跳过，避免被连续进入两层
           if (e.detail > 1) return
           to(pushHref(props.obj.name))
         }}
