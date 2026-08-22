@@ -65,7 +65,10 @@ export const Nav = () => {
           const href = encodePath(path)
           let text = () => name
           if (!isShare() && text() === "") {
-            text = () => getSetting("home_icon") + t("manage.sidemenu.home")
+            // 首页根节点显示站点标题（可在后台「站点设置」中配置为中文），
+            // 不再把 home_icon（品牌图标名，如 openlistnext）当文本拼接，避免 “openlistnext返回首页”。
+            text = () =>
+              getSetting("site_title") || t("manage.sidemenu.home")
           } else if (isShare() && i() === 0) {
             text = () => getSetting("share_icon") + t("manage.sidemenu.shares")
           }

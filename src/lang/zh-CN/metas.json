@@ -10,9 +10,9 @@
   "write_help": "绕过内容写入（创建/上传/修改）的用户权限检查。请谨慎使用。",
   "hide": "隐藏对象",
   "readme": "说明文件",
-  "readme_help": "Render a markdown at the bottom, support content or link",
+  "readme_help": "在底部渲染 Markdown，支持内容或链接",
   "header": "页头文件",
-  "header_help": "Render a markdown at the top, support content or link",
-  "apply_sub": "Apply to sub folder",
+  "header_help": "在顶部渲染 Markdown，支持内容或链接",
+  "apply_sub": "应用到子文件夹",
   "hide_help": "要在该路径下隐藏的文件或正则表达式，每行一个。"
 }
