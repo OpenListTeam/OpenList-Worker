@@ -58,7 +58,7 @@
   "schedules": [
     {
       "name": "token-refresh",
-      "cron": "0 */6 * * *",
+      "cron": "0 2 * * *",
       "path": "/api/task/refresh",
       "method": "POST",
       "timezone": "Asia/Shanghai"

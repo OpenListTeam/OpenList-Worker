@@ -11,7 +11,7 @@
 - **配置持久化**：
   - **KV 存储**：自动适配 `OPENLISTNEXT_KV` / `EDGEONE_KV` / `EO_KV` 命名空间。
   - **Blob 存储**：支持通过 `openlistnext_db` Blob 存储实现单项最大 25MB 的大配置/文件元数据持久化。
-- **定时任务 (Schedules)**：已内置 `/api/task/refresh` 定时调度（每 6 小时自动刷新一次已启用的网盘 Token，避免过期失效）。
+- **定时任务 (Schedules)**：已内置 `/api/task/refresh` 定时调度（每天凌晨 2:00 自动刷新一次已启用的网盘 Token，完全兼容 EdgeOne 免费版定时任务规则；并在每次实际请求时结合按需检测保障 Token 实时有效）。
 
 ---
 
@@ -60,7 +60,7 @@ edgeone makers deploy
 "schedules": [
   {
     "name": "token-refresh",
-    "cron": "0 */6 * * *",
+    "cron": "0 2 * * *",
     "path": "/api/task/refresh",
     "method": "POST",
     "timezone": "Asia/Shanghai"
@@ -68,4 +68,4 @@ edgeone makers deploy
 ]
 ```
 
-平台将每 6 小时自动请求一次 `/api/task/refresh` 接口，自动调用网盘驱动换新 Access Token，确保离线下载与日常访问稳定不断流。
+> 💡 **免费版配额说明**：EdgeOne Makers 免费版定时任务最小执行间隔为 1 天（86400 秒），故配置为每天凌晨 2:00（`0 2 * * *`）执行一次。OpenListNext 网盘驱动均支持在请求时自动按需换新 Access Token，双重保障网盘连接永不断流。
