@@ -1,6 +1,7 @@
 import { resolvePath, getDb, saveDb } from "../model/db"
 import { FileItem, StorageDriver, calcFileType } from "../driver/base"
 import { Onedrive } from "../../drivers/onedrive/driver"
+import { OnedriveAPP } from "../../drivers/onedrive_app/driver"
 import { AliyundriveOpen } from "../../drivers/aliyundrive_open/driver"
 import { GoogleDrive } from "../../drivers/google_drive/driver"
 import { QuarkDriver } from "../../drivers/quark/driver"
@@ -68,11 +69,15 @@ export async function getDriver(
   }
 
   let driver: StorageDriver
-  if (
-    normDriver === "onedrive" ||
-    normDriver === "onedriveapp" ||
-    normDriver === "onedrivesb"
-  ) {
+  if (normDriver === "onedriveapp") {
+    driver = new OnedriveAPP(parseAddition(storageConfig))
+    try {
+      await driver.init?.()
+    } catch (e) {
+      console.error("onedrive_app init failed:", e)
+      throw e
+    }
+  } else if (normDriver === "onedrive" || normDriver === "onedrivesb") {
     driver = new Onedrive(
       parseAddition(storageConfig),
       async (refreshToken) => {
