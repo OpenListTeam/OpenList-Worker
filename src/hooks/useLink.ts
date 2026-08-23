@@ -11,6 +11,15 @@ import {
 import { useRouter, useUtil } from "."
 import { cookieStorage } from "@solid-primitives/storage"
 
+// 获取 localStorage 中的 JWT token
+function getAuthToken(): string {
+  try {
+    return localStorage.getItem("token") || ""
+  } catch {
+    return ""
+  }
+}
+
 type URLType = "preview" | "direct" | "proxy"
 
 // get download url by dir and obj
@@ -59,6 +68,14 @@ export const getLinkByDirAndObj = (
   if (archive) {
     let inner = `${inner_path}/${obj.name}`
     ans += `${QP()}inner=${encodePath(inner, encodeAll)}${archive_pass ? `&pass=${encodeURIComponent(archive_pass)}` : ""}`
+  }
+  // 非分享链接且非预览链接时，添加 JWT token 作为 query parameter
+  // 后端 getUserFromContext 支持从 query parameter token 或 access_token 获取 JWT
+  if (type !== "preview" && !isShare) {
+    const token = getAuthToken()
+    if (token) {
+      ans += `${QP()}token=${encodeURIComponent(token)}`
+    }
   }
   return ans
 }
