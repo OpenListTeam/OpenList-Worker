@@ -7,10 +7,11 @@
 ## 架构适配特性
 
 - **前端托管**：基于 SolidJS + Vite 打包输出到 `dist/`，通过 EdgeOne 边缘 CDN 全球加速。
-- **后端执行**：由 Edge Functions (`edge-functions/[[default]].js` / `api/[...route].js`) 在边缘节点运行，毫秒级冷启动。
+- **后端执行**：由 **Cloud Functions（Node.js）** 承载，`scripts/build-edge.mjs` 在构建期将 `api/_makers.ts` 打包为仓库根 **`cloud-functions/[[default]].js`**（⚠️ Makers 在检出仓库时即扫描该文件决定是否启用 Node 函数，因此产物必须提交进仓库；若缺失，CLI 会报 `No server-handler detected` 并退化为纯静态项目），以 Handler 模式包裹 Hono 应用统一处理 `/api`、`/d`、`/p`、`/sd`、`/health` 等请求；根路径与前端路由由根级 **`middleware.js`** 将浏览器导航请求（Accept: text/html 且非后端路径）透明改写为 `/index.html`，命中静态 CDN 的 SPA fallback。
+- **SPA 兜底双保险**：Node 云函数内没有 `ASSETS` 绑定，因此构建时会把 `dist/index.html` 内联进函数包——即使边缘中间件未生效、或请求直达云函数，前端路由（如 `/add`、`/@manage/*`）也会由函数直接返回页面壳（`Cache-Control: no-cache`），不会再出现整站 404。
 - **配置持久化**：
-  - **KV 存储**：自动适配 `OPENLISTNEXT_KV` / `EDGEONE_KV` / `EO_KV` 命名空间。
-  - **Blob 存储**：支持通过 `openlistnext_db` Blob 存储实现单项最大 25MB 的大配置/文件元数据持久化。
+  - **Blob 存储**（推荐）：自动使用 `@edgeone/pages-blob` SDK（HTTP API），无需手动配置，避免 Redis RESP 协议崩溃。
+  - **KV 存储**（兼容）：自动适配 `OPENLISTNEXT_KV` / `EDGEONE_KV` / `EO_KV` 命名空间（仅 Cloudflare 环境）。
 - **定时任务 (Schedules)**：已内置 `/api/task/refresh` 定时调度（每天凌晨 2:00 自动刷新一次已启用的网盘 Token，完全兼容 EdgeOne 免费版定时任务规则；并在每次实际请求时结合按需检测保障 Token 实时有效）。
 
 ---
@@ -25,11 +26,7 @@
    - **安装命令**：`pnpm install --no-frozen-lockfile`
    - **构建命令**：`pnpm run build`
    - **输出目录**：`dist`
-3. **绑定 KV 命名空间**：
-   - 在控制台侧边栏进入 **KV 存储**，创建一个命名空间（例如 `openlistnext-kv`）。
-   - 在项目的 **设置 -> 函数设置 -> KV 命名空间绑定** 中，添加绑定：
-     - **变量名**：`OPENLISTNEXT_KV`（或 `EDGEONE_KV`）
-     - **命名空间**：选择刚创建的 `openlistnext-kv`。
+3. **存储配置**：无需手动配置。Blob 存储会自动初始化（使用 `@edgeone/pages-blob` SDK），配置数据持久化在 `openlistnext_db` 命名空间中。
 4. **点击部署**：构建完成后即可通过 EdgeOne 分配的 `*.edgeone.cool` 域名直接访问，默认管理账号为 `admin` / `admin`。
 
 ---
