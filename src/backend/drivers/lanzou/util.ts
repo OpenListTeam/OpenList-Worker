@@ -20,6 +20,9 @@ export class LanzouClient {
   private uid: string = ""
   private vei: string = ""
   private onCookieUpdate?: (cookie: string) => void
+  /** acw_sc__v2 挑战值：求解后持久化到实例，后续所有请求都携带。
+   *  数据中心 IP（CF Workers）不带此 cookie 会被蓝奏云 CDN WAF 403。 */
+  private acwVs: string = ""
 
   constructor(
     addition: LanzouAddition,
@@ -59,6 +62,13 @@ export class LanzouClient {
 
   private updateCookie(setCookie: string | null) {
     if (!setCookie) return
+    // set-cookie 里可能直接下发 acw_sc__v2（WAF 挑战通过后）
+    const acwMatch = setCookie.match(
+      /(?:^|,\s*)acw_sc__v2=([^;,\s]+)/i,
+    )
+    if (acwMatch && acwMatch[1]) {
+      this.acwVs = acwMatch[1]
+    }
     const parts = this.cookie ? this.cookie.split(";").map((s) => s.trim()) : []
     const entries = setCookie.split(/,(?=[a-zA-Z0-9_\-]+=[^;]+)/)
     for (const entry of entries) {
@@ -95,6 +105,13 @@ export class LanzouClient {
         await this.initVeiAndUid()
       }
     }
+    // 预热 acw_sc__v2：主动请求一次分享页触发/通过 WAF 挑战，
+    // 让后续 ajaxfile.php 等请求都带上 acw_sc__v2 cookie（数据中心 IP 必需）
+    if (!this.acwVs) {
+      try {
+        await this.request(`${this.getShareUrl()}/`, "GET")
+      } catch {}
+    }
   }
 
   /**
@@ -105,15 +122,14 @@ export class LanzouClient {
       throw new Error("[Lanzou] 账号模式下必须提供账号与密码")
     }
 
-    let vs = ""
     for (let retry = 0; retry < 3; retry++) {
       const headers: Record<string, string> = {
         "User-Agent": this.getUserAgent(),
         Referer: "https://pc.woozooo.com",
         "Content-Type": "application/x-www-form-urlencoded",
       }
-      if (vs) {
-        headers["Cookie"] = `acw_sc__v2=${vs}`
+      if (this.acwVs) {
+        headers["Cookie"] = `acw_sc__v2=${this.acwVs}`
       }
 
       const res = await fetch("https://up.woozooo.com/mlogin.php", {
@@ -135,7 +151,7 @@ export class LanzouClient {
       const bodyStr = await res.text()
 
       if (bodyStr.includes("acw_sc__v2")) {
-        vs = calcAcwScV2(bodyStr)
+        this.acwVs = calcAcwScV2(bodyStr)
         continue
       }
 
@@ -190,8 +206,6 @@ export class LanzouClient {
     body?: Record<string, string>,
     customReferer?: string,
   ): Promise<string> {
-    let vs = ""
-
     const defaultReferer =
       url.startsWith(this.getShareUrl()) ||
       url.includes("ajaxfile.php") ||
@@ -213,8 +227,8 @@ export class LanzouClient {
       if (url.includes("/file/")) {
         cookieStr = (cookieStr ? cookieStr + "; " : "") + "down_ip=1"
       }
-      if (vs) {
-        cookieStr = (cookieStr ? cookieStr + "; " : "") + `acw_sc__v2=${vs}`
+      if (this.acwVs) {
+        cookieStr = (cookieStr ? cookieStr + "; " : "") + `acw_sc__v2=${this.acwVs}`
       }
       if (cookieStr) {
         headers["Cookie"] = cookieStr
@@ -237,7 +251,7 @@ export class LanzouClient {
       const bodyStr = await res.text()
 
       if (bodyStr.includes("acw_sc__v2")) {
-        vs = calcAcwScV2(bodyStr)
+        this.acwVs = calcAcwScV2(bodyStr)
         continue
       }
 
