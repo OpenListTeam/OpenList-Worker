@@ -15,6 +15,7 @@ import { resolveShare } from "../internal/op/share"
 import { resolvePath } from "../internal/model/db"
 import { getUserFromContext } from "./middlewares"
 import { canWrite, getActualPath, isAdmin } from "../pkg/permission"
+import { getSignPolicy, signDownloadPath } from "../pkg/sign"
 import { search } from "../internal/op/search"
 
 export const fsRouter = new Hono()
@@ -244,17 +245,29 @@ fsRouter.post("/list", async (c) => {
     // write 按请求者身份如实返回：游客/无写权限用户为 false，
     // 前端据此隐藏上传、新建文件夹等写操作入口
     const writable = canWrite(user)
+    // 下载签名策略（sign_all / link_expiration）：仅对文件项签发 HMAC 签名，
+    // 前端拼到下载链接后由 /raw 校验。未启用时 sign 保持驱动原值。
+    const signPolicy = await getSignPolicy(c)
     // Normalize each item to the full Obj shape expected by the frontend
-    const normalized = content.map((item: any) => ({
-      name: item.name,
-      size: item.size,
-      is_dir: item.is_dir,
-      created: item.created || item.modified || new Date().toISOString(),
-      modified: item.modified || new Date().toISOString(),
-      sign: item.sign || "",
-      thumb: item.thumb || "",
-      type: item.type ?? 0,
-    }))
+    const normalized = await Promise.all(
+      content.map(async (item: any) => {
+        const fullPath = `${reqPath}/${item.name}`.replace(/\/{2,}/g, "/")
+        const sign =
+          !item.is_dir && signPolicy.enabled
+            ? await signDownloadPath(c, fullPath, signPolicy.expiresIn)
+            : item.sign || ""
+        return {
+          name: item.name,
+          size: item.size,
+          is_dir: item.is_dir,
+          created: item.created || item.modified || new Date().toISOString(),
+          modified: item.modified || new Date().toISOString(),
+          sign,
+          thumb: item.thumb || "",
+          type: item.type ?? 0,
+        }
+      }),
+    )
 
     let storagePageSize = 0
     if (storage) {
@@ -380,6 +393,11 @@ fsRouter.post("/get", async (c) => {
     }
 
     const { item, provider, rawUrl } = await getItem(reqPath, requestContext)
+    const signPolicy = await getSignPolicy(c)
+    const sign =
+      !item.is_dir && signPolicy.enabled
+        ? await signDownloadPath(c, reqPath, signPolicy.expiresIn)
+        : item.sign || ""
     return c.json({
       code: 200,
       message: "success",
@@ -390,7 +408,7 @@ fsRouter.post("/get", async (c) => {
         created:
           (item as any).created || item.modified || new Date().toISOString(),
         modified: item.modified,
-        sign: item.sign || "",
+        sign,
         thumb: (item as any).thumb || "",
         type: item.type ?? 0,
         raw_url: rawUrl,

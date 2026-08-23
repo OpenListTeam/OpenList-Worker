@@ -92,6 +92,14 @@ async function rateLimitMiddleware(c: any, next: () => Promise<void>) {
 
   await next()
 
+  // Query-token 泄露缓解：URL 携带 token/access_token 的响应禁用缓存并
+  // 阻止 Referer 外泄（防止 token 经浏览器历史/Referer/代理缓存泄露）
+  if (c.req.query("token") || c.req.query("access_token")) {
+    c.res?.headers?.set("Referrer-Policy", "no-referrer")
+    c.res?.headers?.set("Cache-Control", "no-store, no-cache, must-revalidate")
+    c.res?.headers?.set("Pragma", "no-cache")
+  }
+
   if (trafficLimitMb > 0) {
     const len =
       parseInt(c.res?.headers?.get("content-length") || "0", 10) || 0
@@ -109,6 +117,19 @@ async function rateLimitMiddleware(c: any, next: () => Promise<void>) {
 export function setupRouter(app: Hono) {
   // 限流：读取管理后台 ip_limit / traffic_limit 设置，尽力而为
   app.use("*", rateLimitMiddleware)
+
+  // 安全响应头：防止点击劫持 / MIME 嗅探 / XSS / 引用泄露
+  app.use("*", async (c, next) => {
+    await next()
+    c.res.headers.set("X-Frame-Options", "DENY")
+    c.res.headers.set("X-Content-Type-Options", "nosniff")
+    c.res.headers.set(
+      "Content-Security-Policy",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; frame-ancestors 'none'",
+    )
+    c.res.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    c.res.headers.set("Referrer-Policy", "no-referrer")
+  })
 
   // CORS Middleware
   // 安全策略：不再回显任意 Origin。
