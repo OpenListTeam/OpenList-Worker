@@ -205,6 +205,8 @@ export class LanzouClient {
         Referer: customReferer || defaultReferer,
         "User-Agent": this.getUserAgent(),
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        // 蓝奏云 WAF 校验 AJAX 请求必须带 X-Requested-With，否则返回 403/405
+        "X-Requested-With": "XMLHttpRequest",
       }
 
       let cookieStr = this.cookie
