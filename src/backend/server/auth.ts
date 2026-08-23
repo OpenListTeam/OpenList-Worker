@@ -1,7 +1,7 @@
-import { Hono } from "hono"
+import { Hono, type Context } from "hono"
 import { sign, verify } from "hono/jwt"
 import { getDb, saveDb } from "../internal/model/db"
-import { getJwtSecret } from "./middlewares"
+import { getJwtSecret, getUserFromContext } from "./middlewares"
 import {
   generateTotpSecret,
   generateTotpCode,
@@ -262,8 +262,7 @@ authRouter.post("/login/hash", async (c) => {
         ? userPass
         : await hashPassword(userPass || "admin")
 
-    const isHashValid =
-      inputHash === userPass || inputHash === userPassHash
+    const isHashValid = inputHash === userPass || inputHash === userPassHash
 
     if (isHashValid) {
       const otpCheck = await checkUserOtp(matchedUser, body)
@@ -328,98 +327,33 @@ export const meUpdateHandler = async (c: any) => {
 
 // GET /api/me
 export const meHandler = async (c: any) => {
-  const authHeader = c.req.header("Authorization")
-  if (!authHeader) {
-    // 游客模式：未携带令牌时直接返回游客身份，允许免登录（无账号密码）浏览。
-    const { users } = await getOrInitUsers(c.env)
-    const guest = users.find((u: any) => u.username === "guest")
-    if (guest) {
-      return c.json({
-        code: 200,
-        message: "success",
-        data: {
-          id: guest.id,
-          username: guest.username,
-          role: guest.role,
-          permission: guest.permission ?? 0,
-          base_path: guest.base_path || "/",
-          disabled: !!guest.disabled,
-          sso_id: guest.sso_id || "",
-          allow_ldap: !!guest.allow_ldap,
-          otp: false,
-        },
-      })
-    }
-    return c.json({
-      code: 200,
-      message: "success",
-      data: {
-        id: 2,
-        username: "guest",
-        role: 1,
-        permission: 0,
-        base_path: "/",
-        disabled: false,
-        sso_id: "",
-        allow_ldap: false,
-        otp: false,
-      },
-    })
-  }
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.substring(7)
-    : authHeader
-  try {
-    const secret = await getJwtSecret(c)
-    const payload = await verify(token, secret, "HS256")
-    const { users } = await getOrInitUsers(c.env)
-    const dbUser = users.find(
-      (u: any) => u.id === payload.id || u.username === payload.username,
-    )
-
-    if (dbUser) {
-      return c.json({
-        code: 200,
-        message: "success",
-        data: {
-          id: dbUser.id,
-          username: dbUser.username,
-          role: dbUser.role,
-          permission: dbUser.permission ?? 0,
-          base_path: dbUser.base_path || "/",
-          disabled: !!dbUser.disabled,
-          sso_id: dbUser.sso_id || "",
-          allow_ldap: !!dbUser.allow_ldap,
-          otp: !!dbUser.otp_secret,
-        },
-      })
-    }
-
-    return c.json({
-      code: 200,
-      message: "success",
-      data: {
-        id: payload.id,
-        username: payload.username,
-        role: payload.role,
-        permission: 0,
-        base_path: "/",
-        disabled: false,
-        sso_id: "",
-        allow_ldap: false,
-        otp: false,
-      },
-    })
-  } catch (e: any) {
+  const user = await getUserFromContext(c)
+  if (!user || user.disabled) {
     return c.json(
       {
         code: 401,
-        message: `Unauthorized: ${e.message || "Invalid token"}`,
+        message: "Unauthorized",
         data: null,
       },
       401,
     )
   }
+
+  return c.json({
+    code: 200,
+    message: "success",
+    data: {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      permission: user.permission ?? 0,
+      base_path: user.base_path || "/",
+      disabled: !!user.disabled,
+      sso_id: user.sso_id || "",
+      allow_ldap: !!user.allow_ldap,
+      otp: !!user.otp_secret,
+    },
+  })
 }
 
 authRouter.get("/me", meHandler)

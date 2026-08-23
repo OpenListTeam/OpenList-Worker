@@ -82,6 +82,7 @@ publicRouter.get("/settings", async (c) => {
     check_update: "false",
 
     // --- Auth ---
+    allow_guest: "true",
     webauthn_login_enabled: "false",
     sso_login_enabled: "false",
     sso_compatibility_mode: "false",
@@ -102,6 +103,15 @@ publicRouter.get("/settings", async (c) => {
       }
     }
   })
+
+  // 动态检查是否存在且启用了 guest 账号
+  const guest = (db.users || []).find((u: any) => u.username === "guest")
+  const isGuestActive = Boolean(guest && !guest.disabled)
+  if (!isGuestActive || settingsObj.allow_guest === "false") {
+    settingsObj.allow_guest = "false"
+  } else {
+    settingsObj.allow_guest = "true"
+  }
 
   return c.json({
     code: 200,

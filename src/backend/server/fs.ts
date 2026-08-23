@@ -40,8 +40,13 @@ const permissionDenied = (c: any) =>
 fsRouter.post("/dirs", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const user = await getUserFromContext(c)
+  const rawPath = body.path || "/"
+  const isShare = rawPath.startsWith("/@s")
+  if (!isShare && (!user || user.disabled)) {
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  }
   const requestContext = getStorageRequestContext(c)
-  let reqPath = body.path || "/"
+  let reqPath = rawPath
   if (!body.force_root || !isAdmin(user)) {
     reqPath = getActualPath(user, reqPath)
   }
@@ -111,6 +116,10 @@ fsRouter.post("/dirs", async (c) => {
 fsRouter.post("/list", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const user = await getUserFromContext(c)
+  const isShare = (body.path || "/").startsWith("/@s")
+  if (!isShare && (!user || user.disabled)) {
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  }
   const requestContext = getStorageRequestContext(c)
   const reqPath = getActualPath(user, body.path || "/")
   const page = parseInt(body.page, 10) || 1
@@ -300,6 +309,10 @@ fsRouter.post("/list", async (c) => {
 fsRouter.post("/get", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const user = await getUserFromContext(c)
+  const isShare = (body.path || "/").startsWith("/@s")
+  if (!isShare && (!user || user.disabled)) {
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  }
   const requestContext = getStorageRequestContext(c)
   const reqPath = getActualPath(user, body.path || "/")
   try {
@@ -649,6 +662,9 @@ fsRouter.post("/upload/complete", async (c) => {
 
 fsRouter.post("/add_offline_download", async (c) => {
   const user = await getUserFromContext(c)
+  if (!user || user.disabled) {
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  }
   const { path: rawPath, urls } = await c.req.json().catch(() => ({}))
   const reqPath = getActualPath(user, rawPath || "/")
   if (!urls || urls.length === 0) {
@@ -672,6 +688,9 @@ fsRouter.post("/add_offline_download", async (c) => {
 
 fsRouter.post("/search", async (c) => {
   const user = await getUserFromContext(c)
+  if (!user || user.disabled) {
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  }
   const body = await c.req.json().catch(() => ({}))
   const parentPath = getActualPath(user, body.parent || "/")
   try {
@@ -693,6 +712,9 @@ fsRouter.post("/search", async (c) => {
 
 fsRouter.post("/other", async (c) => {
   const user = await getUserFromContext(c)
+  if (!user || user.disabled) {
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  }
   const body = await c.req.json().catch(() => ({}))
   const reqPath = getActualPath(user, body.path || "/")
   const method = body.method

@@ -3,6 +3,7 @@ import { resolvePath } from "../internal/model/db"
 import { parseRangeHeader } from "../internal/stream/stream"
 import { flushPendingDriverState, getDriver } from "../internal/op/storage"
 import { resolveShare } from "../internal/op/share"
+import { getUserFromContext } from "./middlewares"
 
 let fsPromises: any = null
 let createReadStream: any = null
@@ -72,6 +73,11 @@ rawRouter.get("/*", async (c) => {
         return c.text("Cannot download share root", 400)
       }
       reqPath = shareRes.realPath
+    } else {
+      const user = await getUserFromContext(c)
+      if (!user || user.disabled) {
+        return c.text("Unauthorized", 401)
+      }
     }
 
     const resolved = await resolvePath(reqPath)

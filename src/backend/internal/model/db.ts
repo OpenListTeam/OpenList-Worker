@@ -646,6 +646,7 @@ async function getBlobStore(): Promise<any | null> {
   if (_blobChecked) return _blobStore
   _blobChecked = true
   try {
+    // @ts-ignore
     const { getStore } = await import("@edgeone/pages-blob")
     // In Makers Functions, projectId/token are auto-injected by the runtime.
     // TypeScript types require them, but the SDK works without them inside Functions.

@@ -18,7 +18,7 @@ function generateRandomSecret(): string {
 async function readKvSecret(env: any): Promise<string | null> {
   try {
     const { getKvBinding } = await import("../internal/model/db")
-    const kvInfo = getKvBinding(env)
+    const kvInfo = await getKvBinding(env)
     if (kvInfo.mode === "none" || !kvInfo.binding) return null
     const { binding, mode } = kvInfo
     let val: any = null
@@ -44,15 +44,19 @@ async function readKvSecret(env: any): Promise<string | null> {
 async function writeKvSecret(env: any, secret: string): Promise<void> {
   try {
     const { getKvBinding } = await import("../internal/model/db")
-    const kvInfo = getKvBinding(env)
+    const kvInfo = await getKvBinding(env)
     if (kvInfo.mode === "none" || !kvInfo.binding) return
     const { binding, mode } = kvInfo
     if (mode === "blob") {
-      if (typeof binding.set === "function") await binding.set(JWT_SECRET_KV_KEY, secret)
-      else if (typeof binding.put === "function") await binding.put(JWT_SECRET_KV_KEY, secret)
+      if (typeof binding.set === "function")
+        await binding.set(JWT_SECRET_KV_KEY, secret)
+      else if (typeof binding.put === "function")
+        await binding.put(JWT_SECRET_KV_KEY, secret)
     } else {
-      if (typeof binding.put === "function") await binding.put(JWT_SECRET_KV_KEY, secret)
-      else if (typeof binding.set === "function") await binding.set(JWT_SECRET_KV_KEY, secret)
+      if (typeof binding.put === "function")
+        await binding.put(JWT_SECRET_KV_KEY, secret)
+      else if (typeof binding.set === "function")
+        await binding.set(JWT_SECRET_KV_KEY, secret)
     }
   } catch (e) {
     console.warn("[JWT] Failed to persist secret to KV:", e)
@@ -65,9 +69,7 @@ async function writeKvSecret(env: any, secret: string): Promise<void> {
  */
 export async function getJwtSecret(c?: Context | any): Promise<string> {
   const env =
-    c?.env ||
-    (typeof process !== "undefined" ? (process as any).env : {}) ||
-    {}
+    c?.env || (typeof process !== "undefined" ? (process as any).env : {}) || {}
 
   // 1. 环境变量显式配置（最优先）
   const envSecret = env.JWT_SECRET
@@ -108,12 +110,11 @@ export async function adminAuthMiddleware(
 }
 
 /**
- * 从请求上下文解析当前用户（用于 /fs 写操作权限校验）：
+ * 从请求上下文解析当前用户：
  * - 静态 API Token（与 adminAuthMiddleware 同源）→ 视为管理员
- * - JWT（登录颁发）→ 查 DB 用户，取 role/permission
- * - 无凭证 / token 无效 / 用户被禁用 → null（即游客）
- * 权限判定统一走 pkg/permission.ts 的 canWrite()：
- * 管理员放行，普通用户按 WRITE_CONTENT 位，游客一律拒绝。
+ * - JWT（Authorization header 或 query parameter token/access_token）→ 查 DB 用户
+ * - 无凭证时，仅当数据库中存在且未禁用的 guest 用户时才返回该游客信息；
+ * - 若 guest 用户不存在（被删除）或被禁用，则返回 null（未授权状态）。
  */
 export async function getUserFromContext(c: Context): Promise<{
   id?: number
@@ -122,6 +123,9 @@ export async function getUserFromContext(c: Context): Promise<{
   disabled?: boolean
   username?: string
   base_path?: string
+  sso_id?: string
+  allow_ldap?: boolean
+  otp_secret?: string
 } | null> {
   // 静态 API token：与 /admin 同等信任
   if (await checkAdminAuth(c)) {
@@ -133,7 +137,15 @@ export async function getUserFromContext(c: Context): Promise<{
       base_path: "/",
     }
   }
-  const authHeader = c.req.header("Authorization")
+
+  let authHeader = c.req.header("Authorization")
+  if (!authHeader) {
+    const queryToken = c.req.query("token") || c.req.query("access_token")
+    if (queryToken) {
+      authHeader = `Bearer ${queryToken}`
+    }
+  }
+
   if (!authHeader) {
     try {
       const db = await getDb(c.env)
@@ -146,18 +158,15 @@ export async function getUserFromContext(c: Context): Promise<{
           disabled: !!guest.disabled,
           username: guest.username,
           base_path: guest.base_path || "/",
+          sso_id: guest.sso_id || "",
+          allow_ldap: !!guest.allow_ldap,
+          otp_secret: guest.otp_secret,
         }
       }
     } catch {}
-    return {
-      id: 2,
-      role: 1,
-      permission: 0,
-      disabled: false,
-      username: "guest",
-      base_path: "/",
-    }
+    return null
   }
+
   const token = authHeader.startsWith("Bearer ")
     ? authHeader.substring(7)
     : authHeader
@@ -176,6 +185,9 @@ export async function getUserFromContext(c: Context): Promise<{
       disabled: !!user.disabled,
       username: user.username,
       base_path: user.base_path || "/",
+      sso_id: user.sso_id || "",
+      allow_ldap: !!user.allow_ldap,
+      otp_secret: user.otp_secret,
     }
   } catch {
     return null
