@@ -2,7 +2,7 @@ import { Hono } from "hono"
 import { getDb, saveDb } from "../internal/model/db"
 import { hashPassword } from "./auth"
 import { verify } from "hono/jwt"
-import { JWT_SECRET } from "./middlewares"
+import { getJwtSecret } from "./middlewares"
 import { listUserSshKeys, deleteUserSshKey } from "../internal/op/sshkey"
 
 export const userRouter = new Hono()
@@ -261,7 +261,8 @@ export const updatePwdHandler = async (c: any) => {
     ? authHeader.substring(7)
     : authHeader
   try {
-    const payload = await verify(token, JWT_SECRET, "HS256")
+    const secret = await getJwtSecret(c)
+    const payload = await verify(token, secret, "HS256")
     const body = await c.req.json().catch(() => ({}))
     const oldPassword = body.old_password || ""
     const newPassword = body.new_password || ""

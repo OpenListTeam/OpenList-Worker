@@ -1,28 +1,18 @@
 import { Hono } from "hono"
-import { verify } from "hono/jwt"
 import { getDb, saveDb, defaultDb, getKvStatus } from "../internal/model/db"
 import { getDriver } from "../internal/op/storage"
-import { JWT_SECRET } from "./middlewares"
+import { checkAdminAuth } from "../pkg/utils"
 
 export const adminRouter = new Hono()
 
 adminRouter.use("*", async (c, next) => {
-  const authHeader = c.req.header("Authorization")
-  if (!authHeader) {
+  // 统一走 checkAdminAuth：静态 API token（settings.token）与 JWT 管理员
+  // （role===2 且 DB 中存在未禁用用户）都视为管理员。
+  const isAdmin = await checkAdminAuth(c)
+  if (!isAdmin) {
     return c.json({ code: 401, message: "Unauthorized", data: null })
   }
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.substring(7)
-    : authHeader
-  try {
-    const payload = await verify(token, JWT_SECRET, "HS256")
-    if (payload.role !== 2) {
-      return c.json({ code: 403, message: "Forbidden", data: null })
-    }
-    await next()
-  } catch (e) {
-    return c.json({ code: 401, message: "Unauthorized", data: null })
-  }
+  await next()
 })
 
 adminRouter.get("/storage/list", async (c) => {

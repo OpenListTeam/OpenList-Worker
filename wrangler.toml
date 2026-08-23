@@ -12,8 +12,10 @@ binding = "ASSETS"
 
 [vars]
 ENVIRONMENT = "production"
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "admin"
+# 注意：不要在这里硬编码管理员密码！部署时请通过
+#   `wrangler secret put ADMIN_PASSWORD`  配置强密码，
+#   未配置时使用默认 admin/admin，首次登录后请立即修改。
+# JWT 签名密钥同理：`wrangler secret put JWT_SECRET`
 VITE_API_URL = "/api"
 
 [[kv_namespaces]]

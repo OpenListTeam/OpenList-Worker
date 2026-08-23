@@ -1,7 +1,17 @@
 import { Hono } from "hono"
 import { getDb, saveDb } from "../internal/model/db"
+import { adminAuthMiddleware, getUserFromContext } from "./middlewares"
 
 export const shareRouter = new Hono()
+
+// 分享管理接口需要管理员权限（list/get/update/delete）
+shareRouter.use("/list", adminAuthMiddleware)
+shareRouter.use("/get", adminAuthMiddleware)
+shareRouter.use("/update", adminAuthMiddleware)
+shareRouter.use("/delete", adminAuthMiddleware)
+shareRouter.use("/cancel", adminAuthMiddleware)
+shareRouter.use("/enable", adminAuthMiddleware)
+shareRouter.use("/disable", adminAuthMiddleware)
 
 // List all shares
 shareRouter.get("/list", async (c) => {
@@ -24,8 +34,12 @@ shareRouter.get("/get", async (c) => {
   return c.json({ code: 200, message: "success", data: share })
 })
 
-// Create a new share
+// Create a new share (requires logged-in user with SHARE permission; admins always allowed)
 shareRouter.post("/create", async (c) => {
+  const user = await getUserFromContext(c)
+  if (!user) {
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  }
   const body = await c.req.json().catch(() => ({}))
   const db = await getDb(c.env)
 
@@ -46,8 +60,8 @@ shareRouter.post("/create", async (c) => {
   const newShare = {
     id: shareId,
     new_id: body.new_id || shareId,
-    creator: "admin",
-    creator_role: 2,
+    creator: user.username || "user",
+    creator_role: user.role ?? 1,
     accessed: 0,
     expires: body.expires || null,
     pwd: body.pwd || "",

@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 import { sign, verify } from "hono/jwt"
 import { getDb, saveDb } from "../internal/model/db"
-import { JWT_SECRET } from "./middlewares"
+import { getJwtSecret } from "./middlewares"
 import {
   generateTotpSecret,
   generateTotpCode,
@@ -31,7 +31,13 @@ export async function hashPassword(plainPassword: string): Promise<string> {
 export async function getOrInitUsers(envCtx: any) {
   const db = await getDb(envCtx)
   if (!db.users || db.users.length === 0) {
-    const defaultAdminHash = await hashPassword("admin")
+    // 默认管理员密码：优先环境变量 ADMIN_PASSWORD（推荐 `wrangler secret put`），
+    // 未配置时使用默认 admin（AList 兼容），首次登录后应立即修改。
+    const envPass =
+      (envCtx && envCtx.ADMIN_PASSWORD) ||
+      (typeof process !== "undefined" ? process.env?.ADMIN_PASSWORD : "") ||
+      ""
+    const defaultAdminHash = await hashPassword(envPass || "admin")
     db.users = [
       {
         id: 1,
@@ -72,7 +78,8 @@ export async function authUserFromReq(
     ? authHeader.substring(7)
     : authHeader
   try {
-    const payload = await verify(token, JWT_SECRET, "HS256")
+    const secret = await getJwtSecret(c)
+    const payload = await verify(token, secret, "HS256")
     const db = await getDb(c.env)
     if (!db.users) db.users = []
     const user = db.users.find(
@@ -118,7 +125,6 @@ authRouter.post("/login", async (c) => {
   const hashedPassword = await hashPassword(rawPassword)
 
   const { users } = await getOrInitUsers(c.env)
-  const defaultAdminHash = await hashPassword("admin")
 
   const matchedUser = users.find(
     (u: any) => u.username === username && !u.disabled,
@@ -127,12 +133,10 @@ authRouter.post("/login", async (c) => {
   if (matchedUser) {
     const userPass = matchedUser.password || ""
     const isPasswordValid =
-      userPass === rawPassword ||
-      userPass === hashedPassword ||
-      (userPass === "" &&
-        (rawPassword === "admin" || hashedPassword === defaultAdminHash)) ||
-      (userPass === "admin" &&
-        (rawPassword === "admin" || hashedPassword === defaultAdminHash))
+      // 兼容 AList 明文存储的密码（直接相等）
+      (userPass !== "" && userPass === rawPassword) ||
+      // 标准流程：sha256(明文 + salt) 哈希比对
+      userPass === hashedPassword
 
     if (isPasswordValid) {
       const otpCheck = await checkUserOtp(matchedUser, body)
@@ -148,7 +152,8 @@ authRouter.post("/login", async (c) => {
         role: matchedUser.role,
         exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
       }
-      const token = await sign(payload, JWT_SECRET)
+      const secret = await getJwtSecret(c)
+      const token = await sign(payload, secret)
       return c.json({
         code: 200,
         message: "success",
@@ -167,7 +172,6 @@ authRouter.post("/login/hash", async (c) => {
   const inputHash = body.password || ""
 
   const { users } = await getOrInitUsers(c.env)
-  const defaultAdminHash = await hashPassword("admin")
 
   const matchedUser = users.find(
     (u: any) => u.username === username && !u.disabled,
@@ -181,10 +185,7 @@ authRouter.post("/login/hash", async (c) => {
         : await hashPassword(userPass || "admin")
 
     const isHashValid =
-      inputHash === userPass ||
-      inputHash === userPassHash ||
-      ((userPass === "" || userPass === "admin") &&
-        inputHash === defaultAdminHash)
+      inputHash === userPass || inputHash === userPassHash
 
     if (isHashValid) {
       const otpCheck = await checkUserOtp(matchedUser, body)
@@ -200,7 +201,8 @@ authRouter.post("/login/hash", async (c) => {
         role: matchedUser.role,
         exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
       }
-      const token = await sign(payload, JWT_SECRET)
+      const secret = await getJwtSecret(c)
+      const token = await sign(payload, secret)
       return c.json({
         code: 200,
         message: "success",
@@ -288,7 +290,8 @@ export const meHandler = async (c: any) => {
     ? authHeader.substring(7)
     : authHeader
   try {
-    const payload = await verify(token, JWT_SECRET, "HS256")
+    const secret = await getJwtSecret(c)
+    const payload = await verify(token, secret, "HS256")
     const { users } = await getOrInitUsers(c.env)
     const dbUser = users.find(
       (u: any) => u.id === payload.id || u.username === payload.username,

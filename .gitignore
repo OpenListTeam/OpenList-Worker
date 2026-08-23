@@ -8,3 +8,6 @@ dist
 .idea
 .test
 .codebuddy
+.env
+.env.local
+.env.*.local

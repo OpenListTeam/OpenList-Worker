@@ -19,10 +19,35 @@ import { updatePwdHandler } from "./user"
 
 export function setupRouter(app: Hono) {
   // CORS Middleware
+  // 安全策略：不再回显任意 Origin。
+  // 1) 若配置了环境变量 ALLOWED_ORIGINS（逗号分隔），仅放行白名单来源；
+  // 2) 否则仅放行同源请求（Origin 与请求 Host 一致，即浏览器直连本站）。
+  //    跨域来源的浏览器请求将被拒绝，降低 CSRF/凭证滥用风险。
   app.use(
     "*",
     cors({
-      origin: (origin) => origin,
+      origin: (origin, c) => {
+        if (!origin) return origin
+        const env = (c as any).env || {}
+        const allowedOriginsRaw =
+          env.ALLOWED_ORIGINS ||
+          (typeof process !== "undefined" ? process.env?.ALLOWED_ORIGINS : "") ||
+          ""
+        const allowedOrigins = allowedOriginsRaw
+          .split(",")
+          .map((s: string) => s.trim())
+          .filter(Boolean)
+        if (allowedOrigins.length > 0) {
+          return allowedOrigins.includes(origin) ? origin : null
+        }
+        // 无白名单配置时：仅同源
+        const host = c.req.header("host") || ""
+        try {
+          const u = new URL(origin)
+          if (u.host === host) return origin
+        } catch {}
+        return null
+      },
       allowHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
       allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       exposeHeaders: ["Content-Length", "Content-Type"],
