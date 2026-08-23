@@ -6,14 +6,11 @@ import { setEnvCtx } from "./internal/model/db"
 const app = new Hono()
 
 app.use("*", async (c, next) => {
-  const start = Date.now()
   // 关键：每个请求注入 KV binding 上下文（CF Workers 多实例/冷启动时
   // 模块级 globalEnvCtx 为 null，会导致 getDb()/saveDb() 退回内存模式，
   // 网盘账号密码与 access_token 无法从 KV 持久化读取）
   setEnvCtx(c.env)
-  console.log(`[Backend] ${c.req.method} ${c.req.path}`)
   await next()
-  console.log(`[Backend] ${c.res.status} (${Date.now() - start}ms)`)
 })
 
 // 在 Serverless 环境中，所有逻辑都是无状态的且由请求触发。

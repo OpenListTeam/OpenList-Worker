@@ -5,6 +5,7 @@ import { flushPendingDriverState, getDriver } from "../internal/op/storage"
 import { resolveShare } from "../internal/op/share"
 import { getUserFromContext } from "./middlewares"
 import { getSignPolicy, verifyDownloadSign } from "../pkg/sign"
+import { safeErrorMessage } from "../pkg/errs"
 
 let fsPromises: any = null
 let createReadStream: any = null
@@ -240,7 +241,7 @@ rawRouter.get("/*", async (c) => {
             `[rawRouter] Driver get failed for '${reqPath}':`,
             e.message,
           )
-          return c.text(`Download failed: ${e.message}`, 500)
+          return c.text(`Download failed: ${safeErrorMessage(e)}`, 500)
         }
       }
     }
@@ -274,6 +275,6 @@ rawRouter.get("/*", async (c) => {
     }
   } catch (err: any) {
     console.error(`[rawRouter] Download 404 for '${reqPath0}':`, err.message)
-    return c.text(`Not found: ${err.message || err}`, 404)
+    return c.text(`Not found: ${safeErrorMessage(err, "file not found")}`, 404)
   }
 })

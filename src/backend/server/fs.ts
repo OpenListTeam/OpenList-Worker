@@ -16,6 +16,7 @@ import { resolvePath } from "../internal/model/db"
 import { getUserFromContext } from "./middlewares"
 import { canWrite, getActualPath, isAdmin } from "../pkg/permission"
 import { getSignPolicy, signDownloadPath } from "../pkg/sign"
+import { safeErrorMessage } from "../pkg/errs"
 import { search } from "../internal/op/search"
 
 export const fsRouter = new Hono()
@@ -110,7 +111,7 @@ fsRouter.post("/dirs", async (c) => {
       }))
     return c.json({ code: 200, message: "success", data: dirs })
   } catch (err: any) {
-    return c.json({ code: 500, message: err.message, data: null })
+    return c.json({ code: 500, message: safeErrorMessage(err), data: null })
   }
 })
 
@@ -315,7 +316,7 @@ fsRouter.post("/list", async (c) => {
       },
     })
   } catch (err: any) {
-    return c.json({ code: 500, message: err.message, data: null })
+    return c.json({ code: 500, message: safeErrorMessage(err), data: null })
   }
 })
 
@@ -421,7 +422,7 @@ fsRouter.post("/get", async (c) => {
       },
     })
   } catch (err: any) {
-    return c.json({ code: 500, message: err.message, data: null })
+    return c.json({ code: 500, message: safeErrorMessage(err), data: null })
   }
 })
 
@@ -435,7 +436,7 @@ fsRouter.post("/mkdir", async (c) => {
     await makeDirectory(reqPath, requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
-    return c.json({ code: 500, message: e.message, data: null })
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null })
   }
 })
 
@@ -449,7 +450,7 @@ fsRouter.post("/rename", async (c) => {
     await renameItem(actualOldPath, newName, requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
-    return c.json({ code: 500, message: e.message, data: null })
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null })
   }
 })
 
@@ -463,7 +464,7 @@ fsRouter.post("/remove", async (c) => {
     await removeItems(actualDir, names, requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
-    return c.json({ code: 500, message: e.message, data: null })
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null })
   }
 })
 
@@ -478,7 +479,7 @@ fsRouter.post("/move", async (c) => {
     await moveItems(actualSrcDir, actualDstDir, names, requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
-    return c.json({ code: 500, message: e.message, data: null })
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null })
   }
 })
 
@@ -493,7 +494,7 @@ fsRouter.post("/copy", async (c) => {
     await copyItems(actualSrcDir, actualDstDir, names, requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
-    return c.json({ code: 500, message: e.message, data: null })
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null })
   }
 })
 
@@ -508,7 +509,7 @@ fsRouter.put("/put", async (c) => {
     await putItem(reqPath, Buffer.from(buffer), requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
-    return c.json({ code: 500, message: e.message, data: null })
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null })
   }
 })
 
@@ -532,7 +533,7 @@ fsRouter.put("/form", async (c) => {
     await putItem(reqPath, buffer, requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
-    return c.json({ code: 500, message: e.message, data: null })
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null })
   }
 })
 
@@ -589,7 +590,7 @@ fsRouter.post("/upload/create", async (c) => {
     }
     return c.json({ code: 200, message: "success", data: info })
   } catch (e: any) {
-    return c.json({ code: 500, message: e.message, data: null })
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null })
   }
 })
 
@@ -631,7 +632,7 @@ fsRouter.put("/upload/part", async (c) => {
     }
     return c.json({ code: 200, message: "success", data: result ?? null })
   } catch (e: any) {
-    return c.json({ code: 500, message: e.message, data: null })
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null })
   }
 })
 
@@ -674,7 +675,7 @@ fsRouter.post("/upload/complete", async (c) => {
     }
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
-    return c.json({ code: 500, message: e.message, data: null })
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null })
   }
 })
 
@@ -724,7 +725,7 @@ fsRouter.post("/search", async (c) => {
     )
     return c.json({ code: 200, message: "success", data: result })
   } catch (e: any) {
-    return c.json({ code: 500, message: e.message, data: null }, 500)
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
   }
 })
 
@@ -761,6 +762,6 @@ fsRouter.post("/other", async (c) => {
       500,
     )
   } catch (e: any) {
-    return c.json({ code: 500, message: e.message, data: null }, 500)
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
   }
 })

@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { getDb, saveDb, defaultDb, getKvStatus } from "../internal/model/db"
 import { getDriver } from "../internal/op/storage"
 import { checkAdminAuth } from "../pkg/utils"
+import { safeErrorMessage } from "../pkg/errs"
 
 export const adminRouter = new Hono()
 
@@ -2269,7 +2270,7 @@ adminRouter.post("/plugin/install", async (c) => {
       } catch (err: any) {
         return c.json({
           code: 400,
-          message: `Network error fetching plugin manifest: ${err.message || String(err)}`,
+          message: `Network error fetching plugin manifest: ${safeErrorMessage(err, "unexpected network error")}`,
           data: null,
         })
       }
