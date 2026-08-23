@@ -18,6 +18,55 @@ import {
 export const authRouter = new Hono()
 export const meRouter = new Hono()
 
+// --- 登录防爆破（尽力而为，进程内计数）---
+// Cloudflare Workers 多实例下各隔离区独立计数，但能显著提高暴力破解成本，
+// 防止单实例上的无限制尝试。生产环境建议同时配置 IP 限流（ip_limit 设置项）。
+const LOGIN_MAX_FAILURES = 5
+const LOGIN_LOCK_MS = 15 * 60 * 1000
+const loginFailures = new Map<string, { count: number; lockedUntil: number }>()
+
+function clientIpOf(c: Context): string {
+  return (
+    c.req.header("CF-Connecting-IP") ||
+    c.req.header("x-real-ip") ||
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    "unknown"
+  )
+}
+
+function loginKey(c: Context, username: string): string {
+  return `${clientIpOf(c)}|${String(username || "").toLowerCase()}`
+}
+
+function isLoginLocked(c: Context, username: string): boolean {
+  // 懒清理：Map 过大时清掉已过锁定期/无锁定的条目，防止无限增长
+  if (loginFailures.size > 10000) {
+    const now = Date.now()
+    for (const [k, v] of loginFailures) {
+      if (v.lockedUntil < now && v.count === 0) loginFailures.delete(k)
+    }
+  }
+  const rec = loginFailures.get(loginKey(c, username))
+  return !!rec && rec.lockedUntil > Date.now()
+}
+
+function recordLoginFailure(c: Context, username: string) {
+  const key = loginKey(c, username)
+  const now = Date.now()
+  const rec = loginFailures.get(key) || { count: 0, lockedUntil: 0 }
+  if (rec.lockedUntil > now) return // already locked
+  rec.count += 1
+  if (rec.count >= LOGIN_MAX_FAILURES) {
+    rec.lockedUntil = now + LOGIN_LOCK_MS
+    rec.count = 0
+  }
+  loginFailures.set(key, rec)
+}
+
+function clearLoginFailures(c: Context, username: string) {
+  loginFailures.delete(loginKey(c, username))
+}
+
 // Helper to hash password matching OpenListNext/AList specification
 export async function hashPassword(plainPassword: string): Promise<string> {
   const hash_salt = "https://github.com/alist-org/alist"
@@ -122,6 +171,20 @@ authRouter.post("/login", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const username = (body.username || "").trim()
   const rawPassword = body.password || ""
+
+  // 防爆破：IP+用户名维度连续失败锁定
+  if (isLoginLocked(c, username)) {
+    return c.json(
+      {
+        code: 429,
+        message:
+          "Too many failed login attempts for this account/IP, please try again later",
+        data: null,
+      },
+      429,
+    )
+  }
+
   const hashedPassword = await hashPassword(rawPassword)
 
   const { users } = await getOrInitUsers(c.env)
@@ -146,6 +209,7 @@ authRouter.post("/login", async (c) => {
           otpCheck.httpStatus,
         )
       }
+      clearLoginFailures(c, username)
       const payload = {
         id: matchedUser.id,
         username: matchedUser.username,
@@ -162,6 +226,7 @@ authRouter.post("/login", async (c) => {
     }
   }
 
+  recordLoginFailure(c, username)
   return c.json({ code: 401, message: "Invalid credentials", data: null }, 401)
 })
 
@@ -170,6 +235,19 @@ authRouter.post("/login/hash", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const username = (body.username || "").trim()
   const inputHash = body.password || ""
+
+  // 防爆破：与 /login 同一计数体系
+  if (isLoginLocked(c, username)) {
+    return c.json(
+      {
+        code: 429,
+        message:
+          "Too many failed login attempts for this account/IP, please try again later",
+        data: null,
+      },
+      429,
+    )
+  }
 
   const { users } = await getOrInitUsers(c.env)
 
@@ -195,6 +273,7 @@ authRouter.post("/login/hash", async (c) => {
           otpCheck.httpStatus,
         )
       }
+      clearLoginFailures(c, username)
       const payload = {
         id: matchedUser.id,
         username: matchedUser.username,
@@ -211,6 +290,7 @@ authRouter.post("/login/hash", async (c) => {
     }
   }
 
+  recordLoginFailure(c, username)
   return c.json({ code: 401, message: "Invalid credentials", data: null }, 401)
 })
 

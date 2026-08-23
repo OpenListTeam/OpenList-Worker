@@ -1,5 +1,6 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
+import { getDb } from "../internal/model/db"
 import { fsRouter } from "./fs"
 import {
   authRouter,
@@ -17,7 +18,98 @@ import { shareRouter } from "./share"
 import { taskRouter } from "./task"
 import { updatePwdHandler } from "./user"
 
+// --- 尽力而为的进程内限流 ---
+// 实现管理后台的 ip_limit（每 IP 每分钟请求数）与 traffic_limit（每 IP 每小时
+// 响应流量 MB）。Cloudflare Workers 多实例下各隔离区独立计数（非全局精确），
+// 但能显著限制单实例上的滥用/拉流/暴力请求；配合登录防爆破共同生效。
+const ipReqCounts = new Map<string, { start: number; count: number }>()
+const ipTraffic = new Map<string, { start: number; bytes: number }>()
+
+function getClientIp(c: any): string {
+  return (
+    c.req.header("CF-Connecting-IP") ||
+    c.req.header("x-real-ip") ||
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    "unknown"
+  )
+}
+
+function cleanupMaps() {
+  const now = Date.now()
+  if (ipReqCounts.size > 20000) {
+    for (const [k, v] of ipReqCounts) {
+      if (now - v.start > 60000) ipReqCounts.delete(k)
+    }
+  }
+  if (ipTraffic.size > 20000) {
+    for (const [k, v] of ipTraffic) {
+      if (now - v.start > 3600000) ipTraffic.delete(k)
+    }
+  }
+}
+
+async function rateLimitMiddleware(c: any, next: () => Promise<void>) {
+  const ip = getClientIp(c)
+  const now = Date.now()
+  let ipLimit = 0
+  let trafficLimitMb = 0
+  try {
+    const db = await getDb(c.env)
+    const settings: Record<string, string> = {}
+    for (const s of db.settings || []) settings[s.key] = s.value
+    ipLimit = parseInt(settings.ip_limit, 10) || 0
+    trafficLimitMb = parseInt(settings.traffic_limit, 10) || 0
+  } catch {}
+  cleanupMaps()
+
+  // 1) IP 请求速率限制（每分钟）
+  if (ipLimit > 0) {
+    const rec = ipReqCounts.get(ip)
+    if (!rec || now - rec.start > 60000) {
+      ipReqCounts.set(ip, { start: now, count: 1 })
+    } else {
+      rec.count += 1
+      if (rec.count > ipLimit) {
+        return c.json(
+          { code: 429, message: "Too many requests, slow down", data: null },
+          429,
+        )
+      }
+    }
+  }
+
+  // 2) 流量限制（每小时，按响应 Content-Length 估算；超限后拒绝后续请求）
+  if (trafficLimitMb > 0) {
+    const tRec = ipTraffic.get(ip)
+    const limitBytes = trafficLimitMb * 1024 * 1024
+    if (tRec && now - tRec.start <= 3600000 && tRec.bytes >= limitBytes) {
+      return c.json(
+        { code: 429, message: "Traffic limit exceeded", data: null },
+        429,
+      )
+    }
+  }
+
+  await next()
+
+  if (trafficLimitMb > 0) {
+    const len =
+      parseInt(c.res?.headers?.get("content-length") || "0", 10) || 0
+    if (len > 0) {
+      const tRec = ipTraffic.get(ip)
+      if (!tRec || now - tRec.start > 3600000) {
+        ipTraffic.set(ip, { start: now, bytes: len })
+      } else {
+        tRec.bytes += len
+      }
+    }
+  }
+}
+
 export function setupRouter(app: Hono) {
+  // 限流：读取管理后台 ip_limit / traffic_limit 设置，尽力而为
+  app.use("*", rateLimitMiddleware)
+
   // CORS Middleware
   // 安全策略：不再回显任意 Origin。
   // 1) 若配置了环境变量 ALLOWED_ORIGINS（逗号分隔），仅放行白名单来源；
