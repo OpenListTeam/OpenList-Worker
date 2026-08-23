@@ -194,6 +194,7 @@ export class LanzouClient {
 
     const defaultReferer =
       url.startsWith(this.getShareUrl()) ||
+      url.includes("ajaxfile.php") ||
       url.includes("ajaxm.php") ||
       url.includes("filemoreajax.php")
         ? this.getShareUrl()
@@ -474,8 +475,8 @@ export class LanzouClient {
       param["p"] = pwd || this.addition.share_password || ""
 
       const fileIdMatch =
-        fnCode.match(/['"]?\/?ajaxm\.php\?file=(\d+)['"]?/) ||
-        pageData.match(/['"]?\/?ajaxm\.php\?file=(\d+)['"]?/) ||
+        fnCode.match(/['"]?\/?ajax(?:file|m)\.php\?file=(\d+)['"]?/) ||
+        pageData.match(/['"]?\/?ajax(?:file|m)\.php\?file=(\d+)['"]?/) ||
         fnCode.match(/file\s*[:=]\s*['"]?(\d+)['"]?/) ||
         pageData.match(/file\s*[:=]\s*['"]?(\d+)['"]?/) ||
         fnCode.match(/var\s+file_id\s*=\s*['"]?(\d+)['"]?/) ||
@@ -484,7 +485,7 @@ export class LanzouClient {
       if (!fileId) throw new Error("[Lanzou] 未找到文件 ID")
 
       const resStr = await this.request(
-        `${shareBaseDomain}/ajaxm.php?file=${fileId}`,
+        `${shareBaseDomain}/ajaxfile.php?file=${fileId}`,
         "POST",
         param,
         sharePageUrl,
@@ -493,7 +494,7 @@ export class LanzouClient {
       try {
         resp = JSON.parse(resStr)
       } catch {
-        throw new Error(`[Lanzou] ajaxm.php 响应格式错误: ${resStr}`)
+        throw new Error(`[Lanzou] ajaxfile.php 响应格式错误: ${resStr}`)
       }
       if (resp.zt !== 1) {
         throw new Error(
@@ -527,7 +528,7 @@ export class LanzouClient {
       param = htmlJsonToMap(cleanNextPage, cleanNextPage)
 
       const fileIdMatch =
-        cleanNextPage.match(/['"]?\/?ajaxm\.php\?file=(\d+)['"]?/) ||
+        cleanNextPage.match(/['"]?\/?ajax(?:file|m)\.php\?file=(\d+)['"]?/) ||
         cleanNextPage.match(/file\s*[:=]\s*['"]?(\d+)['"]?/) ||
         cleanNextPage.match(/file=(\d+)/) ||
         cleanNextPage.match(/var\s+file_id\s*=\s*['"]?(\d+)['"]?/)
@@ -535,7 +536,7 @@ export class LanzouClient {
       if (!fileId) throw new Error("[Lanzou] 未找到文件 ID")
 
       const resStr = await this.request(
-        `${shareBaseDomain}/ajaxm.php?file=${fileId}`,
+        `${shareBaseDomain}/ajaxfile.php?file=${fileId}`,
         "POST",
         param,
         iframeFullUrl,
@@ -544,7 +545,7 @@ export class LanzouClient {
       try {
         resp = JSON.parse(resStr)
       } catch {
-        throw new Error(`[Lanzou] ajaxm.php 响应格式错误: ${resStr}`)
+        throw new Error(`[Lanzou] ajaxfile.php 响应格式错误: ${resStr}`)
       }
       if (resp.zt !== 1) {
         throw new Error(
