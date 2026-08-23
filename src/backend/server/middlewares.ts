@@ -130,17 +130,6 @@ export async function getUserFromContext(c: Context): Promise<{
   allow_ldap?: boolean
   otp_secret?: string
 } | null> {
-  // 静态 API token：与 /admin 同等信任
-  if (await checkAdminAuth(c)) {
-    return {
-      role: 2,
-      permission: 0,
-      disabled: false,
-      username: "api-token",
-      base_path: "/",
-    }
-  }
-
   let authHeader = c.req.header("Authorization")
   if (!authHeader) {
     const queryToken = c.req.query("token") || c.req.query("access_token")
@@ -174,7 +163,20 @@ export async function getUserFromContext(c: Context): Promise<{
         }
       }
     } catch {
-      // JWT 校验失败时继续向下回退到 guest 游客用户
+      // JWT 校验失败时继续向下尝试静态 API token 或 guest 游客
+    }
+
+    // 静态 API token：与 /admin 同等信任
+    const db = await getDb(c.env)
+    const tokenSetting = db.settings?.find((s: any) => s.key === "token")
+    if (tokenSetting && tokenSetting.value && token === tokenSetting.value) {
+      return {
+        role: 2,
+        permission: 0,
+        disabled: false,
+        username: "api-token",
+        base_path: "/",
+      }
     }
   }
 
