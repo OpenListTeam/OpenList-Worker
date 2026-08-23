@@ -7,22 +7,6 @@
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/api/*",
-      "destination": "/api/:splat"
-    },
-    {
-      "source": "/d/*",
-      "destination": "/d/:splat"
-    },
-    {
-      "source": "/p/*",
-      "destination": "/p/:splat"
-    },
-    {
-      "source": "/sd/*",
-      "destination": "/sd/:splat"
-    },
-    {
       "source": "/*",
       "destination": "/index.html"
     }
@@ -48,12 +32,10 @@
     }
   ],
   "cloudFunctions": {
-    "nodejs": {
-      "maxDuration": 120,
-      "includeFiles": [
-        "public_data/**"
-      ]
-    }
+    "maxDuration": 120,
+    "includeFiles": [
+      "public_data/**"
+    ]
   },
   "schedules": [
     {

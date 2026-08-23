@@ -29,7 +29,14 @@ app.route("/d", rawRouter)
 app.route("/sd", rawRouter)
 app.route("/p", rawRouter)
 
-// Catch-all handler for static assets & SPA frontend serving via Cloudflare Assets
+// SPA 兜底 HTML（由 EdgeOne 入口 api/_makers.ts 在构建期注入 dist/index.html；
+// 其他平台入口不注入，保持原有 ASSETS / 404 行为）
+let spaFallbackHtml: string | null = null
+
+export function setSpaFallbackHtml(html: string) {
+  spaFallbackHtml = html
+}
+
 app.all("*", async (c) => {
   const env = c.env as any
   if (env && env.ASSETS && typeof env.ASSETS.fetch === "function") {
@@ -49,6 +56,15 @@ app.all("*", async (c) => {
     // SPA fallback: return index.html for non-asset routes (e.g. /login, /manage)
     const indexReq = new Request(`${url.origin}/index.html`, c.req.raw)
     return env.ASSETS.fetch(indexReq)
+  }
+  // EdgeOne 等 ASSETS 缺席的环境：直接返回构建期内联的 SPA 壳，
+  // 避免前端路由（/add、/@manage/* 等）落到 404 文本导致整站不可达
+  if (spaFallbackHtml && (c.req.method === "GET" || c.req.method === "HEAD")) {
+    return c.body(spaFallbackHtml, 200, {
+      "Content-Type": "text/html; charset=utf-8",
+      // HTML 入口必须 no-cache，否则新版本部署后旧 HTML 仍引用旧 hash 的 JS/CSS
+      "Cache-Control": "no-cache, must-revalidate",
+    })
   }
   return c.text("404 Not Found", 404)
 })
