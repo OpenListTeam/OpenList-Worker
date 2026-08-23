@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 import { resolvePath } from "../internal/model/db"
 import { parseRangeHeader } from "../internal/stream/stream"
-import { getDriver } from "../internal/op/storage"
+import { flushPendingDriverState, getDriver } from "../internal/op/storage"
 import { resolveShare } from "../internal/op/share"
 
 let fsPromises: any = null
@@ -21,6 +21,16 @@ async function initNodeModules() {
 }
 
 export const rawRouter = new Hono()
+
+const getStorageRequestContext = (c: any) => {
+  const executionCtx = c.executionCtx
+  if (!executionCtx || typeof executionCtx.waitUntil !== "function") {
+    return undefined
+  }
+  return {
+    waitUntil: (promise: Promise<unknown>) => executionCtx.waitUntil(promise),
+  }
+}
 
 rawRouter.get("/*", async (c) => {
   await initNodeModules()
@@ -82,7 +92,17 @@ rawRouter.get("/*", async (c) => {
             resolved.storage.driver,
             resolved.storage,
           )
-          const fileItem = await driver.get(reqPath, resolved.physical)
+          let fileItem
+          try {
+            fileItem = await driver.get(reqPath, resolved.physical)
+          } finally {
+            await flushPendingDriverState(
+              resolved.storage.driver,
+              resolved.storage,
+              driver,
+              getStorageRequestContext(c),
+            )
+          }
 
           if (fileItem && fileItem.raw_url) {
             if (isProxy) {

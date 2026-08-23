@@ -71,7 +71,7 @@ test("login preserves cookies from intermediate redirects", async () => {
     cookie: "existing=value",
   })
 
-  await client.login()
+  await client.login({ force: true })
 
   assert.equal(cookiesSent.length, 3)
   assert.match(cookiesSent[2], /(?:^|; )LT=token(?:;|$)/)
@@ -103,7 +103,10 @@ test("login rejects redirects to untrusted hosts before sending cookies", async 
     cookie: "session=secret",
   })
 
-  await assert.rejects(() => client.login(), /不受信任的登录重定向地址/)
+  await assert.rejects(
+    () => client.login({ force: true }),
+    /不受信任的登录重定向地址/,
+  )
   assert.deepEqual(cookiesSent, ["session=secret"])
 })
 
@@ -127,7 +130,7 @@ test("login rejects trusted-host redirects that downgrade to HTTP", async () => 
     cookie: "session=secret",
   })
 
-  await assert.rejects(() => client.login(), /HTTPS/)
+  await assert.rejects(() => client.login({ force: true }), /HTTPS/)
 })
 
 test("OAuth requests use cookies refreshed by the previous response", async () => {
@@ -198,7 +201,10 @@ test("OAuth requests use cookies refreshed by the previous response", async () =
     cookie: "session=initial",
   })
 
-  await assert.rejects(() => client.login(), /expected test stop/)
+  await assert.rejects(
+    () => client.login({ force: true }),
+    /expected test stop/,
+  )
   assert.match(encryptConfCookie, /(?:^|; )oauth=refreshed(?:;|$)/)
 })
 
@@ -244,12 +250,30 @@ test("login retries a transient redirect without OAuth parameters", async () => 
   assert.match(resolved, /[?&]reqId=req-value/)
 })
 
-test("API requests wait for refreshed cookies to be persisted", async () => {
-  let releasePersistence!: () => void
-  const persistenceGate = new Promise<void>((resolve) => {
-    releasePersistence = resolve
-  })
+test("login accepts a final Response.url when Worker hides the Location header", async () => {
+  const loginUrlPrefix =
+    "https://cloud.189.cn/api/portal/loginUrl.action?redirectURL="
+  const finalUrl =
+    "https://open.e.189.cn/api/logbox/separate/web/index.html?appId=cloud&lt=lt-worker&reqId=req-worker"
 
+  globalThis.fetch = (async (input) => {
+    const url = requestUrl(input)
+    if (url.startsWith(loginUrlPrefix)) {
+      return mockResponse(finalUrl, "", { status: 200 })
+    }
+    throw new Error(`unexpected fetch: ${url}`)
+  }) as typeof fetch
+
+  const client = new Pan189Client({ username: "", password: "" })
+  const resolved = await (client as any).resolveLoginUrl(
+    "https://cloud.189.cn/api/portal/loginUrl.action?redirectURL=https%3A%2F%2Fcloud.189.cn%2Fmain.action",
+    { "User-Agent": "test" },
+  )
+
+  assert.equal(resolved, finalUrl)
+})
+
+test("API requests do not wait for refreshed Cookie persistence", async () => {
   globalThis.fetch = (async (input) =>
     mockResponse(
       requestUrl(input),
@@ -261,22 +285,22 @@ test("API requests wait for refreshed cookies to be persisted", async () => {
       { status: 200, headers: { "set-cookie": "session=next; Path=/" } },
     )) as typeof fetch
 
-  const client = new Pan189Client(
-    { username: "", password: "", cookie: "session=old" },
-    async () => persistenceGate,
-  )
+  const client = new Pan189Client({
+    username: "",
+    password: "",
+    cookie: "session=old",
+  })
   const request = client.getFiles("-11")
 
   const state = await Promise.race([
     request.then(() => "resolved"),
     new Promise<"pending">((resolve) =>
-      setTimeout(() => resolve("pending"), 0),
+      setTimeout(() => resolve("pending"), 50),
     ),
   ])
-  assert.equal(state, "pending")
-
-  releasePersistence()
+  assert.equal(state, "resolved")
   assert.deepEqual(await request, { files: [], folders: [] })
+  assert.equal(client.consumePendingCookie(), "session=next")
 })
 
 test("persistent InvalidSessionKey is reported instead of an empty directory", async () => {
@@ -385,30 +409,64 @@ test("null file counts are rejected instead of becoming zero", async () => {
   await assert.rejects(() => client.getFiles("-11"), /fileListAO.*数组/)
 })
 
-test("driver initialization verifies that the root directory is readable", async () => {
+test("driver initialization does not preflight the root directory", async () => {
+  const calls: string[] = []
   globalThis.fetch = (async (input) => {
     const url = requestUrl(input)
+    calls.push(url)
     if (url.includes("/api/portal/loginUrl.action")) {
       return mockResponse("https://cloud.189.cn/web/main", "", { status: 200 })
     }
-    return mockResponse(
-      url,
-      {
-        errorCode: "AccessDenied",
-        errorMsg: "root directory is not readable",
-        success: null,
-      },
-      { status: 403, headers: { "content-type": "application/json" } },
-    )
+    throw new Error(`unexpected fetch: ${url}`)
   }) as typeof fetch
 
   const driver = new Cloud189Driver({
     username: "",
     password: "",
-    cookie: "invalid=value",
+    cookie: "valid=value",
   })
 
-  await assert.rejects(() => driver.init(), /root directory is not readable/)
+  await driver.init()
+  assert.equal(calls.length, 0)
+})
+
+test("valid configured Cookie skips login URL during initialization", async () => {
+  let calls = 0
+  globalThis.fetch = (async () => {
+    calls++
+    throw new Error("login URL must not be requested")
+  }) as typeof fetch
+
+  const client = new Pan189Client({
+    username: "13800138000",
+    password: "password",
+    cookie: "cookieUserSession=valid",
+  })
+
+  await client.login()
+  assert.equal(calls, 0)
+})
+
+test("Cookie updates are exposed once for deferred persistence", async () => {
+  globalThis.fetch = (async (input) =>
+    mockResponse(
+      requestUrl(input),
+      { res_code: 0 },
+      {
+        status: 200,
+        headers: { "set-cookie": "cookieUserSession=next; Path=/" },
+      },
+    )) as typeof fetch
+
+  const client = new Pan189Client({
+    username: "",
+    password: "",
+    cookie: "cookieUserSession=old",
+  })
+
+  await client.request("https://cloud.189.cn/api/test")
+  assert.equal(client.consumePendingCookie(), "cookieUserSession=next")
+  assert.equal(client.consumePendingCookie(), null)
 })
 
 test("189Cloud chunked upload asks the browser for an MD5 before creating a session", async () => {

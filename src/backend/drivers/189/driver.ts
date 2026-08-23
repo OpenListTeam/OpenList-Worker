@@ -113,7 +113,15 @@ export class Cloud189Driver implements StorageDriver {
 
   async init(): Promise<void> {
     await this.client.login()
-    await this.client.validateRoot(this.client.getRootId())
+  }
+
+  /**
+   * Expose a one-shot Cookie update for the storage layer.  The driver keeps
+   * the live Cookie in memory, while request handling decides when and where
+   * to persist it.
+   */
+  consumePendingCookie(): string | null {
+    return this.client.consumePendingCookie()
   }
 
   /**

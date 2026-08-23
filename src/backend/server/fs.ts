@@ -1,5 +1,6 @@
 import { Hono } from "hono"
 import {
+  flushPendingDriverState,
   listItems,
   getItem,
   makeDirectory,
@@ -18,6 +19,16 @@ import { search } from "../internal/op/search"
 
 export const fsRouter = new Hono()
 
+const getStorageRequestContext = (c: any) => {
+  const executionCtx = c.executionCtx
+  if (!executionCtx || typeof executionCtx.waitUntil !== "function") {
+    return undefined
+  }
+  return {
+    waitUntil: (promise: Promise<unknown>) => executionCtx.waitUntil(promise),
+  }
+}
+
 // ---- 写操作权限校验 ----
 // 游客（未登录 / 无凭证 / token 无效）一律 403，普通用户需具备
 // WRITE_CONTENT 权限位，管理员放行。修复「任何人可匿名上传/删除文件」
@@ -29,6 +40,7 @@ const permissionDenied = (c: any) =>
 fsRouter.post("/dirs", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const user = await getUserFromContext(c)
+  const requestContext = getStorageRequestContext(c)
   let reqPath = body.path || "/"
   if (!body.force_root || !isAdmin(user)) {
     reqPath = getActualPath(user, reqPath)
@@ -44,7 +56,7 @@ fsRouter.post("/dirs", async (c) => {
         const dirs = []
         for (const f of shareRes.share.files || []) {
           try {
-            const { item } = await getItem(f)
+            const { item } = await getItem(f, requestContext)
             if (item.is_dir) {
               const segs = String(f).split("/").filter(Boolean)
               dirs.push({
@@ -63,7 +75,7 @@ fsRouter.post("/dirs", async (c) => {
         }
         return c.json({ code: 200, message: "success", data: dirs })
       }
-      const { content } = await listItems(shareRes.realPath!)
+      const { content } = await listItems(shareRes.realPath!, requestContext)
       const dirs = content
         .filter((item: any) => item.is_dir)
         .map((item: any) => ({
@@ -78,7 +90,7 @@ fsRouter.post("/dirs", async (c) => {
       return c.json({ code: 200, message: "success", data: dirs })
     }
 
-    const { content } = await listItems(reqPath)
+    const { content } = await listItems(reqPath, requestContext)
     const dirs = content
       .filter((item: any) => item.is_dir)
       .map((item: any) => ({
@@ -99,6 +111,7 @@ fsRouter.post("/dirs", async (c) => {
 fsRouter.post("/list", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const user = await getUserFromContext(c)
+  const requestContext = getStorageRequestContext(c)
   const reqPath = getActualPath(user, body.path || "/")
   const page = parseInt(body.page, 10) || 1
   const perPage = parseInt(body.per_page, 10) || 0
@@ -132,7 +145,7 @@ fsRouter.post("/list", async (c) => {
           const segs = String(f).split("/").filter(Boolean)
           const name = segs[segs.length - 1] || f
           try {
-            const { item } = await getItem(f)
+            const { item } = await getItem(f, requestContext)
             items.push({
               name,
               size: item.size || 0,
@@ -145,7 +158,7 @@ fsRouter.post("/list", async (c) => {
           } catch {
             // If getItem failed, probe by listing — a listable path is a folder
             try {
-              await listItems(f)
+              await listItems(f, requestContext)
               items.push({
                 name,
                 size: 0,
@@ -185,7 +198,10 @@ fsRouter.post("/list", async (c) => {
       }
 
       // Mapped to a real path — fall through to normal listing
-      const { content, provider } = await listItems(shareRes.realPath!)
+      const { content, provider } = await listItems(
+        shareRes.realPath!,
+        requestContext,
+      )
       const normalized = content.map((item: any) => ({
         name: item.name,
         size: item.size,
@@ -212,7 +228,10 @@ fsRouter.post("/list", async (c) => {
       })
     }
 
-    const { content, provider, storage } = await listItems(reqPath)
+    const { content, provider, storage } = await listItems(
+      reqPath,
+      requestContext,
+    )
     // write 按请求者身份如实返回：游客/无写权限用户为 false，
     // 前端据此隐藏上传、新建文件夹等写操作入口
     const writable = canWrite(user)
@@ -281,6 +300,7 @@ fsRouter.post("/list", async (c) => {
 fsRouter.post("/get", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const user = await getUserFromContext(c)
+  const requestContext = getStorageRequestContext(c)
   const reqPath = getActualPath(user, body.path || "/")
   try {
     // Share path: /@s/{shareId}/...
@@ -317,7 +337,10 @@ fsRouter.post("/get", async (c) => {
 
       // Mapped to a real path — get with share-aware raw_url (/sd/{shareId}...)
       const shareId = reqPath.split("/").filter(Boolean)[1] || ""
-      const { item, provider } = await getItem(shareRes.realPath!)
+      const { item, provider } = await getItem(
+        shareRes.realPath!,
+        requestContext,
+      )
       const subPath = reqPath.replace(/^\/@s\/[^/]+/, "")
       return c.json({
         code: 200,
@@ -343,7 +366,7 @@ fsRouter.post("/get", async (c) => {
       })
     }
 
-    const { item, provider, rawUrl } = await getItem(reqPath)
+    const { item, provider, rawUrl } = await getItem(reqPath, requestContext)
     return c.json({
       code: 200,
       message: "success",
@@ -376,8 +399,9 @@ fsRouter.post("/mkdir", async (c) => {
   if (!canWrite(user)) return permissionDenied(c)
   const body = await c.req.json().catch(() => ({}))
   const reqPath = getActualPath(user, body.path || "/")
+  const requestContext = getStorageRequestContext(c)
   try {
-    await makeDirectory(reqPath)
+    await makeDirectory(reqPath, requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: e.message, data: null })
@@ -388,9 +412,10 @@ fsRouter.post("/rename", async (c) => {
   const user = await getUserFromContext(c)
   if (!canWrite(user)) return permissionDenied(c)
   const { path: oldPath, name: newName } = await c.req.json().catch(() => ({}))
+  const requestContext = getStorageRequestContext(c)
   try {
     const actualOldPath = getActualPath(user, oldPath || "/")
-    await renameItem(actualOldPath, newName)
+    await renameItem(actualOldPath, newName, requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: e.message, data: null })
@@ -401,9 +426,10 @@ fsRouter.post("/remove", async (c) => {
   const user = await getUserFromContext(c)
   if (!canWrite(user)) return permissionDenied(c)
   const { dir, names } = await c.req.json().catch(() => ({}))
+  const requestContext = getStorageRequestContext(c)
   try {
     const actualDir = getActualPath(user, dir || "/")
-    await removeItems(actualDir, names)
+    await removeItems(actualDir, names, requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: e.message, data: null })
@@ -414,10 +440,11 @@ fsRouter.post("/move", async (c) => {
   const user = await getUserFromContext(c)
   if (!canWrite(user)) return permissionDenied(c)
   const { src_dir, dst_dir, names } = await c.req.json().catch(() => ({}))
+  const requestContext = getStorageRequestContext(c)
   try {
     const actualSrcDir = getActualPath(user, src_dir || "/")
     const actualDstDir = getActualPath(user, dst_dir || "/")
-    await moveItems(actualSrcDir, actualDstDir, names)
+    await moveItems(actualSrcDir, actualDstDir, names, requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: e.message, data: null })
@@ -428,10 +455,11 @@ fsRouter.post("/copy", async (c) => {
   const user = await getUserFromContext(c)
   if (!canWrite(user)) return permissionDenied(c)
   const { src_dir, dst_dir, names } = await c.req.json().catch(() => ({}))
+  const requestContext = getStorageRequestContext(c)
   try {
     const actualSrcDir = getActualPath(user, src_dir || "/")
     const actualDstDir = getActualPath(user, dst_dir || "/")
-    await copyItems(actualSrcDir, actualDstDir, names)
+    await copyItems(actualSrcDir, actualDstDir, names, requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: e.message, data: null })
@@ -443,9 +471,10 @@ fsRouter.put("/put", async (c) => {
   if (!canWrite(user)) return permissionDenied(c)
   const rawPath = decodeURIComponent(c.req.header("File-Path") || "")
   const reqPath = getActualPath(user, rawPath)
+  const requestContext = getStorageRequestContext(c)
   try {
     const buffer = await c.req.arrayBuffer()
-    await putItem(reqPath, Buffer.from(buffer))
+    await putItem(reqPath, Buffer.from(buffer), requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: e.message, data: null })
@@ -457,6 +486,7 @@ fsRouter.put("/form", async (c) => {
   if (!canWrite(user)) return permissionDenied(c)
   const rawPath = decodeURIComponent(c.req.header("File-Path") || "")
   const reqPath = getActualPath(user, rawPath)
+  const requestContext = getStorageRequestContext(c)
   try {
     const form = await c.req.formData()
     const file = form.get("file")
@@ -468,7 +498,7 @@ fsRouter.put("/form", async (c) => {
       })
     }
     const buffer = Buffer.from(await (file as File).arrayBuffer())
-    await putItem(reqPath, buffer)
+    await putItem(reqPath, buffer, requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: e.message, data: null })
@@ -491,6 +521,7 @@ fsRouter.post("/upload/create", async (c) => {
   } = await c.req.json().catch(() => ({}))
   // 根目录上传时调用方可能传 ""，归一化为 "/"
   const dirPath = getActualPath(user, rawPath || "/")
+  const requestContext = getStorageRequestContext(c)
   if (!file_name) {
     return c.json({
       code: 400,
@@ -508,13 +539,23 @@ fsRouter.post("/upload/create", async (c) => {
       // 当前存储不支持分片会话上传：返回 null，前端自动回退到流式上传
       return c.json({ code: 200, message: "success", data: null })
     }
-    const info = await (driver as any).createUploadSession(
-      dirPath,
-      resolved.physical!,
-      file_name,
-      Number(size) || 0,
-      md5 || "",
-    )
+    let info
+    try {
+      info = await (driver as any).createUploadSession(
+        dirPath,
+        resolved.physical!,
+        file_name,
+        Number(size) || 0,
+        md5 || "",
+      )
+    } finally {
+      await flushPendingDriverState(
+        resolved.storage!.driver,
+        resolved.storage,
+        driver,
+        requestContext,
+      )
+    }
     return c.json({ code: 200, message: "success", data: info })
   } catch (e: any) {
     return c.json({ code: 500, message: e.message, data: null })
@@ -528,6 +569,7 @@ fsRouter.put("/upload/part", async (c) => {
   const partNumber = parseInt(c.req.header("X-Part-Number") || "0", 10)
   const rawDirPath = decodeURIComponent(c.req.header("Upload-Path") || "")
   const dirPath = getActualPath(user, rawDirPath)
+  const requestContext = getStorageRequestContext(c)
   if (!session || !(partNumber >= 1) || !dirPath) {
     return c.json({
       code: 400,
@@ -545,7 +587,17 @@ fsRouter.put("/upload/part", async (c) => {
       throw new Error("storage does not support chunked upload")
     }
     const buffer = Buffer.from(await c.req.arrayBuffer())
-    const result = await (driver as any).uploadPart(session, partNumber, buffer)
+    let result
+    try {
+      result = await (driver as any).uploadPart(session, partNumber, buffer)
+    } finally {
+      await flushPendingDriverState(
+        resolved.storage!.driver,
+        resolved.storage,
+        driver,
+        requestContext,
+      )
+    }
     return c.json({ code: 200, message: "success", data: result ?? null })
   } catch (e: any) {
     return c.json({ code: 500, message: e.message, data: null })
@@ -562,6 +614,7 @@ fsRouter.post("/upload/complete", async (c) => {
   } = await c.req.json().catch(() => ({}))
   // 根目录上传时调用方可能传 ""，归一化为 "/"
   const dirPath = getActualPath(user, rawPath || "/")
+  const requestContext = getStorageRequestContext(c)
   if (!session) {
     return c.json({
       code: 400,
@@ -578,7 +631,16 @@ fsRouter.post("/upload/complete", async (c) => {
     if (typeof (driver as any).completeUploadSession !== "function") {
       throw new Error("storage does not support chunked upload")
     }
-    await (driver as any).completeUploadSession(session, partMd5s)
+    try {
+      await (driver as any).completeUploadSession(session, partMd5s)
+    } finally {
+      await flushPendingDriverState(
+        resolved.storage!.driver,
+        resolved.storage,
+        driver,
+        requestContext,
+      )
+    }
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: e.message, data: null })

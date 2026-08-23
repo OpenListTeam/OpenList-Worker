@@ -91,23 +91,56 @@ function isTrustedHttpsUrl(value: URL): boolean {
   )
 }
 
+function hasOAuthParams(value: string): boolean {
+  try {
+    const url = new URL(value, "https://open.e.189.cn")
+    return (
+      Boolean(url.searchParams.get("lt")) &&
+      Boolean(url.searchParams.get("reqId"))
+    )
+  } catch {
+    return false
+  }
+}
+
+function isLoggedInUrl(value: string): boolean {
+  try {
+    const url = new URL(value, "https://open.e.189.cn")
+    return (
+      url.hostname === "cloud.189.cn" &&
+      (url.pathname === "/web/main" || url.pathname === "/main.action")
+    )
+  } catch {
+    return false
+  }
+}
+
 export class Pan189Client {
   private addition: Cloud189Addition
   private cookie: string = ""
+  private cookieDirty = false
   private sessionKey: string = ""
   private rsa = { pubKey: "", pkId: "", expire: 0 }
-  private onCookieUpdate?: (cookie: string) => void | Promise<void>
 
   constructor(
     addition: Cloud189Addition,
-    onCookieUpdate?: (cookie: string) => void | Promise<void>,
+    _onCookieUpdate?: (cookie: string) => void | Promise<void>,
   ) {
     this.addition = addition
     this.cookie = (addition.cookie || "").trim()
-    this.onCookieUpdate = onCookieUpdate
   }
 
   public getCookie(): string {
+    return this.cookie
+  }
+
+  /**
+   * Return a newly merged Cookie once so the storage layer can persist it
+   * outside the request's critical path.
+   */
+  public consumePendingCookie(): string | null {
+    if (!this.cookieDirty) return null
+    this.cookieDirty = false
     return this.cookie
   }
 
@@ -140,7 +173,7 @@ export class Pan189Client {
     )
     if (updated !== this.cookie) {
       this.cookie = updated
-      await this.onCookieUpdate?.(this.cookie)
+      this.cookieDirty = true
     }
   }
 
@@ -174,8 +207,26 @@ export class Pan189Client {
       const isRedirect = response.status >= 300 && response.status < 400
       if (!isRedirect || !location) {
         // In Workers, Response.url can remain the original URL after a
-        // redirect. The URL we actually requested is authoritative here.
-        return { response, url: currentUrl }
+        // redirect. When it does expose a different final URL, use it so
+        // OAuth parameters are not lost just because Location is hidden.
+        let terminalUrl = currentUrl
+        if (response.url && response.url !== currentUrl) {
+          const responseUrl = new URL(response.url, currentUrl)
+          if (
+            hasOAuthParams(responseUrl.toString()) ||
+            isLoggedInUrl(responseUrl.toString())
+          ) {
+            if (!isTrustedHttpsUrl(responseUrl)) {
+              throw new Error(
+                responseUrl.protocol !== "https:"
+                  ? `[189Cloud] 登录重定向必须使用 HTTPS: ${responseUrl.origin}`
+                  : `[189Cloud] 不受信任的登录重定向地址: ${responseUrl.origin}`,
+              )
+            }
+            terminalUrl = responseUrl.toString()
+          }
+        }
+        return { response, url: terminalUrl }
       }
       if (redirectCount === 8) {
         throw new Error("[189Cloud] 登录重定向次数过多")
@@ -209,14 +260,9 @@ export class Pan189Client {
       )
       lastUrl = result.url
 
-      const finalUrl = new URL(result.url, "https://open.e.189.cn")
-      const hasOAuthParams =
-        Boolean(finalUrl.searchParams.get("lt")) &&
-        Boolean(finalUrl.searchParams.get("reqId"))
-      const isLoggedIn =
-        result.url.includes("cloud.189.cn/web/main") ||
-        result.url.includes("cloud.189.cn/main.action")
-      if (hasOAuthParams || isLoggedIn) return result.url
+      if (hasOAuthParams(result.url) || isLoggedInUrl(result.url)) {
+        return result.url
+      }
 
       if (attempt < 2) {
         await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)))
@@ -230,7 +276,9 @@ export class Pan189Client {
    * 1. 尝试使用已有 Cookie 请求主页判断是否已登录
    * 2. 若未登录且配置了账号密码，执行 open.e.189.cn OAuth2 登录流程
    */
-  async login(): Promise<void> {
+  async login(options: { force?: boolean } = {}): Promise<void> {
+    if (this.cookie && !options.force) return
+
     const loginUrl =
       "https://cloud.189.cn/api/portal/loginUrl.action?redirectURL=https%3A%2F%2Fcloud.189.cn%2Fmain.action"
 
@@ -244,10 +292,7 @@ export class Pan189Client {
     }
 
     const redirectUrlStr = await this.resolveLoginUrl(loginUrl, headers)
-    if (
-      redirectUrlStr.includes("cloud.189.cn/web/main") ||
-      redirectUrlStr.includes("cloud.189.cn/main.action")
-    ) {
+    if (isLoggedInUrl(redirectUrlStr)) {
       // 已经处于登录状态
       return
     }
@@ -454,7 +499,7 @@ export class Pan189Client {
       String(data.res_code) === "1010"
     if (invalidSession) {
       if (retry) {
-        await this.login()
+        await this.login({ force: true })
         return this.request<T>(url, {
           ...options,
           retryOnInvalidSession: false,
