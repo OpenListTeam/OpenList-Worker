@@ -7,6 +7,22 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/d/*",
+      "destination": "/api/d/:splat"
+    },
+    {
+      "source": "/p/*",
+      "destination": "/api/p/:splat"
+    },
+    {
+      "source": "/sd/*",
+      "destination": "/api/sd/:splat"
+    },
+    {
+      "source": "/raw/*",
+      "destination": "/api/raw/:splat"
+    },
+    {
       "source": "/*",
       "destination": "/index.html"
     }

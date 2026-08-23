@@ -63,9 +63,12 @@ async function writeKvSecret(env: any, secret: string): Promise<void> {
   }
 }
 
+const DEFAULT_FALLBACK_JWT_SECRET =
+  "openlistnext-default-jwt-secret-key-2026-secure"
+
 /**
  * 获取 JWT 签名密钥。
- * 优先级：env.JWT_SECRET > KV 持久化随机密钥 > 进程内随机密钥。
+ * 优先级：env.JWT_SECRET > KV 持久化密钥 > 默认稳定兜底密钥。
  */
 export async function getJwtSecret(c?: Context | any): Promise<string> {
   const env =
@@ -83,10 +86,10 @@ export async function getJwtSecret(c?: Context | any): Promise<string> {
     return kvSecret
   }
 
-  // 3. 生成随机密钥并持久化到 KV（若无 KV 则仅内存）
+  // 3. 稳定兜底密钥并尝试持久化到 KV
   if (!cachedJwtSecret) {
-    cachedJwtSecret = generateRandomSecret()
-    await writeKvSecret(env, cachedJwtSecret)
+    cachedJwtSecret = DEFAULT_FALLBACK_JWT_SECRET
+    await writeKvSecret(env, cachedJwtSecret).catch(() => {})
   }
   return cachedJwtSecret
 }
@@ -127,17 +130,6 @@ export async function getUserFromContext(c: Context): Promise<{
   allow_ldap?: boolean
   otp_secret?: string
 } | null> {
-  // 静态 API token：与 /admin 同等信任
-  if (await checkAdminAuth(c)) {
-    return {
-      role: 2,
-      permission: 0,
-      disabled: false,
-      username: "api-token",
-      base_path: "/",
-    }
-  }
-
   let authHeader = c.req.header("Authorization")
   if (!authHeader) {
     const queryToken = c.req.query("token") || c.req.query("access_token")
@@ -146,50 +138,72 @@ export async function getUserFromContext(c: Context): Promise<{
     }
   }
 
-  if (!authHeader) {
+  if (authHeader) {
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.substring(7)
+      : authHeader
     try {
+      const secret = await getJwtSecret(c)
+      const payload: any = await verify(token, secret, "HS256")
       const db = await getDb(c.env)
-      const guest = (db.users || []).find((u: any) => u.username === "guest")
-      if (guest && !guest.disabled) {
+      const user = (db.users || []).find(
+        (u: any) => u.id === payload.id || u.username === payload.username,
+      )
+      if (user && !user.disabled) {
         return {
-          id: guest.id,
-          role: guest.role ?? 1,
-          permission: guest.permission ?? 0,
-          disabled: !!guest.disabled,
-          username: guest.username,
-          base_path: guest.base_path || "/",
-          sso_id: guest.sso_id || "",
-          allow_ldap: !!guest.allow_ldap,
-          otp_secret: guest.otp_secret,
+          id: user.id,
+          role: user.role,
+          permission: user.permission ?? 0,
+          disabled: !!user.disabled,
+          username: user.username,
+          base_path: user.base_path || "/",
+          sso_id: user.sso_id || "",
+          allow_ldap: !!user.allow_ldap,
+          otp_secret: user.otp_secret,
         }
       }
-    } catch {}
-    return null
+    } catch {
+      // JWT 校验失败时继续向下尝试静态 API token 或 guest 游客
+    }
+
+    // 静态 API token：与 /admin 同等信任
+    const db = await getDb(c.env)
+    const tokenSetting = db.settings?.find((s: any) => s.key === "token")
+    if (tokenSetting && tokenSetting.value && token === tokenSetting.value) {
+      return {
+        role: 2,
+        permission: 0,
+        disabled: false,
+        username: "api-token",
+        base_path: "/",
+      }
+    }
   }
 
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.substring(7)
-    : authHeader
+  // 回退到 guest 游客用户
   try {
-    const secret = await getJwtSecret(c)
-    const payload: any = await verify(token, secret, "HS256")
     const db = await getDb(c.env)
-    const user = (db.users || []).find(
-      (u: any) => u.id === payload.id || u.username === payload.username,
-    )
-    if (!user || user.disabled) return null
-    return {
-      id: user.id,
-      role: user.role,
-      permission: user.permission ?? 0,
-      disabled: !!user.disabled,
-      username: user.username,
-      base_path: user.base_path || "/",
-      sso_id: user.sso_id || "",
-      allow_ldap: !!user.allow_ldap,
-      otp_secret: user.otp_secret,
+    const guest = (db.users || []).find((u: any) => u.username === "guest")
+    if (guest && !guest.disabled) {
+      return {
+        id: guest.id,
+        role: guest.role ?? 1,
+        permission: guest.permission ?? 0,
+        disabled: !!guest.disabled,
+        username: guest.username,
+        base_path: guest.base_path || "/",
+        sso_id: guest.sso_id || "",
+        allow_ldap: !!guest.allow_ldap,
+        otp_secret: guest.otp_secret,
+      }
     }
-  } catch {
-    return null
+  } catch {}
+  return {
+    id: 2,
+    role: 1,
+    permission: 0,
+    disabled: false,
+    username: "guest",
+    base_path: "/",
   }
 }

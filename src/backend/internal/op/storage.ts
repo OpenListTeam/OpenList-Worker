@@ -336,7 +336,8 @@ async function createDriver(
     normDriver === "lanzoupan" ||
     normDriver === "ilanzou" ||
     normDriver === "lanzoui" ||
-    normDriver === "lanzous"
+    normDriver === "lanzous" ||
+    normDriver.includes("feiji")
   ) {
     const addition = parseAddition(storageConfig)
     driver = new LanzouDriver(addition, async (cookie) => {

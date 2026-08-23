@@ -122,6 +122,12 @@ export const normalizeDriver = (driverName: string): string => {
   )
     return "S3"
   if (norm.startsWith("github")) return "Github"
+  if (
+    norm.includes("feiji") ||
+    norm.includes("lanzou") ||
+    norm.includes("ilanzou")
+  )
+    return "Lanzou"
   if (norm === "local") return "Local"
   return driverName || ""
 }
