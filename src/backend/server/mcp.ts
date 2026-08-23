@@ -1,7 +1,12 @@
 import { Hono } from "hono"
 import { handleMcpJsonRpc } from "../internal/mcp/mcp"
+import { adminAuthMiddleware } from "./middlewares"
 
 export const mcpRouter = new Hono()
+
+// MCP 端点要求管理员鉴权（当前为占位实现，仅暴露工具 schema；
+// 加鉴权防止未授权探测 / 未来接入真实能力时的越权访问）
+mcpRouter.use("*", adminAuthMiddleware)
 
 mcpRouter.get("/sse", (c) => {
   c.header("Content-Type", "text/event-stream")

@@ -1,11 +1,13 @@
 import { Hono } from "hono"
 import { getDb, saveDb } from "../internal/model/db"
 import { getDriver } from "../internal/op/storage"
+import { adminAuthMiddleware } from "./middlewares"
 
 export const taskRouter = new Hono()
 
 // 定时任务调度接口：刷新所有已启用网盘驱动的 Token / 状态并持久化
-taskRouter.all("/refresh", async (c) => {
+// 仅管理员可触发（防止未授权用户探测存储配置/触发资源消耗）
+taskRouter.all("/refresh", adminAuthMiddleware, async (c) => {
   const db = await getDb(c.env)
   let refreshed = 0
   let failed = 0
@@ -51,6 +53,10 @@ const tasks: Record<string, any[]> = {
   move: [],
   offline_download: [],
 }
+
+// All task-management endpoints are admin-only (placeholder APIs that may
+// later carry real file-operation metadata)
+taskRouter.use("*", adminAuthMiddleware)
 
 taskRouter.get("/:type/:state", (c) => {
   const type = c.req.param("type")
