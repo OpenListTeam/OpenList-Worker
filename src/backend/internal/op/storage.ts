@@ -97,7 +97,13 @@ async function createDriver(
       console.error("onedrive_app init failed:", e)
       throw e
     }
-  } else if (normDriver === "onedrive" || normDriver === "onedrivesb") {
+  } else if (
+    normDriver === "onedrive" ||
+    normDriver === "onedrivesb" ||
+    normDriver === "onedrivebusiness" ||
+    normDriver === "onedrivesharepoint" ||
+    (normDriver.startsWith("onedrive") && normDriver !== "onedriveapp")
+  ) {
     driver = new Onedrive(
       parseAddition(storageConfig),
       async (refreshToken) => {
@@ -129,22 +135,36 @@ async function createDriver(
     normDriver === "aliyundrive" ||
     normDriver === "aliyundriveopen" ||
     normDriver === "aliyundriveshare" ||
-    normDriver === "aliyun"
+    normDriver === "aliyun" ||
+    normDriver === "aliyundriveshare2open" ||
+    normDriver === "aliyundriveoauth2" ||
+    normDriver.includes("aliyun")
   ) {
     // 统一只保留阿里云盘 OAuth2 (AliyundriveOpen)
     driver = new AliyundriveOpen(parseAddition(storageConfig))
     await driver.init?.()
-  } else if (normDriver === "googledrive") {
+  } else if (
+    normDriver === "googledrive" ||
+    normDriver === "gdrive" ||
+    normDriver === "google" ||
+    normDriver.startsWith("google")
+  ) {
     driver = new GoogleDrive(parseAddition(storageConfig))
     await driver.init?.()
   } else if (
     normDriver === "quark" ||
     normDriver === "quarkuc" ||
-    normDriver === "uc"
+    normDriver === "uc" ||
+    normDriver === "quarkcookie"
   ) {
     driver = new QuarkDriver(parseAddition(storageConfig))
     await driver.init?.()
-  } else if (normDriver === "123pan" || normDriver === "123") {
+  } else if (
+    normDriver === "123pan" ||
+    normDriver === "123" ||
+    normDriver === "123panshare" ||
+    normDriver.startsWith("123")
+  ) {
     const addition = parseAddition(storageConfig)
     driver = new Pan123Driver(addition, async (token: string) => {
       // Persist the refreshed 123Pan access_token back to the storage config
@@ -171,7 +191,10 @@ async function createDriver(
   } else if (
     normDriver === "baidunetdisk" ||
     normDriver === "baidu" ||
-    normDriver === "baiduyun"
+    normDriver === "baiduyun" ||
+    normDriver === "baiduphoto" ||
+    normDriver === "baidushare" ||
+    normDriver.startsWith("baidu")
   ) {
     const addition = parseAddition(storageConfig)
     driver = new BaiduDriver(addition, async (tokens) => {
@@ -199,7 +222,9 @@ async function createDriver(
   } else if (
     normDriver === "115open" ||
     normDriver === "115" ||
-    normDriver === "115pan"
+    normDriver === "115pan" ||
+    normDriver === "115cloud" ||
+    normDriver.startsWith("115")
   ) {
     const addition = parseAddition(storageConfig)
     driver = new Pan115Driver(addition, async (tokens) => {
@@ -234,7 +259,9 @@ async function createDriver(
   } else if (
     normDriver === "thunderexpert" ||
     normDriver === "thunderbrowserexpert" ||
-    normDriver === "thunderxexpert"
+    normDriver === "thunderxexpert" ||
+    (normDriver.includes("thunder") && normDriver.includes("expert")) ||
+    (normDriver.includes("xunlei") && normDriver.includes("expert"))
   ) {
     const addition = parseAddition(storageConfig)
     driver = new ThunderExpertDriver(addition, async (tokens) => {
@@ -270,7 +297,9 @@ async function createDriver(
     normDriver === "thunder" ||
     normDriver === "xunlei" ||
     normDriver === "thunderbrowser" ||
-    normDriver === "thunderx"
+    normDriver === "thunderx" ||
+    normDriver.includes("thunder") ||
+    normDriver.includes("xunlei")
   ) {
     const addition = parseAddition(storageConfig)
     driver = new ThunderDriver(addition, async (tokens) => {
@@ -334,19 +363,31 @@ async function createDriver(
     normDriver === "189cloud" ||
     normDriver === "cloud189" ||
     normDriver === "ctyun" ||
-    normDriver === "189pan"
+    normDriver === "189pan" ||
+    normDriver === "189cloudpc" ||
+    normDriver === "189cloudapp" ||
+    normDriver.startsWith("189") ||
+    normDriver.includes("cloud189")
   ) {
     const addition = parseAddition(storageConfig)
     driver = new Cloud189Driver(addition)
     await driver.init?.()
-  } else if (normDriver === "webdav") {
+  } else if (normDriver === "webdav" || normDriver === "webdavdriver") {
     const addition = parseAddition(storageConfig)
     driver = new WebdavDriver(addition)
     await driver.init?.()
   } else if (
     normDriver === "s3" ||
     normDriver === "doge" ||
-    normDriver === "dogecloud"
+    normDriver === "dogecloud" ||
+    normDriver === "minio" ||
+    normDriver === "ceph" ||
+    normDriver === "aws" ||
+    normDriver === "r2" ||
+    normDriver === "b2" ||
+    normDriver === "cos" ||
+    normDriver === "oss" ||
+    normDriver === "kodo"
   ) {
     const addition = parseAddition(storageConfig)
     driver = new S3Driver(addition, storageConfig.driver || "S3")

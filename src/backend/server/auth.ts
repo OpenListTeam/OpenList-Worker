@@ -114,6 +114,19 @@ export async function getOrInitUsers(envCtx: any) {
       },
     ]
     await saveDb(db, envCtx)
+  } else {
+    const adminUser = db.users.find((u: any) => u.username === "admin")
+    if (
+      adminUser &&
+      (!adminUser.password || String(adminUser.password).trim() === "")
+    ) {
+      const envPass =
+        (envCtx && envCtx.ADMIN_PASSWORD) ||
+        (typeof process !== "undefined" ? process.env?.ADMIN_PASSWORD : "") ||
+        ""
+      adminUser.password = await hashPassword(envPass || "admin")
+      await saveDb(db, envCtx)
+    }
   }
   return { db, users: db.users }
 }
