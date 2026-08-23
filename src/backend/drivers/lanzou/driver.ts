@@ -316,9 +316,6 @@ export class LanzouDriver implements StorageDriver {
     fileItem.raw_url = downloadUrl || ""
     fileItem.raw_url_headers = {
       "User-Agent": this.client.getUserAgent(),
-      Referer: this.addition.shareUrl || "https://pan.lanzoui.com",
-      "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-      Cookie: "down_ip=1",
     }
     return fileItem
   }

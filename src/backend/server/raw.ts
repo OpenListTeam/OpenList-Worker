@@ -50,9 +50,14 @@ rawRouter.get("/*", async (c) => {
     c.req.path.startsWith("/api/sd")
 
   const rawPath = c.req.path
-    .replace(/^\/api(\/(p|d|sd|raw))+/, "")
-    .replace(/^\/(p|d|sd|raw)/, "")
+    .replace(/^\/api\/raw/, "")
+    .replace(/^\/api\/d/, "")
+    .replace(/^\/api\/sd/, "")
+    .replace(/^\/api\/p/, "")
     .replace(/^\/raw/, "")
+    .replace(/^\/d/, "")
+    .replace(/^\/sd/, "")
+    .replace(/^\/p/, "")
 
   const reqPath0 = decodeURIComponent(rawPath)
 
@@ -76,8 +81,8 @@ rawRouter.get("/*", async (c) => {
       reqPath = shareRes.realPath
     } else {
       const user = await getUserFromContext(c)
-      if (user && user.disabled) {
-        return c.text("User is disabled", 403)
+      if (!user || user.disabled) {
+        return c.text("Unauthorized", 401)
       }
     }
 

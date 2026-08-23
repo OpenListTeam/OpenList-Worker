@@ -12,7 +12,6 @@ import {
   Pan123S3PreSignedURLs,
   Pan123MkdirResp,
 } from "./types"
-import { md5 } from "../../pkg/crypto"
 
 const MAIN_API = "https://yun.123pan.com/b/api"
 const LOGIN_API = "https://login.123pan.com/api"
@@ -655,7 +654,8 @@ export class Pan123Client {
   ): Promise<void> {
     let etag = ""
     try {
-      etag = md5(new Uint8Array(content))
+      const cryptoMod = await import("node:crypto")
+      etag = cryptoMod.createHash("md5").update(content).digest("hex")
     } catch {
       etag = ""
     }

@@ -200,17 +200,11 @@ export class LanzouClient {
         : this.getBaseUrl()
 
     for (let retry = 0; retry < 3; retry++) {
-      const refererVal = customReferer || defaultReferer
       const headers: Record<string, string> = {
-        Referer: refererVal,
+        Referer: customReferer || defaultReferer,
         "User-Agent": this.getUserAgent(),
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-        "X-Requested-With": "XMLHttpRequest",
-        Accept: "application/json, text/javascript, */*; q=0.01",
       }
-      try {
-        headers["Origin"] = new URL(refererVal).origin
-      } catch {}
 
       let cookieStr = this.cookie
       if (url.includes("/file/")) {

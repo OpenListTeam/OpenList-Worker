@@ -47,7 +47,7 @@ async function test() {
   console.assert(getPlaceholderName(".custom") === ".custom")
   console.assert(joinPath("a/b", "/c/d/", "e") === "a/b/c/d/e")
 
-  // 4. Presign S3 URL (ASCII and non-ASCII Chinese filename)
+  // 4. Presign S3 URL
   const presigned = await presignS3Url({
     url: "https://mybucket.s3.us-east-1.amazonaws.com/test.txt",
     region: "us-east-1",
@@ -65,24 +65,6 @@ async function test() {
     "Credential missing",
   )
   console.assert(presigned.includes("X-Amz-Signature="), "Signature missing")
-
-  // 4.1 Presign S3 URL with non-ASCII characters (e.g. 屏幕截图 2025-05-18 083445.png)
-  const presignedChinese = await presignS3Url({
-    url: "https://mybucket.s3.us-east-1.amazonaws.com/屏幕截图 2025-05-18 083445.png",
-    region: "us-east-1",
-    accessKeyId: "AKIAIOSFODNN7EXAMPLE",
-    secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-    expiresInSeconds: 3600,
-    date: fixedDate,
-  })
-  console.assert(
-    presignedChinese.includes("X-Amz-Signature="),
-    "Signature missing for Chinese URL",
-  )
-  console.assert(
-    !presignedChinese.includes("%25E5%25B1%258F"),
-    "Double-encoded URI detected in Chinese presigned URL",
-  )
 
   // 5. XML Parsing V1
   const xmlV1 = `

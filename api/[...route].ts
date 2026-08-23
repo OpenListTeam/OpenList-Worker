@@ -23,15 +23,4 @@ export const OPTIONS = handle(app)
 // 导出 Cloudflare Workers 原生 Fetch 句柄
 export default {
   fetch: app.fetch,
-  onRequest,
-}
-
-if (typeof addEventListener === "function") {
-  try {
-    addEventListener("fetch", (event: any) => {
-      event.respondWith(
-        app.fetch(event.request, (event as any).env || {}, event),
-      )
-    })
-  } catch {}
 }

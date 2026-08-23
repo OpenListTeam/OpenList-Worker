@@ -163,12 +163,9 @@ export async function signS3Headers(
 
   const signedHeaders = sortedHeaderKeys.join(";")
 
-  // Canonical URI (decode first to avoid double-encoding %XX from parsedUrl.pathname)
-  let rawPath1 = parsedUrl.pathname || "/"
-  try {
-    rawPath1 = decodeURIComponent(rawPath1)
-  } catch {}
-  const canonicalUri = rfc3986UriEncode(rawPath1, false)
+  // Canonical URI
+  const pathname = parsedUrl.pathname || "/"
+  const canonicalUri = rfc3986UriEncode(pathname, false)
 
   // Canonical Query String
   const queryParams: [string, string][] = []
@@ -265,12 +262,8 @@ export async function presignS3Url(opts: PresignUrlOptions): Promise<string> {
     parsedUrl.searchParams.set(k, v)
   }
 
-  // Canonical URI (decode first to avoid double-encoding %XX from parsedUrl.pathname)
-  let rawPath2 = parsedUrl.pathname || "/"
-  try {
-    rawPath2 = decodeURIComponent(rawPath2)
-  } catch {}
-  const canonicalUri = rfc3986UriEncode(rawPath2, false)
+  const pathname = parsedUrl.pathname || "/"
+  const canonicalUri = rfc3986UriEncode(pathname, false)
 
   const queryParams: [string, string][] = []
   parsedUrl.searchParams.forEach((val, key) => {

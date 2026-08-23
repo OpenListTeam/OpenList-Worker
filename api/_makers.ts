@@ -10,19 +10,4 @@ export function onRequest(context: any) {
   return app.fetch(context.request, context.env, context)
 }
 
-export default {
-  fetch(request: any, env: any, ctx: any) {
-    return app.fetch(request, env, ctx)
-  },
-  onRequest,
-}
-
-if (typeof addEventListener === "function") {
-  try {
-    addEventListener("fetch", (event: any) => {
-      event.respondWith(
-        app.fetch(event.request, (event as any).env || {}, event),
-      )
-    })
-  } catch {}
-}
+export default onRequest
