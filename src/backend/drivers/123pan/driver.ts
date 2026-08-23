@@ -315,12 +315,23 @@ export class Pan123Driver implements StorageDriver {
     if (file.Type !== 1) {
       try {
         item.raw_url = await this.client.getDownloadLink(file)
+        if (!item.raw_url) {
+          item.raw_url_error =
+            "123 网盘未返回下载链接（DownloadUrl 为空）。常见原因：access_token/cookie 失效，或该文件已删除/被限制下载。请到管理后台更新 access_token 后重试。"
+        }
       } catch (e: any) {
+        item.raw_url_error =
+          `123 网盘获取下载链接失败：${e?.message || String(e)}。` +
+          (String(e?.message || "").includes("登录失败")
+            ? "当前部署出口 IP 可能被 123 风控，请配置有效的 access_token（浏览器登录 123 网盘后复制 Bearer 令牌）。"
+            : "请检查 access_token/cookie 是否有效，或在 123 网盘网页端确认该文件可下载。")
         console.warn(
           `[123Pan] getDownloadLink warning for ${file.FileName}:`,
           e.message,
         )
       }
+    } else {
+      item.raw_url_error = "该条目是文件夹，不可作为文件下载。"
     }
     return item
   }

@@ -178,8 +178,13 @@ rawRouter.get("/*", async (c) => {
               return c.redirect(fileItem.raw_url, 302)
             }
           } else {
+            const detail =
+              fileItem?.raw_url_error ||
+              (fileItem?.is_dir
+                ? "该条目是文件夹，不可作为文件下载。"
+                : "该存储驱动未返回下载链接（raw_url 为空）。")
             return c.text(
-              `File not found or no download link available: ${reqPath}`,
+              `File not found or no download link available: ${reqPath}\n${detail}`,
               404,
             )
           }
