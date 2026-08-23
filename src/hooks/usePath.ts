@@ -135,7 +135,18 @@ export const usePath = () => {
           ObjStore.setReadme(data.readme)
           ObjStore.setHeader(data.header)
           ObjStore.setRelated(data.related ?? [])
-          ObjStore.setRawUrl(data.raw_url)
+          // 在 raw_url 后添加 JWT token 作为 query parameter
+          // 后端 getUserFromContext 支持从 query parameter token 或 access_token 获取 JWT
+          let rawUrl = data.raw_url
+          if (rawUrl) {
+            try {
+              const token = localStorage.getItem("token") || ""
+              if (token) {
+                rawUrl += (rawUrl.includes("?") ? "&" : "?") + `token=${encodeURIComponent(token)}`
+              }
+            } catch {}
+          }
+          ObjStore.setRawUrl(rawUrl)
           shouldKeepState() || ObjStore.setState(State.File)
         }
       },
