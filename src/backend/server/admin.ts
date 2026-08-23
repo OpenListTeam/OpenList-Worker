@@ -102,18 +102,29 @@ adminRouter.post("/storage/create", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const db = await getDb(c.env)
 
+  // mount_path 为空时用驱动配置的 default_mount_path 兜底，
+  // 避免空路径被规范化成 "/" 而与根挂载冲突
+  let rawMount = body.mount_path
+  if (!rawMount || String(rawMount).trim() === "") {
+    const fallbackMount =
+      driverConfigs[body.driver as string]?.default_mount_path
+    if (fallbackMount) {
+      rawMount = fallbackMount
+    }
+  }
   const mountPath =
-    "/" + (body.mount_path || "").split("/").filter(Boolean).join("/")
+    "/" + String(rawMount || "").split("/").filter(Boolean).join("/")
   if (
     db.storages.some(
       (s: any) =>
+        !s.disabled &&
         "/" + (s.mount_path || "").split("/").filter(Boolean).join("/") ===
-        mountPath,
+          mountPath,
     )
   ) {
     return c.json({
       code: 400,
-      message: "mount path already exists",
+      message: `mount path already exists: ${mountPath}`,
       data: null,
     })
   }
@@ -160,19 +171,29 @@ adminRouter.post("/storage/update", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const db = await getDb(c.env)
 
+  // 与 create 保持一致：空路径用 default_mount_path 兜底
+  let rawMount = body.mount_path
+  if (!rawMount || String(rawMount).trim() === "") {
+    const fallbackMount =
+      driverConfigs[body.driver as string]?.default_mount_path
+    if (fallbackMount) {
+      rawMount = fallbackMount
+    }
+  }
   const mountPath =
-    "/" + (body.mount_path || "").split("/").filter(Boolean).join("/")
+    "/" + String(rawMount || "").split("/").filter(Boolean).join("/")
   if (
     db.storages.some(
       (s: any) =>
         s.id !== body.id &&
+        !s.disabled &&
         "/" + (s.mount_path || "").split("/").filter(Boolean).join("/") ===
           mountPath,
     )
   ) {
     return c.json({
       code: 400,
-      message: "mount path already exists",
+      message: `mount path already exists: ${mountPath}`,
       data: null,
     })
   }
