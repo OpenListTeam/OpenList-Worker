@@ -125,7 +125,14 @@ rawRouter.get("/*", async (c) => {
           }
 
           if (fileItem && fileItem.raw_url) {
-            if (isProxy) {
+            // WebDAV 等需要认证的驱动：强制使用代理模式，避免重定向导致认证丢失
+            const needsProxy =
+              isProxy ||
+              normDriver === "webdav" ||
+              normDriver === "sharepoint" ||
+              normDriver === "onedrive" ||
+              normDriver === "onedriveapp"
+            if (needsProxy) {
               console.log(
                 `[rawRouter] Proxying download for '${reqPath}' via ${resolved.storage.driver}`,
               )
