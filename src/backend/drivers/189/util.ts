@@ -94,20 +94,29 @@ function isTrustedHttpsUrl(value: URL): boolean {
 export class Pan189Client {
   private addition: Cloud189Addition
   private cookie: string = ""
+  private cookieDirty = false
   private sessionKey: string = ""
   private rsa = { pubKey: "", pkId: "", expire: 0 }
-  private onCookieUpdate?: (cookie: string) => void | Promise<void>
 
   constructor(
     addition: Cloud189Addition,
-    onCookieUpdate?: (cookie: string) => void | Promise<void>,
+    _onCookieUpdate?: (cookie: string) => void | Promise<void>,
   ) {
     this.addition = addition
     this.cookie = (addition.cookie || "").trim()
-    this.onCookieUpdate = onCookieUpdate
   }
 
   public getCookie(): string {
+    return this.cookie
+  }
+
+  /**
+   * Return a newly merged Cookie once so the storage layer can persist it
+   * outside the request's critical path.
+   */
+  public consumePendingCookie(): string | null {
+    if (!this.cookieDirty) return null
+    this.cookieDirty = false
     return this.cookie
   }
 
@@ -140,7 +149,7 @@ export class Pan189Client {
     )
     if (updated !== this.cookie) {
       this.cookie = updated
-      await this.onCookieUpdate?.(this.cookie)
+      this.cookieDirty = true
     }
   }
 
@@ -230,7 +239,9 @@ export class Pan189Client {
    * 1. 尝试使用已有 Cookie 请求主页判断是否已登录
    * 2. 若未登录且配置了账号密码，执行 open.e.189.cn OAuth2 登录流程
    */
-  async login(): Promise<void> {
+  async login(options: { force?: boolean } = {}): Promise<void> {
+    if (this.cookie && !options.force) return
+
     const loginUrl =
       "https://cloud.189.cn/api/portal/loginUrl.action?redirectURL=https%3A%2F%2Fcloud.189.cn%2Fmain.action"
 
@@ -454,7 +465,7 @@ export class Pan189Client {
       String(data.res_code) === "1010"
     if (invalidSession) {
       if (retry) {
-        await this.login()
+        await this.login({ force: true })
         return this.request<T>(url, {
           ...options,
           retryOnInvalidSession: false,
