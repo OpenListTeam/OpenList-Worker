@@ -8,6 +8,19 @@
 
 OpenListNext 是 [OpenList](https://github.com/OpenListTeam/OpenList) 的定制全栈分支，用轻量级 **Node.js (Hono + TypeScript)** 后端替代了原版 Go 后端，部署更轻量、启动更快、无需编译 Go 二进制。
 
+<br/>
+
+### 👥 贡献者 & 协作者
+
+<a href="https://github.com/Polonium-salts"><img src="https://github.com/Polonium-salts.png" width="48" height="48" alt="Polonium-salts" style="border-radius: 50%; margin: 2px;" title="Polonium-salts" /></a>
+<a href="https://github.com/Dummysky06"><img src="https://github.com/Dummysky06.png" width="48" height="48" alt="Dummysky06" style="border-radius: 50%; margin: 2px;" title="Dummysky06" /></a>
+<a href="https://github.com/lie-jiu"><img src="https://github.com/lie-jiu.png" width="48" height="48" alt="lie-jiu (烈酒)" style="border-radius: 50%; margin: 2px;" title="lie-jiu (烈酒)" /></a>
+<a href="https://github.com/Astroptis"><img src="https://github.com/Astroptis.png" width="48" height="48" alt="Astroptis" style="border-radius: 50%; margin: 2px;" title="Astroptis" /></a>
+<a href="https://github.com/BAJJDY"><img src="https://github.com/BAJJDY.png" width="48" height="48" alt="BAJJDY" style="border-radius: 50%; margin: 2px;" title="BAJJDY" /></a>
+<a href="https://github.com/chenyimaio"><img src="https://github.com/chenyimaio.png" width="48" height="48" alt="chenyimaio" style="border-radius: 50%; margin: 2px;" title="chenyimaio" /></a>
+
+<br/><br/>
+
 [技术架构](#-技术架构) · [快速开始](#-快速开始) · [部署方法](#-部署方法) · [贡献指南](CONTRIBUTING.md) · [原版项目](#-原版项目) · [许可证](#-许可证)
 
 </div>
