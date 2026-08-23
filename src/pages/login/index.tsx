@@ -43,10 +43,10 @@ const Login = () => {
   useTitle(title)
   const bgColor = useColorModeValue("white", "$neutral1")
   const [username, setUsername] = createSignal(
-    localStorage.getItem("username") || "",
+    (typeof sessionStorage !== "undefined" ? sessionStorage.getItem("username") : localStorage.getItem("username")) || "",
   )
   const [password, setPassword] = createSignal(
-    localStorage.getItem("password") || "",
+    (typeof sessionStorage !== "undefined" ? sessionStorage.getItem("password") : localStorage.getItem("password")) || "",
   )
   const [opt, setOpt] = createSignal("")
   const [useauthn, setuseauthn] = createSignal(false)
@@ -128,9 +128,11 @@ const Login = () => {
     AuthnSignal = controller
     const username_login: string = conditional ? "" : username()
     if (!conditional && remember() === "true") {
-      localStorage.setItem("username", username())
+      const _store = typeof sessionStorage !== "undefined" ? sessionStorage : localStorage
+      _store.setItem("username", username())
     } else {
       localStorage.removeItem("username")
+      if (typeof sessionStorage !== "undefined") sessionStorage.removeItem("username")
     }
     const resp = await getauthntemp(username_login, controller.signal)
     handleResp(resp, async (data) => {
@@ -188,11 +190,17 @@ const Login = () => {
   const Login = async () => {
     if (!useauthn()) {
       if (remember() === "true") {
-        localStorage.setItem("username", username())
-        localStorage.setItem("password", password())
+        // Use sessionStorage for password (cleared on tab close), localStorage only for username
+        const _store = typeof sessionStorage !== "undefined" ? sessionStorage : localStorage
+        _store.setItem("username", username())
+        _store.setItem("password", password())
       } else {
         localStorage.removeItem("username")
         localStorage.removeItem("password")
+        if (typeof sessionStorage !== "undefined") {
+          sessionStorage.removeItem("username")
+          sessionStorage.removeItem("password")
+        }
       }
       const resp = await data()
       handleRespWithoutAuthAndNotify(
