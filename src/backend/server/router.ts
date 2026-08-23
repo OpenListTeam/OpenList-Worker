@@ -92,6 +92,14 @@ async function rateLimitMiddleware(c: any, next: () => Promise<void>) {
 
   await next()
 
+  // Query-token 泄露缓解：URL 携带 token/access_token 的响应禁用缓存并
+  // 阻止 Referer 外泄（防止 token 经浏览器历史/Referer/代理缓存泄露）
+  if (c.req.query("token") || c.req.query("access_token")) {
+    c.res?.headers?.set("Referrer-Policy", "no-referrer")
+    c.res?.headers?.set("Cache-Control", "no-store, no-cache, must-revalidate")
+    c.res?.headers?.set("Pragma", "no-cache")
+  }
+
   if (trafficLimitMb > 0) {
     const len =
       parseInt(c.res?.headers?.get("content-length") || "0", 10) || 0

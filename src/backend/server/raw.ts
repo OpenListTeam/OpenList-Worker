@@ -4,6 +4,7 @@ import { parseRangeHeader } from "../internal/stream/stream"
 import { flushPendingDriverState, getDriver } from "../internal/op/storage"
 import { resolveShare } from "../internal/op/share"
 import { getUserFromContext } from "./middlewares"
+import { getSignPolicy, verifyDownloadSign } from "../pkg/sign"
 
 let fsPromises: any = null
 let createReadStream: any = null
@@ -77,6 +78,19 @@ rawRouter.get("/*", async (c) => {
       const user = await getUserFromContext(c)
       if (!user || user.disabled) {
         return c.text("Unauthorized", 401)
+      }
+    }
+
+    // 下载签名校验（sign_all / link_expiration 启用时）：
+    // 非分享路径必须携带有效签名，防止下载链接被无限期转发/盗链。
+    if (!isSharePath) {
+      const signPolicy = await getSignPolicy(c)
+      if (signPolicy.enabled) {
+        const sign = c.req.query("sign") || ""
+        const ok = await verifyDownloadSign(c, reqPath, sign)
+        if (!ok) {
+          return c.text("Invalid or expired sign", 401)
+        }
       }
     }
 
