@@ -14,15 +14,26 @@ import {
   getJSFunctionByName,
 } from "./help"
 
+/** 蓝奏云分享页候选域名（分享 ID 全局可用，任一域名都能访问同一分享）。
+ *  数据中心出口 IP（如 CF Workers）被某个 CDN 域名 WAF 拦截时，可自动切换到其他域名重试。 */
+const LANZOU_SHARE_DOMAINS = [
+  "pan.lanzoui.com",
+  "lanzouw.com",
+  "lanzoux.com",
+  "lanzouy.com",
+  "lanzou.com",
+]
+
 export class LanzouClient {
   private addition: LanzouAddition
   private cookie: string = ""
   private uid: string = ""
   private vei: string = ""
   private onCookieUpdate?: (cookie: string) => void
-  /** acw_sc__v2 挑战值：求解后持久化到实例，后续所有请求都携带。
+  /** acw_sc__v2 挑战值，按域名缓存（cookie 域绑定）。
+   *  求解后持久化，后续请求都携带对应域名的值；
    *  数据中心 IP（CF Workers）不带此 cookie 会被蓝奏云 CDN WAF 403。 */
-  private acwVs: string = ""
+  private acwMap = new Map<string, string>()
 
   constructor(
     addition: LanzouAddition,
@@ -49,6 +60,15 @@ export class LanzouClient {
     ).replace(/\/$/, "")
   }
 
+  /** 分享页域名对应的主机名（用于 acw_sc__v2 按域缓存） */
+  private shareHost(): string {
+    try {
+      return new URL(this.getShareUrl()).host
+    } catch {
+      return "pan.lanzoui.com"
+    }
+  }
+
   public getUserAgent(): string {
     return (
       this.addition.user_agent ||
@@ -60,14 +80,14 @@ export class LanzouClient {
     return this.cookie
   }
 
-  private updateCookie(setCookie: string | null) {
+  private updateCookie(setCookie: string | null, host?: string) {
     if (!setCookie) return
-    // set-cookie 里可能直接下发 acw_sc__v2（WAF 挑战通过后）
+    // set-cookie 里可能直接下发 acw_sc__v2（WAF 挑战通过后），按域缓存
     const acwMatch = setCookie.match(
       /(?:^|,\s*)acw_sc__v2=([^;,\s]+)/i,
     )
     if (acwMatch && acwMatch[1]) {
-      this.acwVs = acwMatch[1]
+      this.acwMap.set(host || this.shareHost(), acwMatch[1])
     }
     const parts = this.cookie ? this.cookie.split(";").map((s) => s.trim()) : []
     const entries = setCookie.split(/,(?=[a-zA-Z0-9_\-]+=[^;]+)/)
@@ -107,7 +127,7 @@ export class LanzouClient {
     }
     // 预热 acw_sc__v2：主动请求一次分享页触发/通过 WAF 挑战，
     // 让后续 ajaxfile.php 等请求都带上 acw_sc__v2 cookie（数据中心 IP 必需）
-    if (!this.acwVs) {
+    if (!this.acwMap.has(this.shareHost())) {
       try {
         await this.request(`${this.getShareUrl()}/`, "GET")
       } catch {}
@@ -128,8 +148,8 @@ export class LanzouClient {
         Referer: "https://pc.woozooo.com",
         "Content-Type": "application/x-www-form-urlencoded",
       }
-      if (this.acwVs) {
-        headers["Cookie"] = `acw_sc__v2=${this.acwVs}`
+      if (this.acwMap.has("up.woozooo.com")) {
+        headers["Cookie"] = `acw_sc__v2=${this.acwMap.get("up.woozooo.com")}`
       }
 
       const res = await fetch("https://up.woozooo.com/mlogin.php", {
@@ -147,11 +167,11 @@ export class LanzouClient {
         }),
       })
 
-      this.updateCookie(res.headers.get("set-cookie"))
+      this.updateCookie(res.headers.get("set-cookie"), "up.woozooo.com")
       const bodyStr = await res.text()
 
       if (bodyStr.includes("acw_sc__v2")) {
-        this.acwVs = calcAcwScV2(bodyStr)
+        this.acwMap.set("up.woozooo.com", calcAcwScV2(bodyStr))
         continue
       }
 
@@ -198,7 +218,8 @@ export class LanzouClient {
   }
 
   /**
-   * 通用 HTTP 请求（包含 acw_sc__v2 自动求解与 down_ip 头处理）
+   * 通用 HTTP 请求（包含 acw_sc__v2 自动求解、down_ip 头处理、
+   *  以及分享页请求被 CDN 403 时自动切换其他蓝奏云域名重试）
    */
   async request(
     url: string,
@@ -206,29 +227,102 @@ export class LanzouClient {
     body?: Record<string, string>,
     customReferer?: string,
   ): Promise<string> {
-    const defaultReferer =
-      url.startsWith(this.getShareUrl()) ||
-      url.includes("ajaxfile.php") ||
-      url.includes("ajaxm.php") ||
-      url.includes("filemoreajax.php")
-        ? this.getShareUrl()
-        : this.getBaseUrl()
+    // 分享页请求 403/405 时自动切换候选域名重试（数据中心 IP 被单域名 WAF 拦截时有用）
+    const isShareDomainReq = url.startsWith(this.getShareUrl())
+    const shareCandidates = isShareDomainReq
+      ? LANZOU_SHARE_DOMAINS.filter((d) => !url.includes(d))
+      : []
 
+    const tryUrl = (targetUrl: string): Promise<string> => {
+      const targetHost = (() => {
+        try {
+          return new URL(targetUrl).host
+        } catch {
+          return ""
+        }
+      })()
+      const defaultReferer =
+        targetUrl.startsWith(this.getShareUrl()) ||
+        targetUrl.includes("ajaxfile.php") ||
+        targetUrl.includes("ajaxm.php") ||
+        targetUrl.includes("filemoreajax.php")
+          ? this.getShareUrl()
+          : this.getBaseUrl()
+
+      return this.requestOnce(
+        targetUrl,
+        method,
+        body,
+        customReferer || defaultReferer,
+        targetHost,
+      )
+    }
+
+    try {
+      return await tryUrl(url)
+    } catch (err: any) {
+      // 仅在分享页请求（非 baseUrl API）且确实被 WAF/403/405 拒绝时换域名重试
+      const blocked =
+        isShareDomainReq &&
+        (err?.status === 403 || err?.status === 405 || /403|405/.test(err?.message || ""))
+      if (!blocked) throw err
+      for (const domain of shareCandidates) {
+        const altUrl = targetUrlWithDomain(url, domain)
+        try {
+          return await tryUrl(altUrl)
+        } catch (e2: any) {
+          const stillBlocked =
+            e2?.status === 403 || e2?.status === 405 || /403|405/.test(e2?.message || "")
+          if (!stillBlocked) throw e2
+          // 继续尝试下一个域名
+        }
+      }
+      throw err
+    }
+  }
+
+  /**
+   * 单次请求（含 acw_sc__v2 求解与重试）
+   */
+  private async requestOnce(
+    url: string,
+    method: "GET" | "POST",
+    body: Record<string, string> | undefined,
+    referer: string,
+    host: string,
+  ): Promise<string> {
     for (let retry = 0; retry < 3; retry++) {
       const headers: Record<string, string> = {
-        Referer: customReferer || defaultReferer,
+        Referer: referer,
         "User-Agent": this.getUserAgent(),
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
         // 蓝奏云 WAF 校验 AJAX 请求必须带 X-Requested-With，否则返回 403/405
         "X-Requested-With": "XMLHttpRequest",
+        // 模拟浏览器 AJAX 的 Fetch 元数据头，降低被 WAF 拦的概率
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+        Accept: "*/*",
+      }
+      // 同源 AJAX 请求带 Origin（与 Referer 同域）
+      const refHost = (() => {
+        try {
+          return new URL(referer).host
+        } catch {
+          return ""
+        }
+      })()
+      if (refHost === host) {
+        headers["Origin"] = referer.slice(0, referer.indexOf(refHost) + refHost.length)
       }
 
       let cookieStr = this.cookie
       if (url.includes("/file/")) {
         cookieStr = (cookieStr ? cookieStr + "; " : "") + "down_ip=1"
       }
-      if (this.acwVs) {
-        cookieStr = (cookieStr ? cookieStr + "; " : "") + `acw_sc__v2=${this.acwVs}`
+      const acw = this.acwMap.get(host)
+      if (acw) {
+        cookieStr = (cookieStr ? cookieStr + "; " : "") + `acw_sc__v2=${acw}`
       }
       if (cookieStr) {
         headers["Cookie"] = cookieStr
@@ -247,11 +341,17 @@ export class LanzouClient {
         body: reqBody,
       })
 
-      this.updateCookie(res.headers.get("set-cookie"))
+      if (res.status === 403 || res.status === 405) {
+        const err: any = new Error(`[Lanzou] ${url} 返回 HTTP ${res.status}`)
+        err.status = res.status
+        throw err
+      }
+
+      this.updateCookie(res.headers.get("set-cookie"), host)
       const bodyStr = await res.text()
 
       if (bodyStr.includes("acw_sc__v2")) {
-        this.acwVs = calcAcwScV2(bodyStr)
+        this.acwMap.set(host, calcAcwScV2(bodyStr))
         continue
       }
 
@@ -731,5 +831,18 @@ export class LanzouClient {
         file_id: id,
       })
     }
+  }
+}
+
+/**
+ * 将分享页 URL 的主机名替换为指定候选域名（分享 ID 全局可用）
+ */
+function targetUrlWithDomain(url: string, domain: string): string {
+  try {
+    const u = new URL(url)
+    u.host = domain
+    return u.toString()
+  } catch {
+    return url
   }
 }
