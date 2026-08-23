@@ -1088,7 +1088,19 @@ export async function getKvStatus(envCtx?: any) {
 export async function resolvePath(virtualPath: string) {
   const db = await getDb()
 
-  let cleanPath = "/" + virtualPath.split("/").filter(Boolean).join("/")
+  // Normalize ".." / "." segments so callers cannot escape the storage
+  // mount root (path traversal). A leading ".." that pops an empty stack
+  // is clamped to the root instead of escaping upward.
+  const stack: string[] = []
+  for (const seg of String(virtualPath || "").split("/")) {
+    if (seg === "" || seg === ".") continue
+    if (seg === "..") {
+      stack.pop()
+      continue
+    }
+    stack.push(seg)
+  }
+  let cleanPath = "/" + stack.join("/")
   if (cleanPath === "") {
     cleanPath = "/"
   }

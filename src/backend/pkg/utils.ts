@@ -31,7 +31,7 @@ export async function checkAdminAuth(c: Context): Promise<boolean> {
     : authHeader
 
   // 1. 静态 API token（settings.token）
-  const db = await getDb()
+  const db = await getDb(c.env)
   const tokenSetting = db.settings.find((s: any) => s.key === "token")
   if (tokenSetting && tokenSetting.value && token === tokenSetting.value) {
     return true

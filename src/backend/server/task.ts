@@ -54,6 +54,10 @@ const tasks: Record<string, any[]> = {
   offline_download: [],
 }
 
+// All task-management endpoints are admin-only (placeholder APIs that may
+// later carry real file-operation metadata)
+taskRouter.use("*", adminAuthMiddleware)
+
 taskRouter.get("/:type/:state", (c) => {
   const type = c.req.param("type")
   const state = c.req.param("state") // "undone" | "done"
