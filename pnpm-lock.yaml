@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@edgeone/pages-blob':
+        specifier: ^0.0.14
+        version: 0.0.14
       '@egjs/view360':
         specifier: 4.0.0-beta.7
         version: 4.0.0-beta.7
@@ -870,6 +873,10 @@ packages:
   '@cspotcode/source-map-support@0.8.1':
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
+
+  '@edgeone/pages-blob@0.0.14':
+    resolution: {integrity: sha512-u4zSac1JKhhrWiYSbqWm4zw8Uo3b+nruz2rBcgxEdWaCIvyLQzcSJVBN3OVVe2QeqS4olXqrifoYsYRD9sXOEA==}
+    engines: {node: '>=18.0.0'}
 
   '@egjs/component@3.0.5':
     resolution: {integrity: sha512-cLcGizTrrUNA2EYE3MBmEDt2tQv1joVP1Q3oDisZ5nw0MZDx2kcgEXM+/kZpfa/PAkFvYVhRUZwytIQWoN3V/w==}
@@ -2402,6 +2409,7 @@ packages:
 
   crypto-js@4.2.0:
     resolution: {integrity: sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q==}
+    deprecated: Active development of CryptoJS has been discontinued. This library is no longer maintained.
 
   css-select@4.3.0:
     resolution: {integrity: sha512-wPpOYtnsVontu2mODhA19JrqWxNsfdatRKd64kmpRbQgh1KtItko5sTnEpPdpSaJszTOhEMlF/RPz28qj4HqhQ==}
@@ -4895,6 +4903,8 @@ snapshots:
   '@cspotcode/source-map-support@0.8.1':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
+
+  '@edgeone/pages-blob@0.0.14': {}
 
   '@egjs/component@3.0.5': {}
 

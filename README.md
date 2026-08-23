@@ -154,10 +154,7 @@ npm run dev:worker   # wrangler dev
    - 构建命令：`pnpm run build` 或 `npm run build`
    - 输出目录：`dist`
    - 安装命令：`pnpm install --no-frozen-lockfile`（EdgeOne 会自动读取 `edgeone.json`）。
-3. **绑定 EdgeOne KV 命名空间**：
-   - 在 EdgeOne 控制台进入 **KV 存储**，创建命名空间（如 `openlistnext-kv`）。
-   - 在项目的 **设置 -> 函数设置 -> KV 命名空间绑定** 中，将该命名空间绑定到变量名（推荐 `EDGEONE_KV` 或 `OPENLISTNEXT_KV`）。
-   - 系统会在边缘函数中自动识别并完成配置与存储数据的持久化。
+3. **存储配置**：无需手动配置。后端使用 `@edgeone/pages-blob` SDK（HTTP API）自动持久化配置数据，避免 KV 命名空间绑定的 Redis RESP 协议崩溃问题。详见 [docs/edgeone.md](docs/edgeone.md)。
 
 ### 方式四：Vercel / 边缘 Serverless
 

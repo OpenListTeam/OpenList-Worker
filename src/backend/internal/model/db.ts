@@ -638,6 +638,52 @@ export const defaultDb = {
 let memoryDb: any = null
 let globalEnvCtx: any = null
 
+// ---- EdgeOne Blob SDK (HTTP API, avoids Redis RESP protocol crashes) ----
+let _blobStore: any = null
+let _blobChecked = false
+
+async function getBlobStore(): Promise<any | null> {
+  if (_blobChecked) return _blobStore
+  _blobChecked = true
+  try {
+    const { getStore } = await import("@edgeone/pages-blob")
+    // In Makers Functions, projectId/token are auto-injected by the runtime.
+    // TypeScript types require them, but the SDK works without them inside Functions.
+    _blobStore = getStore({
+      name: "openlistnext_db",
+      consistency: "strong",
+    } as any)
+  } catch {
+    _blobStore = null
+  }
+  return _blobStore
+}
+
+// ---- Safety net: catch uncaught exceptions from KV binding RESP parser ----
+// Only registered in EdgeOne environments (invoked by getKvBinding detection),
+// so Cloudflare Workers / local Node.js keep their default global error behavior.
+let _respSafetyNetInstalled = false
+function installRespSafetyNet() {
+  if (_respSafetyNetInstalled) return
+  _respSafetyNetInstalled = true
+  if (typeof process === "undefined" || typeof process.on !== "function") return
+  process.on("uncaughtException", (err: any) => {
+    if (
+      err?.message?.includes("RESP") ||
+      err?.message?.includes("Unknown type") ||
+      err?.stack?.includes("processResponses")
+    ) {
+      console.error(
+        "[KV/RESP] Caught uncaught exception from storage binding, continuing:",
+        err.message,
+      )
+      // Do NOT re-throw — let the function instance survive.
+      // Subsequent requests will fall back to memoryDb.
+    }
+    // All other errors: let Node.js default handler process them.
+  })
+}
+
 /**
  * 在请求处理开始时注入当前环境的 KV binding 上下文。
  * CF Workers 每个实例的模块级 globalEnvCtx 初始为 null，且请求会被负载均衡到
@@ -650,12 +696,18 @@ export function setEnvCtx(env: any) {
 
 /**
  * Universal KV / Blob Storage Adapter for EdgeOne Makers & Cloudflare Workers
+ *
+ * Detection order:
+ *   1. @edgeone/pages-blob SDK (EdgeOne — HTTP API, no RESP crashes)
+ *   2. KV namespace binding (Cloudflare Workers native)
+ *   3. CF REST API (env vars)
+ *   4. None (memory fallback)
  */
-export function getKvBinding(envCtx?: any): {
+export async function getKvBinding(envCtx?: any): Promise<{
   binding: any
   platform: string
   mode: "binding" | "blob" | "api" | "none"
-} {
+}> {
   if (envCtx) {
     globalEnvCtx = envCtx
   }
@@ -665,27 +717,21 @@ export function getKvBinding(envCtx?: any): {
     (typeof process !== "undefined" ? process.env : {})
   const g = typeof globalThis !== "undefined" ? (globalThis as any) : {}
 
-  // 1. 检测 EdgeOne Blob 存储 (单项上限 25MB，支持任意环境)
-  if (
-    typeof g.getStore === "function" ||
-    (env && typeof env.getStore === "function")
-  ) {
-    try {
-      const getStoreFn =
-        typeof g.getStore === "function" ? g.getStore : env.getStore
-      const blobStore =
-        getStoreFn("openlistnext_db") || getStoreFn("openlistnext")
-      if (blobStore && typeof blobStore.get === "function") {
-        return {
-          binding: blobStore,
-          platform: "EdgeOne Blob 存储 (openlistnext_db)",
-          mode: "blob",
-        }
+  // 1. EdgeOne Blob SDK (HTTP API — avoids RESP protocol crashes)
+  try {
+    const blobStore = await getBlobStore()
+    if (blobStore) {
+      // Blob SDK only initializes inside the EdgeOne Makers runtime
+      installRespSafetyNet()
+      return {
+        binding: blobStore,
+        platform: "EdgeOne Blob (@edgeone/pages-blob, strong consistency)",
+        mode: "blob",
       }
-    } catch {}
-  }
+    }
+  } catch {}
 
-  // 2. 检测 KV 命名空间绑定
+  // 2. KV namespace binding (Cloudflare Workers native — no RESP issues)
   const customKvName =
     (env && (env.EDGEONE_KV_NAME || env.KV_NAMESPACE || env.KV_NAME)) ||
     g.EDGEONE_KV_NAME ||
@@ -714,6 +760,7 @@ export function getKvBinding(envCtx?: any): {
         c.key.startsWith("EO") ||
         Boolean(env && (env.EDGEONE || env.EO_REGION || env.EDGEONE_KV_NAME)) ||
         Boolean(g.EDGEONE_KV || g.EO_KV)
+      if (isEdgeOne) installRespSafetyNet()
       const platformName = isEdgeOne
         ? `EdgeOne KV (${c.name})`
         : `Cloudflare / EdgeOne KV (${c.name})`
@@ -754,7 +801,7 @@ export function getKvBinding(envCtx?: any): {
 }
 
 async function readFromKv(
-  kvInfo: ReturnType<typeof getKvBinding>,
+  kvInfo: Awaited<ReturnType<typeof getKvBinding>>,
   key = "openlistnext_config",
 ): Promise<any | null> {
   const { binding, mode } = kvInfo
@@ -762,17 +809,13 @@ async function readFromKv(
 
   try {
     if (mode === "blob") {
-      // Blob 存储支持直接获取 JSON 或 text
-      if (typeof binding.getJSON === "function") {
-        const val = await binding.getJSON(key)
-        if (val) return val
-      }
-      const val = await binding.get(key)
-      if (val) {
-        if (typeof val === "object" && !(val instanceof Blob)) return val
-        const text =
-          typeof val.text === "function" ? await val.text() : String(val)
-        return JSON.parse(text)
+      // @edgeone/pages-blob SDK: get(key, { type: "json" }) returns parsed object
+      const val = await binding.get(key, { type: "json" })
+      if (val) return val
+      // Fallback: get as text and parse
+      const text = await binding.get(key)
+      if (text) {
+        return typeof text === "string" ? JSON.parse(text) : text
       }
     } else if (mode === "binding") {
       let val: any = null
@@ -805,7 +848,7 @@ async function readFromKv(
 }
 
 async function saveToKv(
-  kvInfo: ReturnType<typeof getKvBinding>,
+  kvInfo: Awaited<ReturnType<typeof getKvBinding>>,
   key: string,
   data: any,
 ): Promise<boolean> {
@@ -816,14 +859,12 @@ async function saveToKv(
 
   try {
     if (mode === "blob") {
+      // @edgeone/pages-blob SDK: setJSON(key, value) for structured data
       if (typeof binding.setJSON === "function") {
         await binding.setJSON(key, data)
         return true
       }
-      if (typeof binding.put === "function") {
-        await binding.put(key, valStr)
-        return true
-      }
+      // Fallback: set(key, stringified)
       if (typeof binding.set === "function") {
         await binding.set(key, valStr)
         return true
@@ -973,8 +1014,8 @@ export const getDb = async (envCtx?: any) => {
     globalEnvCtx = envCtx
   }
 
-  // Priority 1: Cloudflare KV Namespace Storage
-  const kvInfo = getKvBinding(envCtx)
+  // Priority 1: EdgeOne Blob / Cloudflare KV / EdgeOne KV
+  const kvInfo = await getKvBinding(envCtx)
   if (kvInfo.mode !== "none") {
     try {
       const kvConfig = await readFromKv(kvInfo, "openlistnext_config")
@@ -1031,8 +1072,8 @@ export const saveDb = async (data: any, envCtx?: any) => {
   }
   memoryDb = data
 
-  // Save to KV Namespace
-  const kvInfo = getKvBinding(envCtx)
+  // Save to Blob / KV
+  const kvInfo = await getKvBinding(envCtx)
   if (kvInfo.mode !== "none") {
     const success = await saveToKv(kvInfo, "openlistnext_config", data).catch(
       (err) => {
@@ -1053,7 +1094,7 @@ export const saveDb = async (data: any, envCtx?: any) => {
 }
 
 export async function getKvStatus(envCtx?: any) {
-  const kvInfo = getKvBinding(envCtx)
+  const kvInfo = await getKvBinding(envCtx)
   const isConfigured = kvInfo.mode !== "none"
   let connected = false
   let error: string | null = null
