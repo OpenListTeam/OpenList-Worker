@@ -250,6 +250,29 @@ test("login retries a transient redirect without OAuth parameters", async () => 
   assert.match(resolved, /[?&]reqId=req-value/)
 })
 
+test("login accepts a final Response.url when Worker hides the Location header", async () => {
+  const loginUrlPrefix =
+    "https://cloud.189.cn/api/portal/loginUrl.action?redirectURL="
+  const finalUrl =
+    "https://open.e.189.cn/api/logbox/separate/web/index.html?appId=cloud&lt=lt-worker&reqId=req-worker"
+
+  globalThis.fetch = (async (input) => {
+    const url = requestUrl(input)
+    if (url.startsWith(loginUrlPrefix)) {
+      return mockResponse(finalUrl, "", { status: 200 })
+    }
+    throw new Error(`unexpected fetch: ${url}`)
+  }) as typeof fetch
+
+  const client = new Pan189Client({ username: "", password: "" })
+  const resolved = await (client as any).resolveLoginUrl(
+    "https://cloud.189.cn/api/portal/loginUrl.action?redirectURL=https%3A%2F%2Fcloud.189.cn%2Fmain.action",
+    { "User-Agent": "test" },
+  )
+
+  assert.equal(resolved, finalUrl)
+})
+
 test("API requests do not wait for refreshed Cookie persistence", async () => {
   globalThis.fetch = (async (input) =>
     mockResponse(
