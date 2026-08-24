@@ -25,17 +25,24 @@ export class Yun139Driver implements StorageDriver {
     return s === "/" ? "/" : s
   }
 
+  private getRootId(): string {
+    if (this.addition.root_folder_id) {
+      return this.addition.root_folder_id
+    }
+    return this.client.isPersonalNew() ? "/" : ""
+  }
+
   private async resolveCatalogId(physicalPath: string): Promise<string> {
     const clean = this.cleanPath(physicalPath)
     if (clean === "/") {
-      return this.addition.root_folder_id || ""
+      return this.getRootId()
     }
 
     const parts = clean.split("/").filter(Boolean)
-    let currentCatalogId = this.addition.root_folder_id || ""
+    let currentCatalogId = this.getRootId()
 
     for (const part of parts) {
-      const disk = await this.client.getDisk(currentCatalogId)
+      const disk = await this.client.listFiles(currentCatalogId)
       const foundFolder = disk.folders.find((f) => f.catalogName === part)
       if (foundFolder) {
         currentCatalogId = foundFolder.catalogID
@@ -50,7 +57,7 @@ export class Yun139Driver implements StorageDriver {
   async list(virtualPath: string, physicalPath: string): Promise<FileItem[]> {
     const clean = this.cleanPath(physicalPath)
     const catalogId = await this.resolveCatalogId(clean)
-    const disk = await this.client.getDisk(catalogId)
+    const disk = await this.client.listFiles(catalogId)
 
     const folderItems: FileItem[] = disk.folders.map((f) => ({
       name: f.catalogName,
@@ -98,7 +105,7 @@ export class Yun139Driver implements StorageDriver {
         size: 0,
         is_dir: true,
         modified: new Date().toISOString(),
-        sign: "/",
+        sign: this.getRootId(),
         type: 1,
         raw_url: "",
       }
@@ -106,7 +113,7 @@ export class Yun139Driver implements StorageDriver {
 
     const parentPath = clean.substring(0, clean.lastIndexOf("/")) || "/"
     const parentCatalogId = await this.resolveCatalogId(parentPath)
-    const disk = await this.client.getDisk(parentCatalogId)
+    const disk = await this.client.listFiles(parentCatalogId)
 
     const foundFolder = disk.folders.find((f) => f.catalogName === name)
     if (foundFolder) {
@@ -187,7 +194,8 @@ export class Yun139Driver implements StorageDriver {
     physicalPath: string,
     newName: string,
   ): Promise<void> {
-    console.warn(`[139] rename ${physicalPath} to ${newName}`)
+    const item = await this.get(virtualPath, physicalPath)
+    await this.client.rename(item.sign, newName)
   }
 
   async remove(
@@ -197,7 +205,7 @@ export class Yun139Driver implements StorageDriver {
   ): Promise<void> {
     const clean = this.cleanPath(physicalPath)
     const catalogId = await this.resolveCatalogId(clean)
-    const disk = await this.client.getDisk(catalogId)
+    const disk = await this.client.listFiles(catalogId)
 
     for (const name of names) {
       const folder = disk.folders.find((f) => f.catalogName === name)

@@ -89,3 +89,39 @@ export interface Yun139StorageDetailsResp {
     usedSize?: number
   }
 }
+
+export interface PersonalThumbnail {
+  style?: string
+  url?: string
+}
+
+export interface PersonalFileItem {
+  fileId: string
+  name: string
+  size?: number | string
+  type: "folder" | "file" | string
+  createdAt?: string
+  updatedAt?: string
+  thumbnailUrls?: PersonalThumbnail[]
+}
+
+export interface PersonalListResp {
+  code: string
+  message: string
+  success: boolean
+  data?: {
+    items?: PersonalFileItem[]
+    nextPageCursor?: string
+  }
+}
+
+export interface PersonalDownloadResp {
+  code: string
+  message: string
+  success: boolean
+  data?: {
+    url?: string
+    cdnUrl?: string
+    cdnSwitch?: boolean
+  }
+}

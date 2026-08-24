@@ -6,6 +6,9 @@ import {
   Yun139DownloadResp,
   Yun139FileItem,
   Yun139StorageDetailsResp,
+  PersonalListResp,
+  PersonalDownloadResp,
+  PersonalFileItem,
 } from "./types"
 
 export function encodeURIComponentCustom(str: string): string {
@@ -48,9 +51,9 @@ export function formatTime(d: Date): string {
 
 export class Yun139ApiClient {
   private addition: Yun139Addition
-  public personalHost = "https://api.caiyun.feixin.10086.cn"
-  public familyHost = "https://api.caiyun.feixin.10086.cn"
-  public groupHost = "https://api.caiyun.feixin.10086.cn"
+  public personalHost = "https://yun.139.com"
+  public familyHost = "https://yun.139.com"
+  public groupHost = "https://yun.139.com"
   public account = ""
 
   constructor(addition: Yun139Addition) {
@@ -61,9 +64,10 @@ export class Yun139ApiClient {
   private extractAccount(): void {
     if (!this.addition.authorization) return
     try {
-      const decoded = CryptoJS.enc.Base64.parse(
-        this.addition.authorization,
-      ).toString(CryptoJS.enc.Utf8)
+      const authStr = this.getAuthString()
+      const decoded = CryptoJS.enc.Base64.parse(authStr).toString(
+        CryptoJS.enc.Utf8,
+      )
       const splits = decoded.split(":")
       if (splits.length >= 2) {
         this.account = splits[1]
@@ -71,6 +75,18 @@ export class Yun139ApiClient {
     } catch {
       // Ignored
     }
+  }
+
+  public getAuthString(): string {
+    let auth = (this.addition.authorization || "").trim()
+    if (auth.startsWith("Basic ")) {
+      auth = auth.slice(6).trim()
+    }
+    return auth
+  }
+
+  isPersonalNew(): boolean {
+    return !this.addition.type || this.addition.type === "personal_new"
   }
 
   isFamily(): boolean {
@@ -87,21 +103,32 @@ export class Yun139ApiClient {
     return this.personalHost
   }
 
-  async request<T = any>(uri: string, body: any): Promise<T> {
+  async request<T = any>(uriOrUrl: string, body: any): Promise<T> {
     const ts = formatTime(new Date())
     const randStr = randomString(16)
     const bodyStr = JSON.stringify(body || {})
     const sign = calSign(bodyStr, ts, randStr)
 
-    const host = this.getHost()
-    const url = `${host}${uri}`
+    let url: string
+    if (uriOrUrl.startsWith("http://") || uriOrUrl.startsWith("https://")) {
+      url = uriOrUrl
+    } else if (uriOrUrl.startsWith("/orchestration/")) {
+      // Orchestration APIs are strictly hosted on yun.139.com
+      url = `https://yun.139.com${uriOrUrl}`
+    } else {
+      url = `${this.getHost()}${uriOrUrl}`
+    }
 
     const svcType = this.isFamily() ? "2" : "1"
     const headers: Record<string, string> = {
       Accept: "application/json, text/plain, */*",
       "Content-Type": "application/json",
       "CMS-DEVICE": "default",
-      Authorization: `Basic ${this.addition.authorization}`,
+      Authorization: `Basic ${this.getAuthString()}`,
+      Caller: "web",
+      "Mcloud-Channel": "1000101",
+      "Mcloud-Client": "10701",
+      "Mcloud-Route": "001",
       "mcloud-channel": "1000101",
       "mcloud-client": "10701",
       "mcloud-sign": `${ts},${randStr},${sign}`,
@@ -115,6 +142,13 @@ export class Yun139ApiClient {
       "x-m4c-src": "10002",
       "x-SvcType": svcType,
       "Inner-Hcy-Router-Https": "1",
+      "X-Yun-Api-Version": "v1",
+      "X-Yun-App-Channel": "10000034",
+      "X-Yun-Channel-Source": "10000034",
+      "X-Yun-Client-Info":
+        "||9|7.14.0|chrome|120.0.0.0|||windows 10||zh-CN|||dW5kZWZpbmVk||",
+      "X-Yun-Module-Type": "100",
+      "X-Yun-Svc-Type": "1",
     }
 
     const res = await fetch(url, {
@@ -142,7 +176,7 @@ export class Yun139ApiClient {
 
     try {
       const routeRes = await this.request<QueryRoutePolicyResp>(
-        "/orchestration/personalCloud/catalog/v1.0/queryRoutePolicy",
+        "https://user-njs.yun.139.com/user/route/qryRoutePolicy",
         {
           userInfo: {
             userType: 1,
@@ -170,6 +204,61 @@ export class Yun139ApiClient {
         e,
       )
     }
+  }
+
+  async listFiles(folderId = ""): Promise<{
+    files: Yun139FileItem[]
+    folders: Array<{
+      catalogID: string
+      catalogName: string
+      updateTime?: string
+    }>
+  }> {
+    if (this.isPersonalNew()) {
+      let nextPageCursor = ""
+      const allItems: PersonalFileItem[] = []
+      const parentFileId = folderId || this.addition.root_folder_id || "/"
+
+      do {
+        const res = await this.request<PersonalListResp>("/file/list", {
+          parentFileId,
+          pageInfo: {
+            pageCursor: nextPageCursor,
+            pageSize: 100,
+          },
+          orderBy: "updated_at",
+          orderDirection: "DESC",
+          imageThumbnailStyleList: ["Small", "Large"],
+        })
+
+        const items = res.data?.items || []
+        allItems.push(...items)
+        nextPageCursor = res.data?.nextPageCursor || ""
+      } while (nextPageCursor)
+
+      const folders = allItems
+        .filter((i) => i.type === "folder")
+        .map((i) => ({
+          catalogID: i.fileId,
+          catalogName: i.name,
+          updateTime: i.updatedAt,
+        }))
+
+      const files: Yun139FileItem[] = allItems
+        .filter((i) => i.type !== "folder")
+        .map((i) => ({
+          contentID: i.fileId,
+          contentName: i.name,
+          contentSize: i.size,
+          updateTime: i.updatedAt,
+          createTime: i.createdAt,
+          thumbnailURL: i.thumbnailUrls?.[0]?.url,
+        }))
+
+      return { files, folders }
+    }
+
+    return this.getDisk(folderId)
   }
 
   async getDisk(catalogId = ""): Promise<{
@@ -204,11 +293,28 @@ export class Yun139ApiClient {
     }
   }
 
-  async getDownloadUrl(contentId: string): Promise<string> {
+  async getDownloadUrl(contentIdOrFileId: string): Promise<string> {
+    if (this.isPersonalNew()) {
+      const res = await this.request<PersonalDownloadResp>(
+        "/file/getDownloadUrl",
+        {
+          fileId: contentIdOrFileId,
+        },
+      )
+      const url =
+        (res.data?.cdnSwitch ? res.data?.cdnUrl : null) ||
+        res.data?.url ||
+        res.data?.cdnUrl
+      if (!url) {
+        throw new Error("Empty download URL received from 139 Cloud")
+      }
+      return url
+    }
+
     const res = await this.request<Yun139DownloadResp>(
       "/orchestration/personalCloud/uploadAndDownload/v1.0/downloadRequest",
       {
-        contentID: contentId,
+        contentID: contentIdOrFileId,
         commonAccountInfo: {
           account: this.account,
           accountType: 1,
@@ -224,6 +330,17 @@ export class Yun139ApiClient {
   }
 
   async createCatalog(parentCatalogId: string, name: string): Promise<string> {
+    if (this.isPersonalNew()) {
+      const res = await this.request<any>("/file/create", {
+        parentFileId: parentCatalogId || this.addition.root_folder_id || "/",
+        name,
+        description: "",
+        type: "folder",
+        fileRenameMode: "force_rename",
+      })
+      return res.data?.fileId || ""
+    }
+
     const res = await this.request<any>(
       "/orchestration/personalCloud/catalog/v1.0/createCatalog",
       {
@@ -238,11 +355,18 @@ export class Yun139ApiClient {
     return res.data?.catalogID || ""
   }
 
-  async deleteFile(contentId: string): Promise<void> {
+  async deleteFile(contentIdOrFileId: string): Promise<void> {
+    if (this.isPersonalNew()) {
+      await this.request("/file/delete", {
+        fileIds: [contentIdOrFileId],
+      })
+      return
+    }
+
     await this.request(
       "/orchestration/personalCloud/catalog/v1.0/deleteContent",
       {
-        contentID: contentId,
+        contentID: contentIdOrFileId,
         commonAccountInfo: {
           account: this.account,
           accountType: 1,
@@ -251,11 +375,41 @@ export class Yun139ApiClient {
     )
   }
 
-  async deleteCatalog(catalogId: string): Promise<void> {
+  async deleteCatalog(catalogIdOrFileId: string): Promise<void> {
+    if (this.isPersonalNew()) {
+      await this.request("/file/delete", {
+        fileIds: [catalogIdOrFileId],
+      })
+      return
+    }
+
     await this.request(
       "/orchestration/personalCloud/catalog/v1.0/deleteCatalog",
       {
-        catalogID: catalogId,
+        catalogID: catalogIdOrFileId,
+        commonAccountInfo: {
+          account: this.account,
+          accountType: 1,
+        },
+      },
+    )
+  }
+
+  async rename(id: string, newName: string): Promise<void> {
+    if (this.isPersonalNew()) {
+      await this.request("/file/update", {
+        fileId: id,
+        name: newName,
+        description: "",
+      })
+      return
+    }
+
+    await this.request(
+      "/orchestration/personalCloud/catalog/v1.0/updateCatalogInfo",
+      {
+        catalogID: id,
+        catalogName: newName,
         commonAccountInfo: {
           account: this.account,
           accountType: 1,

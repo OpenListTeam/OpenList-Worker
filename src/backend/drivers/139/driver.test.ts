@@ -22,8 +22,8 @@ test("Yun139Driver instantiation and methods", async () => {
   const driver = new Yun139Driver(addition)
   assert.ok(driver)
 
-  // Mock getDisk
-  ;(driver as any).client.getDisk = async (catalogId: string) => {
+  // Mock listFiles
+  ;(driver as any).client.listFiles = async (catalogId: string) => {
     return {
       folders: [
         {
@@ -53,8 +53,8 @@ test("Yun139Driver instantiation and methods", async () => {
 
   // Mock getDownloadUrl
   ;(driver as any).client.getDownloadUrl = async (contentId: string) =>
-    "https://download.caiyun.feixin.10086.cn/photo.jpg"
+    "https://download.yun.139.com/photo.jpg"
 
   const link = await driver.link("/photo.jpg", "/photo.jpg")
-  assert.equal(link.url, "https://download.caiyun.feixin.10086.cn/photo.jpg")
+  assert.equal(link.url, "https://download.yun.139.com/photo.jpg")
 })
