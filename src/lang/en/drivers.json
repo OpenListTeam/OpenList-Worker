@@ -1781,5 +1781,24 @@
     "page_size-tips": "List API per page size (1~1150)",
     "limit_rate": "Request Rate Limit",
     "limit_rate-tips": "Limit all API request rate ([limit]r/1s), 0 = unlimited"
+  },
+  "WeiYun": {
+    "root_folder_id": "Root Folder ID",
+    "root_folder_id-tips": "Leave blank to display the root directory; or specify a subfolder ID",
+    "cookies": "Cookie",
+    "cookies-tips": "Cookie from Weiyun web console (WeChat login recommended)",
+    "order_by": "Order By",
+    "order_bys": {
+      "name": "Name",
+      "size": "Size",
+      "updated_at": "Updated At"
+    },
+    "order_direction": "Order Direction",
+    "order_directions": {
+      "asc": "Ascending",
+      "desc": "Descending"
+    },
+    "upload_thread": "Upload Threads",
+    "upload_thread-tips": "Concurrent upload threads (4<=thread<=32, default 4)"
   }
 }

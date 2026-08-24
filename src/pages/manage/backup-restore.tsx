@@ -255,6 +255,7 @@ const BackupRestore = () => {
     if (norm === "wopan" || norm.includes("unicom") || norm.includes("woyun"))
       return "WoPan"
     if (norm === "quark" || norm === "quarkuc" || norm === "uc") return "Quark"
+    if (norm === "weiyun" || norm.includes("weiyun")) return "WeiYun"
     if (
       [
         "s3",
