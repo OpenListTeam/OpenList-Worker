@@ -1,62 +1,5 @@
 import { S3Addition, S3HeadResult, S3ListResult } from "./types"
-
-const encoder = new TextEncoder()
-
-async function hmacSha256(
-  key: CryptoKey | ArrayBuffer,
-  data: string,
-): Promise<ArrayBuffer> {
-  const cryptoKey =
-    key instanceof CryptoKey
-      ? key
-      : await crypto.subtle.importKey(
-          "raw",
-          key as BufferSource,
-          { name: "HMAC", hash: "SHA-256" },
-          false,
-          ["sign"],
-        )
-  const sig = await crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(data))
-  // Ensure we return a plain ArrayBuffer (TS 5.9 strict types)
-  const buf = new ArrayBuffer(sig.byteLength)
-  new Uint8Array(buf).set(new Uint8Array(sig))
-  return buf
-}
-
-async function sha256(data: ArrayBuffer | Uint8Array): Promise<string> {
-  const hash = await crypto.subtle.digest("SHA-256", data as BufferSource)
-  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("")
-}
-
-async function getSignatureKey(
-  secretKey: string,
-  dateStamp: string,
-  region: string,
-  service: string,
-): Promise<CryptoKey> {
-  const kDate = await hmacSha256(encoder.encode(`AWS4${secretKey}`), dateStamp)
-  const kRegion = await hmacSha256(kDate, region)
-  const kService = await hmacSha256(kRegion, service)
-  const kFinal = await hmacSha256(kService, "aws4_request")
-  return await crypto.subtle.importKey(
-    "raw",
-    kFinal as BufferSource,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  )
-}
-
-function formatDate(date: Date): { dateStamp: string; amzDate: string } {
-  const d = date.toISOString().replace(/[:-]|\.\d{3}/g, "")
-  return { dateStamp: d.slice(0, 8), amzDate: d.slice(0, 15) + "Z" }
-}
-
-function uriEncode(input: string): string {
-  return input.replace(/[^A-Za-z0-9\-._~]/g, (c) => {
-    return "%" + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")
-  })
-}
+import { rfc3986UriEncode, signS3Headers } from "./sigv4"
 
 function parseXmlTag(xml: string, tag: string): string | null {
   const regex = new RegExp(`<${tag}[^>]*>([^<]*)<\\/${tag}>`, "i")
@@ -103,131 +46,74 @@ function escapeXml(str: string): string {
 export class S3Client {
   private addition: S3Addition
   private service = "s3"
+  private isPathStyle: boolean
+  private bucket: string
+  private region: string
+  private endpoint: string
 
   constructor(addition: S3Addition) {
     this.addition = addition
-  }
-
-  private get region(): string {
-    return this.addition.region || "us-east-1"
-  }
-
-  private get bucket(): string {
-    return this.addition.bucket
+    this.bucket = (addition.bucket || "").trim()
+    let ep = (addition.endpoint || "").trim()
+    if (!/^https?:\/\//i.test(ep)) ep = `https://${ep}`
+    this.endpoint = ep.replace(/\/+$/, "")
+    this.region = (addition.region || "").trim() || "us-east-1"
+    try {
+      const epUrl = new URL(this.endpoint)
+      const isIp =
+        /^(\d{1,3}\.){3}\d{1,3}$/.test(epUrl.hostname) ||
+        epUrl.hostname === "localhost"
+      this.isPathStyle = !!addition.force_path_style || isIp
+    } catch {
+      this.isPathStyle = !!addition.force_path_style
+    }
   }
 
   private get pathStyle(): boolean {
-    return !!this.addition.force_path_style
-  }
-
-  private get normalizedEndpoint(): string {
-    let ep = this.addition.endpoint.replace(/\/+$/, "")
-    if (!/^https?:\/\//i.test(ep)) ep = `https://${ep}`
-    return ep
-  }
-
-  private get host(): string {
-    const ep = this.normalizedEndpoint.replace(/^https?:\/\//, "")
-    if (this.pathStyle) return ep
-    return `${this.bucket}.${ep}`
+    return this.isPathStyle
   }
 
   private keyUrl(key: string): string {
-    const ep = this.normalizedEndpoint
-    const k = key ? key.split("/").map(uriEncode).join("/") : ""
-    if (this.pathStyle) return `${ep}/${this.bucket}/${k}`
-    return `https://${this.host}/${k}`
-  }
-
-  private canonicalPath(key: string): string {
-    const k = key ? key.split("/").map(uriEncode).join("/") : ""
-    if (this.pathStyle) return `/${this.bucket}/${k}`
-    return `/${k}`
-  }
-
-  private buildCanonicalQuery(params: Record<string, string>): string {
-    // S3 prefix/delimiter keep "/" literal (not %2F) for signature correctness
-    const s3Params = ["prefix", "delimiter"]
-    return Object.entries(params)
-      .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
-      .map(([k, v]) => {
-        const encodedV = s3Params.includes(k)
-          ? v.split("/").map(uriEncode).join("/")
-          : uriEncode(v)
-        return `${uriEncode(k)}=${encodedV}`
-      })
-      .join("&")
+    const cleanKey = key ? key.replace(/^\/+/, "") : ""
+    if (this.pathStyle) {
+      const epUrl = new URL(this.endpoint)
+      const basePath = epUrl.pathname.replace(/\/+$/, "")
+      const fullPath = [basePath, this.bucket, cleanKey]
+        .filter(Boolean)
+        .join("/")
+      epUrl.pathname = "/" + fullPath.replace(/^\/+/, "")
+      return epUrl.toString()
+    }
+    // Virtual host style
+    const epUrl = new URL(this.endpoint)
+    const hostParts = epUrl.host.split(":")
+    const port = hostParts[1] ? `:${hostParts[1]}` : ""
+    epUrl.host = `${this.bucket}.${hostParts[0]}${port}`
+    const basePath = epUrl.pathname.replace(/\/+$/, "")
+    const fullPath = [basePath, cleanKey].filter(Boolean).join("/")
+    epUrl.pathname = "/" + fullPath.replace(/^\/+/, "")
+    return epUrl.toString()
   }
 
   private async signRequest(
     method: string,
-    canonicalPath: string,
-    query: string = "",
+    url: string,
     headers: Record<string, string> = {},
     payload: ArrayBuffer | Uint8Array = new Uint8Array(0),
-  ): Promise<Record<string, string>> {
-    const now = new Date()
-    const { dateStamp, amzDate } = formatDate(now)
-    const payloadHash = await sha256(payload)
-
-    const signedHeaders: Record<string, string> = {
-      host: this.host,
-      "x-amz-content-sha256": payloadHash,
-      "x-amz-date": amzDate,
-      ...headers,
-    }
-
-    if (this.addition.session_token) {
-      signedHeaders["x-amz-security-token"] = this.addition.session_token
-    }
-
-    const sortedKeys = Object.keys(signedHeaders).sort()
-    const canonicalHeaders = sortedKeys.map((k) => `${k}:${signedHeaders[k]}\n`).join("")
-    const signedHeaderList = sortedKeys.join(";")
-
-    const canonicalQuery = query
-      .split("&")
-      .filter(Boolean)
-      .sort()
-      .join("&")
-
-    const canonicalRequest = [
+  ): Promise<{ authHeaders: Record<string, string>; signedUrl: string }> {
+    const { headers: signedHeaders } = await signS3Headers({
       method,
-      canonicalPath,
-      canonicalQuery,
-      canonicalHeaders,
-      signedHeaderList,
-      payloadHash,
-    ].join("\n")
-
-    const credentialScope = `${dateStamp}/${this.region}/${this.service}/aws4_request`
-    const stringToSign = [
-      "AWS4-HMAC-SHA256",
-      amzDate,
-      credentialScope,
-      await sha256(encoder.encode(canonicalRequest)),
-    ].join("\n")
-
-    const signatureKey = await getSignatureKey(
-      this.addition.secret_access_key,
-      dateStamp,
-      this.region,
-      this.service,
-    )
-    const signatureBytes = await hmacSha256(signatureKey, stringToSign)
-    const signature = [...new Uint8Array(signatureBytes)]
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("")
-
-    const authHeader = `AWS4-HMAC-SHA256 Credential=${this.addition.access_key_id}/${credentialScope}, SignedHeaders=${signedHeaderList}, Signature=${signature}`
-
+      url,
+      region: this.region,
+      accessKeyId: this.addition.access_key_id,
+      secretAccessKey: this.addition.secret_access_key,
+      sessionToken: this.addition.session_token,
+      headers,
+      body: payload && payload.byteLength > 0 ? payload : null,
+    })
     return {
-      Authorization: authHeader,
-      "x-amz-content-sha256": payloadHash,
-      "x-amz-date": amzDate,
-      ...(this.addition.session_token
-        ? { "x-amz-security-token": this.addition.session_token }
-        : {}),
+      authHeaders: signedHeaders,
+      signedUrl: url,
     }
   }
 
@@ -239,22 +125,15 @@ export class S3Client {
     const cleanPrefix = prefix.replace(/^\/+|\/+$/g, "")
     const queryPrefix = cleanPrefix ? `${cleanPrefix}/` : ""
 
-    console.log("[S3] listObjects queryPrefix:", JSON.stringify(queryPrefix))
+    const urlObj = new URL(this.keyUrl(""))
+    urlObj.searchParams.set("list-type", "2")
+    urlObj.searchParams.set("prefix", queryPrefix)
+    urlObj.searchParams.set("delimiter", "/")
+    urlObj.searchParams.set("max-keys", String(maxKeys))
+    if (continuationToken) urlObj.searchParams.set("continuation-token", continuationToken)
 
-    const params: Record<string, string> = {
-      "list-type": "2",
-      prefix: queryPrefix,
-      delimiter: "/",
-      "max-keys": String(maxKeys),
-    }
-    if (continuationToken) params["continuation-token"] = continuationToken
-
-    const queryString = this.buildCanonicalQuery(params)
-    const cPath = this.canonicalPath("")
-    const url = `${this.keyUrl("")}?${queryString}`
-
-    const authHeaders = await this.signRequest("GET", cPath, queryString)
-    const resp = await fetch(url, { headers: authHeaders })
+    const { authHeaders, signedUrl } = await this.signRequest("GET", urlObj.toString())
+    const resp = await fetch(signedUrl, { headers: authHeaders })
 
     if (!resp.ok) {
       const body = await resp.text()
@@ -286,21 +165,14 @@ export class S3Client {
     const cleanPrefix = prefix.replace(/^\/+|\/+$/g, "")
     const queryPrefix = cleanPrefix ? `${cleanPrefix}/` : ""
 
-    console.log("[S3] listObjectsV1 queryPrefix:", JSON.stringify(queryPrefix))
+    const urlObj = new URL(this.keyUrl(""))
+    urlObj.searchParams.set("prefix", queryPrefix)
+    urlObj.searchParams.set("delimiter", "/")
+    urlObj.searchParams.set("max-keys", String(maxKeys))
+    if (marker) urlObj.searchParams.set("marker", marker)
 
-    const params: Record<string, string> = {
-      prefix: queryPrefix,
-      delimiter: "/",
-      "max-keys": String(maxKeys),
-    }
-    if (marker) params.marker = marker
-
-    const queryString = this.buildCanonicalQuery(params)
-    const cPath = this.canonicalPath("")
-    const url = `${this.keyUrl("")}?${queryString}`
-
-    const authHeaders = await this.signRequest("GET", cPath, queryString)
-    const resp = await fetch(url, { headers: authHeaders })
+    const { authHeaders, signedUrl } = await this.signRequest("GET", urlObj.toString())
+    const resp = await fetch(signedUrl, { headers: authHeaders })
 
     if (!resp.ok) {
       const body = await resp.text()
@@ -325,9 +197,8 @@ export class S3Client {
   }
 
   async headObject(key: string): Promise<S3HeadResult> {
-    const url = this.keyUrl(key)
-    const authHeaders = await this.signRequest("GET", this.canonicalPath(key))
-    const resp = await fetch(url, { method: "HEAD", headers: authHeaders })
+    const { authHeaders, signedUrl } = await this.signRequest("HEAD", this.keyUrl(key))
+    const resp = await fetch(signedUrl, { method: "HEAD", headers: authHeaders })
 
     if (!resp.ok) {
       const body = await resp.text()
@@ -346,11 +217,10 @@ export class S3Client {
     key: string,
     range?: string,
   ): Promise<{ body: ReadableStream; headers: Record<string, string> } | null> {
-    const url = this.keyUrl(key)
     const extraHeaders: Record<string, string> = {}
     if (range) extraHeaders["range"] = range
-    const authHeaders = await this.signRequest("GET", this.canonicalPath(key), "", extraHeaders)
-    const resp = await fetch(url, {
+    const { authHeaders, signedUrl } = await this.signRequest("GET", this.keyUrl(key), extraHeaders)
+    const resp = await fetch(signedUrl, {
       method: "GET",
       headers: { ...authHeaders, ...extraHeaders },
     })
@@ -366,9 +236,8 @@ export class S3Client {
   }
 
   async getObjectBuffer(key: string): Promise<Buffer> {
-    const url = this.keyUrl(key)
-    const authHeaders = await this.signRequest("GET", this.canonicalPath(key))
-    const resp = await fetch(url, { headers: authHeaders })
+    const { authHeaders, signedUrl } = await this.signRequest("GET", this.keyUrl(key))
+    const resp = await fetch(signedUrl, { headers: authHeaders })
 
     if (!resp.ok) {
       const body = await resp.text()
@@ -384,13 +253,17 @@ export class S3Client {
     body: Buffer | ArrayBuffer | Uint8Array,
     contentType: string = "application/octet-stream",
   ): Promise<void> {
-    const url = this.keyUrl(key)
-    const payload = body instanceof Buffer ? new Uint8Array(body) : new Uint8Array(body)
-    const authHeaders = await this.signRequest("PUT", this.canonicalPath(key), "", {
-      "content-type": contentType,
-    }, payload)
+    const payload = new Uint8Array(
+      body instanceof ArrayBuffer ? body : body.buffer ? body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) : body,
+    )
+    const { authHeaders, signedUrl } = await this.signRequest(
+      "PUT",
+      this.keyUrl(key),
+      { "content-type": contentType },
+      payload,
+    )
 
-    const resp = await fetch(url, {
+    const resp = await fetch(signedUrl, {
       method: "PUT",
       headers: { ...authHeaders, "Content-Type": contentType },
       body: payload,
@@ -403,9 +276,8 @@ export class S3Client {
   }
 
   async deleteObject(key: string): Promise<void> {
-    const url = this.keyUrl(key)
-    const authHeaders = await this.signRequest("DELETE", this.canonicalPath(key))
-    const resp = await fetch(url, { method: "DELETE", headers: authHeaders })
+    const { authHeaders, signedUrl } = await this.signRequest("DELETE", this.keyUrl(key))
+    const resp = await fetch(signedUrl, { method: "DELETE", headers: authHeaders })
 
     if (!resp.ok && resp.status !== 404) {
       const body = await resp.text()
@@ -421,13 +293,12 @@ export class S3Client {
 ${keys.map((k) => `  <Object><Key>${escapeXml(k)}</Key></Object>`).join("\n")}
 </Delete>`
 
-    const payload = encoder.encode(body)
-    const cPath = this.canonicalPath("")
-    const queryString = "delete="
-    const url = `${this.keyUrl("")}?delete`
+    const payload = new TextEncoder().encode(body)
+    const urlObj = new URL(this.keyUrl(""))
+    urlObj.searchParams.set("delete", "")
 
-    const authHeaders = await this.signRequest("POST", cPath, queryString, {}, payload)
-    const resp = await fetch(url, {
+    const { authHeaders, signedUrl } = await this.signRequest("POST", urlObj.toString(), {}, payload)
+    const resp = await fetch(signedUrl, {
       method: "POST",
       headers: { ...authHeaders, "Content-Type": "application/xml" },
       body: payload,
@@ -440,16 +311,18 @@ ${keys.map((k) => `  <Object><Key>${escapeXml(k)}</Key></Object>`).join("\n")}
   }
 
   async copyObject(srcKey: string, dstKey: string): Promise<void> {
-    const url = this.keyUrl(dstKey)
-    const copySource = `/${this.bucket}/${srcKey.split("/").map(uriEncode).join("/")}`
+    const cleanSrc = srcKey.replace(/^\/+/, "")
+    const encodedSource = rfc3986UriEncode(`${this.bucket}/${cleanSrc}`, false)
 
-    const authHeaders = await this.signRequest("PUT", this.canonicalPath(dstKey), "", {
-      "x-amz-copy-source": copySource,
-    })
+    const { authHeaders, signedUrl } = await this.signRequest(
+      "PUT",
+      this.keyUrl(dstKey),
+      { "x-amz-copy-source": encodedSource },
+    )
 
-    const resp = await fetch(url, {
+    const resp = await fetch(signedUrl, {
       method: "PUT",
-      headers: { ...authHeaders, "x-amz-copy-source": copySource },
+      headers: { ...authHeaders, "x-amz-copy-source": encodedSource },
     })
 
     if (!resp.ok) {
