@@ -2064,6 +2064,64 @@ const driverConfigs: Record<string, any> = {
       no_link_url: true,
     },
   },
+  FTP: {
+    name: "FTP",
+    default_mount_path: "/ftp",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "address",
+        type: "string",
+        default: "",
+        required: true,
+        help: "FTP host:port (e.g. 127.0.0.1:21)",
+      },
+      {
+        name: "username",
+        type: "string",
+        default: "",
+        required: true,
+      },
+      {
+        name: "password",
+        type: "string",
+        default: "",
+        required: true,
+      },
+      {
+        name: "encoding",
+        type: "string",
+        default: "utf-8",
+        required: true,
+        help: "Character encoding, e.g. utf-8, gbk, gb2312",
+      },
+      {
+        name: "cwd_list",
+        type: "bool",
+        default: "false",
+        required: false,
+        help: "Enter directory before listing",
+      },
+      {
+        name: "root_folder_path",
+        type: "string",
+        default: "/",
+        required: false,
+      },
+    ],
+    config: {
+      name: "FTP",
+      local_sort: true,
+      only_local: false,
+      only_proxy: true,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "/",
+      check_status: true,
+      no_link_url: true,
+    },
+  },
 }
 
 adminRouter.get("/driver/list", (c) => {

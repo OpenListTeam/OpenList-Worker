@@ -275,6 +275,7 @@ const BackupRestore = () => {
     if (norm.startsWith("github")) return "Github"
     if (norm === "local") return "Local"
     if (norm === "sftp") return "SFTP"
+    if (norm === "ftp") return "FTP"
     return driverName || ""
   }
 

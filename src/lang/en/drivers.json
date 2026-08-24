@@ -1816,5 +1816,19 @@
     "root_folder_path-tips": "Root directory path to mount (default /)",
     "ignore_symlink_error": "Ignore Symlink Error",
     "ignore_symlink_error-tips": "Ignore broken symlink errors and keep entries"
+  },
+  "FTP": {
+    "address": "FTP Address",
+    "address-tips": "FTP server address and port (e.g. 127.0.0.1:21)",
+    "username": "Username",
+    "username-tips": "FTP login username",
+    "password": "Password",
+    "password-tips": "FTP login password",
+    "encoding": "Encoding",
+    "encoding-tips": "Character encoding, typically utf-8 or gbk / gb2312",
+    "cwd_list": "CWD Before List",
+    "cwd_list-tips": "Enter directory using CWD before listing contents",
+    "root_folder_path": "Root Folder Path",
+    "root_folder_path-tips": "Root directory path to mount (default /)"
   }
 }

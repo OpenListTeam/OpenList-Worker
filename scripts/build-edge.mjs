@@ -8,7 +8,7 @@ async function build() {
     outfile: "dist/api/[...route].js",
     minify: true,
     format: "esm",
-    external: ["ssh2", "cpu-features"],
+    external: ["ssh2", "cpu-features", "iconv-lite"],
     loader: { ".node": "empty" },
   })
 
@@ -20,7 +20,7 @@ async function build() {
     outfile: "cloud-functions/[[default]].js",
     minify: true,
     format: "esm",
-    external: ["ssh2", "cpu-features"],
+    external: ["ssh2", "cpu-features", "iconv-lite"],
     // 内联 dist/index.html 作为 SPA 兜底壳（需在 vite build 之后运行）
     loader: { ".html": "text", ".node": "empty" },
   })

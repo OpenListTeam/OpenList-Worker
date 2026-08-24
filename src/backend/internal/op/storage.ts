@@ -49,6 +49,18 @@ async function getSFTPDriver(storageConfig: any): Promise<StorageDriver> {
   )
 }
 
+async function getFTPDriver(storageConfig: any): Promise<StorageDriver> {
+  if (typeof process !== "undefined" && process.release?.name === "node") {
+    const { FTPDriver } = await import("../../drivers/ftp")
+    const driver = new FTPDriver(parseAddition(storageConfig))
+    await driver.init?.()
+    return driver
+  }
+  throw new Error(
+    "FTP storage driver requires Node.js runtime (raw TCP sockets not available in Cloudflare Workers)",
+  )
+}
+
 const driverCache = new Map<string, StorageDriver>()
 const driverInitCache = new Map<string, Promise<StorageDriver>>()
 const cookiePersistenceCache = new Map<string, Promise<void>>()
@@ -99,6 +111,9 @@ async function createDriver(
   }
   if (normDriver === "sftp") {
     return getSFTPDriver(storageConfig)
+  }
+  if (normDriver === "ftp") {
+    return getFTPDriver(storageConfig)
   }
 
   if (!storageConfig) {
