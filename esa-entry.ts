@@ -170,6 +170,24 @@ export default {
     } else if (isApiRequest) {
       console.warn(`[ESA/req:${reqId}] env is undefined/null — fetch signature may be wrong`)
     }
-    return app.fetch(request, env, context)
+
+    const response = await app.fetch(request, env, context)
+
+    // 【关键】对所有 /api/ GET 请求强制 no-cache，防止 ESA CDN 缓存动态 API 响应。
+    // 特别是 /api/public/settings：保存设置后立即刷新，CDN 可能返回缓存的旧值，
+    // 导致设置看起来"没有保存"（站点标题在页面顶部最明显，最先被注意到）。
+    if (request.method === "GET" && isApiRequest) {
+      const newHeaders = new Headers(response.headers)
+      newHeaders.set("Cache-Control", "no-cache, no-store, must-revalidate")
+      newHeaders.set("Pragma", "no-cache")
+      newHeaders.set("Expires", "0")
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: newHeaders,
+      })
+    }
+
+    return response
   },
 }
