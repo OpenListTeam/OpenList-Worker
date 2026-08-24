@@ -158,6 +158,17 @@ npm run dev:worker   # wrangler dev
 
 部署完成后静态资源由 Workers 的 `ASSETS` binding 托管，API 由 Hono 后端处理，配置数据持久化在 KV 中。
 
+### 方式三：腾讯云 EdgeOne Makers / EdgeOne Pages
+
+项目原生内置 `edgeone.json` 与 EdgeOne 边缘函数适配器：
+
+1. **导入项目**：在腾讯云 [EdgeOne Makers 控制台](https://edgeone.ai/) 新建项目，关联 GitHub 仓库或直接上传项目代码。
+2. **构建配置**：
+   - 构建命令：`pnpm run build` 或 `npm run build`
+   - 输出目录：`dist`
+   - 安装命令：`pnpm install --no-frozen-lockfile`（EdgeOne 会自动读取 `edgeone.json`）。
+3. **存储配置**：无需手动配置。后端使用 `@edgeone/pages-blob` SDK（HTTP API）自动持久化配置数据，避免 KV 命名空间绑定的 Redis RESP 协议崩溃问题。详见 [docs/edgeone.md](docs/edgeone.md)。
+
 ### 方式四：Vercel / 边缘 Serverless
 
 ```bash
