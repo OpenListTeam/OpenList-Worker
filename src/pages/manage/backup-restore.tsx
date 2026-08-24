@@ -216,8 +216,110 @@ const BackupRestore = () => {
       return r.post(`/share/update`, share)
     },
   )
-  async function handleOvrData<T>(
-    dataArray: T[],
+  const normalizeDriverName = (
+    driverName: string,
+    availableDrivers: string[],
+  ): string => {
+    const norm = (driverName || "")
+      .replace(/\s+/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+    if (!norm) return ""
+    const matched = availableDrivers.find(
+      (d) =>
+        d.toLowerCase() === norm ||
+        d.toLowerCase().replace(/[^a-z0-9]/g, "") === norm,
+    )
+    if (matched) return matched
+    if (norm.startsWith("115")) return "115Open"
+    if (norm.startsWith("123")) return "123Pan"
+    if (norm.includes("aliyun")) return "AliyundriveOpen"
+    if (norm.startsWith("baidu")) return "BaiduNetdisk"
+    if (
+      norm.startsWith("189") ||
+      norm.includes("cloud189") ||
+      norm.includes("ctyun")
+    )
+      return "Cloud189"
+    if (norm === "onedriveapp") return "OnedriveAPP"
+    if (norm.startsWith("onedrive")) return "Onedrive"
+    if (norm.startsWith("google") || norm.includes("gdrive"))
+      return "GoogleDrive"
+    if (
+      (norm.includes("thunder") || norm.includes("xunlei")) &&
+      norm.includes("expert")
+    )
+      return "ThunderExpert"
+    if (norm.includes("thunder") || norm.includes("xunlei")) return "Thunder"
+    if (norm === "webdav" || norm === "webdavdriver") return "WebDav"
+    if (norm === "wopan" || norm.includes("unicom") || norm.includes("woyun"))
+      return "WoPan"
+    if (norm === "quark" || norm === "quarkuc" || norm === "uc") return "Quark"
+    if (
+      [
+        "s3",
+        "doge",
+        "dogecloud",
+        "minio",
+        "ceph",
+        "aws",
+        "r2",
+        "b2",
+        "cos",
+        "oss",
+        "kodo",
+      ].includes(norm)
+    )
+      return "S3"
+    if (norm.startsWith("github")) return "Github"
+    if (norm === "local") return "Local"
+    return driverName || ""
+  }
+
+  const sanitizeStorageItem = (
+    st: any,
+    availableDrivers: string[],
+  ): Storage | null => {
+    if (!st || typeof st !== "object") return null
+    const rawDriver = st.driver
+    if (
+      !rawDriver ||
+      typeof rawDriver !== "string" ||
+      rawDriver.trim() === "" ||
+      rawDriver === "undefined" ||
+      rawDriver === "null"
+    ) {
+      return null
+    }
+    const normDriver = normalizeDriverName(rawDriver, availableDrivers)
+    const mountPath =
+      "/" +
+      String(st.mount_path || "")
+        .split("/")
+        .filter(Boolean)
+        .join("/")
+
+    let additionStr = "{}"
+    if (typeof st.addition === "object" && st.addition !== null) {
+      try {
+        additionStr = JSON.stringify(st.addition)
+      } catch {
+        additionStr = "{}"
+      }
+    } else if (typeof st.addition === "string") {
+      additionStr = st.addition
+    }
+
+    return {
+      ...st,
+      driver: normDriver,
+      mount_path: mountPath,
+      addition: additionStr,
+    }
+  }
+
+  async function handleOvrData<T extends Record<string, any>>(
+    dataArray: T[] | undefined,
     getDataFunc: { (): PResp<{ content: T[]; total: number }> },
     addDataFunc: {
       (t: T): PEmptyResp
@@ -227,43 +329,90 @@ const BackupRestore = () => {
     },
     idFieldName: keyof T,
     itemName: string,
+    sanitizeFn?: (item: T) => T | null,
   ) {
-    const currentData = (await getDataFunc()).data.content
-    for (const i in dataArray) {
-      const currentItem = dataArray[i]
-      const currentIdValue = currentItem[idFieldName]
-      const currentDataItem = currentData.find(
-        (d) => d[idFieldName] === currentIdValue,
-      )
-      const method = currentDataItem ? "update" : "add"
-      const handleDataFunc = method === "add" ? addDataFunc : updateDataFunc
-      await handleRespWithoutNotify(
-        await handleDataFunc(currentItem),
-        () => {
+    if (!dataArray || !Array.isArray(dataArray) || dataArray.length === 0)
+      return
+    const currentData = ((await getDataFunc()).data?.content || []) as T[]
+    for (let i = 0; i < dataArray.length; i++) {
+      let currentItem = dataArray[i]
+      if (sanitizeFn) {
+        const sanitized = sanitizeFn(currentItem)
+        if (!sanitized) {
           appendLog(
-            t("br.success_restore_item", {
-              item: t(itemName),
-            }) +
-              "-" +
-              `[${currentIdValue}]`,
-            "success",
-          )
-        },
-        (msg) => {
-          appendLog(
-            t("br.failed_restore_item", {
-              item: t(itemName),
-            }) +
-              "-" +
-              `[${currentIdValue}]` +
-              ":" +
-              msg,
+            `[${t(itemName)}] 忽略无效项: ${(currentItem as any)[idFieldName] || i}`,
             "error",
           )
-        },
-      )
+          continue
+        }
+        currentItem = sanitized
+      }
+      const currentIdValue = currentItem[idFieldName]
+      const currentDataItem = currentData.find((d) => {
+        if (idFieldName === "mount_path" || idFieldName === "path") {
+          const p1 =
+            "/" +
+            String(d[idFieldName] || "")
+              .split("/")
+              .filter(Boolean)
+              .join("/")
+          const p2 =
+            "/" +
+            String(currentIdValue || "")
+              .split("/")
+              .filter(Boolean)
+              .join("/")
+          return p1 === p2
+        }
+        return d[idFieldName] === currentIdValue
+      })
+
+      if (currentDataItem) {
+        ;(currentItem as any).id = (currentDataItem as any).id
+        await handleRespWithoutNotify(
+          await updateDataFunc(currentItem),
+          () => {
+            appendLog(
+              t("br.success_restore_item", {
+                item: t(itemName),
+              }) + ` [${currentIdValue}]`,
+              "success",
+            )
+          },
+          (msg) => {
+            appendLog(
+              t("br.failed_restore_item", {
+                item: t(itemName),
+              }) + ` [${currentIdValue}]: ${msg}`,
+              "error",
+            )
+          },
+        )
+      } else {
+        ;(currentItem as any).id = 0
+        await handleRespWithoutNotify(
+          await addDataFunc(currentItem),
+          () => {
+            appendLog(
+              t("br.success_restore_item", {
+                item: t(itemName),
+              }) + ` [${currentIdValue}]`,
+              "success",
+            )
+          },
+          (msg) => {
+            appendLog(
+              t("br.failed_restore_item", {
+                item: t(itemName),
+              }) + ` [${currentIdValue}]: ${msg}`,
+              "error",
+            )
+          },
+        )
+      }
     }
   }
+
   const restoreLoading = () => {
     return (
       addSettingsLoading() ||
@@ -277,6 +426,7 @@ const BackupRestore = () => {
       updateShareLoading()
     )
   }
+
   const restore = async () => {
     appendLog(t("br.start_restore"), "info")
     const file = document.createElement("input")
@@ -291,34 +441,65 @@ const BackupRestore = () => {
       const file = files[0]
       const reader = new FileReader()
       reader.onload = async () => {
-        const data: Data = JSON.parse(reader.result as string)
+        let data: Data
+        try {
+          data = JSON.parse(reader.result as string)
+        } catch (err: any) {
+          appendLog(`JSON 解析失败: ${err.message || String(err)}`, "error")
+          return
+        }
+
         const encrypted = Boolean(data.encrypted)
-        if (encrypted)
+        if (encrypted) {
           if (
             decrypt(data.encrypted, password(), true, true) !== '"encrypted"'
           ) {
             appendLog(t("br.wrong_encrypt_password"), "error")
             return
           }
-        const dataArray = Object.values(data)
-        for (let i = dataArray.length - 4; i < dataArray.length; i++) {
-          const obj = dataArray[i]
-          console.log(obj)
-          for (let a = 0; a < obj.length; a++) {
-            const obj1 = obj[a]
-            for (const key in obj1) {
-              obj1[key] = decrypt(obj1[key], password(), false, encrypted)
+          for (const list of [
+            data.settings,
+            data.users,
+            data.storages,
+            data.metas,
+            data.shares,
+          ]) {
+            if (Array.isArray(list)) {
+              for (const obj of list) {
+                if (obj && typeof obj === "object") {
+                  for (const key in obj) {
+                    ;(obj as Record<string, any>)[key] = decrypt(
+                      (obj as Record<string, any>)[key],
+                      password(),
+                      false,
+                      true,
+                    )
+                  }
+                }
+              }
             }
           }
         }
+
+        // Fetch drivers for normalization
+        let availableDrivers: string[] = []
+        try {
+          const driversResp: any = await r.get("/admin/driver/list")
+          if (driversResp?.data) {
+            availableDrivers = Object.keys(driversResp.data)
+          }
+        } catch {}
+
         if (override()) {
           await backup()
         }
-        data.settings &&
+
+        if (data.settings && Array.isArray(data.settings)) {
           handleRespWithoutNotify(
             await addSettings(
               data.settings.filter(
-                (s) => !["version", "index_progress"].includes(s.key),
+                (s) =>
+                  s && s.key && !["version", "index_progress"].includes(s.key),
               ),
             ),
             () => {
@@ -340,6 +521,8 @@ const BackupRestore = () => {
               )
             },
           )
+        }
+
         if (override()) {
           await handleOvrData(
             data.users,
@@ -356,6 +539,7 @@ const BackupRestore = () => {
             updateStorage,
             "mount_path",
             "manage.sidemenu.storages",
+            (st) => sanitizeStorageItem(st, availableDrivers),
           )
           await handleOvrData(
             data.metas,
@@ -385,11 +569,25 @@ const BackupRestore = () => {
             []) as Meta[]
           const currentShares = ((await getShares()).data?.content ||
             []) as ShareInfo[]
+
+          const sanitizedStorages: Storage[] = []
+          for (const rawSt of data.storages || []) {
+            const st = sanitizeStorageItem(rawSt, availableDrivers)
+            if (st) {
+              sanitizedStorages.push(st)
+            } else {
+              appendLog(
+                `[${t("manage.sidemenu.storages")}] 忽略无效存储（缺少 driver 或 mount_path）: ${rawSt?.mount_path || "未知"}`,
+                "error",
+              )
+            }
+          }
+
           for (const item of [
             {
               name: "users",
               fn: addUser,
-              data: data.users,
+              data: data.users || [],
               key: "username",
               removeId: true,
               skipExisting: (itemData: any) =>
@@ -398,7 +596,7 @@ const BackupRestore = () => {
             {
               name: "storages",
               fn: addStorage,
-              data: data.storages,
+              data: sanitizedStorages,
               key: "mount_path",
               removeId: true,
               skipExisting: (itemData: any) =>
@@ -419,7 +617,7 @@ const BackupRestore = () => {
             {
               name: "metas",
               fn: addMeta,
-              data: data.metas,
+              data: data.metas || [],
               key: "path",
               removeId: true,
               skipExisting: (itemData: any) =>
@@ -428,7 +626,7 @@ const BackupRestore = () => {
             {
               name: "shares",
               fn: addShare,
-              data: data.shares,
+              data: data.shares || [],
               key: "id",
               removeId: false,
               skipExisting: (itemData: any) =>
@@ -437,7 +635,7 @@ const BackupRestore = () => {
           ] as const) {
             for (const itemData of item.data || []) {
               if (item.removeId) {
-                itemData.id = 0
+                ;(itemData as any).id = 0
               }
               if (item.skipExisting && item.skipExisting(itemData)) {
                 appendLog(

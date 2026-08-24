@@ -71,10 +71,75 @@ adminRouter.get("/storage/get", async (c) => {
   return c.json({ code: 200, message: "success", data: storage })
 })
 
+export const normalizeDriver = (driverName: string): string => {
+  const norm = (driverName || "").toLowerCase().replace(/[^a-z0-9]/g, "")
+  if (!norm) return ""
+  const available = Object.keys(driverConfigs)
+  const matched = available.find(
+    (d) =>
+      d.toLowerCase() === norm ||
+      d.toLowerCase().replace(/[^a-z0-9]/g, "") === norm,
+  )
+  if (matched) return matched
+  // Common OpenList aliases
+  if (norm.startsWith("115")) return "115Open"
+  if (norm.startsWith("123")) return "123Pan"
+  if (norm.includes("aliyun")) return "AliyundriveOpen"
+  if (norm.startsWith("baidu")) return "BaiduNetdisk"
+  if (
+    norm.startsWith("189") ||
+    norm.includes("cloud189") ||
+    norm.includes("ctyun")
+  )
+    return "Cloud189"
+  if (norm === "onedriveapp") return "OnedriveAPP"
+  if (norm.startsWith("onedrive")) return "Onedrive"
+  if (norm.startsWith("google") || norm.includes("gdrive")) return "GoogleDrive"
+  if (
+    (norm.includes("thunder") || norm.includes("xunlei")) &&
+    norm.includes("expert")
+  )
+    return "ThunderExpert"
+  if (norm.includes("thunder") || norm.includes("xunlei")) return "Thunder"
+  if (norm === "webdav" || norm === "webdavdriver") return "WebDav"
+  if (norm === "wopan" || norm.includes("unicom") || norm.includes("woyun"))
+    return "WoPan"
+  if (norm === "quark" || norm === "quarkuc" || norm === "uc") return "Quark"
+  if (
+    [
+      "s3",
+      "doge",
+      "dogecloud",
+      "minio",
+      "ceph",
+      "aws",
+      "r2",
+      "b2",
+      "cos",
+      "oss",
+      "kodo",
+    ].includes(norm)
+  )
+    return "S3"
+  if (norm.startsWith("github")) return "Github"
+  if (norm === "local") return "Local"
+  return driverName || ""
+}
+
 const ensureStorageAdditionDeviceId = (
   driverName: string,
-  additionStr: string,
+  additionInput: any,
 ): string => {
+  let additionStr = ""
+  if (typeof additionInput === "object" && additionInput !== null) {
+    try {
+      additionStr = JSON.stringify(additionInput)
+    } catch {
+      additionStr = "{}"
+    }
+  } else {
+    additionStr = String(additionInput || "{}")
+  }
   const norm = (driverName || "").toLowerCase()
   if (norm.includes("thunder") || norm.includes("xunlei")) {
     try {
@@ -101,6 +166,23 @@ const ensureStorageAdditionDeviceId = (
 adminRouter.post("/storage/create", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const db = await getDb(c.env)
+
+  if (
+    !body.driver ||
+    typeof body.driver !== "string" ||
+    body.driver.trim() === "" ||
+    body.driver === "undefined" ||
+    body.driver === "null"
+  ) {
+    return c.json(
+      {
+        code: 400,
+        message: "Storage driver is required",
+        data: null,
+      },
+      400,
+    )
+  }
 
   // mount_path 为空时用驱动配置的 default_mount_path 兜底，
   // 避免空路径被规范化成 "/" 而与根挂载冲突
@@ -129,13 +211,15 @@ adminRouter.post("/storage/create", async (c) => {
     })
   }
 
+  const normalizedDriver = normalizeDriver(body.driver)
   const newAddition = ensureStorageAdditionDeviceId(
-    body.driver,
+    normalizedDriver,
     body.addition || "{}",
   )
 
   const newStorage = {
     ...body,
+    driver: normalizedDriver,
     addition: newAddition,
     mount_path: mountPath,
     id: db.storages.length
@@ -152,6 +236,10 @@ adminRouter.post("/storage/create", async (c) => {
       newStorage.status = "work"
     } catch (e: any) {
       newStorage.status = e.message || String(e)
+      // If driver is completely unsupported, disable storage to avoid crashing path resolution
+      if (String(e.message || e).includes("unsupported driver")) {
+        newStorage.disabled = true
+      }
       db.storages.push(newStorage)
       await saveDb(db, c.env)
       return c.json({
@@ -181,35 +269,45 @@ adminRouter.post("/storage/update", async (c) => {
     }
   }
   const mountPath =
-    "/" + String(rawMount || "").split("/").filter(Boolean).join("/")
-  if (
-    db.storages.some(
-      (s: any) =>
-        s.id !== body.id &&
-        !s.disabled &&
-        "/" + (s.mount_path || "").split("/").filter(Boolean).join("/") ===
-          mountPath,
-    )
-  ) {
-    return c.json({
-      code: 400,
-      message: `mount path already exists: ${mountPath}`,
-      data: null,
-    })
+    String(rawMount || "").trim() !== ""
+      ? "/" + String(rawMount || "").split("/").filter(Boolean).join("/")
+      : undefined
+
+  if (mountPath) {
+    if (
+      db.storages.some(
+        (s: any) =>
+          s.id !== body.id &&
+          !s.disabled &&
+          "/" + (s.mount_path || "").split("/").filter(Boolean).join("/") ===
+            mountPath,
+      )
+    ) {
+      return c.json({
+        code: 400,
+        message: `mount path already exists: ${mountPath}`,
+        data: null,
+      })
+    }
   }
 
   const idx = db.storages.findIndex((s: any) => s.id === body.id)
   if (idx !== -1) {
+    const rawDriver = body.driver || db.storages[idx].driver
+    const normalizedDriver = normalizeDriver(rawDriver)
     const updatedAddition = ensureStorageAdditionDeviceId(
-      body.driver || db.storages[idx].driver,
-      body.addition || db.storages[idx].addition || "{}",
+      normalizedDriver,
+      body.addition !== undefined
+        ? body.addition
+        : db.storages[idx].addition || "{}",
     )
 
     const updatedStorage = {
       ...db.storages[idx],
       ...body,
+      driver: normalizedDriver,
       addition: updatedAddition,
-      mount_path: mountPath,
+      mount_path: mountPath || db.storages[idx].mount_path,
       modified: new Date().toISOString(),
     }
     if (!updatedStorage.disabled) {
@@ -219,6 +317,9 @@ adminRouter.post("/storage/update", async (c) => {
         updatedStorage.status = "work"
       } catch (e: any) {
         updatedStorage.status = e.message || String(e)
+        if (String(e.message || e).includes("unsupported driver")) {
+          updatedStorage.disabled = true
+        }
         db.storages[idx] = updatedStorage
         await saveDb(db, c.env)
         return c.json({

@@ -991,8 +991,21 @@ const ensureDefaultSettings = (db: any) => {
 
 const ensureDefaultStorages = (db: any) => {
   if (!db) return
-  if (!db.storages) {
+  if (!db.storages || !Array.isArray(db.storages)) {
     db.storages = []
+  } else {
+    // Sanitize any corrupt or invalid storages (e.g. driver is undefined/null/empty)
+    db.storages = db.storages.filter(
+      (s: any) =>
+        s &&
+        typeof s === "object" &&
+        typeof s.driver === "string" &&
+        s.driver.trim() !== "" &&
+        s.driver !== "undefined" &&
+        s.driver !== "null" &&
+        typeof s.mount_path === "string" &&
+        s.mount_path.trim() !== "",
+    )
   }
 }
 
@@ -1147,7 +1160,16 @@ export async function resolvePath(virtualPath: string) {
     cleanPath = "/"
   }
 
-  const activeStorages = (db.storages || []).filter((s: any) => !s.disabled)
+  const activeStorages = (db.storages || []).filter(
+    (s: any) =>
+      !s.disabled &&
+      typeof s.driver === "string" &&
+      s.driver.trim() !== "" &&
+      s.driver !== "undefined" &&
+      s.driver !== "null" &&
+      typeof s.mount_path === "string" &&
+      s.mount_path.trim() !== "",
+  )
 
   if (activeStorages.length === 0) {
     throw new Error(
@@ -1179,7 +1201,15 @@ export async function resolvePath(virtualPath: string) {
         relPath = "/" + relPath
       }
 
-      const addition = JSON.parse(storage.addition || "{}")
+      let addition: any = {}
+      try {
+        addition =
+          typeof storage.addition === "string"
+            ? JSON.parse(storage.addition || "{}")
+            : storage.addition || {}
+      } catch {
+        addition = {}
+      }
       const defaultRoot = "/"
       let rootFolder =
         addition.root_folder_path !== undefined

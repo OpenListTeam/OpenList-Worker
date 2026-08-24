@@ -22,12 +22,16 @@ import { search } from "../internal/op/search"
 export const fsRouter = new Hono()
 
 const getStorageRequestContext = (c: any) => {
-  const executionCtx = c.executionCtx
-  if (!executionCtx || typeof executionCtx.waitUntil !== "function") {
+  try {
+    const executionCtx = c.executionCtx
+    if (!executionCtx || typeof executionCtx.waitUntil !== "function") {
+      return undefined
+    }
+    return {
+      waitUntil: (promise: Promise<unknown>) => executionCtx.waitUntil(promise),
+    }
+  } catch {
     return undefined
-  }
-  return {
-    waitUntil: (promise: Promise<unknown>) => executionCtx.waitUntil(promise),
   }
 }
 
