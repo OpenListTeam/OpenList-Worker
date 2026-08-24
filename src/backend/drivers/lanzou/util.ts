@@ -415,6 +415,25 @@ export class LanzouClient {
         throw err
       }
 
+      // 偶发的 429/5xx/网络波动不是业务错误：延迟后重试（蓝奏云限流常见）
+      if (
+        res.status === 429 ||
+        res.status >= 500 ||
+        res.status === 408
+      ) {
+        if (retry < 2) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, 300 * (retry + 1)),
+          )
+          continue
+        }
+        const err: any = new Error(
+          `[Lanzou] ${url} 返回 HTTP ${res.status}（多次重试仍失败）`,
+        )
+        err.status = res.status
+        throw err
+      }
+
       const bodyStr = await res.text()
 
       if (bodyStr.includes("acw_sc__v2")) {
@@ -790,9 +809,12 @@ export class LanzouClient {
     )
     if (timeMatch) fileResult.time = timeMatch[0]
 
-    // 解析 302 重定向获得真实直链
+    // 解析 302 重定向获得真实直链。
+    // 蓝奏云直链服务器（dom 返回的 lanrar.com 等）偶发限流/超时，
+    // 网络错误必须重试而非直接失败，避免"直链解析失败"随机出现。
     let realDirectUrl = downloadUrl
     let vs = ""
+    let resolved = false
     for (let i = 0; i < 3; i++) {
       const headers: Record<string, string> = {
         Referer: baseUrl,
@@ -803,11 +825,21 @@ export class LanzouClient {
       if (vs) c += `; acw_sc__v2=${vs}`
       headers["Cookie"] = c
 
-      const probeRes = await fetch(downloadUrl, {
-        method: "GET",
-        headers,
-        redirect: "manual",
-      })
+      let probeRes: Response
+      try {
+        probeRes = await fetch(downloadUrl, {
+          method: "GET",
+          headers,
+          redirect: "manual",
+        })
+      } catch {
+        // 网络层偶发失败（超时/断连），退避重试
+        if (i < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 400 * (i + 1)))
+          continue
+        }
+        throw new Error("[Lanzou] 直链探测网络错误，请稍后重试")
+      }
 
       if (
         probeRes.status === 301 ||
@@ -819,6 +851,7 @@ export class LanzouClient {
         const loc = probeRes.headers.get("location")
         if (loc) {
           realDirectUrl = new URL(loc, downloadUrl).toString()
+          resolved = true
           break
         }
       }
@@ -829,7 +862,19 @@ export class LanzouClient {
         probeRes.url !== downloadUrl
       ) {
         realDirectUrl = probeRes.url
+        resolved = true
         break
+      }
+
+      // 429/5xx 偶发限流：退避重试
+      if (probeRes.status === 429 || probeRes.status >= 500) {
+        if (i < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 400 * (i + 1)))
+          continue
+        }
+        throw new Error(
+          `[Lanzou] 直链探测返回 HTTP ${probeRes.status}，请稍后重试`,
+        )
       }
 
       const bodyText = await probeRes.text()
@@ -855,10 +900,21 @@ export class LanzouClient {
           realDirectUrl = ajaxData.url.startsWith("http")
             ? ajaxData.url
             : new URL(ajaxData.url, baseUrl).toString()
+          resolved = true
           break
         }
-      } catch {}
+      } catch {
+        // ajax.php 兜底失败：再试一轮（可能是瞬时限流）
+        if (i < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 600 * (i + 1)))
+          continue
+        }
+      }
       break
+    }
+
+    if (!resolved) {
+      throw new Error("[Lanzou] 直链解析失败，请稍后重试")
     }
 
     fileResult.url = realDirectUrl

@@ -287,13 +287,15 @@ export class LanzouDriver implements StorageDriver {
         } else {
           const shareInfo = await this.client.getFileShareUrlById(item.id || "")
           const shareId = shareInfo?.f_id || (shareInfo as any)?.id
-          const customDomain = shareInfo?.is_newd
+          // 注意：is_newd 是"上传域名"（如 https://upload.lanzouj.com），
+          // 不是分享页域名，不能作为 customShareDomain 传入（会导致分享页
+          // 请求随机失败）。getFilesByShareUrl 内部会 probeShareDomain 探测
+          // 真实分享页域名。
           if (shareId) {
             const resolved = await this.client.getFilesByShareUrl(
               shareId,
               shareInfo.pwd || "",
               undefined,
-              customDomain,
             )
             downloadUrl = resolved.url
             if (resolved.name_all) item.name_all = resolved.name_all
