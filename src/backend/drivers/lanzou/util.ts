@@ -24,6 +24,9 @@ const LANZOU_SHARE_DOMAINS = [
   "lanzou.com",
 ]
 
+/** 蓝奏云 Cookie 过期提示文案（cookie 有效期约 15 天） */
+const COOKIE_EXPIRED_MSG = "[Lanzou] Cookie 已过期或失效，请在管理后台重新填写 Cookie（有效期约 15 天）"
+
 export class LanzouClient {
   private addition: LanzouAddition
   private cookie: string = ""
@@ -247,7 +250,7 @@ export class LanzouClient {
 
     const uidMatch = html.match(/uid=([^'"&;]+)/)
     if (!uidMatch) {
-      throw new Error("[Lanzou] 未能获取到 uid，请检查 Cookie 是否有效")
+      throw new Error(COOKIE_EXPIRED_MSG)
     }
     this.uid = uidMatch[1]
 
@@ -444,7 +447,7 @@ export class LanzouClient {
         await this.initVeiAndUid()
         return this.doupload(params)
       }
-      throw new Error("[Lanzou] Cookie 已过期，请更新 Cookie")
+      throw new Error(COOKIE_EXPIRED_MSG)
     }
 
     if (data.zt !== 1 && data.zt !== 2 && data.zt !== 4) {
@@ -454,6 +457,36 @@ export class LanzouClient {
     }
 
     return data
+  }
+
+  /**
+   * 主动校验当前 Cookie 是否有效。
+   * 蓝奏云 Cookie 有效期约 15 天，过期后 doupload 返回 zt=9。
+   * 此处通过请求根目录文件列表来探测；url 模式（公开分享）不依赖 Cookie，恒为有效。
+   * @returns { valid: true } 或 { valid: false, error: 过期提示 }
+   */
+  async checkCookieValid(): Promise<{ valid: boolean; error?: string }> {
+    if (this.addition.type === "url") {
+      return { valid: true }
+    }
+    try {
+      if (this.addition.type === "account") {
+        // account 模式自动重登，无需手动更新 Cookie
+        return { valid: true }
+      }
+      // cookie 模式：请求一次根目录列表探测有效性
+      await this.getFiles("-1")
+      return { valid: true }
+    } catch (err: any) {
+      const msg = err?.message || String(err)
+      // 过期/uid 丢失/WAF 拒绝都视为 Cookie 失效，给出明确提示
+      return {
+        valid: false,
+        error: /Cookie 已过期|未能获取到 uid|请检查 Cookie|zt=9/i.test(msg)
+          ? COOKIE_EXPIRED_MSG
+          : msg,
+      }
+    }
   }
 
   /**

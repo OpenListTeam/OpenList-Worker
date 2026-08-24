@@ -70,6 +70,14 @@ export class LanzouDriver implements StorageDriver {
     await this.client.init()
   }
 
+  /**
+   * 校验当前 Cookie 是否有效（供管理后台 /task/refresh 状态刷新调用）。
+   * 有效返回 true；失效返回 false 并附过期提示。
+   */
+  async checkCookieValid(): Promise<{ valid: boolean; error?: string }> {
+    return this.client.checkCookieValid()
+  }
+
   private isUrlMode(): boolean {
     return this.addition.type === "url"
   }
