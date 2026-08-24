@@ -2001,6 +2001,69 @@ const driverConfigs: Record<string, any> = {
       check_status: true,
     },
   },
+  SFTP: {
+    name: "SFTP",
+    default_mount_path: "/sftp",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "address",
+        type: "string",
+        default: "",
+        required: true,
+        help: "SSH host:port (e.g. 127.0.0.1:22)",
+      },
+      {
+        name: "username",
+        type: "string",
+        default: "",
+        required: true,
+      },
+      {
+        name: "password",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "private_key",
+        type: "text",
+        default: "",
+        required: false,
+      },
+      {
+        name: "passphrase",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "root_folder_path",
+        type: "string",
+        default: "/",
+        required: false,
+      },
+      {
+        name: "ignore_symlink_error",
+        type: "bool",
+        default: "false",
+        required: false,
+        help: "Ignore symlink error",
+      },
+    ],
+    config: {
+      name: "SFTP",
+      local_sort: true,
+      only_local: false,
+      only_proxy: true,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "/",
+      check_status: true,
+      no_link_url: true,
+    },
+  },
 }
 
 adminRouter.get("/driver/list", (c) => {

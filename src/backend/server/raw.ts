@@ -231,6 +231,37 @@ rawRouter.get("/*", async (c) => {
               )
               return c.redirect(fileItem.raw_url, 302)
             }
+          } else if (
+            typeof (driver as any).createReadStream === "function" &&
+            fileItem &&
+            !fileItem.is_dir
+          ) {
+            c.header("Access-Control-Allow-Origin", "*")
+            const size = fileItem.size || 0
+            const rangeHeader = c.req.header("Range")
+            if (rangeHeader && size > 0) {
+              const { start, end, chunksize } = parseRangeHeader(
+                rangeHeader,
+                size,
+              )
+              const stream = await (driver as any).createReadStream(
+                resolved.physical,
+                { start, end },
+              )
+              c.header("Content-Range", `bytes ${start}-${end}/${size}`)
+              c.header("Accept-Ranges", "bytes")
+              c.header("Content-Length", chunksize.toString())
+              c.header("Content-Type", "application/octet-stream")
+              return c.body(stream as any, 206)
+            } else {
+              if (size > 0) c.header("Content-Length", size.toString())
+              c.header("Accept-Ranges", "bytes")
+              c.header("Content-Type", "application/octet-stream")
+              const stream = await (driver as any).createReadStream(
+                resolved.physical,
+              )
+              return c.body(stream as any)
+            }
           } else {
             const detail =
               fileItem?.raw_url_error ||

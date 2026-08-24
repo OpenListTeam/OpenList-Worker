@@ -90,6 +90,7 @@
     "@solidjs/router": "^0.9.1",
     "@stitches/core": "^1.2.8",
     "@types/ini": "^4.1.1",
+    "@types/ssh2": "^1.15.5",
     "@viselect/vanilla": "^3.9.0",
     "aplayer": "^1.10.1",
     "artplayer": "^5.4.0",
@@ -129,6 +130,7 @@
     "solid-js": "^1.9.14",
     "solid-motionone": "^1.0.4",
     "solid-transition-group": "^0.3.0",
+    "ssh2": "^1.17.0",
     "streamsaver": "^2.0.6",
     "tsx": "^4.23.0",
     "typescript-natural-sort": "^0.7.2"

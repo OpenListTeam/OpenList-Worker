@@ -1,10 +1,10 @@
-var iu = Object.create
-var Ws = Object.defineProperty
-var su = Object.getOwnPropertyDescriptor
-var nu = Object.getOwnPropertyNames
-var ou = Object.getPrototypeOf,
-  au = Object.prototype.hasOwnProperty
-var Gs = ((r) =>
+var mu = Object.create
+var Qs = Object.defineProperty
+var yu = Object.getOwnPropertyDescriptor
+var wu = Object.getOwnPropertyNames
+var xu = Object.getPrototypeOf,
+  _u = Object.prototype.hasOwnProperty
+var Xs = ((r) =>
   typeof require < "u"
     ? require
     : typeof Proxy < "u"
@@ -13,7 +13,7 @@ var Gs = ((r) =>
   if (typeof require < "u") return require.apply(this, arguments)
   throw Error('Dynamic require of "' + r + '" is not supported')
 })
-var W = (r, e, t) => () => {
+var H = (r, e, t) => () => {
   if (t) throw t[0]
   try {
     return (r && (e = r((r = 0))), e)
@@ -21,39 +21,39 @@ var W = (r, e, t) => () => {
     throw ((t = [i]), i)
   }
 }
-var N = (r, e) => () => {
+var M = (r, e) => () => {
     try {
       return (e || r((e = { exports: {} }).exports, e), e.exports)
     } catch (t) {
       throw ((e = 0), t)
     }
   },
-  Mr = (r, e) => {
-    for (var t in e) Ws(r, t, { get: e[t], enumerable: !0 })
+  or = (r, e) => {
+    for (var t in e) Qs(r, t, { get: e[t], enumerable: !0 })
   },
-  cu = (r, e, t, i) => {
+  vu = (r, e, t, i) => {
     if ((e && typeof e == "object") || typeof e == "function")
-      for (let s of nu(e))
-        !au.call(r, s) &&
+      for (let s of wu(e))
+        !_u.call(r, s) &&
           s !== t &&
-          Ws(r, s, {
+          Qs(r, s, {
             get: () => e[s],
-            enumerable: !(i = su(e, s)) || i.enumerable,
+            enumerable: !(i = yu(e, s)) || i.enumerable,
           })
     return r
   }
-var sr = (r, e, t) => (
-  (t = r != null ? iu(ou(r)) : {}),
-  cu(
+var ar = (r, e, t) => (
+  (t = r != null ? mu(xu(r)) : {}),
+  vu(
     e || !r || !r.__esModule
-      ? Ws(t, "default", { value: r, enumerable: !0 })
+      ? Qs(t, "default", { value: r, enumerable: !0 })
       : t,
     r,
   )
 )
-var nr,
-  Js = W(() => {
-    nr = class extends Error {
+var cr,
+  Zs = H(() => {
+    cr = class extends Error {
       res
       status
       constructor(r = 500, e) {
@@ -71,63 +71,63 @@ var nr,
       }
     }
   })
-var No,
-  Mo = W(() => {
-    No = Symbol()
+var Qo,
+  Xo = H(() => {
+    Qo = Symbol()
   })
-var Ho = W(() => {})
-var Ko,
-  Wo = W(() => {
-    Ho()
-    Ko = (r, e) =>
+var Yo = H(() => {})
+var Zo,
+  ea = H(() => {
+    Yo()
+    Zo = (r, e) =>
       new Response(r, {
         headers: {
           "Content-Type": e.replace(/^[^;]+/, (i) => i.toLowerCase()),
         },
       }).formData()
   })
-async function du(r, e) {
-  if (!Hr(r) && r.bodyCache.formData) return Go(await r.bodyCache.formData, e)
-  let t = Hr(r) ? r.headers : r.raw.headers,
+async function bu(r, e) {
+  if (!Gr(r) && r.bodyCache.formData) return ta(await r.bodyCache.formData, e)
+  let t = Gr(r) ? r.headers : r.raw.headers,
     i = await r.arrayBuffer(),
-    s = Ko(i, t.get("Content-Type") || "")
-  Hr(r) || (r.bodyCache.formData = s)
+    s = Zo(i, t.get("Content-Type") || "")
+  Gr(r) || (r.bodyCache.formData = s)
   let n = await s
-  return n ? Go(n, e) : {}
+  return n ? ta(n, e) : {}
 }
-function Go(r, e) {
+function ta(r, e) {
   let t = Object.create(null)
   return (
     r.forEach((i, s) => {
-      e.all || s.endsWith("[]") ? lu(t, s, i) : (t[s] = i)
+      e.all || s.endsWith("[]") ? ku(t, s, i) : (t[s] = i)
     }),
     e.dot &&
       Object.entries(t).forEach(([i, s]) => {
-        i.includes(".") && (uu(t, i, s), delete t[i])
+        i.includes(".") && (Su(t, i, s), delete t[i])
       }),
     t
   )
 }
-var Hr,
-  Vo,
-  lu,
-  uu,
-  Jo = W(() => {
-    Wo()
-    ;((Hr = (r) => "headers" in r),
-      (Vo = async (r, e = Object.create(null)) => {
+var Gr,
+  ra,
+  ku,
+  Su,
+  ia = H(() => {
+    ea()
+    ;((Gr = (r) => "headers" in r),
+      (ra = async (r, e = Object.create(null)) => {
         let { all: t = !1, dot: i = !1 } = e,
-          o = (Hr(r) ? r.headers : r.raw.headers)
+          o = (Gr(r) ? r.headers : r.raw.headers)
             .get("Content-Type")
             ?.split(";")[0]
             .trim()
             .toLowerCase()
         return o === "multipart/form-data" ||
           o === "application/x-www-form-urlencoded"
-          ? du(r, { all: t, dot: i })
+          ? bu(r, { all: t, dot: i })
           : {}
       }))
-    ;((lu = (r, e, t) => {
+    ;((ku = (r, e, t) => {
       r[e] !== void 0
         ? Array.isArray(r[e])
           ? r[e].push(t)
@@ -136,7 +136,7 @@ var Hr,
           ? (r[e] = [t])
           : (r[e] = t)
     }),
-      (uu = (r, e, t) => {
+      (Su = (r, e, t) => {
         if (/(?:^|\.)__proto__\./.test(e)) return
         let i = r,
           s = e.split(".")
@@ -152,35 +152,35 @@ var Hr,
         })
       }))
   })
-var Xs,
-  Qo,
-  pu,
-  fu,
-  Kr,
-  Xo,
-  Yo,
-  hu,
-  Ys,
-  Zo,
-  nt,
-  Wr,
-  qt,
-  Qs,
-  ea,
-  ta,
-  ra,
-  gu,
-  yt = W(() => {
-    ;((Xs = (r) => {
+var tn,
+  sa,
+  Pu,
+  Au,
+  Vr,
+  na,
+  oa,
+  Cu,
+  rn,
+  aa,
+  ot,
+  Jr,
+  $t,
+  en,
+  ca,
+  da,
+  la,
+  Eu,
+  wt = H(() => {
+    ;((tn = (r) => {
       let e = r.split("/")
       return (e[0] === "" && e.shift(), e)
     }),
-      (Qo = (r) => {
-        let { groups: e, path: t } = pu(r),
-          i = Xs(t)
-        return fu(i, e)
+      (sa = (r) => {
+        let { groups: e, path: t } = Pu(r),
+          i = tn(t)
+        return Au(i, e)
       }),
-      (pu = (r) => {
+      (Pu = (r) => {
         let e = []
         return (
           (r = r.replace(/\{[^}]+\}/g, (t, i) => {
@@ -190,7 +190,7 @@ var Xs,
           { groups: e, path: r }
         )
       }),
-      (fu = (r, e) => {
+      (Au = (r, e) => {
         for (let t = e.length - 1; t >= 0; t--) {
           let [i] = e[t]
           for (let s = r.length - 1; s >= 0; s--)
@@ -201,26 +201,26 @@ var Xs,
         }
         return r
       }),
-      (Kr = {}),
-      (Xo = (r, e) => {
+      (Vr = {}),
+      (na = (r, e) => {
         if (r === "*") return "*"
         let t = r.match(/^\:([^\{\}]+)(?:\{(.+)\})?$/)
         if (t) {
           let i = `${r}#${e}`
           return (
-            Kr[i] ||
+            Vr[i] ||
               (t[2]
-                ? (Kr[i] =
+                ? (Vr[i] =
                     e && e[0] !== ":" && e[0] !== "*"
                       ? [i, t[1], new RegExp(`^${t[2]}(?=/${e})`)]
                       : [r, t[1], new RegExp(`^${t[2]}$`)])
-                : (Kr[i] = [r, t[1], !0])),
-            Kr[i]
+                : (Vr[i] = [r, t[1], !0])),
+            Vr[i]
           )
         }
         return null
       }),
-      (Yo = (r, e) => {
+      (oa = (r, e) => {
         try {
           return e(r)
         } catch {
@@ -233,8 +233,8 @@ var Xs,
           })
         }
       }),
-      (hu = (r) => Yo(r, decodeURI)),
-      (Ys = (r) => {
+      (Cu = (r) => oa(r, decodeURI)),
+      (rn = (r) => {
         let e = r.url,
           t = e.indexOf("/", e.indexOf(":") + 4),
           i = t
@@ -252,20 +252,20 @@ var Xs,
                     ? n
                     : Math.min(n, o),
               c = e.slice(t, a)
-            return hu(c.includes("%25") ? c.replace(/%25/g, "%2525") : c)
+            return Cu(c.includes("%25") ? c.replace(/%25/g, "%2525") : c)
           } else if (s === 63 || s === 35) break
         }
         return e.slice(t, i)
       }),
-      (Zo = (r) => {
-        let e = Ys(r)
+      (aa = (r) => {
+        let e = rn(r)
         return e.length > 1 && e.at(-1) === "/" ? e.slice(0, -1) : e
       }),
-      (nt = (r, e, ...t) => (
-        t.length && (e = nt(e, ...t)),
+      (ot = (r, e, ...t) => (
+        t.length && (e = ot(e, ...t)),
         `${r?.[0] === "/" ? "" : "/"}${r}${e === "/" ? "" : `${r?.at(-1) === "/" ? "" : "/"}${e?.[0] === "/" ? e.slice(1) : e}`}`
       )),
-      (Wr = (r) => {
+      (Jr = (r) => {
         if (r.charCodeAt(r.length - 1) !== 63 || !r.includes(":")) return null
         let e = r.split("/"),
           t = [],
@@ -283,12 +283,12 @@ var Xs,
           t.filter((s, n, o) => o.indexOf(s) === n)
         )
       }),
-      (qt = (r) => (r.indexOf("%") !== -1 ? Yo(r, gu) : r)),
-      (Qs = (r) => (
+      ($t = (r) => (r.indexOf("%") !== -1 ? oa(r, Eu) : r)),
+      (en = (r) => (
         r.indexOf("+") !== -1 && (r = r.replace(/\+/g, " ")),
-        qt(r)
+        $t(r)
       )),
-      (ea = (r, e, t) => {
+      (ca = (r, e, t) => {
         let i
         if (!t && e && e.indexOf("%") === -1 && e.indexOf("+") === -1) {
           let o = r.indexOf("?", 8)
@@ -301,7 +301,7 @@ var Xs,
             if (a === 61) {
               let c = o + e.length + 2,
                 d = r.indexOf("&", c)
-              return Qs(r.slice(c, d === -1 ? void 0 : d))
+              return en(r.slice(c, d === -1 ? void 0 : d))
             } else if (a == 38 || isNaN(a)) return ""
             o = r.indexOf(`&${e}`, o + 1)
           }
@@ -315,28 +315,28 @@ var Xs,
             a = r.indexOf("=", n)
           a > o && o !== -1 && (a = -1)
           let c = r.slice(n + 1, a === -1 ? (o === -1 ? void 0 : o) : a)
-          if ((i && (c = Qs(c)), (n = o), c === "")) continue
+          if ((i && (c = en(c)), (n = o), c === "")) continue
           let d
           ;(a === -1
             ? (d = "")
-            : ((d = r.slice(a + 1, o === -1 ? void 0 : o)), i && (d = Qs(d))),
+            : ((d = r.slice(a + 1, o === -1 ? void 0 : o)), i && (d = en(d))),
             t
               ? ((s[c] && Array.isArray(s[c])) || (s[c] = []), s[c].push(d))
               : (s[c] ??= d))
         }
         return e ? s[e] : s
       }),
-      (ta = ea),
-      (ra = (r, e) => ea(r, e, !0)),
-      (gu = decodeURIComponent))
+      (da = ca),
+      (la = (r, e) => ca(r, e, !0)),
+      (Eu = decodeURIComponent))
   })
-var ia,
-  sa = W(() => {
-    Js()
-    Mo()
-    Jo()
-    yt()
-    ia = class {
+var ua,
+  pa = H(() => {
+    Zs()
+    Xo()
+    ia()
+    wt()
+    ua = class {
       raw
       #t
       #e
@@ -352,14 +352,14 @@ var ia,
       #r(r) {
         let e = this.#e[0][this.routeIndex][1][r],
           t = this.#i(e)
-        return t && qt(t)
+        return t && $t(t)
       }
       #n() {
         let r = {},
           e = Object.keys(this.#e[0][this.routeIndex][1])
         for (let t of e) {
           let i = this.#i(this.#e[0][this.routeIndex][1][t])
-          i !== void 0 && (r[t] = qt(i))
+          i !== void 0 && (r[t] = $t(i))
         }
         return r
       }
@@ -367,10 +367,10 @@ var ia,
         return this.#e[1] ? this.#e[1][r] : r
       }
       query(r) {
-        return ta(this.url, r)
+        return da(this.url, r)
       }
       queries(r) {
-        return ra(this.url, r)
+        return la(this.url, r)
       }
       header(r) {
         if (r) return this.raw.headers.get(r) ?? void 0
@@ -383,7 +383,7 @@ var ia,
         )
       }
       async parseBody(r) {
-        return Vo(this, r)
+        return ra(this, r)
       }
       #s = (r) => {
         let { bodyCache: e, raw: t } = this,
@@ -428,7 +428,7 @@ var ia,
       get method() {
         return this.raw.method
       }
-      get [No]() {
+      get [Qo]() {
         return this.#e
       }
       get matchedRoutes() {
@@ -439,16 +439,16 @@ var ia,
       }
     }
   })
-var na,
-  mu,
-  Zs,
-  oa = W(() => {
-    ;((na = { Stringify: 1, BeforeStream: 2, Stream: 3 }),
-      (mu = (r, e) => {
+var fa,
+  Du,
+  sn,
+  ha = H(() => {
+    ;((fa = { Stringify: 1, BeforeStream: 2, Stream: 3 }),
+      (Du = (r, e) => {
         let t = new String(r)
         return ((t.isEscaped = !0), (t.callbacks = e), t)
       }),
-      (Zs = async (r, e, t, i, s) => {
+      (sn = async (r, e, t, i, s) => {
         typeof r == "object" &&
           !(r instanceof String) &&
           (r instanceof Promise || (r = r.toString()),
@@ -459,24 +459,24 @@ var na,
         let o = Promise.all(
           n.map((a) => a({ phase: e, buffer: s, context: i })),
         ).then((a) =>
-          Promise.all(a.filter(Boolean).map((c) => Zs(c, e, !1, i, s))).then(
+          Promise.all(a.filter(Boolean).map((c) => sn(c, e, !1, i, s))).then(
             () => s[0],
           ),
         )
-        return t ? mu(await o, n) : o
+        return t ? Du(await o, n) : o
       }))
   })
-var yu,
-  en,
-  or,
-  tn,
-  Gr = W(() => {
-    sa()
-    oa()
-    ;((yu = "text/plain; charset=UTF-8"),
-      (en = (r, e) => ({ "Content-Type": r, ...e })),
-      (or = (r, e) => new Response(r, e)),
-      (tn = class {
+var Fu,
+  nn,
+  dr,
+  on,
+  Qr = H(() => {
+    pa()
+    ha()
+    ;((Fu = "text/plain; charset=UTF-8"),
+      (nn = (r, e) => ({ "Content-Type": r, ...e })),
+      (dr = (r, e) => new Response(r, e)),
+      (on = class {
         #t
         #e
         env = {}
@@ -502,7 +502,7 @@ var yu,
               (this.#u = e.matchResult)))
         }
         get req() {
-          return ((this.#e ??= new ia(this.#t, this.#p, this.#u)), this.#e)
+          return ((this.#e ??= new ua(this.#t, this.#p, this.#u)), this.#e)
         }
         get event() {
           if (this.#i && "respondWith" in this.#i) return this.#i
@@ -513,13 +513,13 @@ var yu,
           throw Error("This context has no ExecutionContext")
         }
         get res() {
-          return (this.#s ||= or(null, {
+          return (this.#s ||= dr(null, {
             headers: (this.#a ??= new Headers()),
           }))
         }
         set res(r) {
           if (this.#s && r) {
-            r = or(r.body, r)
+            r = dr(r.body, r)
             for (let [e, t] of this.#s.headers.entries())
               if (e !== "content-type")
                 if (e === "set-cookie") {
@@ -537,7 +537,7 @@ var yu,
           this.#c = r
         }
         header = (r, e, t) => {
-          this.finalized && (this.#s = or(this.#s.body, this.#s))
+          this.finalized && (this.#s = dr(this.#s.body, this.#s))
           let i = this.#s ? this.#s.headers : (this.#a ??= new Headers())
           e === void 0 ? i.delete(r) : t?.append ? i.append(r, e) : i.set(r, e)
         }
@@ -578,20 +578,20 @@ var yu,
               }
           }
           let s = typeof e == "number" ? e : (e?.status ?? this.#n)
-          return or(r, { status: s, headers: i ?? t })
+          return dr(r, { status: s, headers: i ?? t })
         }
         newResponse = (...r) => this.#o(...r)
         body = (r, e, t) => this.#o(r, e, t)
         text = (r, e, t) =>
           !this.#a && !this.#n && !e && !t && !this.finalized
             ? new Response(r)
-            : this.#o(r, e, en(yu, t))
+            : this.#o(r, e, nn(Fu, t))
         json = (r, e, t) =>
-          this.#o(JSON.stringify(r), e, en("application/json", t))
+          this.#o(JSON.stringify(r), e, nn("application/json", t))
         html = (r, e, t) => {
-          let i = (s) => this.#o(s, e, en("text/html; charset=UTF-8", t))
+          let i = (s) => this.#o(s, e, nn("text/html; charset=UTF-8", t))
           return typeof r == "object"
-            ? Zs(r, na.Stringify, !1, {}).then(i)
+            ? sn(r, fa.Stringify, !1, {}).then(i)
             : i(r)
         }
         redirect = (r, e) => {
@@ -601,45 +601,45 @@ var yu,
             this.newResponse(null, e ?? 302)
           )
         }
-        notFound = () => ((this.#d ??= () => or()), this.#d(this))
+        notFound = () => ((this.#d ??= () => dr()), this.#d(this))
       }))
   })
-var ja = N((hm, $a) => {
+var Ga = M((Dm, Wa) => {
   "use strict"
-  var hn = Object.defineProperty,
-    bu = Object.getOwnPropertyDescriptor,
-    ku = Object.getOwnPropertyNames,
-    Su = Object.prototype.hasOwnProperty,
-    Pu = (r, e) => {
-      for (var t in e) hn(r, t, { get: e[t], enumerable: !0 })
+  var wn = Object.defineProperty,
+    Uu = Object.getOwnPropertyDescriptor,
+    qu = Object.getOwnPropertyNames,
+    Ou = Object.prototype.hasOwnProperty,
+    $u = (r, e) => {
+      for (var t in e) wn(r, t, { get: e[t], enumerable: !0 })
     },
-    Au = (r, e, t, i) => {
+    ju = (r, e, t, i) => {
       if ((e && typeof e == "object") || typeof e == "function")
-        for (let s of ku(e))
-          !Su.call(r, s) &&
+        for (let s of qu(e))
+          !Ou.call(r, s) &&
             s !== t &&
-            hn(r, s, {
+            wn(r, s, {
               get: () => e[s],
-              enumerable: !(i = bu(e, s)) || i.enumerable,
+              enumerable: !(i = Uu(e, s)) || i.enumerable,
             })
       return r
     },
-    Cu = (r) => Au(hn({}, "__esModule", { value: !0 }), r),
-    Ea = {}
-  Pu(Ea, {
-    InvalidKeyError: () => ei,
-    InvalidStoreNameError: () => fr,
-    MissingProjectIdError: () => Da,
-    PagesBlobError: () => Ne,
-    PreconditionFailedError: () => un,
-    QuotaExceededError: () => Eu,
-    RateLimitedError: () => Du,
-    Store: () => Fa,
-    getStore: () => Vu,
-    listStores: () => Ju,
+    zu = (r) => ju(wn({}, "__esModule", { value: !0 }), r),
+    qa = {}
+  $u(qa, {
+    InvalidKeyError: () => ii,
+    InvalidStoreNameError: () => mr,
+    MissingProjectIdError: () => Oa,
+    PagesBlobError: () => Me,
+    PreconditionFailedError: () => gn,
+    QuotaExceededError: () => Lu,
+    RateLimitedError: () => Nu,
+    Store: () => $a,
+    getStore: () => ap,
+    listStores: () => cp,
   })
-  $a.exports = Cu(Ea)
-  var Ne = class extends Error {
+  Wa.exports = zu(qa)
+  var Me = class extends Error {
       code
       constructor(r, e) {
         ;(super(`PagesBlob: ${e}`),
@@ -647,17 +647,17 @@ var ja = N((hm, $a) => {
           (this.code = r))
       }
     },
-    ei = class extends Ne {
+    ii = class extends Me {
       constructor(r) {
         super("INVALID_KEY", r)
       }
     },
-    fr = class extends Ne {
+    mr = class extends Me {
       constructor(r) {
         super("INVALID_STORE_NAME", r)
       }
     },
-    cn = class extends Ne {
+    pn = class extends Me {
       constructor(r) {
         super(
           "MISSING_ENVIRONMENT",
@@ -665,17 +665,17 @@ var ja = N((hm, $a) => {
         )
       }
     },
-    Eu = class extends Ne {
+    Lu = class extends Me {
       constructor() {
         super("QUOTA_EXCEEDED", "storage quota exceeded")
       }
     },
-    Du = class extends Ne {
+    Nu = class extends Me {
       constructor() {
         super("RATE_LIMITED", "request rate limited, please retry later")
       }
     },
-    Da = class extends Ne {
+    Oa = class extends Me {
       constructor() {
         super(
           "MISSING_PROJECT_ID",
@@ -683,17 +683,17 @@ var ja = N((hm, $a) => {
         )
       }
     },
-    at = class extends Ne {
+    ct = class extends Me {
       constructor(r) {
         super("CREDENTIAL_ERROR", r)
       }
     },
-    ge = class extends Ne {
+    me = class extends Me {
       constructor(r, e) {
         super("COS_ERROR", `COS returned ${r}: ${e}`)
       }
     },
-    un = class extends Ne {
+    gn = class extends Me {
       constructor() {
         super(
           "PRECONDITION_FAILED",
@@ -701,31 +701,31 @@ var ja = N((hm, $a) => {
         )
       }
     }
-  function wt(r) {
-    if (r === "") throw new ei("Blob key must not be empty.")
+  function _t(r) {
+    if (r === "") throw new ii("Blob key must not be empty.")
     if (r.startsWith("/") || r.startsWith("%2F"))
-      throw new ei("Blob key must not start with forward slash (/).")
+      throw new ii("Blob key must not start with forward slash (/).")
     if (new TextEncoder().encode(r).length > 600)
-      throw new ei(
+      throw new ii(
         "Blob key must be a sequence of Unicode characters whose UTF-8 encoding is at most 600 bytes long.",
       )
   }
-  function Fu(r) {
-    if (r === "") throw new fr("Store name must not be empty.")
+  function Mu(r) {
+    if (r === "") throw new mr("Store name must not be empty.")
     if (r.includes("/") || r.includes(":"))
-      throw new fr(
+      throw new mr(
         "Store name must not contain forward slashes (/) or colons (:).",
       )
     if (!/^[a-zA-Z0-9_-]+$/.test(r))
-      throw new fr(
+      throw new mr(
         "Store name must only contain letters, digits, underscores, and hyphens.",
       )
     if (new TextEncoder().encode(r).length > 64)
-      throw new fr(
+      throw new mr(
         "Store name must be a sequence of Unicode characters whose UTF-8 encoding is at most 64 bytes long.",
       )
   }
-  var Fa = class {
+  var $a = class {
       cosClient
       storeName
       defaultConsistency
@@ -738,25 +738,25 @@ var ja = N((hm, $a) => {
         return r ?? this.defaultConsistency
       }
       async set(r, e, t) {
-        wt(r)
+        _t(r)
         let i = await this.cosClient.putObject(this.storeName, r, e, {
           onlyIfNew: t?.onlyIfNew,
           cacheControl: t?.cacheControl,
         })
-        if (t?.onlyIfNew && i.statusCode === 412) throw new un()
+        if (t?.onlyIfNew && i.statusCode === 412) throw new gn()
       }
       async setJSON(r, e, t) {
-        wt(r)
+        _t(r)
         let i = JSON.stringify(e),
           s = await this.cosClient.putObject(this.storeName, r, i, {
             onlyIfNew: t?.onlyIfNew,
             contentType: "application/json",
             cacheControl: t?.cacheControl,
           })
-        if (t?.onlyIfNew && s.statusCode === 412) throw new un()
+        if (t?.onlyIfNew && s.statusCode === 412) throw new gn()
       }
       async createUploadUrl(r, e) {
-        wt(r)
+        _t(r)
         let { url: t, expiresAt: i } =
           await this.cosClient.createPresignedPutUrl(this.storeName, r, {
             expireSeconds: e?.expireSeconds,
@@ -765,7 +765,7 @@ var ja = N((hm, $a) => {
         return { url: t, key: r, expiresAt: i }
       }
       async get(r, e) {
-        wt(r)
+        _t(r)
         let t = this.resolveConsistency(e?.consistency),
           i = await this.cosClient.getObject(this.storeName, r, t)
         if (i === null) return null
@@ -792,12 +792,12 @@ var ja = N((hm, $a) => {
         }
       }
       async getMetadata(r, e) {
-        wt(r)
+        _t(r)
         let t = this.resolveConsistency(e?.consistency)
         return this.cosClient.headObject(this.storeName, r, t)
       }
       async getWithHeaders(r, e) {
-        wt(r)
+        _t(r)
         let t = this.resolveConsistency(e?.consistency),
           i = await this.cosClient.getObject(this.storeName, r, t)
         return i
@@ -808,7 +808,7 @@ var ja = N((hm, $a) => {
           : null
       }
       async delete(r) {
-        ;(wt(r), await this.cosClient.deleteObject(this.storeName, r))
+        ;(_t(r), await this.cosClient.deleteObject(this.storeName, r))
       }
       async list(r) {
         let e = r?.paginate !== !1,
@@ -846,60 +846,60 @@ var ja = N((hm, $a) => {
         return { blobs: i, directories: s, ...(c ? { cursor: c } : {}) }
       }
     },
-    Tu = new TextEncoder()
-  function pn(r) {
-    let e = Tu.encode(r),
+    Hu = new TextEncoder()
+  function mn(r) {
+    let e = Hu.encode(r),
       t = new ArrayBuffer(e.byteLength),
       i = new Uint8Array(t)
     return (i.set(e), i)
   }
-  function Ta(r) {
+  function ja(r) {
     let e = r instanceof Uint8Array ? r : new Uint8Array(r),
       t = ""
     for (let i = 0; i < e.length; i++) t += e[i].toString(16).padStart(2, "0")
     return t
   }
-  async function _a(r, e) {
+  async function Ea(r, e) {
     let t = await crypto.subtle.importKey(
         "raw",
-        pn(r),
+        mn(r),
         { name: "HMAC", hash: "SHA-1" },
         !1,
         ["sign"],
       ),
-      i = await crypto.subtle.sign("HMAC", t, pn(e))
-    return Ta(i)
+      i = await crypto.subtle.sign("HMAC", t, mn(e))
+    return ja(i)
   }
-  async function Iu(r) {
-    let e = await crypto.subtle.digest("SHA-1", pn(r))
-    return Ta(e)
+  async function Ku(r) {
+    let e = await crypto.subtle.digest("SHA-1", mn(r))
+    return ja(e)
   }
-  function ti(r) {
+  function si(r) {
     return encodeURIComponent(r).replace(
       /[!'()*]/g,
       (e) => "%" + e.charCodeAt(0).toString(16).toUpperCase(),
     )
   }
-  function ri(r) {
+  function ni(r) {
     try {
       return decodeURIComponent(r)
     } catch {
       return r
     }
   }
-  function Ia(r) {
+  function za(r) {
     return r
       .split("/")
-      .map((e) => ri(e))
+      .map((e) => ni(e))
       .join("/")
   }
-  function Ba(r) {
+  function La(r) {
     return r
       .split("/")
-      .map((e) => ti(ri(e)))
+      .map((e) => si(ni(e)))
       .join("/")
   }
-  var Bu = new Set([
+  var Wu = new Set([
     "cache-control",
     "content-disposition",
     "content-encoding",
@@ -916,36 +916,36 @@ var ja = N((hm, $a) => {
     "range",
     "transfer-encoding",
   ])
-  function Ru(r) {
+  function Gu(r) {
     return r === "host" || r === "x-cos-security-token"
       ? !1
-      : !!(Bu.has(r) || r.startsWith("x-cos-"))
+      : !!(Wu.has(r) || r.startsWith("x-cos-"))
   }
-  function va(r) {
+  function Da(r) {
     if (!r) return []
     let e = []
     for (let [t, i] of Object.entries(r))
       i != null && e.push([t.toLowerCase(), String(i)])
     return (e.sort(([t], [i]) => (t < i ? -1 : t > i ? 1 : 0)), e)
   }
-  function ba(r) {
-    return r.map(([e, t]) => `${ti(e)}=${ti(t)}`).join("&")
+  function Fa(r) {
+    return r.map(([e, t]) => `${si(e)}=${si(t)}`).join("&")
   }
-  function ka(r) {
-    return r.map(([e]) => ti(e)).join(";")
+  function Ta(r) {
+    return r.map(([e]) => si(e)).join(";")
   }
-  async function Ra(r) {
+  async function Na(r) {
     let e = r.method.toLowerCase(),
       t = r.pathname.startsWith("/") ? r.pathname : `/${r.pathname}`,
       i = Math.floor(Date.now() / 1e3),
       s = i + (r.expireSeconds ?? 3600),
       n = `${i};${s}`,
-      o = va(r.headers).filter(([m]) => Ru(m)),
-      a = ka(o),
-      c = ba(o),
-      d = va(r.query),
-      l = ka(d),
-      u = ba(d),
+      o = Da(r.headers).filter(([m]) => Gu(m)),
+      a = Ta(o),
+      c = Fa(o),
+      d = Da(r.query),
+      l = Ta(d),
+      u = Fa(d),
       p = `${e}
 ${t}
 ${u}
@@ -953,11 +953,11 @@ ${c}
 `,
       f = `sha1
 ${n}
-${await Iu(p)}
+${await Ku(p)}
 `,
-      h = await _a(r.secretKey, n),
-      y = await _a(h, f),
-      x = [
+      h = await Ea(r.secretKey, n),
+      y = await Ea(h, f),
+      w = [
         "q-sign-algorithm=sha1",
         `q-ak=${r.secretId}`,
         `q-sign-time=${n}`,
@@ -968,15 +968,15 @@ ${await Iu(p)}
       ].join("&"),
       g = {}
     for (let [m, v] of o) g[m] = v
-    return { authorization: x, signedHeaders: g }
+    return { authorization: w, signedHeaders: g }
   }
-  async function Uu(r) {
+  async function Vu(r) {
     let e = new URL(r.domain),
-      t = ri(r.key),
-      i = `/${Ia(t)}`,
-      s = `/${Ba(t)}`
+      t = ni(r.key),
+      i = `/${za(t)}`,
+      s = `/${La(t)}`
     e.pathname = s
-    let { authorization: n } = await Ra({
+    let { authorization: n } = await Na({
       method: r.method,
       pathname: i,
       query: r.query,
@@ -1001,15 +1001,15 @@ ${await Iu(p)}
       e.toString()
     )
   }
-  async function cr(r) {
+  async function ur(r) {
     let e = new URL(r.domain),
-      t = r.key ? ri(r.key) : "",
-      i = t ? `/${Ia(t)}` : "/",
-      s = t ? `/${Ba(t)}` : "/"
+      t = r.key ? ni(r.key) : "",
+      i = t ? `/${za(t)}` : "/",
+      s = t ? `/${La(t)}` : "/"
     if (((e.pathname = s), r.query))
       for (let [u, p] of Object.entries(r.query))
         p != null && e.searchParams.set(u, String(p))
-    let { authorization: n } = await Ra({
+    let { authorization: n } = await Na({
         method: r.method,
         pathname: i,
         query: r.query,
@@ -1043,9 +1043,9 @@ ${await Iu(p)}
       }
     throw l
   }
-  var qu = "blob.edgeone.site",
-    Ou = "blob-nocache.edgeone.site",
-    Ua = class qe {
+  var Ju = "blob.edgeone.site",
+    Qu = "blob-nocache.edgeone.site",
+    Ma = class qe {
       credentialManager
       bucket = ""
       region = ""
@@ -1056,7 +1056,7 @@ ${await Iu(p)}
       static buildErrorDetail(e, t, i, s, n) {
         let o = i ? `${t}/${i}` : t,
           a = n ? ` [request-id: ${n}]` : ""
-        return `${e} ${o} - ${$u(s)}${a}`
+        return `${e} ${o} - ${Xu(s)}${a}`
       }
       constructor(e) {
         this.credentialManager = e
@@ -1094,12 +1094,12 @@ ${await Iu(p)}
           ((this.bucket = n.bucket), (this.region = n.region))
         let o = this.computeSubdomain(e)
         if (!o)
-          throw new ge(
+          throw new me(
             0,
             "unable to derive tenant subdomain from credential; missing appId/zoneId/projectId or resourcePrefix",
           )
-        ;((this.cachedDomain = `https://${o}.${qu}`),
-          (this.uncachedDomain = `https://${o}.${Ou}`),
+        ;((this.cachedDomain = `https://${o}.${Ju}`),
+          (this.uncachedDomain = `https://${o}.${Qu}`),
           (this.initialized = !0))
       }
       async resolveDomain(e) {
@@ -1138,7 +1138,7 @@ ${await Iu(p)}
           c && (d["Cache-Control"] = c),
           s?.contentType && (d["Content-Type"] = s.contentType))
         try {
-          let l = await cr({
+          let l = await ur({
             domain: n,
             method: "PUT",
             key: a,
@@ -1152,15 +1152,15 @@ ${await Iu(p)}
               { etag: "", statusCode: 412 }
             )
           if (!l.ok) {
-            let p = await dr(l)
-            throw new ge(
+            let p = await pr(l)
+            throw new me(
               l.status,
               qe.buildErrorDetail(
                 "PUT",
                 n,
                 a,
                 p || `status ${l.status}`,
-                lr(l),
+                fr(l),
               ),
             )
           }
@@ -1170,9 +1170,9 @@ ${await Iu(p)}
             { etag: u, statusCode: l.status }
           )
         } catch (l) {
-          throw l instanceof ge
+          throw l instanceof me
             ? l
-            : new ge(0, qe.buildErrorDetail("PUT", n, a, ur(l)))
+            : new me(0, qe.buildErrorDetail("PUT", n, a, hr(l)))
         }
       }
       async createPresignedPutUrl(e, t, i) {
@@ -1182,7 +1182,7 @@ ${await Iu(p)}
           a = {}
         i?.contentType && (a["Content-Type"] = i.contentType)
         let c = i?.expireSeconds ?? 3600,
-          d = await Uu({
+          d = await Vu({
             domain: s,
             method: "PUT",
             key: o,
@@ -1198,29 +1198,29 @@ ${await Iu(p)}
           n = await this.resolveCredential(),
           o = this.buildCosKey(e, t)
         try {
-          let a = await cr({ domain: s, method: "GET", key: o, credential: n })
+          let a = await ur({ domain: s, method: "GET", key: o, credential: n })
           if (a.status === 404)
             return (await a.arrayBuffer().catch(() => {}), null)
           if (!a.ok) {
-            let l = await dr(a)
-            throw new ge(
+            let l = await pr(a)
+            throw new me(
               a.status,
               qe.buildErrorDetail(
                 "GET",
                 s,
                 o,
                 l || `status ${a.status}`,
-                lr(a),
+                fr(a),
               ),
             )
           }
           let c = new Uint8Array(await a.arrayBuffer()),
-            d = Sa(a.headers)
+            d = Ia(a.headers)
           return { body: c, contentType: d["content-type"], headers: d }
         } catch (a) {
-          throw a instanceof ge
+          throw a instanceof me
             ? a
-            : new ge(0, qe.buildErrorDetail("GET", s, o, ur(a)))
+            : new me(0, qe.buildErrorDetail("GET", s, o, hr(a)))
         }
       }
       async headObject(e, t, i) {
@@ -1228,22 +1228,22 @@ ${await Iu(p)}
           n = await this.resolveCredential(),
           o = this.buildCosKey(e, t)
         try {
-          let a = await cr({ domain: s, method: "HEAD", key: o, credential: n })
+          let a = await ur({ domain: s, method: "HEAD", key: o, credential: n })
           if (a.status === 404) return null
           if (!a.ok) {
-            let d = await dr(a)
-            throw new ge(
+            let d = await pr(a)
+            throw new me(
               a.status,
               qe.buildErrorDetail(
                 "HEAD",
                 s,
                 o,
                 d || `status ${a.status}`,
-                lr(a),
+                fr(a),
               ),
             )
           }
-          let c = Sa(a.headers)
+          let c = Ia(a.headers)
           return {
             cacheControl: c["cache-control"],
             contentType: c["content-type"],
@@ -1251,9 +1251,9 @@ ${await Iu(p)}
             headers: c,
           }
         } catch (a) {
-          throw a instanceof ge
+          throw a instanceof me
             ? a
-            : new ge(0, qe.buildErrorDetail("HEAD", s, o, ur(a)))
+            : new me(0, qe.buildErrorDetail("HEAD", s, o, hr(a)))
         }
       }
       async deleteObject(e, t) {
@@ -1261,7 +1261,7 @@ ${await Iu(p)}
           s = await this.resolveCredential(),
           n = this.buildCosKey(e, t)
         try {
-          let o = await cr({
+          let o = await ur({
             domain: i,
             method: "DELETE",
             key: n,
@@ -1271,21 +1271,21 @@ ${await Iu(p)}
             await o.arrayBuffer().catch(() => {})
             return
           }
-          let a = await dr(o)
-          throw new ge(
+          let a = await pr(o)
+          throw new me(
             o.status,
             qe.buildErrorDetail(
               "DELETE",
               i,
               n,
               a || `status ${o.status}`,
-              lr(o),
+              fr(o),
             ),
           )
         } catch (o) {
-          throw o instanceof ge
+          throw o instanceof me
             ? o
-            : new ge(0, qe.buildErrorDetail("DELETE", i, n, ur(o)))
+            : new me(0, qe.buildErrorDetail("DELETE", i, n, hr(o)))
         }
       }
       async listObjects(e, t) {
@@ -1346,35 +1346,35 @@ ${await Iu(p)}
           e.marker && (s.marker = e.marker),
           e.maxKeys && (s["max-keys"] = e.maxKeys))
         try {
-          let n = await cr({
+          let n = await ur({
             domain: t,
             method: "GET",
             query: s,
             credential: i,
           })
           if (!n.ok) {
-            let a = await dr(n)
-            throw new ge(
+            let a = await pr(n)
+            throw new me(
               n.status,
               qe.buildErrorDetail(
                 "LIST",
                 t,
                 e.prefix,
                 a || `status ${n.status}`,
-                lr(n),
+                fr(n),
               ),
             )
           }
           let o = await n.text()
-          return ju(o)
+          return Yu(o)
         } catch (n) {
-          throw n instanceof ge
+          throw n instanceof me
             ? n
-            : new ge(0, qe.buildErrorDetail("LIST", t, e.prefix, ur(n)))
+            : new me(0, qe.buildErrorDetail("LIST", t, e.prefix, hr(n)))
         }
       }
     }
-  function $u(r) {
+  function Xu(r) {
     return r
       .replace(
         /[a-zA-Z0-9\-]+\.cos\.[a-zA-Z0-9\-.]+\.myqcloud\.com/gi,
@@ -1385,21 +1385,21 @@ ${await Iu(p)}
         "[cos-origin]",
       )
   }
-  async function dr(r) {
+  async function pr(r) {
     try {
       return await r.text()
     } catch {
       return ""
     }
   }
-  function lr(r) {
+  function fr(r) {
     return (
       r.headers.get("x-cos-request-id") ||
       r.headers.get("x-eo-log-id") ||
       void 0
     )
   }
-  function ur(r) {
+  function hr(r) {
     let e = r,
       t = e.message || String(r),
       i = e.cause
@@ -1409,7 +1409,7 @@ ${await Iu(p)}
     }
     return t
   }
-  function Sa(r) {
+  function Ia(r) {
     let e = {}
     return (
       r.forEach((t, i) => {
@@ -1418,32 +1418,32 @@ ${await Iu(p)}
       e
     )
   }
-  function ju(r) {
+  function Yu(r) {
     let e = [],
       t = /<Contents>([\s\S]*?)<\/Contents>/g,
       i
     for (; (i = t.exec(r)) !== null; ) {
       let c = i[1],
-        d = pr(c, "Key"),
-        l = pr(c, "ETag")
-      d !== null && e.push({ key: dn(d), etag: l || "" })
+        d = gr(c, "Key"),
+        l = gr(c, "ETag")
+      d !== null && e.push({ key: fn(d), etag: l || "" })
     }
     let s = [],
       n = /<CommonPrefixes>([\s\S]*?)<\/CommonPrefixes>/g
     for (; (i = n.exec(r)) !== null; ) {
       let c = i[1],
-        d = pr(c, "Prefix")
-      d !== null && s.push(dn(d))
+        d = gr(c, "Prefix")
+      d !== null && s.push(fn(d))
     }
-    let o = pr(r, "IsTruncated") === "true",
-      a = pr(r, "NextMarker") || ""
-    return { contents: e, commonPrefixes: s, isTruncated: o, nextMarker: dn(a) }
+    let o = gr(r, "IsTruncated") === "true",
+      a = gr(r, "NextMarker") || ""
+    return { contents: e, commonPrefixes: s, isTruncated: o, nextMarker: fn(a) }
   }
-  function pr(r, e) {
+  function gr(r, e) {
     let t = new RegExp(`<${e}>([\\s\\S]*?)<\\/${e}>`).exec(r)
     return t ? t[1] : null
   }
-  function dn(r) {
+  function fn(r) {
     return r
       .replace(/&lt;/g, "<")
       .replace(/&gt;/g, ">")
@@ -1451,27 +1451,27 @@ ${await Iu(p)}
       .replace(/&apos;/g, "'")
       .replace(/&amp;/g, "&")
   }
-  var zu = "X-RateLimit-Reset"
-  async function fn(r, e, t = 2) {
+  var Zu = "X-RateLimit-Reset"
+  async function yn(r, e, t = 2) {
     e.signal?.throwIfAborted?.()
     try {
       let i = await fetch(r, e)
       if (t > 0 && (i.status === 429 || i.status >= 500)) {
-        let s = Pa(i.headers.get(zu))
-        return (await Aa(s, e.signal), fn(r, e, t - 1))
+        let s = Ba(i.headers.get(Zu))
+        return (await Ra(s, e.signal), yn(r, e, t - 1))
       }
       return i
     } catch (i) {
       if (t === 0 || (i instanceof DOMException && i.name === "AbortError"))
         throw i
-      let s = Pa()
-      return (await Aa(s, e.signal), fn(r, e, t - 1))
+      let s = Ba()
+      return (await Ra(s, e.signal), yn(r, e, t - 1))
     }
   }
-  function Pa(r) {
+  function Ba(r) {
     return r ? Math.max(Number(r) * 1e3 - Date.now(), 500) : 1500
   }
-  function Aa(r, e) {
+  function Ra(r, e) {
     return new Promise((t, i) => {
       if (e?.aborted) return i(e.reason)
       let s = setTimeout(() => {
@@ -1483,14 +1483,14 @@ ${await Iu(p)}
       e?.addEventListener("abort", n, { once: !0 })
     })
   }
-  var Lu = "prod"
-  function Nu() {
+  var ep = "prod"
+  function tp() {
     let r = typeof process < "u" ? process.env.PAGES_BLOB_STS_ENV : void 0
-    return r === "test" || r === "prod" ? r : Lu
+    return r === "test" || r === "prod" ? r : ep
   }
-  var Mu = 300,
-    Hu = "https://blob-sts.edgeone.site/",
-    qa = class {
+  var rp = 300,
+    ip = "https://blob-sts.edgeone.site/",
+    Ha = class {
       authToken
       projectId
       cached = null
@@ -1507,7 +1507,7 @@ ${await Iu(p)}
       }
       isExpired(r) {
         let e = Math.floor(Date.now() / 1e3)
-        return r.expiredTime - e < Mu
+        return r.expiredTime - e < rp
       }
       async fetchCredential() {
         for (let r = 1; r <= 3; r++) {
@@ -1515,12 +1515,12 @@ ${await Iu(p)}
             t = setTimeout(() => e.abort(), 1e4),
             i
           try {
-            i = await fn(Hu, {
+            i = await yn(ip, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${this.authToken}`,
-                "X-Env": Nu(),
+                "X-Env": tp(),
               },
               body: JSON.stringify(
                 this.projectId ? { ProjectId: this.projectId } : {},
@@ -1529,24 +1529,24 @@ ${await Iu(p)}
             })
           } catch (o) {
             if (r < 3) {
-              await ln(500 * r)
+              await hn(500 * r)
               continue
             }
-            throw new at(
+            throw new ct(
               `failed to obtain STS credential: ${o.message || "timeout"}`,
             )
           } finally {
             clearTimeout(t)
           }
-          if (i.status === 413) throw new at("storage quota exceeded")
-          if (i.status === 429) throw new at("rate limited, please retry later")
+          if (i.status === 413) throw new ct("storage quota exceeded")
+          if (i.status === 429) throw new ct("rate limited, please retry later")
           if (!i.ok) {
             if (i.status >= 500 && r < 3) {
-              await ln(500 * r)
+              await hn(500 * r)
               continue
             }
             let o = await i.text().catch(() => "unknown error")
-            throw new at(`failed to obtain STS credential: ${i.status} ${o}`)
+            throw new ct(`failed to obtain STS credential: ${i.status} ${o}`)
           }
           let s = await i.json(),
             n = s.data && typeof s.data == "object" ? s.data : s
@@ -1575,53 +1575,53 @@ ${await Iu(p)}
           }
           if (n.code !== void 0 && n.code !== 0) {
             let o = n.msg || n.message || "unknown error"
-            throw new at(`credential exchange failed (code=${n.code}): ${o}`)
+            throw new ct(`credential exchange failed (code=${n.code}): ${o}`)
           }
           if (s.code !== void 0 && s.code !== 0) {
             let o = s.msg || s.message || "unknown error"
-            throw new at(`credential exchange failed (code=${s.code}): ${o}`)
+            throw new ct(`credential exchange failed (code=${s.code}): ${o}`)
           }
           if (r < 3) {
-            await ln(500 * r)
+            await hn(500 * r)
             continue
           }
-          throw new at("invalid STS credential response")
+          throw new ct("invalid STS credential response")
         }
-        throw new at("invalid STS credential response")
+        throw new ct("invalid STS credential response")
       }
     }
-  function ln(r) {
+  function hn(r) {
     return new Promise((e) => setTimeout(e, r))
   }
-  var Ku = "{{PAGES_BLOB_DEPLOY_CREDENTIAL}}"
-  function Wu() {
+  var sp = "{{PAGES_BLOB_DEPLOY_CREDENTIAL}}"
+  function np() {
     let r = {},
-      e = Gu()
+      e = op()
     if (e) r.deployCredential = e
     else {
-      let i = Ca("PAGES_BLOB_DEPLOY_CREDENTIAL")
+      let i = Ua("PAGES_BLOB_DEPLOY_CREDENTIAL")
       i && (r.deployCredential = i)
     }
-    let t = Ca("PAGES_PROJECT_ID")
+    let t = Ua("PAGES_PROJECT_ID")
     return (t && (r.projectId = t), r)
   }
-  function Gu() {
-    let r = Ku
+  function op() {
+    let r = sp
     if (!(r.startsWith("{{") && r.endsWith("}}"))) return r || void 0
   }
-  function Ca(r) {
+  function Ua(r) {
     if (typeof process < "u" && process.env) return process.env[r]
   }
-  function Vu(r) {
+  function ap(r) {
     let e = typeof r == "string" ? r : r.name
-    Fu(e)
-    let t = Oa(typeof r == "string" ? void 0 : r),
-      i = new qa(t.authToken, t.projectId),
-      s = new Ua(i)
-    return new Fa(s, e, t.consistency ?? "eventual")
+    Mu(e)
+    let t = Ka(typeof r == "string" ? void 0 : r),
+      i = new Ha(t.authToken, t.projectId),
+      s = new Ma(i)
+    return new $a(s, e, t.consistency ?? "eventual")
   }
-  async function Ju(r) {
-    let e = Oa(
+  async function cp(r) {
+    let e = Ka(
         r
           ? {
               name: "__list__",
@@ -1631,56 +1631,56 @@ ${await Iu(p)}
             }
           : void 0,
       ),
-      t = new qa(e.authToken, e.projectId)
+      t = new Ha(e.authToken, e.projectId)
     return {
-      stores: (await new Ua(t).listStores(e.consistency)).map((i) => ({
+      stores: (await new Ma(t).listStores(e.consistency)).map((i) => ({
         name: i,
       })),
     }
   }
-  function Oa(r) {
-    let e = Wu(),
+  function Ka(r) {
+    let e = np(),
       t = r?.token || e.deployCredential,
       i = r?.projectId || e.projectId
     if (r?.token || e.projectId) {
-      if (!i) throw new Da()
-      if (!t) throw new cn(["token"])
+      if (!i) throw new Oa()
+      if (!t) throw new pn(["token"])
       return { authToken: t, projectId: i, consistency: r?.consistency }
     }
-    if (r?.projectId && !t) throw new cn(["token"])
-    if (!e.deployCredential) throw new cn(["deployCredential"])
+    if (r?.projectId && !t) throw new pn(["token"])
+    if (!e.deployCredential) throw new pn(["deployCredential"])
     return { authToken: e.deployCredential, consistency: r?.consistency }
   }
 })
-var xn = {}
-Mr(xn, {
-  defaultDb: () => gr,
+var bn = {}
+or(bn, {
+  defaultDb: () => wr,
   getDb: () => U,
-  getKvBinding: () => ai,
-  getKvStatus: () => yn,
-  getMetas: () => rp,
-  getPlugins: () => ip,
-  getSettings: () => Zu,
-  getStorages: () => tp,
-  getUsers: () => ep,
+  getKvBinding: () => li,
+  getKvStatus: () => vn,
+  getMetas: () => gp,
+  getPlugins: () => mp,
+  getSettings: () => pp,
+  getStorages: () => hp,
+  getUsers: () => fp,
   resolvePath: () => ne,
   saveDb: () => $,
-  setEnvCtx: () => mn,
+  setEnvCtx: () => _n,
 })
-async function Qu() {
-  if (za) return ii
-  za = !0
+async function dp() {
+  if (Va) return oi
+  Va = !0
   try {
-    let { getStore: r } = await Promise.resolve().then(() => sr(ja(), 1))
-    ii = r({ name: "openlistnext_db", consistency: "strong" })
+    let { getStore: r } = await Promise.resolve().then(() => ar(Ga(), 1))
+    oi = r({ name: "openlistnext_db", consistency: "strong" })
   } catch {
-    ii = null
+    oi = null
   }
-  return ii
+  return oi
 }
-function Na() {
-  La ||
-    ((La = !0),
+function Qa() {
+  Ja ||
+    ((Ja = !0),
     !(typeof process > "u" || typeof process.on != "function") &&
       process.on("uncaughtException", (r) => {
         ;(r?.message?.includes("RESP") ||
@@ -1692,18 +1692,18 @@ function Na() {
           )
       }))
 }
-function mn(r) {
-  r && (hr = r)
+function _n(r) {
+  r && (yr = r)
 }
-async function ai(r) {
-  r && (hr = r)
-  let e = r || hr || (typeof process < "u" ? process.env : {}),
+async function li(r) {
+  r && (yr = r)
+  let e = r || yr || (typeof process < "u" ? process.env : {}),
     t = typeof globalThis < "u" ? globalThis : {}
   try {
-    let c = await Qu()
+    let c = await dp()
     if (c)
       return (
-        Na(),
+        Qa(),
         {
           binding: c,
           platform: "EdgeOne Blob (@edgeone/pages-blob, strong consistency)",
@@ -1737,7 +1737,7 @@ async function ai(r) {
         c.key.startsWith("EO") ||
         !!(e && (e.EDGEONE || e.EO_REGION || e.EDGEONE_KV_NAME)) ||
         !!(t.EDGEONE_KV || t.EO_KV)
-      l && Na()
+      l && Qa()
       let u = l
         ? `EdgeOne KV (${c.name})`
         : `Cloudflare / EdgeOne KV (${c.name})`
@@ -1759,7 +1759,7 @@ async function ai(r) {
       }
     : { binding: null, platform: "Memory", mode: "none" }
 }
-async function Ma(r, e = "openlistnext_config") {
+async function Xa(r, e = "openlistnext_config") {
   let { binding: t, mode: i } = r
   if (i === "none" || !t) return null
   try {
@@ -1790,7 +1790,7 @@ async function Ma(r, e = "openlistnext_config") {
   }
   return null
 }
-async function Xu(r, e, t) {
+async function lp(r, e, t) {
   let { binding: i, mode: s } = r
   if (s === "none" || !i) return !1
   let n = JSON.stringify(t)
@@ -1819,14 +1819,14 @@ async function Xu(r, e, t) {
   }
   return !1
 }
-async function yn(r) {
-  let e = await ai(r),
+async function vn(r) {
+  let e = await li(r),
     t = e.mode !== "none",
     i = !1,
     s = null
   if (t)
     try {
-      let n = await Ma(e, "openlistnext_config")
+      let n = await Xa(e, "openlistnext_config")
       return (
         (i = !0),
         {
@@ -1900,7 +1900,7 @@ async function ne(r) {
         p = {}
       }
       let h = p.root_folder_path !== void 0 ? p.root_folder_path : "/",
-        x = (
+        w = (
           [h, u]
             .map((g) => g.replace(/\\/g, "/"))
             .filter((g) => !!g && g !== "/")
@@ -1909,7 +1909,7 @@ async function ne(r) {
       return {
         storage: a,
         relative: u,
-        physical: x,
+        physical: w,
         rootFolder: h,
         cleanPath: i,
         isVirtual: !1,
@@ -1935,7 +1935,7 @@ async function ne(r) {
     }
   throw new Error("failed get storage: storage not found")
 }
-async function Zu() {
+async function pp() {
   let r = await U(),
     e = {}
   return (
@@ -1946,34 +1946,34 @@ async function Zu() {
     e
   )
 }
-async function ep() {
+async function fp() {
   return (await U()).users || []
 }
-async function tp() {
+async function hp() {
   return (await U()).storages || []
 }
-async function rp() {
+async function gp() {
   return (await U()).metas || []
 }
-async function ip() {
+async function mp() {
   return (await U()).plugins || []
 }
-var gr,
+var wr,
   X,
-  hr,
-  ii,
-  za,
-  La,
-  Yu,
-  gn,
-  si,
-  ni,
+  yr,
   oi,
+  Va,
+  Ja,
+  up,
+  xn,
+  ai,
+  ci,
+  di,
   U,
   $,
-  te = W(() => {
+  te = H(() => {
     "use strict"
-    ;((gr = {
+    ;((wr = {
       settings: [
         {
           key: "version",
@@ -2590,11 +2590,11 @@ Disallow: /`,
       plugins: [],
     }),
       (X = null),
-      (hr = null),
-      (ii = null),
-      (za = !1))
-    La = !1
-    ;((Yu = {
+      (yr = null),
+      (oi = null),
+      (Va = !1))
+    Ja = !1
+    ;((up = {
       logo: {
         from: ["", "https://res.oplist.org/logo/logo.png"],
         to: "/logo.png",
@@ -2607,13 +2607,13 @@ Disallow: /`,
       home_icon: { from: ["openlist", "oplist"], to: "openlistnext" },
       home_container: { from: ["hope_container"], to: "max_980px" },
     }),
-      (gn = (r) => {
+      (xn = (r) => {
         if (!r) return
         r.settings || (r.settings = [])
         let e = !1,
           t = [],
           i = new Set()
-        for (let s of gr.settings) {
+        for (let s of wr.settings) {
           i.add(s.key)
           let n = r.settings.filter((o) => o.key === s.key)
           if (n.length === 0) (t.push(JSON.parse(JSON.stringify(s))), (e = !0))
@@ -2631,7 +2631,7 @@ Disallow: /`,
               (o.flag = s.flag),
               (e = !0)),
               n.length > 1 && (e = !0))
-            let a = Yu[s.key]
+            let a = up[s.key]
             ;(a && a.from.includes(o.value) && ((o.value = a.to), (e = !0)),
               t.push(o))
           }
@@ -2641,7 +2641,7 @@ Disallow: /`,
         ;(e || t.length !== r.settings.length) &&
           ((r.settings = t), $(r).catch(() => {}))
       }),
-      (si = (r) => {
+      (ai = (r) => {
         r &&
           (!r.storages || !Array.isArray(r.storages)
             ? (r.storages = [])
@@ -2657,43 +2657,43 @@ Disallow: /`,
                   e.mount_path.trim() !== "",
               )))
       }),
-      (ni = (r) => {
+      (ci = (r) => {
         r && (r.shares || (r.shares = []))
       }),
-      (oi = (r) => {
+      (di = (r) => {
         r && (r.plugins || (r.plugins = []))
       }),
       (U = async (r) => {
-        r && (hr = r)
-        let e = await ai(r)
+        r && (yr = r)
+        let e = await li(r)
         if (e.mode !== "none")
           try {
-            let t = await Ma(e, "openlistnext_config")
-            if (t) return ((X = t), gn(X), si(X), ni(X), oi(X), X)
+            let t = await Xa(e, "openlistnext_config")
+            if (t) return ((X = t), xn(X), ai(X), ci(X), di(X), X)
           } catch (t) {
             console.error("[DB] Error reading config from KV:", t)
           }
-        if (X) return (gn(X), si(X), ni(X), oi(X), X)
+        if (X) return (xn(X), ai(X), ci(X), di(X), X)
         if (typeof process < "u" && process.env && process.env.DATABASE_JSON)
           try {
             return (
               (X = JSON.parse(process.env.DATABASE_JSON)),
-              gn(X),
-              si(X),
-              ni(X),
-              oi(X),
+              xn(X),
+              ai(X),
+              ci(X),
+              di(X),
               X
             )
           } catch (t) {
             console.error("Failed to parse DATABASE_JSON env variable:", t)
           }
-        return ((X = JSON.parse(JSON.stringify(gr))), si(X), ni(X), oi(X), X)
+        return ((X = JSON.parse(JSON.stringify(wr))), ai(X), ci(X), di(X), X)
       }),
       ($ = async (r, e) => {
-        ;(e && (hr = e), (X = r))
-        let t = await ai(e)
+        ;(e && (yr = e), (X = r))
+        let t = await li(e)
         t.mode !== "none"
-          ? (await Xu(t, "openlistnext_config", r).catch(
+          ? (await lp(t, "openlistnext_config", r).catch(
               (s) => (console.error("[DB] Failed to save to KV:", s), !1),
             )) &&
             console.log(
@@ -2704,7 +2704,7 @@ Disallow: /`,
             )
       }))
   })
-function K(r, e) {
+function L(r, e) {
   if (e) return 1
   let t = (r.split(".").pop() || "").toLowerCase()
   return [
@@ -2809,18 +2809,18 @@ function K(r, e) {
           ? 5
           : 0
 }
-var me = W(() => {
+var he = H(() => {
   "use strict"
 })
-function kn(r) {
+function Cn(r) {
   return Array.from(new Uint8Array(r))
     .map((e) => e.toString(16).padStart(2, "0"))
     .join("")
 }
-function yr(r) {
+function _r(r) {
   return typeof r == "string" ? new TextEncoder().encode(r) : r
 }
-function Tp(r) {
+function Hp(r) {
   let e = typeof r == "string" ? new TextEncoder().encode(r) : r,
     t = e.length,
     i = t * 8,
@@ -2845,26 +2845,26 @@ function Tp(r) {
     p = 271733878
   for (let h = 0; h < n.length; h += 64) {
     let y = new DataView(n.buffer, h, 64),
-      x = Array.from({ length: 16 }, (_, b) => y.getInt32(b * 4, !0)),
-      [g, m, v, w] = [d, l, u, p]
+      w = Array.from({ length: 16 }, (_, b) => y.getInt32(b * 4, !0)),
+      [g, m, v, x] = [d, l, u, p]
     for (let _ = 0; _ < 64; _++) {
       let b, S
       _ < 16
-        ? ((b = (m & v) | (~m & w)), (S = _))
+        ? ((b = (m & v) | (~m & x)), (S = _))
         : _ < 32
-          ? ((b = (w & m) | (~w & v)), (S = (5 * _ + 1) % 16))
+          ? ((b = (x & m) | (~x & v)), (S = (5 * _ + 1) % 16))
           : _ < 48
-            ? ((b = m ^ v ^ w), (S = (3 * _ + 5) % 16))
-            : ((b = v ^ (m | ~w)), (S = (7 * _) % 16))
-      let A = w
-      ;((w = v), (v = m))
-      let C = (g + b + a[_] + x[S]) | 0
+            ? ((b = m ^ v ^ x), (S = (3 * _ + 5) % 16))
+            : ((b = v ^ (m | ~x)), (S = (7 * _) % 16))
+      let A = x
+      ;((x = v), (v = m))
+      let C = (g + b + a[_] + w[S]) | 0
       ;((m = (m + ((C << c[_]) | (C >>> (32 - c[_])))) | 0), (g = A))
     }
     ;((d = (d + g) | 0),
       (l = (l + m) | 0),
       (u = (u + v) | 0),
-      (p = (p + w) | 0))
+      (p = (p + x) | 0))
   }
   let f = new DataView(new ArrayBuffer(16))
   return (
@@ -2872,52 +2872,52 @@ function Tp(r) {
     f.setInt32(4, l, !0),
     f.setInt32(8, u, !0),
     f.setInt32(12, p, !0),
-    kn(f.buffer)
+    Cn(f.buffer)
   )
 }
-function xi(r) {
-  return Tp(r)
+function vi(r) {
+  return Hp(r)
 }
-async function wi(r) {
-  let e = await crypto.subtle.digest("SHA-1", yr(r))
-  return kn(e)
+async function bi(r) {
+  let e = await crypto.subtle.digest("SHA-1", _r(r))
+  return Cn(e)
 }
-async function Sn(r, e) {
+async function En(r, e) {
   let t = await crypto.subtle.importKey(
       "raw",
-      yr(e),
+      _r(e),
       { name: "HMAC", hash: "SHA-256" },
       !1,
       ["sign"],
     ),
-    i = await crypto.subtle.sign("HMAC", t, yr(r))
-  return kn(i)
+    i = await crypto.subtle.sign("HMAC", t, _r(r))
+  return Cn(i)
 }
-async function dc(r, e) {
+async function yc(r, e) {
   let t = await crypto.subtle.importKey(
       "raw",
-      yr(e),
+      _r(e),
       { name: "HMAC", hash: "SHA-1" },
       !1,
       ["sign"],
     ),
-    i = await crypto.subtle.sign("HMAC", t, yr(r)),
+    i = await crypto.subtle.sign("HMAC", t, _r(r)),
     s = new Uint8Array(i),
     n = ""
   for (let o of s) n += String.fromCharCode(o)
   return btoa(n)
 }
-var xr = W(() => {
+var vr = H(() => {
   "use strict"
 })
-var M = N((Ci, xc) => {
+var K = M((Fi, Ac) => {
   ;(function (r, e) {
-    typeof Ci == "object"
-      ? (xc.exports = Ci = e())
+    typeof Fi == "object"
+      ? (Ac.exports = Fi = e())
       : typeof define == "function" && define.amd
         ? define([], e)
         : (r.CryptoJS = e())
-  })(Ci, function () {
+  })(Fi, function () {
     var r =
       r ||
       (function (e, t) {
@@ -2930,10 +2930,10 @@ var M = N((Ci, xc) => {
             (i = globalThis.crypto),
           !i && typeof window < "u" && window.msCrypto && (i = window.msCrypto),
           !i && typeof global < "u" && global.crypto && (i = global.crypto),
-          !i && typeof Gs == "function")
+          !i && typeof Xs == "function")
         )
           try {
-            i = Gs("crypto")
+            i = Xs("crypto")
           } catch {}
         var s = function () {
             if (i) {
@@ -3006,14 +3006,14 @@ var M = N((Ci, xc) => {
             concat: function (g) {
               var m = this.words,
                 v = g.words,
-                w = this.sigBytes,
+                x = this.sigBytes,
                 _ = g.sigBytes
-              if ((this.clamp(), w % 4))
+              if ((this.clamp(), x % 4))
                 for (var b = 0; b < _; b++) {
                   var S = (v[b >>> 2] >>> (24 - (b % 4) * 8)) & 255
-                  m[(w + b) >>> 2] |= S << (24 - ((w + b) % 4) * 8)
+                  m[(x + b) >>> 2] |= S << (24 - ((x + b) % 4) * 8)
                 }
-              else for (var A = 0; A < _; A += 4) m[(w + A) >>> 2] = v[A >>> 2]
+              else for (var A = 0; A < _; A += 4) m[(x + A) >>> 2] = v[A >>> 2]
               return ((this.sigBytes += _), this)
             },
             clamp: function () {
@@ -3034,29 +3034,29 @@ var M = N((Ci, xc) => {
           l = (o.enc = {}),
           u = (l.Hex = {
             stringify: function (g) {
-              for (var m = g.words, v = g.sigBytes, w = [], _ = 0; _ < v; _++) {
+              for (var m = g.words, v = g.sigBytes, x = [], _ = 0; _ < v; _++) {
                 var b = (m[_ >>> 2] >>> (24 - (_ % 4) * 8)) & 255
-                ;(w.push((b >>> 4).toString(16)), w.push((b & 15).toString(16)))
+                ;(x.push((b >>> 4).toString(16)), x.push((b & 15).toString(16)))
               }
-              return w.join("")
+              return x.join("")
             },
             parse: function (g) {
-              for (var m = g.length, v = [], w = 0; w < m; w += 2)
-                v[w >>> 3] |= parseInt(g.substr(w, 2), 16) << (24 - (w % 8) * 4)
+              for (var m = g.length, v = [], x = 0; x < m; x += 2)
+                v[x >>> 3] |= parseInt(g.substr(x, 2), 16) << (24 - (x % 8) * 4)
               return new d.init(v, m / 2)
             },
           }),
           p = (l.Latin1 = {
             stringify: function (g) {
-              for (var m = g.words, v = g.sigBytes, w = [], _ = 0; _ < v; _++) {
+              for (var m = g.words, v = g.sigBytes, x = [], _ = 0; _ < v; _++) {
                 var b = (m[_ >>> 2] >>> (24 - (_ % 4) * 8)) & 255
-                w.push(String.fromCharCode(b))
+                x.push(String.fromCharCode(b))
               }
-              return w.join("")
+              return x.join("")
             },
             parse: function (g) {
-              for (var m = g.length, v = [], w = 0; w < m; w++)
-                v[w >>> 2] |= (g.charCodeAt(w) & 255) << (24 - (w % 4) * 8)
+              for (var m = g.length, v = [], x = 0; x < m; x++)
+                v[x >>> 2] |= (g.charCodeAt(x) & 255) << (24 - (x % 4) * 8)
               return new d.init(v, m)
             },
           }),
@@ -3084,7 +3084,7 @@ var M = N((Ci, xc) => {
             _process: function (g) {
               var m,
                 v = this._data,
-                w = v.words,
+                x = v.words,
                 _ = v.sigBytes,
                 b = this.blockSize,
                 S = b * 4,
@@ -3095,8 +3095,8 @@ var M = N((Ci, xc) => {
               var C = A * b,
                 P = e.min(C * 4, _)
               if (C) {
-                for (var k = 0; k < C; k += b) this._doProcessBlock(w, k)
-                ;((m = w.splice(0, C)), (v.sigBytes -= P))
+                for (var k = 0; k < C; k += b) this._doProcessBlock(x, k)
+                ;((m = x.splice(0, C)), (v.sigBytes -= P))
               }
               return new d.init(m, P)
             },
@@ -3130,24 +3130,24 @@ var M = N((Ci, xc) => {
             },
             _createHmacHelper: function (g) {
               return function (m, v) {
-                return new x.HMAC.init(g, v).finalize(m)
+                return new w.HMAC.init(g, v).finalize(m)
               }
             },
           })),
-          x = (o.algo = {})
+          w = (o.algo = {})
         return o
       })(Math)
     return r
   })
 })
-var br = N((Ei, wc) => {
+var Pr = M((Ti, Cc) => {
   ;(function (r, e) {
-    typeof Ei == "object"
-      ? (wc.exports = Ei = e(M()))
+    typeof Ti == "object"
+      ? (Cc.exports = Ti = e(K()))
       : typeof define == "function" && define.amd
         ? define(["./core"], e)
         : e(r.CryptoJS)
-  })(Ei, function (r) {
+  })(Ti, function (r) {
     return (
       (function (e) {
         var t = r,
@@ -3194,14 +3194,14 @@ var br = N((Ei, wc) => {
     )
   })
 })
-var vc = N((Di, _c) => {
+var Dc = M((Ii, Ec) => {
   ;(function (r, e) {
-    typeof Di == "object"
-      ? (_c.exports = Di = e(M()))
+    typeof Ii == "object"
+      ? (Ec.exports = Ii = e(K()))
       : typeof define == "function" && define.amd
         ? define(["./core"], e)
         : e(r.CryptoJS)
-  })(Di, function (r) {
+  })(Ii, function (r) {
     return (
       (function () {
         if (typeof ArrayBuffer == "function") {
@@ -3236,14 +3236,14 @@ var vc = N((Di, _c) => {
     )
   })
 })
-var kc = N((Fi, bc) => {
+var Tc = M((Bi, Fc) => {
   ;(function (r, e) {
-    typeof Fi == "object"
-      ? (bc.exports = Fi = e(M()))
+    typeof Bi == "object"
+      ? (Fc.exports = Bi = e(K()))
       : typeof define == "function" && define.amd
         ? define(["./core"], e)
         : e(r.CryptoJS)
-  })(Fi, function (r) {
+  })(Bi, function (r) {
     return (
       (function () {
         var e = r,
@@ -3297,14 +3297,14 @@ var kc = N((Fi, bc) => {
     )
   })
 })
-var dt = N((Ti, Sc) => {
+var lt = M((Ri, Ic) => {
   ;(function (r, e) {
-    typeof Ti == "object"
-      ? (Sc.exports = Ti = e(M()))
+    typeof Ri == "object"
+      ? (Ic.exports = Ri = e(K()))
       : typeof define == "function" && define.amd
         ? define(["./core"], e)
         : e(r.CryptoJS)
-  })(Ti, function (r) {
+  })(Ri, function (r) {
     return (
       (function () {
         var e = r,
@@ -3322,12 +3322,12 @@ var dt = N((Ti, Sc) => {
                   var f = (c[p >>> 2] >>> (24 - (p % 4) * 8)) & 255,
                     h = (c[(p + 1) >>> 2] >>> (24 - ((p + 1) % 4) * 8)) & 255,
                     y = (c[(p + 2) >>> 2] >>> (24 - ((p + 2) % 4) * 8)) & 255,
-                    x = (f << 16) | (h << 8) | y,
+                    w = (f << 16) | (h << 8) | y,
                     g = 0;
                   g < 4 && p + g * 0.75 < d;
                   g++
                 )
-                  u.push(l.charAt((x >>> (6 * (3 - g))) & 63))
+                  u.push(l.charAt((w >>> (6 * (3 - g))) & 63))
               var m = l.charAt(64)
               if (m) for (; u.length % 4; ) u.push(m)
               return u.join("")
@@ -3364,14 +3364,14 @@ var dt = N((Ti, Sc) => {
     )
   })
 })
-var Ac = N((Ii, Pc) => {
+var Rc = M((Ui, Bc) => {
   ;(function (r, e) {
-    typeof Ii == "object"
-      ? (Pc.exports = Ii = e(M()))
+    typeof Ui == "object"
+      ? (Bc.exports = Ui = e(K()))
       : typeof define == "function" && define.amd
         ? define(["./core"], e)
         : e(r.CryptoJS)
-  })(Ii, function (r) {
+  })(Ui, function (r) {
     return (
       (function () {
         var e = r,
@@ -3389,8 +3389,8 @@ var Ac = N((Ii, Pc) => {
                 for (
                   var h = (d[f >>> 2] >>> (24 - (f % 4) * 8)) & 255,
                     y = (d[(f + 1) >>> 2] >>> (24 - ((f + 1) % 4) * 8)) & 255,
-                    x = (d[(f + 2) >>> 2] >>> (24 - ((f + 2) % 4) * 8)) & 255,
-                    g = (h << 16) | (y << 8) | x,
+                    w = (d[(f + 2) >>> 2] >>> (24 - ((f + 2) % 4) * 8)) & 255,
+                    g = (h << 16) | (y << 8) | w,
                     m = 0;
                   m < 4 && f + m * 0.75 < l;
                   m++
@@ -3435,14 +3435,14 @@ var Ac = N((Ii, Pc) => {
     )
   })
 })
-var lt = N((Bi, Cc) => {
+var ut = M((qi, Uc) => {
   ;(function (r, e) {
-    typeof Bi == "object"
-      ? (Cc.exports = Bi = e(M()))
+    typeof qi == "object"
+      ? (Uc.exports = qi = e(K()))
       : typeof define == "function" && define.amd
         ? define(["./core"], e)
         : e(r.CryptoJS)
-  })(Bi, function (r) {
+  })(qi, function (r) {
     return (
       (function (e) {
         var t = r,
@@ -3463,15 +3463,15 @@ var lt = N((Bi, Cc) => {
           },
           _doProcessBlock: function (f, h) {
             for (var y = 0; y < 16; y++) {
-              var x = h + y,
-                g = f[x]
-              f[x] =
+              var w = h + y,
+                g = f[w]
+              f[w] =
                 (((g << 8) | (g >>> 24)) & 16711935) |
                 (((g << 24) | (g >>> 8)) & 4278255360)
             }
             var m = this._hash.words,
               v = f[h + 0],
-              w = f[h + 1],
+              x = f[h + 1],
               _ = f[h + 2],
               b = f[h + 3],
               S = f[h + 4],
@@ -3485,13 +3485,13 @@ var lt = N((Bi, Cc) => {
               O = f[h + 12],
               q = f[h + 13],
               j = f[h + 14],
-              H = f[h + 15],
+              W = f[h + 15],
               F = m[0],
               B = m[1],
               R = m[2],
               I = m[3]
             ;((F = d(F, B, R, I, v, 7, a[0])),
-              (I = d(I, F, B, R, w, 12, a[1])),
+              (I = d(I, F, B, R, x, 12, a[1])),
               (R = d(R, I, F, B, _, 17, a[2])),
               (B = d(B, R, I, F, b, 22, a[3])),
               (F = d(F, B, R, I, S, 7, a[4])),
@@ -3505,14 +3505,14 @@ var lt = N((Bi, Cc) => {
               (F = d(F, B, R, I, O, 7, a[12])),
               (I = d(I, F, B, R, q, 12, a[13])),
               (R = d(R, I, F, B, j, 17, a[14])),
-              (B = d(B, R, I, F, H, 22, a[15])),
-              (F = l(F, B, R, I, w, 5, a[16])),
+              (B = d(B, R, I, F, W, 22, a[15])),
+              (F = l(F, B, R, I, x, 5, a[16])),
               (I = l(I, F, B, R, C, 9, a[17])),
               (R = l(R, I, F, B, E, 14, a[18])),
               (B = l(B, R, I, F, v, 20, a[19])),
               (F = l(F, B, R, I, A, 5, a[20])),
               (I = l(I, F, B, R, T, 9, a[21])),
-              (R = l(R, I, F, B, H, 14, a[22])),
+              (R = l(R, I, F, B, W, 14, a[22])),
               (B = l(B, R, I, F, S, 20, a[23])),
               (F = l(F, B, R, I, D, 5, a[24])),
               (I = l(I, F, B, R, j, 9, a[25])),
@@ -3526,7 +3526,7 @@ var lt = N((Bi, Cc) => {
               (I = u(I, F, B, R, k, 11, a[33])),
               (R = u(R, I, F, B, E, 16, a[34])),
               (B = u(B, R, I, F, j, 23, a[35])),
-              (F = u(F, B, R, I, w, 4, a[36])),
+              (F = u(F, B, R, I, x, 4, a[36])),
               (I = u(I, F, B, R, S, 11, a[37])),
               (R = u(R, I, F, B, P, 16, a[38])),
               (B = u(B, R, I, F, T, 23, a[39])),
@@ -3536,7 +3536,7 @@ var lt = N((Bi, Cc) => {
               (B = u(B, R, I, F, C, 23, a[43])),
               (F = u(F, B, R, I, D, 4, a[44])),
               (I = u(I, F, B, R, O, 11, a[45])),
-              (R = u(R, I, F, B, H, 16, a[46])),
+              (R = u(R, I, F, B, W, 16, a[46])),
               (B = u(B, R, I, F, _, 23, a[47])),
               (F = p(F, B, R, I, v, 6, a[48])),
               (I = p(I, F, B, R, P, 10, a[49])),
@@ -3545,9 +3545,9 @@ var lt = N((Bi, Cc) => {
               (F = p(F, B, R, I, O, 6, a[52])),
               (I = p(I, F, B, R, b, 10, a[53])),
               (R = p(R, I, F, B, T, 15, a[54])),
-              (B = p(B, R, I, F, w, 21, a[55])),
+              (B = p(B, R, I, F, x, 21, a[55])),
               (F = p(F, B, R, I, k, 6, a[56])),
-              (I = p(I, F, B, R, H, 10, a[57])),
+              (I = p(I, F, B, R, W, 10, a[57])),
               (R = p(R, I, F, B, C, 15, a[58])),
               (B = p(B, R, I, F, q, 21, a[59])),
               (F = p(F, B, R, I, S, 6, a[60])),
@@ -3563,21 +3563,21 @@ var lt = N((Bi, Cc) => {
             var f = this._data,
               h = f.words,
               y = this._nDataBytes * 8,
-              x = f.sigBytes * 8
-            h[x >>> 5] |= 128 << (24 - (x % 32))
+              w = f.sigBytes * 8
+            h[w >>> 5] |= 128 << (24 - (w % 32))
             var g = e.floor(y / 4294967296),
               m = y
-            ;((h[(((x + 64) >>> 9) << 4) + 15] =
+            ;((h[(((w + 64) >>> 9) << 4) + 15] =
               (((g << 8) | (g >>> 24)) & 16711935) |
               (((g << 24) | (g >>> 8)) & 4278255360)),
-              (h[(((x + 64) >>> 9) << 4) + 14] =
+              (h[(((w + 64) >>> 9) << 4) + 14] =
                 (((m << 8) | (m >>> 24)) & 16711935) |
                 (((m << 24) | (m >>> 8)) & 4278255360)),
               (f.sigBytes = (h.length + 1) * 4),
               this._process())
-            for (var v = this._hash, w = v.words, _ = 0; _ < 4; _++) {
-              var b = w[_]
-              w[_] =
+            for (var v = this._hash, x = v.words, _ = 0; _ < 4; _++) {
+              var b = x[_]
+              x[_] =
                 (((b << 8) | (b >>> 24)) & 16711935) |
                 (((b << 24) | (b >>> 8)) & 4278255360)
             }
@@ -3588,21 +3588,21 @@ var lt = N((Bi, Cc) => {
             return ((f._hash = this._hash.clone()), f)
           },
         }))
-        function d(f, h, y, x, g, m, v) {
-          var w = f + ((h & y) | (~h & x)) + g + v
-          return ((w << m) | (w >>> (32 - m))) + h
+        function d(f, h, y, w, g, m, v) {
+          var x = f + ((h & y) | (~h & w)) + g + v
+          return ((x << m) | (x >>> (32 - m))) + h
         }
-        function l(f, h, y, x, g, m, v) {
-          var w = f + ((h & x) | (y & ~x)) + g + v
-          return ((w << m) | (w >>> (32 - m))) + h
+        function l(f, h, y, w, g, m, v) {
+          var x = f + ((h & w) | (y & ~w)) + g + v
+          return ((x << m) | (x >>> (32 - m))) + h
         }
-        function u(f, h, y, x, g, m, v) {
-          var w = f + (h ^ y ^ x) + g + v
-          return ((w << m) | (w >>> (32 - m))) + h
+        function u(f, h, y, w, g, m, v) {
+          var x = f + (h ^ y ^ w) + g + v
+          return ((x << m) | (x >>> (32 - m))) + h
         }
-        function p(f, h, y, x, g, m, v) {
-          var w = f + (y ^ (h | ~x)) + g + v
-          return ((w << m) | (w >>> (32 - m))) + h
+        function p(f, h, y, w, g, m, v) {
+          var x = f + (y ^ (h | ~w)) + g + v
+          return ((x << m) | (x >>> (32 - m))) + h
         }
         ;((t.MD5 = n._createHelper(c)), (t.HmacMD5 = n._createHmacHelper(c)))
       })(Math),
@@ -3610,14 +3610,14 @@ var lt = N((Bi, Cc) => {
     )
   })
 })
-var Fn = N((Ri, Ec) => {
+var Rn = M((Oi, qc) => {
   ;(function (r, e) {
-    typeof Ri == "object"
-      ? (Ec.exports = Ri = e(M()))
+    typeof Oi == "object"
+      ? (qc.exports = Oi = e(K()))
       : typeof define == "function" && define.amd
         ? define(["./core"], e)
         : e(r.CryptoJS)
-  })(Ri, function (r) {
+  })(Oi, function (r) {
     return (
       (function () {
         var e = r,
@@ -3640,21 +3640,21 @@ var Fn = N((Ri, Ec) => {
                   f = l[2],
                   h = l[3],
                   y = l[4],
-                  x = 0;
-                x < 80;
-                x++
+                  w = 0;
+                w < 80;
+                w++
               ) {
-                if (x < 16) o[x] = c[d + x] | 0
+                if (w < 16) o[w] = c[d + w] | 0
                 else {
-                  var g = o[x - 3] ^ o[x - 8] ^ o[x - 14] ^ o[x - 16]
-                  o[x] = (g << 1) | (g >>> 31)
+                  var g = o[w - 3] ^ o[w - 8] ^ o[w - 14] ^ o[w - 16]
+                  o[w] = (g << 1) | (g >>> 31)
                 }
-                var m = ((u << 5) | (u >>> 27)) + y + o[x]
-                ;(x < 20
+                var m = ((u << 5) | (u >>> 27)) + y + o[w]
+                ;(w < 20
                   ? (m += ((p & f) | (~p & h)) + 1518500249)
-                  : x < 40
+                  : w < 40
                     ? (m += (p ^ f ^ h) + 1859775393)
-                    : x < 60
+                    : w < 60
                       ? (m += ((p & f) | (p & h) | (f & h)) - 1894007588)
                       : (m += (p ^ f ^ h) - 899497514),
                   (y = h),
@@ -3694,14 +3694,14 @@ var Fn = N((Ri, Ec) => {
     )
   })
 })
-var qi = N((Ui, Dc) => {
+var ji = M(($i, Oc) => {
   ;(function (r, e) {
-    typeof Ui == "object"
-      ? (Dc.exports = Ui = e(M()))
+    typeof $i == "object"
+      ? (Oc.exports = $i = e(K()))
       : typeof define == "function" && define.amd
         ? define(["./core"], e)
         : e(r.CryptoJS)
-  })(Ui, function (r) {
+  })($i, function (r) {
     return (
       (function (e) {
         var t = r,
@@ -3713,7 +3713,7 @@ var qi = N((Ui, Dc) => {
           c = []
         ;(function () {
           function u(y) {
-            for (var x = e.sqrt(y), g = 2; g <= x; g++) if (!(y % g)) return !1
+            for (var w = e.sqrt(y), g = 2; g <= w; g++) if (!(y % g)) return !1
             return !0
           }
           function p(y) {
@@ -3736,11 +3736,11 @@ var qi = N((Ui, Dc) => {
                 var f = this._hash.words,
                   h = f[0],
                   y = f[1],
-                  x = f[2],
+                  w = f[2],
                   g = f[3],
                   m = f[4],
                   v = f[5],
-                  w = f[6],
+                  x = f[6],
                   _ = f[7],
                   b = 0;
                 b < 64;
@@ -3760,8 +3760,8 @@ var qi = N((Ui, Dc) => {
                       (C >>> 10)
                   d[b] = A + d[b - 7] + P + d[b - 16]
                 }
-                var k = (m & v) ^ (~m & w),
-                  D = (h & y) ^ (h & x) ^ (y & x),
+                var k = (m & v) ^ (~m & x),
+                  D = (h & y) ^ (h & w) ^ (y & w),
                   T =
                     ((h << 30) | (h >>> 2)) ^
                     ((h << 19) | (h >>> 13)) ^
@@ -3772,22 +3772,22 @@ var qi = N((Ui, Dc) => {
                     ((m << 7) | (m >>> 25)),
                   O = _ + E + k + c[b] + d[b],
                   q = T + D
-                ;((_ = w),
-                  (w = v),
+                ;((_ = x),
+                  (x = v),
                   (v = m),
                   (m = (g + O) | 0),
-                  (g = x),
-                  (x = y),
+                  (g = w),
+                  (w = y),
                   (y = h),
                   (h = (O + q) | 0))
               }
               ;((f[0] = (f[0] + h) | 0),
                 (f[1] = (f[1] + y) | 0),
-                (f[2] = (f[2] + x) | 0),
+                (f[2] = (f[2] + w) | 0),
                 (f[3] = (f[3] + g) | 0),
                 (f[4] = (f[4] + m) | 0),
                 (f[5] = (f[5] + v) | 0),
-                (f[6] = (f[6] + w) | 0),
+                (f[6] = (f[6] + x) | 0),
                 (f[7] = (f[7] + _) | 0))
             },
             _doFinalize: function () {
@@ -3816,14 +3816,14 @@ var qi = N((Ui, Dc) => {
     )
   })
 })
-var Tc = N((Oi, Fc) => {
+var jc = M((zi, $c) => {
   ;(function (r, e, t) {
-    typeof Oi == "object"
-      ? (Fc.exports = Oi = e(M(), qi()))
+    typeof zi == "object"
+      ? ($c.exports = zi = e(K(), ji()))
       : typeof define == "function" && define.amd
         ? define(["./core", "./sha256"], e)
         : e(r.CryptoJS)
-  })(Oi, function (r) {
+  })(zi, function (r) {
     return (
       (function () {
         var e = r,
@@ -3850,14 +3850,14 @@ var Tc = N((Oi, Fc) => {
     )
   })
 })
-var Tn = N(($i, Ic) => {
+var Un = M((Li, zc) => {
   ;(function (r, e, t) {
-    typeof $i == "object"
-      ? (Ic.exports = $i = e(M(), br()))
+    typeof Li == "object"
+      ? (zc.exports = Li = e(K(), Pr()))
       : typeof define == "function" && define.amd
         ? define(["./core", "./x64-core"], e)
         : e(r.CryptoJS)
-  })($i, function (r) {
+  })(Li, function (r) {
     return (
       (function () {
         var e = r,
@@ -3973,25 +3973,25 @@ var Tn = N(($i, Ic) => {
             for (
               var h = this._hash.words,
                 y = h[0],
-                x = h[1],
+                w = h[1],
                 g = h[2],
                 m = h[3],
                 v = h[4],
-                w = h[5],
+                x = h[5],
                 _ = h[6],
                 b = h[7],
                 S = y.high,
                 A = y.low,
-                C = x.high,
-                P = x.low,
+                C = w.high,
+                P = w.low,
                 k = g.high,
                 D = g.low,
                 T = m.high,
                 E = m.low,
                 O = v.high,
                 q = v.low,
-                j = w.high,
-                H = w.low,
+                j = x.high,
+                W = x.low,
                 F = _.high,
                 B = _.low,
                 R = b.high,
@@ -3999,133 +3999,133 @@ var Tn = N(($i, Ic) => {
                 Q = S,
                 V = A,
                 _e = C,
-                L = P,
-                Xt = k,
-                Bt = D,
-                Hs = T,
-                Yt = E,
+                N = P,
+                Zt = k,
+                Ut = D,
+                Vs = T,
+                er = E,
                 Re = O,
                 Pe = q,
-                zr = j,
-                Zt = H,
-                Lr = F,
-                er = B,
-                Ks = R,
-                tr = I,
+                Hr = j,
+                tr = W,
+                Kr = F,
+                rr = B,
+                Js = R,
+                ir = I,
                 Ue = 0;
               Ue < 80;
               Ue++
             ) {
               var Te,
-                it,
-                Nr = l[Ue]
+                st,
+                Wr = l[Ue]
               if (Ue < 16)
-                ((it = Nr.high = p[f + Ue * 2] | 0),
-                  (Te = Nr.low = p[f + Ue * 2 + 1] | 0))
+                ((st = Wr.high = p[f + Ue * 2] | 0),
+                  (Te = Wr.low = p[f + Ue * 2 + 1] | 0))
               else {
-                var Fo = l[Ue - 15],
-                  Rt = Fo.high,
-                  rr = Fo.low,
-                  H0 =
-                    ((Rt >>> 1) | (rr << 31)) ^
-                    ((Rt >>> 8) | (rr << 24)) ^
-                    (Rt >>> 7),
-                  To =
-                    ((rr >>> 1) | (Rt << 31)) ^
-                    ((rr >>> 8) | (Rt << 24)) ^
-                    ((rr >>> 7) | (Rt << 25)),
-                  Io = l[Ue - 2],
-                  Ut = Io.high,
-                  ir = Io.low,
-                  K0 =
-                    ((Ut >>> 19) | (ir << 13)) ^
-                    ((Ut << 3) | (ir >>> 29)) ^
-                    (Ut >>> 6),
-                  Bo =
-                    ((ir >>> 19) | (Ut << 13)) ^
-                    ((ir << 3) | (Ut >>> 29)) ^
-                    ((ir >>> 6) | (Ut << 26)),
-                  Ro = l[Ue - 7],
-                  W0 = Ro.high,
-                  G0 = Ro.low,
-                  Uo = l[Ue - 16],
-                  V0 = Uo.high,
-                  qo = Uo.low
-                ;((Te = To + G0),
-                  (it = H0 + W0 + (Te >>> 0 < To >>> 0 ? 1 : 0)),
-                  (Te = Te + Bo),
-                  (it = it + K0 + (Te >>> 0 < Bo >>> 0 ? 1 : 0)),
-                  (Te = Te + qo),
-                  (it = it + V0 + (Te >>> 0 < qo >>> 0 ? 1 : 0)),
-                  (Nr.high = it),
-                  (Nr.low = Te))
+                var $o = l[Ue - 15],
+                  qt = $o.high,
+                  sr = $o.low,
+                  iu =
+                    ((qt >>> 1) | (sr << 31)) ^
+                    ((qt >>> 8) | (sr << 24)) ^
+                    (qt >>> 7),
+                  jo =
+                    ((sr >>> 1) | (qt << 31)) ^
+                    ((sr >>> 8) | (qt << 24)) ^
+                    ((sr >>> 7) | (qt << 25)),
+                  zo = l[Ue - 2],
+                  Ot = zo.high,
+                  nr = zo.low,
+                  su =
+                    ((Ot >>> 19) | (nr << 13)) ^
+                    ((Ot << 3) | (nr >>> 29)) ^
+                    (Ot >>> 6),
+                  Lo =
+                    ((nr >>> 19) | (Ot << 13)) ^
+                    ((nr << 3) | (Ot >>> 29)) ^
+                    ((nr >>> 6) | (Ot << 26)),
+                  No = l[Ue - 7],
+                  nu = No.high,
+                  ou = No.low,
+                  Mo = l[Ue - 16],
+                  au = Mo.high,
+                  Ho = Mo.low
+                ;((Te = jo + ou),
+                  (st = iu + nu + (Te >>> 0 < jo >>> 0 ? 1 : 0)),
+                  (Te = Te + Lo),
+                  (st = st + su + (Te >>> 0 < Lo >>> 0 ? 1 : 0)),
+                  (Te = Te + Ho),
+                  (st = st + au + (Te >>> 0 < Ho >>> 0 ? 1 : 0)),
+                  (Wr.high = st),
+                  (Wr.low = Te))
               }
-              var J0 = (Re & zr) ^ (~Re & Lr),
-                Oo = (Pe & Zt) ^ (~Pe & er),
-                Q0 = (Q & _e) ^ (Q & Xt) ^ (_e & Xt),
-                X0 = (V & L) ^ (V & Bt) ^ (L & Bt),
-                Y0 =
+              var cu = (Re & Hr) ^ (~Re & Kr),
+                Ko = (Pe & tr) ^ (~Pe & rr),
+                du = (Q & _e) ^ (Q & Zt) ^ (_e & Zt),
+                lu = (V & N) ^ (V & Ut) ^ (N & Ut),
+                uu =
                   ((Q >>> 28) | (V << 4)) ^
                   ((Q << 30) | (V >>> 2)) ^
                   ((Q << 25) | (V >>> 7)),
-                $o =
+                Wo =
                   ((V >>> 28) | (Q << 4)) ^
                   ((V << 30) | (Q >>> 2)) ^
                   ((V << 25) | (Q >>> 7)),
-                Z0 =
+                pu =
                   ((Re >>> 14) | (Pe << 18)) ^
                   ((Re >>> 18) | (Pe << 14)) ^
                   ((Re << 23) | (Pe >>> 9)),
-                eu =
+                fu =
                   ((Pe >>> 14) | (Re << 18)) ^
                   ((Pe >>> 18) | (Re << 14)) ^
                   ((Pe << 23) | (Re >>> 9)),
-                jo = d[Ue],
-                tu = jo.high,
-                zo = jo.low,
-                Ae = tr + eu,
-                st = Ks + Z0 + (Ae >>> 0 < tr >>> 0 ? 1 : 0),
-                Ae = Ae + Oo,
-                st = st + J0 + (Ae >>> 0 < Oo >>> 0 ? 1 : 0),
-                Ae = Ae + zo,
-                st = st + tu + (Ae >>> 0 < zo >>> 0 ? 1 : 0),
+                Go = d[Ue],
+                hu = Go.high,
+                Vo = Go.low,
+                Ae = ir + fu,
+                nt = Js + pu + (Ae >>> 0 < ir >>> 0 ? 1 : 0),
+                Ae = Ae + Ko,
+                nt = nt + cu + (Ae >>> 0 < Ko >>> 0 ? 1 : 0),
+                Ae = Ae + Vo,
+                nt = nt + hu + (Ae >>> 0 < Vo >>> 0 ? 1 : 0),
                 Ae = Ae + Te,
-                st = st + it + (Ae >>> 0 < Te >>> 0 ? 1 : 0),
-                Lo = $o + X0,
-                ru = Y0 + Q0 + (Lo >>> 0 < $o >>> 0 ? 1 : 0)
-              ;((Ks = Lr),
-                (tr = er),
-                (Lr = zr),
-                (er = Zt),
-                (zr = Re),
-                (Zt = Pe),
-                (Pe = (Yt + Ae) | 0),
-                (Re = (Hs + st + (Pe >>> 0 < Yt >>> 0 ? 1 : 0)) | 0),
-                (Hs = Xt),
-                (Yt = Bt),
-                (Xt = _e),
-                (Bt = L),
+                nt = nt + st + (Ae >>> 0 < Te >>> 0 ? 1 : 0),
+                Jo = Wo + lu,
+                gu = uu + du + (Jo >>> 0 < Wo >>> 0 ? 1 : 0)
+              ;((Js = Kr),
+                (ir = rr),
+                (Kr = Hr),
+                (rr = tr),
+                (Hr = Re),
+                (tr = Pe),
+                (Pe = (er + Ae) | 0),
+                (Re = (Vs + nt + (Pe >>> 0 < er >>> 0 ? 1 : 0)) | 0),
+                (Vs = Zt),
+                (er = Ut),
+                (Zt = _e),
+                (Ut = N),
                 (_e = Q),
-                (L = V),
-                (V = (Ae + Lo) | 0),
-                (Q = (st + ru + (V >>> 0 < Ae >>> 0 ? 1 : 0)) | 0))
+                (N = V),
+                (V = (Ae + Jo) | 0),
+                (Q = (nt + gu + (V >>> 0 < Ae >>> 0 ? 1 : 0)) | 0))
             }
             ;((A = y.low = A + V),
               (y.high = S + Q + (A >>> 0 < V >>> 0 ? 1 : 0)),
-              (P = x.low = P + L),
-              (x.high = C + _e + (P >>> 0 < L >>> 0 ? 1 : 0)),
-              (D = g.low = D + Bt),
-              (g.high = k + Xt + (D >>> 0 < Bt >>> 0 ? 1 : 0)),
-              (E = m.low = E + Yt),
-              (m.high = T + Hs + (E >>> 0 < Yt >>> 0 ? 1 : 0)),
+              (P = w.low = P + N),
+              (w.high = C + _e + (P >>> 0 < N >>> 0 ? 1 : 0)),
+              (D = g.low = D + Ut),
+              (g.high = k + Zt + (D >>> 0 < Ut >>> 0 ? 1 : 0)),
+              (E = m.low = E + er),
+              (m.high = T + Vs + (E >>> 0 < er >>> 0 ? 1 : 0)),
               (q = v.low = q + Pe),
               (v.high = O + Re + (q >>> 0 < Pe >>> 0 ? 1 : 0)),
-              (H = w.low = H + Zt),
-              (w.high = j + zr + (H >>> 0 < Zt >>> 0 ? 1 : 0)),
-              (B = _.low = B + er),
-              (_.high = F + Lr + (B >>> 0 < er >>> 0 ? 1 : 0)),
-              (I = b.low = I + tr),
-              (b.high = R + Ks + (I >>> 0 < tr >>> 0 ? 1 : 0)))
+              (W = x.low = W + tr),
+              (x.high = j + Hr + (W >>> 0 < tr >>> 0 ? 1 : 0)),
+              (B = _.low = B + rr),
+              (_.high = F + Kr + (B >>> 0 < rr >>> 0 ? 1 : 0)),
+              (I = b.low = I + ir),
+              (b.high = R + Js + (I >>> 0 < ir >>> 0 ? 1 : 0)))
           },
           _doFinalize: function () {
             var p = this._data,
@@ -4137,8 +4137,8 @@ var Tn = N(($i, Ic) => {
               (f[(((y + 128) >>> 10) << 5) + 31] = h),
               (p.sigBytes = f.length * 4),
               this._process())
-            var x = this._hash.toX32()
-            return x
+            var w = this._hash.toX32()
+            return w
           },
           clone: function () {
             var p = i.clone.call(this)
@@ -4153,14 +4153,14 @@ var Tn = N(($i, Ic) => {
     )
   })
 })
-var Rc = N((ji, Bc) => {
+var Nc = M((Ni, Lc) => {
   ;(function (r, e, t) {
-    typeof ji == "object"
-      ? (Bc.exports = ji = e(M(), br(), Tn()))
+    typeof Ni == "object"
+      ? (Lc.exports = Ni = e(K(), Pr(), Un()))
       : typeof define == "function" && define.amd
         ? define(["./core", "./x64-core", "./sha512"], e)
         : e(r.CryptoJS)
-  })(ji, function (r) {
+  })(Ni, function (r) {
     return (
       (function () {
         var e = r,
@@ -4194,14 +4194,14 @@ var Rc = N((ji, Bc) => {
     )
   })
 })
-var qc = N((zi, Uc) => {
+var Hc = M((Mi, Mc) => {
   ;(function (r, e, t) {
-    typeof zi == "object"
-      ? (Uc.exports = zi = e(M(), br()))
+    typeof Mi == "object"
+      ? (Mc.exports = Mi = e(K(), Pr()))
       : typeof define == "function" && define.amd
         ? define(["./core", "./x64-core"], e)
         : e(r.CryptoJS)
-  })(zi, function (r) {
+  })(Mi, function (r) {
     return (
       (function (e) {
         var t = r,
@@ -4215,8 +4215,8 @@ var qc = N((zi, Uc) => {
           l = [],
           u = []
         ;(function () {
-          for (var h = 1, y = 0, x = 0; x < 24; x++) {
-            d[h + 5 * y] = (((x + 1) * (x + 2)) / 2) % 64
+          for (var h = 1, y = 0, w = 0; w < 24; w++) {
+            d[h + 5 * y] = (((w + 1) * (w + 2)) / 2) % 64
             var g = y % 5,
               m = (2 * h + 3 * y) % 5
             ;((h = g), (y = m))
@@ -4224,7 +4224,7 @@ var qc = N((zi, Uc) => {
           for (var h = 0; h < 5; h++)
             for (var y = 0; y < 5; y++)
               l[h + 5 * y] = y + ((2 * h + 3 * y) % 5) * 5
-          for (var v = 1, w = 0; w < 24; w++) {
+          for (var v = 1, x = 0; x < 24; x++) {
             for (var _ = 0, b = 0, S = 0; S < 7; S++) {
               if (v & 1) {
                 var A = (1 << S) - 1
@@ -4232,7 +4232,7 @@ var qc = N((zi, Uc) => {
               }
               v & 128 ? (v = (v << 1) ^ 113) : (v <<= 1)
             }
-            u[w] = a.create(_, b)
+            u[x] = a.create(_, b)
           }
         })()
         var p = []
@@ -4248,25 +4248,25 @@ var qc = N((zi, Uc) => {
           },
           _doProcessBlock: function (h, y) {
             for (
-              var x = this._state, g = this.blockSize / 2, m = 0;
+              var w = this._state, g = this.blockSize / 2, m = 0;
               m < g;
               m++
             ) {
               var v = h[y + 2 * m],
-                w = h[y + 2 * m + 1]
+                x = h[y + 2 * m + 1]
               ;((v =
                 (((v << 8) | (v >>> 24)) & 16711935) |
                 (((v << 24) | (v >>> 8)) & 4278255360)),
-                (w =
-                  (((w << 8) | (w >>> 24)) & 16711935) |
-                  (((w << 24) | (w >>> 8)) & 4278255360)))
-              var _ = x[m]
-              ;((_.high ^= w), (_.low ^= v))
+                (x =
+                  (((x << 8) | (x >>> 24)) & 16711935) |
+                  (((x << 24) | (x >>> 8)) & 4278255360)))
+              var _ = w[m]
+              ;((_.high ^= x), (_.low ^= v))
             }
             for (var b = 0; b < 24; b++) {
               for (var S = 0; S < 5; S++) {
                 for (var A = 0, C = 0, P = 0; P < 5; P++) {
-                  var _ = x[S + 5 * P]
+                  var _ = w[S + 5 * P]
                   ;((A ^= _.high), (C ^= _.low))
                 }
                 var k = p[S]
@@ -4284,46 +4284,46 @@ var qc = N((zi, Uc) => {
                   P < 5;
                   P++
                 ) {
-                  var _ = x[S + 5 * P]
+                  var _ = w[S + 5 * P]
                   ;((_.high ^= A), (_.low ^= C))
                 }
               for (var q = 1; q < 25; q++) {
                 var A,
                   C,
-                  _ = x[q],
+                  _ = w[q],
                   j = _.high,
-                  H = _.low,
+                  W = _.low,
                   F = d[q]
                 F < 32
-                  ? ((A = (j << F) | (H >>> (32 - F))),
-                    (C = (H << F) | (j >>> (32 - F))))
-                  : ((A = (H << (F - 32)) | (j >>> (64 - F))),
-                    (C = (j << (F - 32)) | (H >>> (64 - F))))
+                  ? ((A = (j << F) | (W >>> (32 - F))),
+                    (C = (W << F) | (j >>> (32 - F))))
+                  : ((A = (W << (F - 32)) | (j >>> (64 - F))),
+                    (C = (j << (F - 32)) | (W >>> (64 - F))))
                 var B = p[l[q]]
                 ;((B.high = A), (B.low = C))
               }
               var R = p[0],
-                I = x[0]
+                I = w[0]
               ;((R.high = I.high), (R.low = I.low))
               for (var S = 0; S < 5; S++)
                 for (var P = 0; P < 5; P++) {
                   var q = S + 5 * P,
-                    _ = x[q],
+                    _ = w[q],
                     Q = p[q],
                     V = p[((S + 1) % 5) + 5 * P],
                     _e = p[((S + 2) % 5) + 5 * P]
                   ;((_.high = Q.high ^ (~V.high & _e.high)),
                     (_.low = Q.low ^ (~V.low & _e.low)))
                 }
-              var _ = x[0],
-                L = u[b]
-              ;((_.high ^= L.high), (_.low ^= L.low))
+              var _ = w[0],
+                N = u[b]
+              ;((_.high ^= N.high), (_.low ^= N.low))
             }
           },
           _doFinalize: function () {
             var h = this._data,
               y = h.words,
-              x = this._nDataBytes * 8,
+              w = this._nDataBytes * 8,
               g = h.sigBytes * 8,
               m = this.blockSize * 32
             ;((y[g >>> 5] |= 1 << (24 - (g % 32))),
@@ -4332,8 +4332,8 @@ var qc = N((zi, Uc) => {
               this._process())
             for (
               var v = this._state,
-                w = this.cfg.outputLength / 8,
-                _ = w / 8,
+                x = this.cfg.outputLength / 8,
+                _ = x / 8,
                 b = [],
                 S = 0;
               S < _;
@@ -4351,17 +4351,17 @@ var qc = N((zi, Uc) => {
                 b.push(P),
                 b.push(C))
             }
-            return new s.init(b, w)
+            return new s.init(b, x)
           },
           clone: function () {
             for (
               var h = n.clone.call(this),
                 y = (h._state = this._state.slice(0)),
-                x = 0;
-              x < 25;
-              x++
+                w = 0;
+              w < 25;
+              w++
             )
-              y[x] = y[x].clone()
+              y[w] = y[w].clone()
             return h
           },
         }))
@@ -4371,14 +4371,14 @@ var qc = N((zi, Uc) => {
     )
   })
 })
-var $c = N((Li, Oc) => {
+var Wc = M((Hi, Kc) => {
   ;(function (r, e) {
-    typeof Li == "object"
-      ? (Oc.exports = Li = e(M()))
+    typeof Hi == "object"
+      ? (Kc.exports = Hi = e(K()))
       : typeof define == "function" && define.amd
         ? define(["./core"], e)
         : e(r.CryptoJS)
-  })(Li, function (r) {
+  })(Hi, function (r) {
     return (
       (function (e) {
         var t = r,
@@ -4420,11 +4420,11 @@ var $c = N((Li, Oc) => {
                 1732584193, 4023233417, 2562383102, 271733878, 3285377520,
               ])
             },
-            _doProcessBlock: function (w, _) {
+            _doProcessBlock: function (x, _) {
               for (var b = 0; b < 16; b++) {
                 var S = _ + b,
-                  A = w[S]
-                w[S] =
+                  A = x[S]
+                x[S] =
                   (((A << 8) | (A >>> 24)) & 16711935) |
                   (((A << 24) | (A >>> 8)) & 4278255360)
               }
@@ -4437,7 +4437,7 @@ var $c = N((Li, Oc) => {
                 O = l.words,
                 q,
                 j,
-                H,
+                W,
                 F,
                 B,
                 R,
@@ -4447,63 +4447,63 @@ var $c = N((Li, Oc) => {
                 _e
               ;((R = q = C[0]),
                 (I = j = C[1]),
-                (Q = H = C[2]),
+                (Q = W = C[2]),
                 (V = F = C[3]),
                 (_e = B = C[4]))
-              for (var L, b = 0; b < 80; b += 1)
-                ((L = (q + w[_ + D[b]]) | 0),
+              for (var N, b = 0; b < 80; b += 1)
+                ((N = (q + x[_ + D[b]]) | 0),
                   b < 16
-                    ? (L += h(j, H, F) + P[0])
+                    ? (N += h(j, W, F) + P[0])
                     : b < 32
-                      ? (L += y(j, H, F) + P[1])
+                      ? (N += y(j, W, F) + P[1])
                       : b < 48
-                        ? (L += x(j, H, F) + P[2])
+                        ? (N += w(j, W, F) + P[2])
                         : b < 64
-                          ? (L += g(j, H, F) + P[3])
-                          : (L += m(j, H, F) + P[4]),
-                  (L = L | 0),
-                  (L = v(L, E[b])),
-                  (L = (L + B) | 0),
+                          ? (N += g(j, W, F) + P[3])
+                          : (N += m(j, W, F) + P[4]),
+                  (N = N | 0),
+                  (N = v(N, E[b])),
+                  (N = (N + B) | 0),
                   (q = B),
                   (B = F),
-                  (F = v(H, 10)),
-                  (H = j),
-                  (j = L),
-                  (L = (R + w[_ + T[b]]) | 0),
+                  (F = v(W, 10)),
+                  (W = j),
+                  (j = N),
+                  (N = (R + x[_ + T[b]]) | 0),
                   b < 16
-                    ? (L += m(I, Q, V) + k[0])
+                    ? (N += m(I, Q, V) + k[0])
                     : b < 32
-                      ? (L += g(I, Q, V) + k[1])
+                      ? (N += g(I, Q, V) + k[1])
                       : b < 48
-                        ? (L += x(I, Q, V) + k[2])
+                        ? (N += w(I, Q, V) + k[2])
                         : b < 64
-                          ? (L += y(I, Q, V) + k[3])
-                          : (L += h(I, Q, V) + k[4]),
-                  (L = L | 0),
-                  (L = v(L, O[b])),
-                  (L = (L + _e) | 0),
+                          ? (N += y(I, Q, V) + k[3])
+                          : (N += h(I, Q, V) + k[4]),
+                  (N = N | 0),
+                  (N = v(N, O[b])),
+                  (N = (N + _e) | 0),
                   (R = _e),
                   (_e = V),
                   (V = v(Q, 10)),
                   (Q = I),
-                  (I = L))
-              ;((L = (C[1] + H + V) | 0),
+                  (I = N))
+              ;((N = (C[1] + W + V) | 0),
                 (C[1] = (C[2] + F + _e) | 0),
                 (C[2] = (C[3] + B + R) | 0),
                 (C[3] = (C[4] + q + I) | 0),
                 (C[4] = (C[0] + j + Q) | 0),
-                (C[0] = L))
+                (C[0] = N))
             },
             _doFinalize: function () {
-              var w = this._data,
-                _ = w.words,
+              var x = this._data,
+                _ = x.words,
                 b = this._nDataBytes * 8,
-                S = w.sigBytes * 8
+                S = x.sigBytes * 8
               ;((_[S >>> 5] |= 128 << (24 - (S % 32))),
                 (_[(((S + 64) >>> 9) << 4) + 14] =
                   (((b << 8) | (b >>> 24)) & 16711935) |
                   (((b << 24) | (b >>> 8)) & 4278255360)),
-                (w.sigBytes = (_.length + 1) * 4),
+                (x.sigBytes = (_.length + 1) * 4),
                 this._process())
               for (var A = this._hash, C = A.words, P = 0; P < 5; P++) {
                 var k = C[P]
@@ -4514,27 +4514,27 @@ var $c = N((Li, Oc) => {
               return A
             },
             clone: function () {
-              var w = n.clone.call(this)
-              return ((w._hash = this._hash.clone()), w)
+              var x = n.clone.call(this)
+              return ((x._hash = this._hash.clone()), x)
             },
           }))
-        function h(w, _, b) {
-          return w ^ _ ^ b
+        function h(x, _, b) {
+          return x ^ _ ^ b
         }
-        function y(w, _, b) {
-          return (w & _) | (~w & b)
+        function y(x, _, b) {
+          return (x & _) | (~x & b)
         }
-        function x(w, _, b) {
-          return (w | ~_) ^ b
+        function w(x, _, b) {
+          return (x | ~_) ^ b
         }
-        function g(w, _, b) {
-          return (w & b) | (_ & ~b)
+        function g(x, _, b) {
+          return (x & b) | (_ & ~b)
         }
-        function m(w, _, b) {
-          return w ^ (_ | ~b)
+        function m(x, _, b) {
+          return x ^ (_ | ~b)
         }
-        function v(w, _) {
-          return (w << _) | (w >>> (32 - _))
+        function v(x, _) {
+          return (x << _) | (x >>> (32 - _))
         }
         ;((t.RIPEMD160 = n._createHelper(f)),
           (t.HmacRIPEMD160 = n._createHmacHelper(f)))
@@ -4543,14 +4543,14 @@ var $c = N((Li, Oc) => {
     )
   })
 })
-var Mi = N((Ni, jc) => {
+var Wi = M((Ki, Gc) => {
   ;(function (r, e) {
-    typeof Ni == "object"
-      ? (jc.exports = Ni = e(M()))
+    typeof Ki == "object"
+      ? (Gc.exports = Ki = e(K()))
       : typeof define == "function" && define.amd
         ? define(["./core"], e)
         : e(r.CryptoJS)
-  })(Ni, function (r) {
+  })(Ki, function (r) {
     ;(function () {
       var e = r,
         t = e.lib,
@@ -4570,11 +4570,11 @@ var Mi = N((Ni, jc) => {
                 f = (this._iKey = d.clone()),
                 h = p.words,
                 y = f.words,
-                x = 0;
-              x < l;
-              x++
+                w = 0;
+              w < l;
+              w++
             )
-              ((h[x] ^= 1549556828), (y[x] ^= 909522486))
+              ((h[w] ^= 1549556828), (y[w] ^= 909522486))
             ;((p.sigBytes = f.sigBytes = u), this.reset())
           },
           reset: function () {
@@ -4595,14 +4595,14 @@ var Mi = N((Ni, jc) => {
     })()
   })
 })
-var Lc = N((Hi, zc) => {
+var Jc = M((Gi, Vc) => {
   ;(function (r, e, t) {
-    typeof Hi == "object"
-      ? (zc.exports = Hi = e(M(), qi(), Mi()))
+    typeof Gi == "object"
+      ? (Vc.exports = Gi = e(K(), ji(), Wi()))
       : typeof define == "function" && define.amd
         ? define(["./core", "./sha256", "./hmac"], e)
         : e(r.CryptoJS)
-  })(Hi, function (r) {
+  })(Gi, function (r) {
     return (
       (function () {
         var e = r,
@@ -4624,18 +4624,18 @@ var Lc = N((Hi, zc) => {
                   f = s.create(),
                   h = s.create([1]),
                   y = f.words,
-                  x = h.words,
+                  w = h.words,
                   g = u.keySize,
                   m = u.iterations;
                 y.length < g;
               ) {
                 var v = p.update(l).finalize(h)
                 p.reset()
-                for (var w = v.words, _ = w.length, b = v, S = 1; S < m; S++) {
+                for (var x = v.words, _ = x.length, b = v, S = 1; S < m; S++) {
                   ;((b = p.finalize(b)), p.reset())
-                  for (var A = b.words, C = 0; C < _; C++) w[C] ^= A[C]
+                  for (var A = b.words, C = 0; C < _; C++) x[C] ^= A[C]
                 }
-                ;(f.concat(v), x[0]++)
+                ;(f.concat(v), w[0]++)
               }
               return ((f.sigBytes = g * 4), f)
             },
@@ -4648,14 +4648,14 @@ var Lc = N((Hi, zc) => {
     )
   })
 })
-var Qe = N((Ki, Nc) => {
+var Xe = M((Vi, Qc) => {
   ;(function (r, e, t) {
-    typeof Ki == "object"
-      ? (Nc.exports = Ki = e(M(), Fn(), Mi()))
+    typeof Vi == "object"
+      ? (Qc.exports = Vi = e(K(), Rn(), Wi()))
       : typeof define == "function" && define.amd
         ? define(["./core", "./sha1", "./hmac"], e)
         : e(r.CryptoJS)
-  })(Ki, function (r) {
+  })(Vi, function (r) {
     return (
       (function () {
         var e = r,
@@ -4677,11 +4677,11 @@ var Qe = N((Ki, Nc) => {
                   f = s.create(),
                   h = f.words,
                   y = u.keySize,
-                  x = u.iterations;
+                  w = u.iterations;
                 h.length < y;
               ) {
                 ;(l && p.update(l), (l = p.update(c).finalize(d)), p.reset())
-                for (var g = 1; g < x; g++) ((l = p.finalize(l)), p.reset())
+                for (var g = 1; g < w; g++) ((l = p.finalize(l)), p.reset())
                 f.concat(l)
               }
               return ((f.sigBytes = y * 4), f)
@@ -4695,14 +4695,14 @@ var Qe = N((Ki, Nc) => {
     )
   })
 })
-var ce = N((Wi, Mc) => {
+var ce = M((Ji, Xc) => {
   ;(function (r, e, t) {
-    typeof Wi == "object"
-      ? (Mc.exports = Wi = e(M(), Qe()))
+    typeof Ji == "object"
+      ? (Xc.exports = Ji = e(K(), Xe()))
       : typeof define == "function" && define.amd
         ? define(["./core", "./evpkdf"], e)
         : e(r.CryptoJS)
-  })(Wi, function (r) {
+  })(Ji, function (r) {
     r.lib.Cipher ||
       (function (e) {
         var t = r,
@@ -4779,7 +4779,7 @@ var ce = N((Wi, Mc) => {
               ;((this._cipher = k), (this._iv = D))
             },
           })),
-          x = (h.CBC = (function () {
+          w = (h.CBC = (function () {
             var k = y.extend()
             ;((k.Encryptor = k.extend({
               processBlock: function (T, E) {
@@ -4804,7 +4804,7 @@ var ce = N((Wi, Mc) => {
               var q,
                 j = this._iv
               j ? ((q = j), (this._iv = e)) : (q = this._prevBlock)
-              for (var H = 0; H < O; H++) T[E + H] ^= q[H]
+              for (var W = 0; W < O; W++) T[E + W] ^= q[W]
             }
             return k
           })()),
@@ -4821,8 +4821,8 @@ var ce = N((Wi, Mc) => {
                 j += 4
               )
                 q.push(O)
-              var H = n.create(q, E)
-              k.concat(H)
+              var W = n.create(q, E)
+              k.concat(W)
             },
             unpad: function (k) {
               var D = k.words[(k.sigBytes - 1) >>> 2] & 255
@@ -4830,7 +4830,7 @@ var ce = N((Wi, Mc) => {
             },
           }),
           v = (i.BlockCipher = p.extend({
-            cfg: p.cfg.extend({ mode: x, padding: m }),
+            cfg: p.cfg.extend({ mode: w, padding: m }),
             reset: function () {
               var k
               p.reset.call(this)
@@ -4860,7 +4860,7 @@ var ce = N((Wi, Mc) => {
             },
             blockSize: 128 / 32,
           })),
-          w = (i.CipherParams = s.extend({
+          x = (i.CipherParams = s.extend({
             init: function (k) {
               this.mixIn(k)
             },
@@ -4891,7 +4891,7 @@ var ce = N((Wi, Mc) => {
                   ((D = n.create(E.slice(2, 4))),
                   E.splice(0, 4),
                   (T.sigBytes -= 16)),
-                w.create({ ciphertext: T, salt: D })
+                x.create({ ciphertext: T, salt: D })
               )
             },
           }),
@@ -4902,7 +4902,7 @@ var ce = N((Wi, Mc) => {
               var O = k.createEncryptor(T, E),
                 q = O.finalize(D),
                 j = O.cfg
-              return w.create({
+              return x.create({
                 ciphertext: q,
                 key: T,
                 iv: j.iv,
@@ -4931,7 +4931,7 @@ var ce = N((Wi, Mc) => {
               var j = n.create(q.words.slice(D), T * 4)
               return (
                 (q.sigBytes = D * 4),
-                w.create({ key: q, iv: j, salt: E })
+                x.create({ key: q, iv: j, salt: E })
               )
             },
           }),
@@ -4955,14 +4955,14 @@ var ce = N((Wi, Mc) => {
       })()
   })
 })
-var Kc = N((Gi, Hc) => {
+var Zc = M((Qi, Yc) => {
   ;(function (r, e, t) {
-    typeof Gi == "object"
-      ? (Hc.exports = Gi = e(M(), ce()))
+    typeof Qi == "object"
+      ? (Yc.exports = Qi = e(K(), ce()))
       : typeof define == "function" && define.amd
         ? define(["./core", "./cipher-core"], e)
         : e(r.CryptoJS)
-  })(Gi, function (r) {
+  })(Qi, function (r) {
     return (
       (r.mode.CFB = (function () {
         var e = r.lib.BlockCipherMode.extend()
@@ -4994,14 +4994,14 @@ var Kc = N((Gi, Hc) => {
     )
   })
 })
-var Gc = N((Vi, Wc) => {
+var td = M((Xi, ed) => {
   ;(function (r, e, t) {
-    typeof Vi == "object"
-      ? (Wc.exports = Vi = e(M(), ce()))
+    typeof Xi == "object"
+      ? (ed.exports = Xi = e(K(), ce()))
       : typeof define == "function" && define.amd
         ? define(["./core", "./cipher-core"], e)
         : e(r.CryptoJS)
-  })(Vi, function (r) {
+  })(Xi, function (r) {
     return (
       (r.mode.CTR = (function () {
         var e = r.lib.BlockCipherMode.extend(),
@@ -5023,14 +5023,14 @@ var Gc = N((Vi, Wc) => {
     )
   })
 })
-var Jc = N((Ji, Vc) => {
+var id = M((Yi, rd) => {
   ;(function (r, e, t) {
-    typeof Ji == "object"
-      ? (Vc.exports = Ji = e(M(), ce()))
+    typeof Yi == "object"
+      ? (rd.exports = Yi = e(K(), ce()))
       : typeof define == "function" && define.amd
         ? define(["./core", "./cipher-core"], e)
         : e(r.CryptoJS)
-  })(Ji, function (r) {
+  })(Yi, function (r) {
     return (
       (r.mode.CTRGladman = (function () {
         var e = r.lib.BlockCipherMode.extend()
@@ -5072,14 +5072,14 @@ var Jc = N((Ji, Vc) => {
     )
   })
 })
-var Xc = N((Qi, Qc) => {
+var nd = M((Zi, sd) => {
   ;(function (r, e, t) {
-    typeof Qi == "object"
-      ? (Qc.exports = Qi = e(M(), ce()))
+    typeof Zi == "object"
+      ? (sd.exports = Zi = e(K(), ce()))
       : typeof define == "function" && define.amd
         ? define(["./core", "./cipher-core"], e)
         : e(r.CryptoJS)
-  })(Qi, function (r) {
+  })(Zi, function (r) {
     return (
       (r.mode.OFB = (function () {
         var e = r.lib.BlockCipherMode.extend(),
@@ -5100,14 +5100,14 @@ var Xc = N((Qi, Qc) => {
     )
   })
 })
-var Zc = N((Xi, Yc) => {
+var ad = M((es, od) => {
   ;(function (r, e, t) {
-    typeof Xi == "object"
-      ? (Yc.exports = Xi = e(M(), ce()))
+    typeof es == "object"
+      ? (od.exports = es = e(K(), ce()))
       : typeof define == "function" && define.amd
         ? define(["./core", "./cipher-core"], e)
         : e(r.CryptoJS)
-  })(Xi, function (r) {
+  })(es, function (r) {
     return (
       (r.mode.ECB = (function () {
         var e = r.lib.BlockCipherMode.extend()
@@ -5129,14 +5129,14 @@ var Zc = N((Xi, Yc) => {
     )
   })
 })
-var td = N((Yi, ed) => {
+var dd = M((ts, cd) => {
   ;(function (r, e, t) {
-    typeof Yi == "object"
-      ? (ed.exports = Yi = e(M(), ce()))
+    typeof ts == "object"
+      ? (cd.exports = ts = e(K(), ce()))
       : typeof define == "function" && define.amd
         ? define(["./core", "./cipher-core"], e)
         : e(r.CryptoJS)
-  })(Yi, function (r) {
+  })(ts, function (r) {
     return (
       (r.pad.AnsiX923 = {
         pad: function (e, t) {
@@ -5157,14 +5157,14 @@ var td = N((Yi, ed) => {
     )
   })
 })
-var id = N((Zi, rd) => {
+var ud = M((rs, ld) => {
   ;(function (r, e, t) {
-    typeof Zi == "object"
-      ? (rd.exports = Zi = e(M(), ce()))
+    typeof rs == "object"
+      ? (ld.exports = rs = e(K(), ce()))
       : typeof define == "function" && define.amd
         ? define(["./core", "./cipher-core"], e)
         : e(r.CryptoJS)
-  })(Zi, function (r) {
+  })(rs, function (r) {
     return (
       (r.pad.Iso10126 = {
         pad: function (e, t) {
@@ -5183,14 +5183,14 @@ var id = N((Zi, rd) => {
     )
   })
 })
-var nd = N((es, sd) => {
+var fd = M((is, pd) => {
   ;(function (r, e, t) {
-    typeof es == "object"
-      ? (sd.exports = es = e(M(), ce()))
+    typeof is == "object"
+      ? (pd.exports = is = e(K(), ce()))
       : typeof define == "function" && define.amd
         ? define(["./core", "./cipher-core"], e)
         : e(r.CryptoJS)
-  })(es, function (r) {
+  })(is, function (r) {
     return (
       (r.pad.Iso97971 = {
         pad: function (e, t) {
@@ -5205,14 +5205,14 @@ var nd = N((es, sd) => {
     )
   })
 })
-var ad = N((ts, od) => {
+var gd = M((ss, hd) => {
   ;(function (r, e, t) {
-    typeof ts == "object"
-      ? (od.exports = ts = e(M(), ce()))
+    typeof ss == "object"
+      ? (hd.exports = ss = e(K(), ce()))
       : typeof define == "function" && define.amd
         ? define(["./core", "./cipher-core"], e)
         : e(r.CryptoJS)
-  })(ts, function (r) {
+  })(ss, function (r) {
     return (
       (r.pad.ZeroPadding = {
         pad: function (e, t) {
@@ -5235,28 +5235,28 @@ var ad = N((ts, od) => {
     )
   })
 })
-var dd = N((rs, cd) => {
+var yd = M((ns, md) => {
   ;(function (r, e, t) {
-    typeof rs == "object"
-      ? (cd.exports = rs = e(M(), ce()))
+    typeof ns == "object"
+      ? (md.exports = ns = e(K(), ce()))
       : typeof define == "function" && define.amd
         ? define(["./core", "./cipher-core"], e)
         : e(r.CryptoJS)
-  })(rs, function (r) {
+  })(ns, function (r) {
     return (
       (r.pad.NoPadding = { pad: function () {}, unpad: function () {} }),
       r.pad.NoPadding
     )
   })
 })
-var ud = N((is, ld) => {
+var xd = M((os, wd) => {
   ;(function (r, e, t) {
-    typeof is == "object"
-      ? (ld.exports = is = e(M(), ce()))
+    typeof os == "object"
+      ? (wd.exports = os = e(K(), ce()))
       : typeof define == "function" && define.amd
         ? define(["./core", "./cipher-core"], e)
         : e(r.CryptoJS)
-  })(is, function (r) {
+  })(os, function (r) {
     return (
       (function (e) {
         var t = r,
@@ -5279,17 +5279,17 @@ var ud = N((is, ld) => {
     )
   })
 })
-var fd = N((ss, pd) => {
+var vd = M((as, _d) => {
   ;(function (r, e, t) {
-    typeof ss == "object"
-      ? (pd.exports = ss = e(M(), dt(), lt(), Qe(), ce()))
+    typeof as == "object"
+      ? (_d.exports = as = e(K(), lt(), ut(), Xe(), ce()))
       : typeof define == "function" && define.amd
         ? define(
             ["./core", "./enc-base64", "./md5", "./evpkdf", "./cipher-core"],
             e,
           )
         : e(r.CryptoJS)
-  })(ss, function (r) {
+  })(as, function (r) {
     return (
       (function () {
         var e = r,
@@ -5309,8 +5309,8 @@ var fd = N((ss, pd) => {
         ;(function () {
           for (var g = [], m = 0; m < 256; m++)
             m < 128 ? (g[m] = m << 1) : (g[m] = (m << 1) ^ 283)
-          for (var v = 0, w = 0, m = 0; m < 256; m++) {
-            var _ = w ^ (w << 1) ^ (w << 2) ^ (w << 3) ^ (w << 4)
+          for (var v = 0, x = 0, m = 0; m < 256; m++) {
+            var _ = x ^ (x << 1) ^ (x << 2) ^ (x << 3) ^ (x << 4)
             ;((_ = (_ >>> 8) ^ (_ & 255) ^ 99), (n[v] = _), (o[_] = v))
             var b = g[v],
               S = g[b],
@@ -5325,31 +5325,31 @@ var fd = N((ss, pd) => {
               (p[_] = (C << 16) | (C >>> 16)),
               (f[_] = (C << 8) | (C >>> 24)),
               (h[_] = C),
-              v ? ((v = b ^ g[g[g[A ^ b]]]), (w ^= g[g[w]])) : (v = w = 1))
+              v ? ((v = b ^ g[g[g[A ^ b]]]), (x ^= g[g[x]])) : (v = x = 1))
           }
         })()
         var y = [0, 1, 2, 4, 8, 16, 32, 64, 128, 27, 54],
-          x = (s.AES = i.extend({
+          w = (s.AES = i.extend({
             _doReset: function () {
               var g
               if (!(this._nRounds && this._keyPriorReset === this._key)) {
                 for (
                   var m = (this._keyPriorReset = this._key),
                     v = m.words,
-                    w = m.sigBytes / 4,
-                    _ = (this._nRounds = w + 6),
+                    x = m.sigBytes / 4,
+                    _ = (this._nRounds = x + 6),
                     b = (_ + 1) * 4,
                     S = (this._keySchedule = []),
                     A = 0;
                   A < b;
                   A++
                 )
-                  A < w
+                  A < x
                     ? (S[A] = v[A])
                     : ((g = S[A - 1]),
-                      A % w
-                        ? w > 6 &&
-                          A % w == 4 &&
+                      A % x
+                        ? x > 6 &&
+                          A % x == 4 &&
                           (g =
                             (n[g >>> 24] << 24) |
                             (n[(g >>> 16) & 255] << 16) |
@@ -5361,8 +5361,8 @@ var fd = N((ss, pd) => {
                             (n[(g >>> 16) & 255] << 16) |
                             (n[(g >>> 8) & 255] << 8) |
                             n[g & 255]),
-                          (g ^= y[(A / w) | 0] << 24)),
-                      (S[A] = S[A - w] ^ g))
+                          (g ^= y[(A / x) | 0] << 24)),
+                      (S[A] = S[A - x] ^ g))
                 for (var C = (this._invKeySchedule = []), P = 0; P < b; P++) {
                   var A = b - P
                   if (P % 4) var g = S[A]
@@ -5388,7 +5388,7 @@ var fd = N((ss, pd) => {
               var v = g[m + 1]
               ;((g[m + 1] = g[m + 3]), (g[m + 3] = v))
             },
-            _doCryptBlock: function (g, m, v, w, _, b, S, A) {
+            _doCryptBlock: function (g, m, v, x, _, b, S, A) {
               for (
                 var C = this._nRounds,
                   P = g[m] ^ v[0],
@@ -5401,30 +5401,30 @@ var fd = N((ss, pd) => {
                 O++
               ) {
                 var q =
-                    w[P >>> 24] ^
+                    x[P >>> 24] ^
                     _[(k >>> 16) & 255] ^
                     b[(D >>> 8) & 255] ^
                     S[T & 255] ^
                     v[E++],
                   j =
-                    w[k >>> 24] ^
+                    x[k >>> 24] ^
                     _[(D >>> 16) & 255] ^
                     b[(T >>> 8) & 255] ^
                     S[P & 255] ^
                     v[E++],
-                  H =
-                    w[D >>> 24] ^
+                  W =
+                    x[D >>> 24] ^
                     _[(T >>> 16) & 255] ^
                     b[(P >>> 8) & 255] ^
                     S[k & 255] ^
                     v[E++],
                   F =
-                    w[T >>> 24] ^
+                    x[T >>> 24] ^
                     _[(P >>> 16) & 255] ^
                     b[(k >>> 8) & 255] ^
                     S[D & 255] ^
                     v[E++]
-                ;((P = q), (k = j), (D = H), (T = F))
+                ;((P = q), (k = j), (D = W), (T = F))
               }
               var q =
                   ((A[P >>> 24] << 24) |
@@ -5438,7 +5438,7 @@ var fd = N((ss, pd) => {
                     (A[(T >>> 8) & 255] << 8) |
                     A[P & 255]) ^
                   v[E++],
-                H =
+                W =
                   ((A[D >>> 24] << 24) |
                     (A[(T >>> 16) & 255] << 16) |
                     (A[(P >>> 8) & 255] << 8) |
@@ -5450,27 +5450,27 @@ var fd = N((ss, pd) => {
                     (A[(k >>> 8) & 255] << 8) |
                     A[D & 255]) ^
                   v[E++]
-              ;((g[m] = q), (g[m + 1] = j), (g[m + 2] = H), (g[m + 3] = F))
+              ;((g[m] = q), (g[m + 1] = j), (g[m + 2] = W), (g[m + 3] = F))
             },
             keySize: 256 / 32,
           }))
-        e.AES = i._createHelper(x)
+        e.AES = i._createHelper(w)
       })(),
       r.AES
     )
   })
 })
-var gd = N((ns, hd) => {
+var kd = M((cs, bd) => {
   ;(function (r, e, t) {
-    typeof ns == "object"
-      ? (hd.exports = ns = e(M(), dt(), lt(), Qe(), ce()))
+    typeof cs == "object"
+      ? (bd.exports = cs = e(K(), lt(), ut(), Xe(), ce()))
       : typeof define == "function" && define.amd
         ? define(
             ["./core", "./enc-base64", "./md5", "./evpkdf", "./cipher-core"],
             e,
           )
         : e(r.CryptoJS)
-  })(ns, function (r) {
+  })(cs, function (r) {
     return (
       (function () {
         var e = r,
@@ -6026,12 +6026,12 @@ var gd = N((ns, hd) => {
           ],
           u = (n.DES = s.extend({
             _doReset: function () {
-              for (var y = this._key, x = y.words, g = [], m = 0; m < 56; m++) {
+              for (var y = this._key, w = y.words, g = [], m = 0; m < 56; m++) {
                 var v = o[m] - 1
-                g[m] = (x[v >>> 5] >>> (31 - (v % 32))) & 1
+                g[m] = (w[v >>> 5] >>> (31 - (v % 32))) & 1
               }
-              for (var w = (this._subKeys = []), _ = 0; _ < 16; _++) {
-                for (var b = (w[_] = []), S = c[_], m = 0; m < 24; m++)
+              for (var x = (this._subKeys = []), _ = 0; _ < 16; _++) {
+                for (var b = (x[_] = []), S = c[_], m = 0; m < 24; m++)
                   ((b[(m / 6) | 0] |= g[(a[m] - 1 + S) % 28] << (31 - (m % 6))),
                     (b[4 + ((m / 6) | 0)] |=
                       g[28 + ((a[m + 24] - 1 + S) % 28)] << (31 - (m % 6))))
@@ -6040,17 +6040,17 @@ var gd = N((ns, hd) => {
                 b[7] = (b[7] << 5) | (b[7] >>> 27)
               }
               for (var A = (this._invSubKeys = []), m = 0; m < 16; m++)
-                A[m] = w[15 - m]
+                A[m] = x[15 - m]
             },
-            encryptBlock: function (y, x) {
-              this._doCryptBlock(y, x, this._subKeys)
+            encryptBlock: function (y, w) {
+              this._doCryptBlock(y, w, this._subKeys)
             },
-            decryptBlock: function (y, x) {
-              this._doCryptBlock(y, x, this._invSubKeys)
+            decryptBlock: function (y, w) {
+              this._doCryptBlock(y, w, this._invSubKeys)
             },
-            _doCryptBlock: function (y, x, g) {
-              ;((this._lBlock = y[x]),
-                (this._rBlock = y[x + 1]),
+            _doCryptBlock: function (y, w, g) {
+              ;((this._lBlock = y[w]),
+                (this._rBlock = y[w + 1]),
                 p.call(this, 4, 252645135),
                 p.call(this, 16, 65535),
                 f.call(this, 2, 858993459),
@@ -6059,7 +6059,7 @@ var gd = N((ns, hd) => {
               for (var m = 0; m < 16; m++) {
                 for (
                   var v = g[m],
-                    w = this._lBlock,
+                    x = this._lBlock,
                     _ = this._rBlock,
                     b = 0,
                     S = 0;
@@ -6067,7 +6067,7 @@ var gd = N((ns, hd) => {
                   S++
                 )
                   b |= d[S][((_ ^ v[S]) & l[S]) >>> 0]
-                ;((this._lBlock = _), (this._rBlock = w ^ b))
+                ;((this._lBlock = _), (this._rBlock = x ^ b))
               }
               var A = this._lBlock
               ;((this._lBlock = this._rBlock),
@@ -6077,46 +6077,46 @@ var gd = N((ns, hd) => {
                 f.call(this, 2, 858993459),
                 p.call(this, 16, 65535),
                 p.call(this, 4, 252645135),
-                (y[x] = this._lBlock),
-                (y[x + 1] = this._rBlock))
+                (y[w] = this._lBlock),
+                (y[w + 1] = this._rBlock))
             },
             keySize: 64 / 32,
             ivSize: 64 / 32,
             blockSize: 64 / 32,
           }))
-        function p(y, x) {
-          var g = ((this._lBlock >>> y) ^ this._rBlock) & x
+        function p(y, w) {
+          var g = ((this._lBlock >>> y) ^ this._rBlock) & w
           ;((this._rBlock ^= g), (this._lBlock ^= g << y))
         }
-        function f(y, x) {
-          var g = ((this._rBlock >>> y) ^ this._lBlock) & x
+        function f(y, w) {
+          var g = ((this._rBlock >>> y) ^ this._lBlock) & w
           ;((this._lBlock ^= g), (this._rBlock ^= g << y))
         }
         e.DES = s._createHelper(u)
         var h = (n.TripleDES = s.extend({
           _doReset: function () {
             var y = this._key,
-              x = y.words
-            if (x.length !== 2 && x.length !== 4 && x.length < 6)
+              w = y.words
+            if (w.length !== 2 && w.length !== 4 && w.length < 6)
               throw new Error(
                 "Invalid key length - 3DES requires the key length to be 64, 128, 192 or >192.",
               )
-            var g = x.slice(0, 2),
-              m = x.length < 4 ? x.slice(0, 2) : x.slice(2, 4),
-              v = x.length < 6 ? x.slice(0, 2) : x.slice(4, 6)
+            var g = w.slice(0, 2),
+              m = w.length < 4 ? w.slice(0, 2) : w.slice(2, 4),
+              v = w.length < 6 ? w.slice(0, 2) : w.slice(4, 6)
             ;((this._des1 = u.createEncryptor(i.create(g))),
               (this._des2 = u.createEncryptor(i.create(m))),
               (this._des3 = u.createEncryptor(i.create(v))))
           },
-          encryptBlock: function (y, x) {
-            ;(this._des1.encryptBlock(y, x),
-              this._des2.decryptBlock(y, x),
-              this._des3.encryptBlock(y, x))
+          encryptBlock: function (y, w) {
+            ;(this._des1.encryptBlock(y, w),
+              this._des2.decryptBlock(y, w),
+              this._des3.encryptBlock(y, w))
           },
-          decryptBlock: function (y, x) {
-            ;(this._des3.decryptBlock(y, x),
-              this._des2.encryptBlock(y, x),
-              this._des1.decryptBlock(y, x))
+          decryptBlock: function (y, w) {
+            ;(this._des3.decryptBlock(y, w),
+              this._des2.encryptBlock(y, w),
+              this._des1.decryptBlock(y, w))
           },
           keySize: 192 / 32,
           ivSize: 64 / 32,
@@ -6128,17 +6128,17 @@ var gd = N((ns, hd) => {
     )
   })
 })
-var yd = N((os, md) => {
+var Pd = M((ds, Sd) => {
   ;(function (r, e, t) {
-    typeof os == "object"
-      ? (md.exports = os = e(M(), dt(), lt(), Qe(), ce()))
+    typeof ds == "object"
+      ? (Sd.exports = ds = e(K(), lt(), ut(), Xe(), ce()))
       : typeof define == "function" && define.amd
         ? define(
             ["./core", "./enc-base64", "./md5", "./evpkdf", "./cipher-core"],
             e,
           )
         : e(r.CryptoJS)
-  })(os, function (r) {
+  })(ds, function (r) {
     return (
       (function () {
         var e = r,
@@ -6161,8 +6161,8 @@ var yd = N((os, md) => {
                 var h = p % l,
                   y = (d[h >>> 2] >>> (24 - (h % 4) * 8)) & 255
                 f = (f + u[p] + y) % 256
-                var x = u[p]
-                ;((u[p] = u[f]), (u[f] = x))
+                var w = u[p]
+                ;((u[p] = u[f]), (u[f] = w))
               }
               this._i = this._j = 0
             },
@@ -6200,17 +6200,17 @@ var yd = N((os, md) => {
     )
   })
 })
-var wd = N((as, xd) => {
+var Cd = M((ls, Ad) => {
   ;(function (r, e, t) {
-    typeof as == "object"
-      ? (xd.exports = as = e(M(), dt(), lt(), Qe(), ce()))
+    typeof ls == "object"
+      ? (Ad.exports = ls = e(K(), lt(), ut(), Xe(), ce()))
       : typeof define == "function" && define.amd
         ? define(
             ["./core", "./enc-base64", "./md5", "./evpkdf", "./cipher-core"],
             e,
           )
         : e(r.CryptoJS)
-  })(as, function (r) {
+  })(ls, function (r) {
     return (
       (function () {
         var e = r,
@@ -6251,22 +6251,22 @@ var wd = N((as, xd) => {
               for (var p = 0; p < 8; p++) h[p] ^= f[(p + 4) & 7]
               if (u) {
                 var y = u.words,
-                  x = y[0],
+                  w = y[0],
                   g = y[1],
                   m =
-                    (((x << 8) | (x >>> 24)) & 16711935) |
-                    (((x << 24) | (x >>> 8)) & 4278255360),
+                    (((w << 8) | (w >>> 24)) & 16711935) |
+                    (((w << 24) | (w >>> 8)) & 4278255360),
                   v =
                     (((g << 8) | (g >>> 24)) & 16711935) |
                     (((g << 24) | (g >>> 8)) & 4278255360),
-                  w = (m >>> 16) | (v & 4294901760),
+                  x = (m >>> 16) | (v & 4294901760),
                   _ = (v << 16) | (m & 65535)
                 ;((h[0] ^= m),
-                  (h[1] ^= w),
+                  (h[1] ^= x),
                   (h[2] ^= v),
                   (h[3] ^= _),
                   (h[4] ^= m),
-                  (h[5] ^= w),
+                  (h[5] ^= x),
                   (h[6] ^= v),
                   (h[7] ^= _))
                 for (var p = 0; p < 4; p++) d.call(this)
@@ -6308,9 +6308,9 @@ var wd = N((as, xd) => {
             var f = l[p] + u[p],
               h = f & 65535,
               y = f >>> 16,
-              x = ((((h * h) >>> 17) + h * y) >>> 15) + y * y,
+              w = ((((h * h) >>> 17) + h * y) >>> 15) + y * y,
               g = (((f & 4294901760) * f) | 0) + (((f & 65535) * f) | 0)
-            a[p] = x ^ g
+            a[p] = w ^ g
           }
           ;((l[0] =
             (a[0] +
@@ -6343,17 +6343,17 @@ var wd = N((as, xd) => {
     )
   })
 })
-var vd = N((cs, _d) => {
+var Dd = M((us, Ed) => {
   ;(function (r, e, t) {
-    typeof cs == "object"
-      ? (_d.exports = cs = e(M(), dt(), lt(), Qe(), ce()))
+    typeof us == "object"
+      ? (Ed.exports = us = e(K(), lt(), ut(), Xe(), ce()))
       : typeof define == "function" && define.amd
         ? define(
             ["./core", "./enc-base64", "./md5", "./evpkdf", "./cipher-core"],
             e,
           )
         : e(r.CryptoJS)
-  })(cs, function (r) {
+  })(us, function (r) {
     return (
       (function () {
         var e = r,
@@ -6392,22 +6392,22 @@ var vd = N((cs, _d) => {
               for (var h = 0; h < 8; h++) f[h] ^= p[(h + 4) & 7]
               if (u) {
                 var y = u.words,
-                  x = y[0],
+                  w = y[0],
                   g = y[1],
                   m =
-                    (((x << 8) | (x >>> 24)) & 16711935) |
-                    (((x << 24) | (x >>> 8)) & 4278255360),
+                    (((w << 8) | (w >>> 24)) & 16711935) |
+                    (((w << 24) | (w >>> 8)) & 4278255360),
                   v =
                     (((g << 8) | (g >>> 24)) & 16711935) |
                     (((g << 24) | (g >>> 8)) & 4278255360),
-                  w = (m >>> 16) | (v & 4294901760),
+                  x = (m >>> 16) | (v & 4294901760),
                   _ = (v << 16) | (m & 65535)
                 ;((f[0] ^= m),
-                  (f[1] ^= w),
+                  (f[1] ^= x),
                   (f[2] ^= v),
                   (f[3] ^= _),
                   (f[4] ^= m),
-                  (f[5] ^= w),
+                  (f[5] ^= x),
                   (f[6] ^= v),
                   (f[7] ^= _))
                 for (var h = 0; h < 4; h++) d.call(this)
@@ -6449,9 +6449,9 @@ var vd = N((cs, _d) => {
             var f = l[p] + u[p],
               h = f & 65535,
               y = f >>> 16,
-              x = ((((h * h) >>> 17) + h * y) >>> 15) + y * y,
+              w = ((((h * h) >>> 17) + h * y) >>> 15) + y * y,
               g = (((f & 4294901760) * f) | 0) + (((f & 65535) * f) | 0)
-            a[p] = x ^ g
+            a[p] = w ^ g
           }
           ;((l[0] =
             (a[0] +
@@ -6484,17 +6484,17 @@ var vd = N((cs, _d) => {
     )
   })
 })
-var kd = N((ds, bd) => {
+var Td = M((ps, Fd) => {
   ;(function (r, e, t) {
-    typeof ds == "object"
-      ? (bd.exports = ds = e(M(), dt(), lt(), Qe(), ce()))
+    typeof ps == "object"
+      ? (Fd.exports = ps = e(K(), lt(), ut(), Xe(), ce()))
       : typeof define == "function" && define.amd
         ? define(
             ["./core", "./enc-base64", "./md5", "./evpkdf", "./cipher-core"],
             e,
           )
         : e(r.CryptoJS)
-  })(ds, function (r) {
+  })(ps, function (r) {
     return (
       (function () {
         var e = r,
@@ -6725,19 +6725,19 @@ var kd = N((ds, bd) => {
           ]
         var c = { pbox: [], sbox: [] }
         function d(h, y) {
-          let x = (y >> 24) & 255,
+          let w = (y >> 24) & 255,
             g = (y >> 16) & 255,
             m = (y >> 8) & 255,
             v = y & 255,
-            w = h.sbox[0][x] + h.sbox[1][g]
-          return ((w = w ^ h.sbox[2][m]), (w = w + h.sbox[3][v]), w)
+            x = h.sbox[0][w] + h.sbox[1][g]
+          return ((x = x ^ h.sbox[2][m]), (x = x + h.sbox[3][v]), x)
         }
-        function l(h, y, x) {
+        function l(h, y, w) {
           let g = y,
-            m = x,
+            m = w,
             v
-          for (let w = 0; w < n; ++w)
-            ((g = g ^ h.pbox[w]), (m = d(h, g) ^ m), (v = g), (g = m), (m = v))
+          for (let x = 0; x < n; ++x)
+            ((g = g ^ h.pbox[x]), (m = d(h, g) ^ m), (v = g), (g = m), (m = v))
           return (
             (v = g),
             (g = m),
@@ -6747,12 +6747,12 @@ var kd = N((ds, bd) => {
             { left: g, right: m }
           )
         }
-        function u(h, y, x) {
+        function u(h, y, w) {
           let g = y,
-            m = x,
+            m = w,
             v
-          for (let w = n + 1; w > 1; --w)
-            ((g = g ^ h.pbox[w]), (m = d(h, g) ^ m), (v = g), (g = m), (m = v))
+          for (let x = n + 1; x > 1; --x)
+            ((g = g ^ h.pbox[x]), (m = d(h, g) ^ m), (v = g), (g = m), (m = v))
           return (
             (v = g),
             (g = m),
@@ -6762,28 +6762,28 @@ var kd = N((ds, bd) => {
             { left: g, right: m }
           )
         }
-        function p(h, y, x) {
+        function p(h, y, w) {
           for (let _ = 0; _ < 4; _++) {
             h.sbox[_] = []
             for (let b = 0; b < 256; b++) h.sbox[_][b] = a[_][b]
           }
           let g = 0
           for (let _ = 0; _ < n + 2; _++)
-            ((h.pbox[_] = o[_] ^ y[g]), g++, g >= x && (g = 0))
+            ((h.pbox[_] = o[_] ^ y[g]), g++, g >= w && (g = 0))
           let m = 0,
             v = 0,
-            w = 0
+            x = 0
           for (let _ = 0; _ < n + 2; _ += 2)
-            ((w = l(h, m, v)),
-              (m = w.left),
-              (v = w.right),
+            ((x = l(h, m, v)),
+              (m = x.left),
+              (v = x.right),
               (h.pbox[_] = m),
               (h.pbox[_ + 1] = v))
           for (let _ = 0; _ < 4; _++)
             for (let b = 0; b < 256; b += 2)
-              ((w = l(h, m, v)),
-                (m = w.left),
-                (v = w.right),
+              ((x = l(h, m, v)),
+                (m = x.left),
+                (v = x.right),
                 (h.sbox[_][b] = m),
                 (h.sbox[_][b + 1] = v))
           return !0
@@ -6793,17 +6793,17 @@ var kd = N((ds, bd) => {
             if (this._keyPriorReset !== this._key) {
               var h = (this._keyPriorReset = this._key),
                 y = h.words,
-                x = h.sigBytes / 4
-              p(c, y, x)
+                w = h.sigBytes / 4
+              p(c, y, w)
             }
           },
           encryptBlock: function (h, y) {
-            var x = l(c, h[y], h[y + 1])
-            ;((h[y] = x.left), (h[y + 1] = x.right))
+            var w = l(c, h[y], h[y + 1])
+            ;((h[y] = w.left), (h[y + 1] = w.right))
           },
           decryptBlock: function (h, y) {
-            var x = u(c, h[y], h[y + 1])
-            ;((h[y] = x.left), (h[y + 1] = x.right))
+            var w = u(c, h[y], h[y + 1])
+            ;((h[y] = w.left), (h[y + 1] = w.right))
           },
           blockSize: 64 / 32,
           keySize: 128 / 32,
@@ -6815,33 +6815,29 @@ var kd = N((ds, bd) => {
     )
   })
 })
-var kr = N((ls, Sd) => {
+var Ar = M((fs, Id) => {
   ;(function (r, e, t) {
-    typeof ls == "object"
-      ? (Sd.exports = ls =
+    typeof fs == "object"
+      ? (Id.exports = fs =
           e(
-            M(),
-            br(),
-            vc(),
-            kc(),
-            dt(),
-            Ac(),
-            lt(),
-            Fn(),
-            qi(),
+            K(),
+            Pr(),
+            Dc(),
             Tc(),
-            Tn(),
+            lt(),
             Rc(),
-            qc(),
-            $c(),
-            Mi(),
-            Lc(),
-            Qe(),
-            ce(),
-            Kc(),
-            Gc(),
+            ut(),
+            Rn(),
+            ji(),
+            jc(),
+            Un(),
+            Nc(),
+            Hc(),
+            Wc(),
+            Wi(),
             Jc(),
-            Xc(),
+            Xe(),
+            ce(),
             Zc(),
             td(),
             id(),
@@ -6852,9 +6848,13 @@ var kr = N((ls, Sd) => {
             fd(),
             gd(),
             yd(),
-            wd(),
+            xd(),
             vd(),
             kd(),
+            Pd(),
+            Cd(),
+            Dd(),
+            Td(),
           ))
       : typeof define == "function" && define.amd
         ? define(
@@ -6898,13 +6898,13 @@ var kr = N((ls, Sd) => {
             e,
           )
         : (r.CryptoJS = e(r.CryptoJS))
-  })(ls, function (r) {
+  })(fs, function (r) {
     return r
   })
 })
-var Al = {}
-Mr(Al, { LocalDriver: () => Xn })
-async function ft() {
+var Rl = {}
+or(Rl, { LocalDriver: () => to })
+async function ht() {
   if (typeof process < "u" && process.release?.name === "node" && !Z)
     try {
       ;((Z = await import("fs/promises")), (ae = await import("path")))
@@ -6912,14 +6912,14 @@ async function ft() {
 }
 var Z,
   ae,
-  Xn,
-  Cl = W(() => {
+  to,
+  Ul = H(() => {
     "use strict"
-    me()
+    he()
     ;((Z = null), (ae = null))
-    Xn = class {
+    to = class {
       async list(e, t) {
-        if ((await ft(), !Z || !ae))
+        if ((await ht(), !Z || !ae))
           throw new Error("LocalDriver is not supported in Edge Runtime")
         let i = []
         try {
@@ -6943,13 +6943,13 @@ var Z,
               created: c.toISOString(),
               modified: c.toISOString(),
               sign: "",
-              type: K(n.name, o),
+              type: L(n.name, o),
             }
           }),
         )
       }
       async get(e, t) {
-        if ((await ft(), !Z || !ae))
+        if ((await ht(), !Z || !ae))
           throw new Error("LocalDriver is not supported in Edge Runtime")
         let i = await Z.stat(t),
           s = i.isDirectory(),
@@ -6965,22 +6965,22 @@ var Z,
           created: i.ctime?.toISOString() || i.mtime.toISOString(),
           modified: i.mtime.toISOString(),
           sign: "",
-          type: K(n, s),
+          type: L(n, s),
         }
       }
       async mkdir(e, t) {
-        if ((await ft(), !Z || !ae))
+        if ((await ht(), !Z || !ae))
           throw new Error("LocalDriver is not supported in Edge Runtime")
         await Z.mkdir(t, { recursive: !0 })
       }
       async rename(e, t, i) {
-        if ((await ft(), !Z || !ae))
+        if ((await ht(), !Z || !ae))
           throw new Error("LocalDriver is not supported in Edge Runtime")
         let s = ae.join(ae.dirname(t), i)
         await Z.rename(t, s)
       }
       async remove(e, t, i) {
-        if ((await ft(), !Z || !ae))
+        if ((await ht(), !Z || !ae))
           throw new Error("LocalDriver is not supported in Edge Runtime")
         for (let s of i) {
           let n = ae.join(t, s)
@@ -6988,7 +6988,7 @@ var Z,
         }
       }
       async move(e, t, i, s, n) {
-        if ((await ft(), !Z || !ae))
+        if ((await ht(), !Z || !ae))
           throw new Error("LocalDriver is not supported in Edge Runtime")
         for (let o of i) {
           let a = ae.join(s, o),
@@ -6998,7 +6998,7 @@ var Z,
         }
       }
       async copy(e, t, i, s, n) {
-        if ((await ft(), !Z || !ae))
+        if ((await ht(), !Z || !ae))
           throw new Error("LocalDriver is not supported in Edge Runtime")
         for (let o of i) {
           let a = ae.join(s, o),
@@ -7008,38 +7008,485 @@ var Z,
         }
       }
       async put(e, t, i) {
-        if ((await ft(), !Z || !ae))
+        if ((await ht(), !Z || !ae))
           throw new Error("LocalDriver is not supported in Edge Runtime")
         ;(await Z.mkdir(ae.dirname(t), { recursive: !0 }),
           await Z.writeFile(t, i))
       }
     }
   })
-var ql,
-  ih,
-  sh,
-  nh,
-  oh,
-  Ul,
-  Us,
-  to,
-  Ol = W(() => {
-    yt()
-    ;((ql = { name: "HMAC", hash: "SHA-256" }),
-      (ih = async (r) => {
+async function lh() {
+  if (typeof process > "u" || process.release?.name !== "node")
+    throw new Error(
+      "[SFTP] SFTP driver requires Node.js container runtime (raw TCP sockets not available in standard Edge isolates)",
+    )
+  if (!ro)
+    try {
+      ro = await import("ssh2")
+    } catch (r) {
+      throw new Error(`[SFTP] Failed to load ssh2 module: ${r.message}`)
+    }
+  return ro
+}
+function ql(r) {
+  let e = (r || "").trim()
+  if (!e) return { host: "127.0.0.1", port: 22 }
+  if (e.startsWith("[")) {
+    let n = e.indexOf("]")
+    if (n > 0) {
+      let o = e.slice(1, n),
+        a = e.slice(n + 1),
+        c = a.indexOf(":"),
+        d = (c >= 0 && parseInt(a.slice(c + 1), 10)) || 22
+      return { host: o, port: d }
+    }
+  }
+  let t = e.split(":")
+  if (t.length === 1) return { host: t[0], port: 22 }
+  let i = parseInt(t[t.length - 1], 10)
+  return isNaN(i)
+    ? { host: e, port: 22 }
+    : { host: t.slice(0, t.length - 1).join(":"), port: i || 22 }
+}
+var ro,
+  Br,
+  io = H(() => {
+    "use strict"
+    ro = null
+    Br = class {
+      addition
+      sshClient = null
+      sftpClient = null
+      connectingPromise = null
+      constructor(e) {
+        this.addition = e
+      }
+      async getSFTP() {
+        if (this.sftpClient) return this.sftpClient
+        if (this.connectingPromise) return this.connectingPromise
+        this.connectingPromise = this._connect()
+        try {
+          return (
+            (this.sftpClient = await this.connectingPromise),
+            this.sftpClient
+          )
+        } finally {
+          this.connectingPromise = null
+        }
+      }
+      async _connect() {
+        let { Client: e } = await lh(),
+          { host: t, port: i } = ql(this.addition.address),
+          s = new e(),
+          n = {
+            host: t,
+            port: i,
+            username: this.addition.username,
+            readyTimeout: 1e4,
+            keepaliveInterval: 15e3,
+            keepaliveCountMax: 3,
+          }
+        return (
+          this.addition.private_key
+            ? ((n.privateKey = this.addition.private_key),
+              this.addition.passphrase &&
+                (n.passphrase = this.addition.passphrase))
+            : this.addition.password && (n.password = this.addition.password),
+          new Promise((o, a) => {
+            let c = !1
+            ;(s.on("ready", () => {
+              ;((c = !0),
+                s.sftp((d, l) => {
+                  if (d) return (s.end(), a(d))
+                  ;((this.sshClient = s), o(l))
+                }))
+            }),
+              s.on("error", (d) => {
+                ;(c || a(d), this.close())
+              }),
+              s.on("close", () => {
+                this.close()
+              }),
+              s.on("end", () => {
+                this.close()
+              }))
+            try {
+              s.connect(n)
+            } catch (d) {
+              a(d)
+            }
+          })
+        )
+      }
+      close() {
+        if (this.sftpClient) {
+          try {
+            this.sftpClient.end()
+          } catch {}
+          this.sftpClient = null
+        }
+        if (this.sshClient) {
+          try {
+            this.sshClient.end()
+          } catch {}
+          this.sshClient = null
+        }
+      }
+      async readdir(e) {
+        let t = await this.getSFTP()
+        return new Promise((i, s) => {
+          t.readdir(e, (n, o) => {
+            if (n) return s(n)
+            i(o || [])
+          })
+        })
+      }
+      async stat(e) {
+        let t = await this.getSFTP()
+        return new Promise((i, s) => {
+          t.stat(e, (n, o) => {
+            if (n) return s(n)
+            i(o)
+          })
+        })
+      }
+      async lstat(e) {
+        let t = await this.getSFTP()
+        return new Promise((i, s) => {
+          t.lstat(e, (n, o) => {
+            if (n) return s(n)
+            i(o)
+          })
+        })
+      }
+      async readlink(e) {
+        let t = await this.getSFTP()
+        return new Promise((i, s) => {
+          t.readlink(e, (n, o) => {
+            if (n) return s(n)
+            i(o)
+          })
+        })
+      }
+      async realpath(e) {
+        let t = await this.getSFTP()
+        return new Promise((i, s) => {
+          t.realpath(e, (n, o) => {
+            if (n) return s(n)
+            i(o)
+          })
+        })
+      }
+      async mkdir(e) {
+        let t = await this.getSFTP()
+        return new Promise((i, s) => {
+          t.mkdir(e, (n) => {
+            if (n) return s(n)
+            i()
+          })
+        })
+      }
+      async mkdirAll(e) {
+        let t = e.replace(/\\/g, "/"),
+          i = t.split("/").filter(Boolean),
+          s = t.startsWith("/") ? "/" : ""
+        for (let n of i) {
+          s = s === "/" ? "/" + n : s + "/" + n
+          try {
+            if (!(await this.stat(s)).isDirectory())
+              throw new Error(`[SFTP] Path exists but is not directory: ${s}`)
+          } catch {
+            try {
+              await this.mkdir(s)
+            } catch (a) {
+              try {
+                if ((await this.stat(s)).isDirectory()) continue
+              } catch {}
+              throw a
+            }
+          }
+        }
+      }
+      async rename(e, t) {
+        let i = await this.getSFTP()
+        return new Promise((s, n) => {
+          i.rename(e, t, (o) => {
+            if (o) return n(o)
+            s()
+          })
+        })
+      }
+      async unlink(e) {
+        let t = await this.getSFTP()
+        return new Promise((i, s) => {
+          t.unlink(e, (n) => {
+            if (n) return s(n)
+            i()
+          })
+        })
+      }
+      async rmdir(e) {
+        let t = await this.getSFTP()
+        return new Promise((i, s) => {
+          t.rmdir(e, (n) => {
+            if (n) return s(n)
+            i()
+          })
+        })
+      }
+      async removeRecursive(e) {
+        let t
+        try {
+          t = await this.lstat(e)
+        } catch {
+          return
+        }
+        if (t.isDirectory()) {
+          let i = await this.readdir(e)
+          for (let s of i) {
+            if (s.filename === "." || s.filename === "..") continue
+            let n = `${e.replace(/\/+$/, "")}/${s.filename}`
+            await this.removeRecursive(n)
+          }
+          await this.rmdir(e)
+        } else await this.unlink(e)
+      }
+      async writeFile(e, t) {
+        let i = await this.getSFTP()
+        return new Promise((s, n) => {
+          let o = i.createWriteStream(e)
+          ;(o.on("error", n), o.on("finish", s), o.end(t))
+        })
+      }
+      async readFile(e) {
+        let t = await this.getSFTP()
+        return new Promise((i, s) => {
+          let n = t.createReadStream(e),
+            o = []
+          ;(n.on("data", (a) => o.push(a)),
+            n.on("error", s),
+            n.on("end", () => i(Buffer.concat(o))))
+        })
+      }
+      async createReadStream(e, t) {
+        return (await this.getSFTP()).createReadStream(e, t)
+      }
+    }
+  })
+function so(r) {
+  let e = { ...(r || {}) }
+  return (
+    (e.address = (e.address || "").trim()),
+    (e.username = (e.username || "").trim()),
+    (e.password = e.password || ""),
+    (e.private_key = e.private_key || ""),
+    (e.passphrase = e.passphrase || ""),
+    (e.root_folder_path = (e.root_folder_path || "/").trim()),
+    e.root_folder_path.startsWith("/") ||
+      (e.root_folder_path = "/" + e.root_folder_path),
+    (e.ignore_symlink_error =
+      e.ignore_symlink_error === !0 || e.ignore_symlink_error === "true"),
+    e
+  )
+}
+function ze(r) {
+  return (
+    "/" + (r || "").replace(/\\/g, "/").split("/").filter(Boolean).join("/")
+  )
+}
+function Ol(r) {
+  let e = ze(r),
+    t = e.lastIndexOf("/")
+  return t <= 0 ? "/" : e.slice(0, t)
+}
+function At(...r) {
+  let e = r.map((t) => (t || "").replace(/\\/g, "/")).join("/")
+  return ze(e)
+}
+var Os,
+  $l = H(() => {
+    "use strict"
+    he()
+    io()
+    Os = class {
+      client
+      addition
+      constructor(e) {
+        ;((this.addition = so(e)), (this.client = new Br(this.addition)))
+      }
+      async init() {
+        if (!this.addition.address || !this.addition.username)
+          throw new Error("[SFTP] address and username are required")
+        await this.client.getSFTP()
+      }
+      async fileToItem(e, t) {
+        let i = e.filename
+        if (i === "." || i === "..") return null
+        let s = At(t, i),
+          n = e.attrs?.mode || 0,
+          o = (n & 61440) === 40960,
+          a = (n & 61440) === 16384,
+          c = e.attrs?.mtime
+            ? new Date(e.attrs.mtime * 1e3).toISOString()
+            : new Date().toISOString()
+        if (!o)
+          return {
+            name: i,
+            size: a ? 0 : e.attrs?.size || 0,
+            is_dir: a,
+            modified: c,
+            sign: s,
+            type: L(i, a),
+            raw_url: "",
+          }
+        try {
+          let d = await this.client.readlink(s)
+          d.startsWith("/") || (d = At(t, d))
+          let l = await this.client.stat(d),
+            u = l.isDirectory()
+          return {
+            name: i,
+            size: u ? 0 : l.size || 0,
+            is_dir: u,
+            modified: l.mtime ? new Date(l.mtime * 1e3).toISOString() : c,
+            sign: s,
+            type: L(i, u),
+            raw_url: "",
+          }
+        } catch (d) {
+          if (this.addition.ignore_symlink_error)
+            return {
+              name: i,
+              size: 0,
+              is_dir: !1,
+              modified: c,
+              sign: s,
+              type: L(i, !1),
+              raw_url: "",
+            }
+          throw d
+        }
+      }
+      async list(e, t) {
+        let i = ze(t || this.addition.root_folder_path || "/"),
+          s = await this.client.readdir(i),
+          n = []
+        for (let o of s) {
+          let a = await this.fileToItem(o, i)
+          a && n.push(a)
+        }
+        return n
+      }
+      async get(e, t) {
+        let i = ze(t || this.addition.root_folder_path || "/")
+        if (i === "/" || i === ze(this.addition.root_folder_path || "/"))
+          return {
+            name: "root",
+            size: 0,
+            is_dir: !0,
+            modified: new Date().toISOString(),
+            sign: i,
+            type: 1,
+            raw_url: "",
+          }
+        let s = await this.client.stat(i),
+          n = s.isDirectory(),
+          o = i.split("/").filter(Boolean).pop() || "root",
+          a = s.mtime
+            ? new Date(s.mtime * 1e3).toISOString()
+            : new Date().toISOString()
+        return {
+          name: o,
+          size: n ? 0 : s.size || 0,
+          is_dir: n,
+          modified: a,
+          sign: i,
+          type: L(o, n),
+          raw_url: "",
+        }
+      }
+      async mkdir(e, t) {
+        let i = ze(t)
+        await this.client.mkdirAll(i)
+      }
+      async rename(e, t, i) {
+        let s = ze(t),
+          n = At(Ol(s), i)
+        await this.client.rename(s, n)
+      }
+      async remove(e, t, i) {
+        let s = ze(t)
+        if (i && i.length > 0)
+          for (let n of i) await this.client.removeRecursive(At(s, n))
+        else await this.client.removeRecursive(s)
+      }
+      async move(e, t, i, s, n) {
+        if (i && i.length > 0)
+          for (let o of i) {
+            let a = At(s, o),
+              c = At(n, o)
+            await this.client.rename(a, c)
+          }
+        else {
+          let o = s.split("/").filter(Boolean).pop() || "",
+            a = At(t, o)
+          await this.client.rename(ze(s), a)
+        }
+      }
+      async copy(e, t, i, s, n) {
+        throw new Error("[SFTP] Copy not supported")
+      }
+      async put(e, t, i) {
+        let s = ze(t)
+        ;(await this.client.mkdirAll(Ol(s)), await this.client.writeFile(s, i))
+      }
+      async createReadStream(e, t) {
+        let i = ze(e)
+        return this.client.createReadStream(i, t)
+      }
+    }
+  })
+var jl = H(() => {
+  "use strict"
+})
+var zl = {}
+or(zl, {
+  SFTPClientWrapper: () => Br,
+  SFTPDriver: () => Os,
+  normalizeSFTPAddition: () => so,
+  parseAddress: () => ql,
+})
+var Ll = H(() => {
+  "use strict"
+  $l()
+  jl()
+  io()
+})
+var Ql,
+  wh,
+  xh,
+  _h,
+  vh,
+  Jl,
+  js,
+  co,
+  Xl = H(() => {
+    wt()
+    ;((Ql = { name: "HMAC", hash: "SHA-256" }),
+      (wh = async (r) => {
         let e = typeof r == "string" ? new TextEncoder().encode(r) : r
-        return await crypto.subtle.importKey("raw", e, ql, !1, [
+        return await crypto.subtle.importKey("raw", e, Ql, !1, [
           "sign",
           "verify",
         ])
       }),
-      (sh = async (r, e, t) => {
+      (xh = async (r, e, t) => {
         try {
           let i = atob(r),
             s = new Uint8Array(i.length)
           for (let n = 0, o = i.length; n < o; n++) s[n] = i.charCodeAt(n)
           return await crypto.subtle.verify(
-            ql,
+            Ql,
             t,
             s,
             new TextEncoder().encode(e),
@@ -7048,9 +7495,9 @@ var ql,
           return !1
         }
       }),
-      (nh = /^[!#-:<>-[\]-~]+$/),
-      (oh = /^[ !#-:<-[\]-~]*$/),
-      (Ul = (r) => {
+      (_h = /^[!#-:<>-[\]-~]+$/),
+      (vh = /^[ !#-:<-[\]-~]*$/),
+      (Jl = (r) => {
         let e = 0,
           t = r.length
         for (; e < t; ) {
@@ -7065,44 +7512,44 @@ var ql,
         }
         return e === 0 && t === r.length ? r : r.slice(e, t)
       }),
-      (Us = (r, e) => {
+      (js = (r, e) => {
         if (e && r.indexOf(e) === -1) return {}
         let t = r.split(";"),
           i = Object.create(null)
         for (let s of t) {
           let n = s.indexOf("=")
           if (n === -1) continue
-          let o = Ul(s.substring(0, n))
-          if ((e && e !== o) || !nh.test(o) || o in i) continue
-          let a = Ul(s.substring(n + 1))
+          let o = Jl(s.substring(0, n))
+          if ((e && e !== o) || !_h.test(o) || o in i) continue
+          let a = Jl(s.substring(n + 1))
           if (
             (a.startsWith('"') && a.endsWith('"') && (a = a.slice(1, -1)),
-            oh.test(a) && ((i[o] = qt(a)), e))
+            vh.test(a) && ((i[o] = $t(a)), e))
           )
             break
         }
         return i
       }),
-      (to = async (r, e, t) => {
+      (co = async (r, e, t) => {
         let i = Object.create(null),
-          s = await ih(e)
-        for (let [n, o] of Object.entries(Us(r, t))) {
+          s = await wh(e)
+        for (let [n, o] of Object.entries(js(r, t))) {
           let a = o.lastIndexOf(".")
           if (a < 1) continue
           let c = o.substring(0, a),
             d = o.substring(a + 1)
           if (d.length !== 44 || !d.endsWith("=")) continue
-          let l = await sh(d, c, s)
+          let l = await xh(d, c, s)
           i[n] = l ? c : !1
         }
         return i
       }))
   })
-var qs,
-  ro,
-  $l = W(() => {
-    Ol()
-    ;((qs = (r, e, t) => {
+var zs,
+  lo,
+  Yl = H(() => {
+    Xl()
+    ;((zs = (r, e, t) => {
       let i = r.req.raw.headers.get("Cookie")
       if (typeof e == "string") {
         if (!i) return
@@ -7111,12 +7558,12 @@ var qs,
           t === "secure"
             ? (n = "__Secure-" + e)
             : t === "host" && (n = "__Host-" + e),
-          Us(i, n)[n]
+          js(i, n)[n]
         )
       }
-      return i ? Us(i) : {}
+      return i ? js(i) : {}
     }),
-      (ro = async (r, e, t, i) => {
+      (lo = async (r, e, t, i) => {
         let s = r.req.raw.headers.get("Cookie")
         if (typeof t == "string") {
           if (!s) return
@@ -7125,28 +7572,28 @@ var qs,
             i === "secure"
               ? (o = "__Secure-" + t)
               : i === "host" && (o = "__Host-" + t),
-            (await to(s, e, o))[o]
+            (await co(s, e, o))[o]
           )
         }
-        return s ? await to(s, e) : {}
+        return s ? await co(s, e) : {}
       }))
   })
-var io,
-  so,
-  ah,
-  no,
-  oo = W(() => {
-    ;((io = (r) =>
-      no(r.replace(/_|-/g, (e) => ({ _: "/", "-": "+" })[e] ?? e))),
-      (so = (r) =>
-        ah(r).replace(/\/|\+/g, (e) => ({ "/": "_", "+": "-" })[e] ?? e)),
-      (ah = (r) => {
+var uo,
+  po,
+  bh,
+  fo,
+  ho = H(() => {
+    ;((uo = (r) =>
+      fo(r.replace(/_|-/g, (e) => ({ _: "/", "-": "+" })[e] ?? e))),
+      (po = (r) =>
+        bh(r).replace(/\/|\+/g, (e) => ({ "/": "_", "+": "-" })[e] ?? e)),
+      (bh = (r) => {
         let e = "",
           t = new Uint8Array(r)
         for (let i = 0, s = t.length; i < s; i++) e += String.fromCharCode(t[i])
         return btoa(e)
       }),
-      (no = (r) => {
+      (fo = (r) => {
         let e = atob(r),
           t = new Uint8Array(new ArrayBuffer(e.length)),
           i = e.length / 2
@@ -7155,9 +7602,9 @@ var io,
         return t
       }))
   })
-var gt,
-  ao = W(() => {
-    gt = ((r) => (
+var mt,
+  go = H(() => {
+    mt = ((r) => (
       (r.HS256 = "HS256"),
       (r.HS384 = "HS384"),
       (r.HS512 = "HS512"),
@@ -7172,22 +7619,22 @@ var gt,
       (r.ES512 = "ES512"),
       (r.EdDSA = "EdDSA"),
       r
-    ))(gt || {})
+    ))(mt || {})
   })
-var ch,
-  jl,
-  dh,
-  zl = W(() => {
-    ;((ch = {
+var kh,
+  Zl,
+  Sh,
+  e0 = H(() => {
+    ;((kh = {
       deno: "Deno",
       bun: "Bun",
       workerd: "Cloudflare-Workers",
       node: "Node.js",
     }),
-      (jl = () => {
+      (Zl = () => {
         let r = globalThis
         if (typeof navigator < "u" && typeof navigator.userAgent == "string") {
-          for (let [t, i] of Object.entries(ch)) if (dh(i)) return t
+          for (let [t, i] of Object.entries(kh)) if (Sh(i)) return t
         }
         return typeof r?.EdgeRuntime == "string"
           ? "edge-light"
@@ -7197,60 +7644,60 @@ var ch,
               ? "node"
               : "other"
       }),
-      (dh = (r) => navigator.userAgent.startsWith(r)))
+      (Sh = (r) => navigator.userAgent.startsWith(r)))
   })
-var Ll,
-  co,
-  lo,
-  Pt,
-  Nl,
-  Ml,
-  Hl,
-  Os,
-  uo,
-  Kl,
-  Wl,
-  Gl,
-  Vl,
-  Jl,
-  Ql,
-  Kt,
-  po = W(() => {
-    ;((Ll = class extends Error {
+var t0,
+  mo,
+  yo,
+  Ct,
+  r0,
+  i0,
+  s0,
+  Ls,
+  wo,
+  n0,
+  o0,
+  a0,
+  c0,
+  d0,
+  l0,
+  Gt,
+  xo = H(() => {
+    ;((t0 = class extends Error {
       constructor(r) {
         ;(super(`${r} is not an implemented algorithm`),
           (this.name = "JwtAlgorithmNotImplemented"))
       }
     }),
-      (co = class extends Error {
+      (mo = class extends Error {
         constructor() {
           ;(super('JWT verification requires "alg" option to be specified'),
             (this.name = "JwtAlgorithmRequired"))
         }
       }),
-      (lo = class extends Error {
+      (yo = class extends Error {
         constructor(r, e) {
           ;(super(`JWT algorithm mismatch: expected "${r}", got "${e}"`),
             (this.name = "JwtAlgorithmMismatch"))
         }
       }),
-      (Pt = class extends Error {
+      (Ct = class extends Error {
         constructor(r) {
           ;(super(`invalid JWT token: ${r}`), (this.name = "JwtTokenInvalid"))
         }
       }),
-      (Nl = class extends Error {
+      (r0 = class extends Error {
         constructor(r) {
           ;(super(`token (${r}) is being used before it's valid`),
             (this.name = "JwtTokenNotBefore"))
         }
       }),
-      (Ml = class extends Error {
+      (i0 = class extends Error {
         constructor(r) {
           ;(super(`token (${r}) expired`), (this.name = "JwtTokenExpired"))
         }
       }),
-      (Hl = class extends Error {
+      (s0 = class extends Error {
         constructor(r, e) {
           ;(super(
             `Invalid "iat" claim, must be a valid number lower than "${r}" (iat: "${e}")`,
@@ -7258,25 +7705,25 @@ var Ll,
             (this.name = "JwtTokenIssuedAt"))
         }
       }),
-      (Os = class extends Error {
+      (Ls = class extends Error {
         constructor(r, e) {
           ;(super(`expected issuer "${r}", got ${e ? `"${e}"` : "none"} `),
             (this.name = "JwtTokenIssuer"))
         }
       }),
-      (uo = class extends Error {
+      (wo = class extends Error {
         constructor(r) {
           ;(super(`jwt header is invalid: ${JSON.stringify(r)}`),
             (this.name = "JwtHeaderInvalid"))
         }
       }),
-      (Kl = class extends Error {
+      (n0 = class extends Error {
         constructor(r) {
           ;(super(`required "kid" in jwt header: ${JSON.stringify(r)}`),
             (this.name = "JwtHeaderRequiresKid"))
         }
       }),
-      (Wl = class extends Error {
+      (o0 = class extends Error {
         constructor(r) {
           ;(super(
             `symmetric algorithm "${r}" is not allowed for JWK verification`,
@@ -7284,7 +7731,7 @@ var Ll,
             (this.name = "JwtSymmetricAlgorithmNotAllowed"))
         }
       }),
-      (Gl = class extends Error {
+      (a0 = class extends Error {
         constructor(r, e) {
           ;(super(
             `algorithm "${r}" is not in the allowed list: [${e.join(", ")}]`,
@@ -7292,19 +7739,19 @@ var Ll,
             (this.name = "JwtAlgorithmNotAllowed"))
         }
       }),
-      (Vl = class extends Error {
+      (c0 = class extends Error {
         constructor(r) {
           ;(super(`token(${r}) signature mismatched`),
             (this.name = "JwtTokenSignatureMismatched"))
         }
       }),
-      (Jl = class extends Error {
+      (d0 = class extends Error {
         constructor(r) {
           ;(super(`required "aud" in jwt payload: ${JSON.stringify(r)}`),
             (this.name = "JwtPayloadRequiresAud"))
         }
       }),
-      (Ql = class extends Error {
+      (l0 = class extends Error {
         constructor(r, e) {
           ;(super(
             `expected audience "${Array.isArray(r) ? r.join(", ") : r}", got "${e}"`,
@@ -7312,7 +7759,7 @@ var Ll,
             (this.name = "JwtTokenAudience"))
         }
       }),
-      (Kt = ((r) => (
+      (Gt = ((r) => (
         (r.Encrypt = "encrypt"),
         (r.Decrypt = "decrypt"),
         (r.Sign = "sign"),
@@ -7322,75 +7769,75 @@ var Ll,
         (r.WrapKey = "wrapKey"),
         (r.UnwrapKey = "unwrapKey"),
         r
-      ))(Kt || {})))
+      ))(Gt || {})))
   })
-var At,
-  Xl,
-  fo = W(() => {
-    ;((At = new TextEncoder()), (Xl = new TextDecoder()))
+var Et,
+  u0,
+  _o = H(() => {
+    ;((Et = new TextEncoder()), (u0 = new TextDecoder()))
   })
-async function Zl(r, e, t) {
-  let i = t0(e),
-    s = await lh(r, i)
+async function f0(r, e, t) {
+  let i = g0(e),
+    s = await Ph(r, i)
   return await crypto.subtle.sign(i, s, t)
 }
-async function e0(r, e, t, i) {
-  let s = t0(e),
-    n = await uh(r, s)
+async function h0(r, e, t, i) {
+  let s = g0(e),
+    n = await Ah(r, s)
   return await crypto.subtle.verify(s, n, t, i)
 }
-function ho(r) {
-  return no(r.replace(/-+(BEGIN|END).*?-+/g, "").replace(/\s/g, ""))
+function vo(r) {
+  return fo(r.replace(/-+(BEGIN|END).*?-+/g, "").replace(/\s/g, ""))
 }
-async function lh(r, e) {
+async function Ph(r, e) {
   if (!crypto.subtle || !crypto.subtle.importKey)
     throw new Error(
       "`crypto.subtle.importKey` is undefined. JWT auth middleware requires it.",
     )
-  if (r0(r)) {
+  if (m0(r)) {
     if (r.type !== "private" && r.type !== "secret")
       throw new Error(
         `unexpected key type: CryptoKey.type is ${r.type}, expected private or secret`,
       )
     return r
   }
-  let t = [Kt.Sign]
+  let t = [Gt.Sign]
   return typeof r == "object"
     ? await crypto.subtle.importKey("jwk", r, e, !1, t)
     : r.includes("PRIVATE")
-      ? await crypto.subtle.importKey("pkcs8", ho(r), e, !1, t)
-      : await crypto.subtle.importKey("raw", At.encode(r), e, !1, t)
+      ? await crypto.subtle.importKey("pkcs8", vo(r), e, !1, t)
+      : await crypto.subtle.importKey("raw", Et.encode(r), e, !1, t)
 }
-async function uh(r, e) {
+async function Ah(r, e) {
   if (!crypto.subtle || !crypto.subtle.importKey)
     throw new Error(
       "`crypto.subtle.importKey` is undefined. JWT auth middleware requires it.",
     )
-  if (r0(r)) {
+  if (m0(r)) {
     if (r.type === "public" || r.type === "secret") return r
-    r = await Yl(r)
+    r = await p0(r)
   }
   if (typeof r == "string" && r.includes("PRIVATE")) {
-    let i = await crypto.subtle.importKey("pkcs8", ho(r), e, !0, [Kt.Sign])
-    r = await Yl(i)
+    let i = await crypto.subtle.importKey("pkcs8", vo(r), e, !0, [Gt.Sign])
+    r = await p0(i)
   }
-  let t = [Kt.Verify]
+  let t = [Gt.Verify]
   return typeof r == "object"
     ? await crypto.subtle.importKey("jwk", r, e, !1, t)
     : r.includes("PUBLIC")
-      ? await crypto.subtle.importKey("spki", ho(r), e, !1, t)
-      : await crypto.subtle.importKey("raw", At.encode(r), e, !1, t)
+      ? await crypto.subtle.importKey("spki", vo(r), e, !1, t)
+      : await crypto.subtle.importKey("raw", Et.encode(r), e, !1, t)
 }
-async function Yl(r) {
+async function p0(r) {
   if (r.type !== "private") throw new Error(`unexpected key type: ${r.type}`)
   if (!r.extractable) throw new Error("unexpected private key is unextractable")
   let e = await crypto.subtle.exportKey("jwk", r),
     { kty: t } = e,
     { alg: i, e: s, n } = e,
     { crv: o, x: a, y: c } = e
-  return { kty: t, alg: i, e: s, n, crv: o, x: a, y: c, key_ops: [Kt.Verify] }
+  return { kty: t, alg: i, e: s, n, crv: o, x: a, y: c, key_ops: [Gt.Verify] }
 }
-function t0(r) {
+function g0(r) {
   switch (r) {
     case "HS256":
       return { name: "HMAC", hash: { name: "SHA-256" } }
@@ -7419,62 +7866,62 @@ function t0(r) {
     case "EdDSA":
       return { name: "Ed25519", namedCurve: "Ed25519" }
     default:
-      throw new Ll(r)
+      throw new t0(r)
   }
 }
-function r0(r) {
-  return jl() === "node" && crypto.webcrypto
+function m0(r) {
+  return Zl() === "node" && crypto.webcrypto
     ? r instanceof crypto.webcrypto.CryptoKey
     : r instanceof CryptoKey
 }
-var i0 = W(() => {
-  zl()
-  oo()
-  po()
-  fo()
+var y0 = H(() => {
+  e0()
+  ho()
+  xo()
+  _o()
 })
-function s0(r) {
+function w0(r) {
   if (typeof r == "object" && r !== null) {
     let e = r
     return (
       "alg" in e &&
-      Object.values(gt).includes(e.alg) &&
+      Object.values(mt).includes(e.alg) &&
       (!("typ" in e) || e.typ === "JWT")
     )
   }
   return !1
 }
-var go,
-  ph,
-  mo,
-  n0,
-  yo,
-  fh,
-  o0,
-  xo,
-  hh,
-  a0 = W(() => {
-    oo()
-    ao()
-    i0()
-    po()
-    fo()
-    ;((go = (r) => so(At.encode(JSON.stringify(r)).buffer).replace(/=/g, "")),
-      (ph = (r) => so(r).replace(/=/g, "")),
-      (mo = (r) => JSON.parse(Xl.decode(io(r)))))
-    ;((n0 = async (r, e, t = "HS256") => {
-      let i = go(r),
+var bo,
+  Ch,
+  ko,
+  x0,
+  So,
+  Eh,
+  _0,
+  Po,
+  Dh,
+  v0 = H(() => {
+    ho()
+    go()
+    y0()
+    xo()
+    _o()
+    ;((bo = (r) => po(Et.encode(JSON.stringify(r)).buffer).replace(/=/g, "")),
+      (Ch = (r) => po(r).replace(/=/g, "")),
+      (ko = (r) => JSON.parse(u0.decode(uo(r)))))
+    ;((x0 = async (r, e, t = "HS256") => {
+      let i = bo(r),
         s
       typeof e == "object" && "alg" in e
-        ? ((t = e.alg), (s = go({ alg: t, typ: "JWT", kid: e.kid })))
-        : (s = go({ alg: t, typ: "JWT" }))
+        ? ((t = e.alg), (s = bo({ alg: t, typ: "JWT", kid: e.kid })))
+        : (s = bo({ alg: t, typ: "JWT" }))
       let n = `${s}.${i}`,
-        o = await Zl(e, t, At.encode(n)),
-        a = ph(o)
+        o = await f0(e, t, Et.encode(n)),
+        a = Ch(o)
       return `${n}.${a}`
     }),
-      (yo = async (r, e, t) => {
-        if (!t) throw new co()
+      (So = async (r, e, t) => {
+        if (!t) throw new mo()
         let {
           alg: i,
           iss: s,
@@ -7483,38 +7930,38 @@ var go,
           iat: a = !0,
           aud: c,
         } = typeof t == "string" ? { alg: t } : t
-        if (!i) throw new co()
+        if (!i) throw new mo()
         let d = r.split(".")
-        if (d.length !== 3) throw new Pt(r)
-        let { header: l, payload: u } = xo(r)
-        if (!s0(l)) throw new uo(l)
-        if (l.alg !== i) throw new lo(i, l.alg)
+        if (d.length !== 3) throw new Ct(r)
+        let { header: l, payload: u } = Po(r)
+        if (!w0(l)) throw new wo(l)
+        if (l.alg !== i) throw new yo(i, l.alg)
         let p = Math.floor(Date.now() / 1e3)
         if (
           n &&
           u.nbf !== void 0 &&
           (typeof u.nbf != "number" || !Number.isFinite(u.nbf) || u.nbf > p)
         )
-          throw new Nl(r)
+          throw new r0(r)
         if (
           o &&
           u.exp !== void 0 &&
           (typeof u.exp != "number" || !Number.isFinite(u.exp) || u.exp <= p)
         )
-          throw new Ml(r)
+          throw new i0(r)
         if (
           a &&
           u.iat !== void 0 &&
           (typeof u.iat != "number" || !Number.isFinite(u.iat) || p < u.iat)
         )
-          throw new Hl(p, u.iat)
+          throw new s0(p, u.iat)
         if (s) {
-          if (!u.iss) throw new Os(s, null)
-          if (typeof s == "string" && u.iss !== s) throw new Os(s, u.iss)
-          if (s instanceof RegExp && !s.test(u.iss)) throw new Os(s, u.iss)
+          if (!u.iss) throw new Ls(s, null)
+          if (typeof s == "string" && u.iss !== s) throw new Ls(s, u.iss)
+          if (s instanceof RegExp && !s.test(u.iss)) throw new Ls(s, u.iss)
         }
         if (c) {
-          if (!u.aud) throw new Jl(u)
+          if (!u.aud) throw new d0(u)
           if (
             !(Array.isArray(u.aud) ? u.aud : [u.aud]).some((g) =>
               c instanceof RegExp
@@ -7524,21 +7971,21 @@ var go,
                   : Array.isArray(c) && c.includes(g),
             )
           )
-            throw new Ql(c, u.aud)
+            throw new l0(c, u.aud)
         }
         let f = r.substring(0, r.lastIndexOf("."))
-        if (!(await e0(e, i, io(d[2]), At.encode(f)))) throw new Vl(r)
+        if (!(await h0(e, i, uo(d[2]), Et.encode(f)))) throw new c0(r)
         return u
       }),
-      (fh = [gt.HS256, gt.HS384, gt.HS512]),
-      (o0 = async (r, e, t) => {
+      (Eh = [mt.HS256, mt.HS384, mt.HS512]),
+      (_0 = async (r, e, t) => {
         let i = e.verification || {},
-          s = hh(r)
-        if (!s0(s)) throw new uo(s)
-        if (!s.kid) throw new Kl(s)
-        if (fh.includes(s.alg)) throw new Wl(s.alg)
+          s = Dh(r)
+        if (!w0(s)) throw new wo(s)
+        if (!s.kid) throw new n0(s)
+        if (Eh.includes(s.alg)) throw new o0(s.alg)
         if (!e.allowedAlgorithms.includes(s.alg))
-          throw new Gl(s.alg, e.allowedAlgorithms)
+          throw new a0(s.alg, e.allowedAlgorithms)
         let n = e.keys ? [...e.keys] : void 0
         if (e.jwks_uri) {
           let a = await fetch(e.jwks_uri, t)
@@ -7556,37 +8003,37 @@ var go,
             'verifyWithJwks requires options for either "keys" or "jwks_uri" or both',
           )
         let o = n.find((a) => a.kid === s.kid)
-        if (!o) throw new Pt(r)
-        if (o.alg && o.alg !== s.alg) throw new lo(o.alg, s.alg)
-        return await yo(r, o, { alg: s.alg, ...i })
+        if (!o) throw new Ct(r)
+        if (o.alg && o.alg !== s.alg) throw new yo(o.alg, s.alg)
+        return await So(r, o, { alg: s.alg, ...i })
       }),
-      (xo = (r) => {
+      (Po = (r) => {
         let e = r.split(".")
-        if (e.length !== 3) throw new Pt(r)
+        if (e.length !== 3) throw new Ct(r)
         try {
-          let t = mo(e[0]),
-            i = mo(e[1])
+          let t = ko(e[0]),
+            i = ko(e[1])
           return { header: t, payload: i }
         } catch {
-          throw new Pt(r)
+          throw new Ct(r)
         }
       }),
-      (hh = (r) => {
+      (Dh = (r) => {
         let e = r.split(".")
-        if (e.length !== 3) throw new Pt(r)
+        if (e.length !== 3) throw new Ct(r)
         try {
-          return mo(e[0])
+          return ko(e[0])
         } catch {
-          throw new Pt(r)
+          throw new Ct(r)
         }
       }))
   })
-var Wt,
-  c0 = W(() => {
-    a0()
-    Wt = { sign: n0, verify: yo, decode: xo, verifyWithJwks: o0 }
+var Vt,
+  b0 = H(() => {
+    v0()
+    Vt = { sign: x0, verify: So, decode: Po, verifyWithJwks: _0 }
   })
-function wo(r) {
+function Ao(r) {
   let e = (r.realm ?? r.ctx.req.url).replace(/"/g, '\\"'),
     t = r.errDescription.replace(/"/g, '\\"')
   return new Response("Unauthorized", {
@@ -7597,17 +8044,17 @@ function wo(r) {
     },
   })
 }
-var d0,
-  l0,
-  mt,
-  u0,
-  Ir,
-  p0 = W(() => {
-    $l()
-    Js()
-    c0()
-    Gr()
-    d0 = (r) => {
+var k0,
+  S0,
+  yt,
+  P0,
+  qr,
+  A0 = H(() => {
+    Yl()
+    Zs()
+    b0()
+    Qr()
+    k0 = (r) => {
       let e = r.verification || {}
       if (!r || !r.secret)
         throw new Error('JWT auth middleware requires options for "secret"')
@@ -7625,9 +8072,9 @@ var d0,
           let l = o.split(/\s+/)
           if (l.length !== 2 || l[0].toLowerCase() !== "bearer") {
             let u = "invalid credentials structure"
-            throw new nr(401, {
+            throw new cr(401, {
               message: u,
-              res: wo({
+              res: Ao({
                 ctx: i,
                 error: "invalid_request",
                 errDescription: u,
@@ -7638,24 +8085,24 @@ var d0,
         } else
           r.cookie &&
             (typeof r.cookie == "string"
-              ? (a = qs(i, r.cookie))
+              ? (a = zs(i, r.cookie))
               : r.cookie.secret
                 ? r.cookie.prefixOptions
-                  ? (a = await ro(
+                  ? (a = await lo(
                       i,
                       r.cookie.secret,
                       r.cookie.key,
                       r.cookie.prefixOptions,
                     ))
-                  : (a = await ro(i, r.cookie.secret, r.cookie.key))
+                  : (a = await lo(i, r.cookie.secret, r.cookie.key))
                 : r.cookie.prefixOptions
-                  ? (a = qs(i, r.cookie.key, r.cookie.prefixOptions))
-                  : (a = qs(i, r.cookie.key)))
+                  ? (a = zs(i, r.cookie.key, r.cookie.prefixOptions))
+                  : (a = zs(i, r.cookie.key)))
         if (!a) {
           let l = "no authorization included in request"
-          throw new nr(401, {
+          throw new cr(401, {
             message: l,
-            res: wo({
+            res: Ao({
               ctx: i,
               error: "invalid_request",
               errDescription: l,
@@ -7665,14 +8112,14 @@ var d0,
         }
         let c, d
         try {
-          c = await Wt.verify(a, r.secret, { alg: r.alg, ...e })
+          c = await Vt.verify(a, r.secret, { alg: r.alg, ...e })
         } catch (l) {
           d = l
         }
         if (!c)
-          throw new nr(401, {
+          throw new cr(401, {
             message: "Unauthorized",
-            res: wo({
+            res: Ao({
               ctx: i,
               error: "invalid_token",
               statusText: "Unauthorized",
@@ -7684,25 +8131,25 @@ var d0,
         ;(i.set("jwtPayload", c), await s())
       }
     }
-    ;((l0 = Wt.verifyWithJwks),
-      (mt = Wt.verify),
-      (u0 = Wt.decode),
-      (Ir = Wt.sign))
+    ;((S0 = Vt.verifyWithJwks),
+      (yt = Vt.verify),
+      (P0 = Vt.decode),
+      (qr = Vt.sign))
   })
-var f0 = {}
-Mr(f0, {
-  AlgorithmTypes: () => gt,
-  decode: () => u0,
-  jwt: () => d0,
-  sign: () => Ir,
-  verify: () => mt,
-  verifyWithJwks: () => l0,
+var C0 = {}
+or(C0, {
+  AlgorithmTypes: () => mt,
+  decode: () => P0,
+  jwt: () => k0,
+  sign: () => qr,
+  verify: () => yt,
+  verifyWithJwks: () => S0,
 })
-var Br = W(() => {
-  p0()
-  ao()
+var Or = H(() => {
+  A0()
+  go()
 })
-var h0 = W(() => {
+var E0 = H(() => {
   "use strict"
 })
 function ie(r, e = "Internal server error") {
@@ -7717,11 +8164,11 @@ function ie(r, e = "Internal server error") {
     ? e
     : i
 }
-var Ct,
-  q_,
-  Rr = W(() => {
+var Dt,
+  o1,
+  $r = H(() => {
     "use strict"
-    ;((Ct = class extends Error {
+    ;((Dt = class extends Error {
       constructor(t, i, s) {
         super(i)
         this.code = t
@@ -7733,24 +8180,24 @@ var Ct,
       message
       originalError
     }),
-      (q_ = {
-        PathNotFound: new Ct(1004, "Path not found"),
-        NotReady: new Ct(1003, "Storage not ready"),
-        InvalidConfig: new Ct(1001, "Invalid configuration"),
-        Unauthorized: new Ct(401, "Unauthorized access"),
-        Forbidden: new Ct(403, "Permission denied"),
+      (o1 = {
+        PathNotFound: new Dt(1004, "Path not found"),
+        NotReady: new Dt(1003, "Storage not ready"),
+        InvalidConfig: new Dt(1001, "Invalid configuration"),
+        Unauthorized: new Dt(401, "Unauthorized access"),
+        Forbidden: new Dt(403, "Permission denied"),
       }))
   })
-var g0 = W(() => {
+var D0 = H(() => {
   "use strict"
 })
-var m0 = W(() => {
+var F0 = H(() => {
   "use strict"
 })
-var y0 = W(() => {
+var T0 = H(() => {
   "use strict"
 })
-async function Et(r) {
+async function Ft(r) {
   let e = r.req.header("Authorization")
   if (!e) return !1
   let t = e.startsWith("Bearer ") ? e.substring(7) : e,
@@ -7758,8 +8205,8 @@ async function Et(r) {
     s = i.settings.find((n) => n.key === "token")
   if (s && s.value && t === s.value) return !0
   try {
-    let { verify: n } = await Promise.resolve().then(() => (Br(), f0)),
-      { getJwtSecret: o } = await Promise.resolve().then(() => (Ke(), x0)),
+    let { verify: n } = await Promise.resolve().then(() => (Or(), C0)),
+      { getJwtSecret: o } = await Promise.resolve().then(() => (We(), I0)),
       a = await o(r),
       c = await n(t, a, "HS256")
     if (c && c.role === 2) {
@@ -7771,42 +8218,42 @@ async function Et(r) {
   } catch {}
   return !1
 }
-var $s = W(() => {
+var Ns = H(() => {
   "use strict"
   te()
-  h0()
-  Rr()
-  g0()
-  m0()
-  xr()
-  y0()
+  E0()
+  $r()
+  D0()
+  F0()
+  vr()
+  T0()
 })
-var x0 = {}
-Mr(x0, {
+var I0 = {}
+or(I0, {
   adminAuthMiddleware: () => ke,
-  getJwtSecret: () => ze,
+  getJwtSecret: () => Le,
   getUserFromContext: () => Y,
 })
-function gh() {
+function Fh() {
   let r = new Uint8Array(32)
   return (
     crypto.getRandomValues(r),
     Array.from(r, (e) => e.toString(16).padStart(2, "0")).join("")
   )
 }
-async function mh(r) {
+async function Th(r) {
   try {
-    let { getKvBinding: e } = await Promise.resolve().then(() => (te(), xn)),
+    let { getKvBinding: e } = await Promise.resolve().then(() => (te(), bn)),
       t = await e(r)
     if (t.mode === "none" || !t.binding) return null
     let { binding: i, mode: s } = t,
       n = null
-    if (s === "blob") n = await i.get(Dt)
+    if (s === "blob") n = await i.get(Tt)
     else
       try {
-        n = await i.get(Dt, "text")
+        n = await i.get(Tt, "text")
       } catch {
-        n = await i.get(Dt)
+        n = await i.get(Tt)
       }
     return (
       n && typeof n.text == "function" && (n = await n.text()),
@@ -7816,32 +8263,32 @@ async function mh(r) {
     return (console.warn("[JWT] Failed to read secret from KV:", e), null)
   }
 }
-async function yh(r, e) {
+async function Ih(r, e) {
   try {
-    let { getKvBinding: t } = await Promise.resolve().then(() => (te(), xn)),
+    let { getKvBinding: t } = await Promise.resolve().then(() => (te(), bn)),
       i = await t(r)
     if (i.mode === "none" || !i.binding) return
     let { binding: s, mode: n } = i
     n === "blob"
       ? typeof s.set == "function"
-        ? await s.set(Dt, e)
-        : typeof s.put == "function" && (await s.put(Dt, e))
+        ? await s.set(Tt, e)
+        : typeof s.put == "function" && (await s.put(Tt, e))
       : typeof s.put == "function"
-        ? await s.put(Dt, e)
-        : typeof s.set == "function" && (await s.set(Dt, e))
+        ? await s.put(Tt, e)
+        : typeof s.set == "function" && (await s.set(Tt, e))
   } catch (t) {
     console.warn("[JWT] Failed to persist secret to KV:", t)
   }
 }
-async function ze(r) {
+async function Le(r) {
   let e = r?.env || (typeof process < "u" ? process.env : {}) || {},
     t = e.JWT_SECRET
   if (t && t.length >= 16) return t
-  let i = await mh(e)
-  return i && i.length >= 16 ? i : (js || ((js = gh()), await yh(e, js)), js)
+  let i = await Th(e)
+  return i && i.length >= 16 ? i : (Ms || ((Ms = Fh()), await Ih(e, Ms)), Ms)
 }
 async function ke(r, e) {
-  if (!(await Et(r)))
+  if (!(await Ft(r)))
     return r.json(
       {
         code: 401,
@@ -7853,7 +8300,7 @@ async function ke(r, e) {
   await e()
 }
 async function Y(r) {
-  if (await Et(r))
+  if (await Ft(r))
     return {
       role: 2,
       permission: 0,
@@ -7886,8 +8333,8 @@ async function Y(r) {
   }
   let t = e.startsWith("Bearer ") ? e.substring(7) : e
   try {
-    let i = await ze(r),
-      s = await mt(t, i, "HS256"),
+    let i = await Le(r),
+      s = await yt(t, i, "HS256"),
       o = ((await U(r.env)).users || []).find(
         (a) => a.id === s.id || a.username === s.username,
       )
@@ -7908,16 +8355,16 @@ async function Y(r) {
     return null
   }
 }
-var js,
-  Dt,
-  Ke = W(() => {
+var Ms,
+  Tt,
+  We = H(() => {
     "use strict"
-    Br()
-    $s()
+    Or()
+    Ns()
     te()
-    ;((js = null), (Dt = "openlistnext_jwt_secret"))
+    ;((Ms = null), (Tt = "openlistnext_jwt_secret"))
   })
-var Vs = (r, e, t) => (i, s) => {
+var Ys = (r, e, t) => (i, s) => {
   let n = -1
   return o(0)
   async function o(a) {
@@ -7943,23 +8390,23 @@ var Vs = (r, e, t) => (i, s) => {
     return (c && (i.finalized === !1 || d) && (i.res = c), i)
   }
 }
-Gr()
+Qr()
 var se = "ALL",
-  aa = "all",
-  ca = ["get", "post", "put", "delete", "options", "patch", "query"],
-  Vr = "Can not add a route since the matcher is already built.",
-  Jr = class extends Error {}
-var da = "__COMPOSED_HANDLER"
-yt()
-var xu = (r) => r.text("404 Not Found", 404),
-  la = (r, e) => {
+  ga = "all",
+  ma = ["get", "post", "put", "delete", "options", "patch", "query"],
+  Xr = "Can not add a route since the matcher is already built.",
+  Yr = class extends Error {}
+var ya = "__COMPOSED_HANDLER"
+wt()
+var Tu = (r) => r.text("404 Not Found", 404),
+  wa = (r, e) => {
     if ("getResponse" in r) {
       let t = r.getResponse()
       return e.newResponse(t.body, t)
     }
     return (console.error(r), e.text("Internal Server Error", 500))
   },
-  ua = class pa {
+  xa = class _a {
     get;
     post
     put
@@ -7976,7 +8423,7 @@ var xu = (r) => r.text("404 Not Found", 404),
     #t = "/"
     routes = []
     constructor(e = {}) {
-      ;([...ca, aa].forEach((n) => {
+      ;([...ma, ga].forEach((n) => {
         this[n] = (o, ...a) => (
           typeof o == "string" ? (this.#t = o) : this.#n(n, this.#t, o),
           a.forEach((c) => {
@@ -8006,10 +8453,10 @@ var xu = (r) => r.text("404 Not Found", 404),
         )))
       let { strict: i, ...s } = e
       ;(Object.assign(this, s),
-        (this.getPath = (i ?? !0) ? (e.getPath ?? Ys) : Zo))
+        (this.getPath = (i ?? !0) ? (e.getPath ?? rn) : aa))
     }
     #e() {
-      let e = new pa({ router: this.router, getPath: this.getPath })
+      let e = new _a({ router: this.router, getPath: this.getPath })
       return (
         (e.errorHandler = this.errorHandler),
         (e.#r = this.#r),
@@ -8017,18 +8464,18 @@ var xu = (r) => r.text("404 Not Found", 404),
         e
       )
     }
-    #r = xu
-    errorHandler = la
+    #r = Tu
+    errorHandler = wa
     route(e, t) {
       let i = this.basePath(e)
       return (
         t.routes.map((s) => {
           let n
-          ;(t.errorHandler === la
+          ;(t.errorHandler === wa
             ? (n = s.handler)
             : ((n = async (o, a) =>
-                (await Vs([], t.errorHandler)(o, () => s.handler(o, a))).res),
-              (n[da] = s.handler)),
+                (await Ys([], t.errorHandler)(o, () => s.handler(o, a))).res),
+              (n[ya] = s.handler)),
             i.#n(s.method, s.path, n, s.basePath))
         }),
         this
@@ -8036,7 +8483,7 @@ var xu = (r) => r.text("404 Not Found", 404),
     }
     basePath(e) {
       let t = this.#e()
-      return ((t._basePath = nt(this._basePath, e)), t)
+      return ((t._basePath = ot(this._basePath, e)), t)
     }
     onError = (e) => ((this.errorHandler = e), this)
     notFound = (e) => ((this.#r = e), this)
@@ -8060,7 +8507,7 @@ var xu = (r) => r.text("404 Not Found", 404),
             return [c.env, d]
           }
       s ||= (() => {
-        let c = nt(this._basePath, e),
+        let c = ot(this._basePath, e),
           d = c === "/" ? 0 : c.length
         return (l) => {
           let u = new URL(l.url)
@@ -8075,12 +8522,12 @@ var xu = (r) => r.text("404 Not Found", 404),
         if (l) return l
         await d()
       }
-      return (this.#n(se, nt(e, "*"), a), this)
+      return (this.#n(se, ot(e, "*"), a), this)
     }
     #n(e, t, i, s) {
-      ;((e = e.toUpperCase()), (t = nt(this._basePath, t)))
+      ;((e = e.toUpperCase()), (t = ot(this._basePath, t)))
       let n = {
-        basePath: s !== void 0 ? nt(this._basePath, s) : this._basePath,
+        basePath: s !== void 0 ? ot(this._basePath, s) : this._basePath,
         path: t,
         method: e,
         handler: i,
@@ -8096,7 +8543,7 @@ var xu = (r) => r.text("404 Not Found", 404),
         return (async () => new Response(null, await this.#s(e, t, i, "GET")))()
       let n = this.getPath(e, { env: i }),
         o = this.router.match(s, n),
-        a = new tn(e, {
+        a = new on(e, {
           path: n,
           matchResult: o,
           env: i,
@@ -8118,7 +8565,7 @@ var xu = (r) => r.text("404 Not Found", 404),
               .catch((l) => this.#i(l, a))
           : (d ?? this.#r(a))
       }
-      let c = Vs(o[0], this.errorHandler, this.#r)
+      let c = Ys(o[0], this.errorHandler, this.#r)
       return (async () => {
         try {
           let d = await c(a)
@@ -8139,7 +8586,7 @@ var xu = (r) => r.text("404 Not Found", 404),
         : ((e = e.toString()),
           this.fetch(
             new Request(
-              /^https?:\/\//.test(e) ? e : `http://localhost${nt("/", e)}`,
+              /^https?:\/\//.test(e) ? e : `http://localhost${ot("/", e)}`,
               t,
             ),
             i,
@@ -8151,27 +8598,27 @@ var xu = (r) => r.text("404 Not Found", 404),
       })
     }
   }
-yt()
-var Qr = []
-function rn(r, e) {
+wt()
+var Zr = []
+function an(r, e) {
   let t = this.buildAllMatchers(),
     i = (s, n) => {
       let o = t[s] || t[se],
         a = o[2][n]
       if (a) return a
       let c = n.match(o[0])
-      if (!c) return [[], Qr]
+      if (!c) return [[], Zr]
       let d = c.indexOf("", 1)
       return [o[1][d], c]
     }
   return ((this.match = i), i(r, e))
 }
-var Xr = "[^/]+",
-  Ot = ".*",
+var ei = "[^/]+",
+  jt = ".*",
   xt = "(?:|/.*)",
-  ot = Symbol(),
-  fa = new Set(".\\+*[^]$()")
-function wu(r, e) {
+  at = Symbol(),
+  va = new Set(".\\+*[^]$()")
+function Iu(r, e) {
   return r.length === 1
     ? e.length === 1
       ? r < e
@@ -8180,15 +8627,15 @@ function wu(r, e) {
       : -1
     : e.length === 1
       ? 1
-      : r === Ot || r === xt
+      : r === jt || r === xt
         ? e === xt
           ? -1
           : 1
-        : e === Ot || e === xt
+        : e === jt || e === xt
           ? -1
-          : r === Xr
+          : r === ei
             ? 1
-            : e === Xr
+            : e === ei
               ? -1
               : r.length === e.length
                 ? r < e
@@ -8196,7 +8643,7 @@ function wu(r, e) {
                   : 1
                 : e.length - r.length
 }
-var ha = class sn {
+var ba = class cn {
   #t
   #e
   #r = Object.create(null)
@@ -8208,8 +8655,8 @@ var ha = class sn {
           d.length === 1
             ? d === "*"
               ? a === c - 1
-                ? ["", "", Ot]
-                : ["", "", Xr]
+                ? ["", "", jt]
+                : ["", "", ei]
               : null
             : d === "/*"
               ? ["", "", xt]
@@ -8217,37 +8664,37 @@ var ha = class sn {
         u
       if (l) {
         let p = l[1],
-          f = l[2] || Xr
+          f = l[2] || ei
         if (
           p &&
           l[2] &&
           (f === ".*" ||
             ((f = f.replace(/^\((?!\?:)(?=[^)]+\)$)/, "(?:")),
             /\((?!\?:)/.test(f)) ||
-            (f.length === 1 && fa.has(f)))
+            (f.length === 1 && va.has(f)))
         )
-          throw ot
+          throw at
         if (((u = o.#r[f]), !u)) {
-          if (f !== Ot && f !== xt) {
+          if (f !== jt && f !== xt) {
             for (let h in o.#r)
-              if ((f.length > 1 || h.length > 1) && h !== Ot && h !== xt)
-                throw ot
+              if ((f.length > 1 || h.length > 1) && h !== jt && h !== xt)
+                throw at
           }
-          u = o.#r[f] = new sn()
+          u = o.#r[f] = new cn()
         }
         p !== "" && ((u.#e ??= s.varIndex++), i.push([p, u.#e]))
       } else if (((u = o.#r[d]), !u)) {
-        for (let p in o.#r) if (p.length > 1 && p !== Ot && p !== xt) throw ot
-        u = o.#r[d] = new sn()
+        for (let p in o.#r) if (p.length > 1 && p !== jt && p !== xt) throw at
+        u = o.#r[d] = new cn()
       }
       o = u
     }
-    if (o.#t !== void 0) throw ot
+    if (o.#t !== void 0) throw at
     o.#t = n ? -1 : t
   }
   buildRegExpStr() {
     let t = Object.keys(this.#r)
-      .sort(wu)
+      .sort(Iu)
       .map((i) => {
         let s = this.#r[i],
           n = s.buildRegExpStr()
@@ -8255,7 +8702,7 @@ var ha = class sn {
           ? ""
           : (typeof s.#e == "number"
               ? `(${i})@${s.#e}`
-              : fa.has(i)
+              : va.has(i)
                 ? `\\${i}`
                 : i) + n
       })
@@ -8266,9 +8713,9 @@ var ha = class sn {
     )
   }
 }
-var nn = class {
+var dn = class {
   #t = { varIndex: 0 }
-  #e = new ha()
+  #e = new ba()
   #r = 0
   paths = Object.create(null)
   insert(r, e) {
@@ -8318,24 +8765,24 @@ var nn = class {
     )
   }
 }
-var ga = Object.create(null)
-function ma(r) {
-  return (ga[r] ??= new RegExp(
+var ka = Object.create(null)
+function Sa(r) {
+  return (ka[r] ??= new RegExp(
     r === "*"
       ? ""
       : `^${r.replace(/\/\*$|([.\\+*[^\]$()])/g, (e, t) => (t ? `\\${t}` : "(?:|/.*)"))}$`,
   ))
 }
-function _u() {
-  ga = Object.create(null)
+function Bu() {
+  ka = Object.create(null)
 }
-function Yr(r, e) {
+function ti(r, e) {
   if (r) {
     for (let t of Object.keys(r).sort((i, s) => s.length - i.length))
-      if (ma(t).test(e)) return [...r[t]]
+      if (Sa(t).test(e)) return [...r[t]]
   }
 }
-var Zr = class {
+var ri = class {
   name = "RegExpRouter"
   #t
   #e
@@ -8343,21 +8790,21 @@ var Zr = class {
   constructor() {
     ;((this.#t = { [se]: Object.create(null) }),
       (this.#e = { [se]: Object.create(null) }),
-      (this.#r = { [se]: new nn() }))
+      (this.#r = { [se]: new dn() }))
   }
   #n(r, e) {
     try {
       this.#r[r].insert(e, !/\*|\/:/.test(e))
     } catch (t) {
-      throw t === ot ? new Jr(e) : t
+      throw t === at ? new Yr(e) : t
     }
   }
   add(r, e, t) {
     let i = this.#t,
       s = this.#e
-    if (!i || !s) throw new Error(Vr)
+    if (!i || !s) throw new Error(Xr)
     ;(i[r] ||
-      ((this.#r[r] = new nn()),
+      ((this.#r[r] = new dn()),
       [i, s].forEach((a) => {
         ;((a[r] = Object.create(null)),
           Object.keys(a[se]).forEach((c) => {
@@ -8367,11 +8814,11 @@ var Zr = class {
       e === "/*" && (e = "*"))
     let n = (e.match(/\/:/g) || []).length
     if (/\*$/.test(e)) {
-      let a = ma(e)
+      let a = Sa(e)
       ;(Object.keys(i).forEach((c) => {
         ;(r === se || r === c) &&
           !i[c][e] &&
-          (this.#n(c, e), (i[c][e] = Yr(i[c], e) || Yr(i[se], e) || []))
+          (this.#n(c, e), (i[c][e] = ti(i[c], e) || ti(i[se], e) || []))
       }),
         Object.keys(i).forEach((c) => {
           ;(r === se || r === c) &&
@@ -8385,19 +8832,19 @@ var Zr = class {
         }))
       return
     }
-    let o = Wr(e) || [e]
+    let o = Jr(e) || [e]
     for (let a = 0, c = o.length; a < c; a++) {
       let d = o[a]
       Object.keys(s).forEach((l) => {
         ;(r === se || r === l) &&
           (s[l][d] ||
             (this.#n(l, d),
-            (s[l][d] = [...(Yr(i[l], d) || Yr(i[se], d) || [])])),
+            (s[l][d] = [...(ti(i[l], d) || ti(i[se], d) || [])])),
           s[l][d].push([t, n - c + a + 1]))
       })
     }
   }
-  match = rn
+  match = an
   buildAllMatchers() {
     let r = Object.create(null)
     return (
@@ -8407,7 +8854,7 @@ var Zr = class {
           r[e] ||= this.#i(e)
         }),
       (this.#t = this.#e = this.#r = void 0),
-      _u(),
+      Bu(),
       r
     )
   }
@@ -8422,14 +8869,14 @@ var Zr = class {
         let p = l[u],
           f = i.paths[u]
         if (!f) {
-          s[u] = [p.map(([y]) => [y, Object.create(null)]), Qr]
+          s[u] = [p.map(([y]) => [y, Object.create(null)]), Zr]
           continue
         }
         let h = f[1]
-        n[f[0]] = p.map(([y, x]) => {
+        n[f[0]] = p.map(([y, w]) => {
           let g = Object.create(null)
-          for (x -= 1; x >= 0; x--) {
-            let [m, v] = h[x]
+          for (w -= 1; w >= 0; w--) {
+            let [m, v] = h[w]
             g[m] = v
           }
           return [y, g]
@@ -8442,14 +8889,14 @@ var Zr = class {
         let h = n[l][p]?.[1]
         if (!h) continue
         let y = Object.keys(h)
-        for (let x = 0, g = y.length; x < g; x++) h[y[x]] = c[h[y[x]]]
+        for (let w = 0, g = y.length; w < g; w++) h[y[w]] = c[h[y[w]]]
       }
     let d = []
     for (let l in a) d[l] = n[a[l]]
     return [o, d, s]
   }
 }
-var on = class {
+var ln = class {
   name = "SmartRouter"
   #t = []
   #e = []
@@ -8457,7 +8904,7 @@ var on = class {
     this.#t = r.routers
   }
   add(r, e, t) {
-    if (!this.#e) throw new Error(Vr)
+    if (!this.#e) throw new Error(Xr)
     this.#e.push([r, e, t])
   }
   match(r, e) {
@@ -8473,7 +8920,7 @@ var on = class {
         for (let c = 0, d = i.length; c < d; c++) a.add(...i[c])
         o = a.match(r, e)
       } catch (c) {
-        if (c instanceof Jr) continue
+        if (c instanceof Yr) continue
         throw c
       }
       ;((this.match = a.match.bind(a)), (this.#t = [a]), (this.#e = void 0))
@@ -8488,19 +8935,19 @@ var on = class {
     return this.#t[0]
   }
 }
-yt()
-yt()
-var ar = Object.create(null),
-  vu = (r) => {
+wt()
+wt()
+var lr = Object.create(null),
+  Ru = (r) => {
     for (let e in r) return !0
     return !1
   },
-  ya = class xa {
+  Pa = class Aa {
     #t
     #e
     #r
     #n = 0
-    #i = ar
+    #i = lr
     constructor(e, t, i) {
       if (((this.#e = i || Object.create(null)), (this.#t = []), e && t)) {
         let s = Object.create(null)
@@ -8511,18 +8958,18 @@ var ar = Object.create(null),
     insert(e, t, i) {
       this.#n = ++this.#n
       let s = this,
-        n = Qo(t),
+        n = sa(t),
         o = []
       for (let a = 0, c = n.length; a < c; a++) {
         let d = n[a],
           l = n[a + 1],
-          u = Xo(d, l),
+          u = na(d, l),
           p = Array.isArray(u) ? u[0] : d
         if (p in s.#e) {
           ;((s = s.#e[p]), u && o.push(u[1]))
           continue
         }
-        ;((s.#e[p] = new xa()),
+        ;((s.#e[p] = new Aa()),
           u && (s.#r.push(u), o.push(u[1])),
           (s = s.#e[p]))
       }
@@ -8546,7 +8993,7 @@ var ar = Object.create(null),
           d !== void 0 &&
           ((d.params = Object.create(null)),
           e.push(d),
-          s !== ar || (n && n !== ar))
+          s !== lr || (n && n !== lr))
         )
           for (let u = 0, p = d.possibleKeys.length; u < p; u++) {
             let f = d.possibleKeys[u],
@@ -8558,9 +9005,9 @@ var ar = Object.create(null),
     }
     search(e, t) {
       let i = []
-      this.#i = ar
+      this.#i = lr
       let n = [this],
-        o = Xs(t),
+        o = tn(t),
         a = [],
         c = o.length,
         d = null
@@ -8568,7 +9015,7 @@ var ar = Object.create(null),
         let u = o[l],
           p = l === c - 1,
           f = []
-        for (let y = 0, x = n.length; y < x; y++) {
+        for (let y = 0, w = n.length; y < w; y++) {
           let g = n[y],
             m = g.#e[u]
           m &&
@@ -8577,9 +9024,9 @@ var ar = Object.create(null),
               ? (m.#e["*"] && this.#s(i, m.#e["*"], e, g.#i),
                 this.#s(i, m, e, g.#i))
               : f.push(m))
-          for (let v = 0, w = g.#r.length; v < w; v++) {
+          for (let v = 0, x = g.#r.length; v < x; v++) {
             let _ = g.#r[v],
-              b = g.#i === ar ? {} : { ...g.#i }
+              b = g.#i === lr ? {} : { ...g.#i }
             if (_ === "*") {
               let k = g.#e["*"]
               k && (this.#s(i, k, e, g.#i), (k.#i = b), f.push(k))
@@ -8603,7 +9050,7 @@ var ar = Object.create(null),
                   D[0].length === k.length &&
                     P.#e["*"] &&
                     this.#s(i, P.#e["*"], e, g.#i, b),
-                  vu(P.#e))
+                  Ru(P.#e))
                 ) {
                   P.#i = b
                   let T = D[0].match(/\//)?.length ?? 0
@@ -8629,14 +9076,14 @@ var ar = Object.create(null),
       )
     }
   }
-var an = class {
+var un = class {
   name = "TrieRouter"
   #t
   constructor() {
-    this.#t = new ya()
+    this.#t = new Pa()
   }
   add(r, e, t) {
-    let i = Wr(e)
+    let i = Jr(e)
     if (i) {
       for (let s = 0, n = i.length; s < n; s++) this.#t.insert(r, i[s], t)
       return
@@ -8647,14 +9094,14 @@ var an = class {
     return this.#t.search(r, e)
   }
 }
-var J = class extends ua {
+var J = class extends xa {
   constructor(r = {}) {
     ;(super(r),
-      (this.router = r.router ?? new on({ routers: [new Zr(), new an()] })))
+      (this.router = r.router ?? new ln({ routers: [new ri(), new un()] })))
   }
 }
-Gr()
-var wa = (r) => {
+Qr()
+var Ca = (r) => {
   let e = {
       origin: "*",
       allowMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH", "QUERY"],
@@ -8713,7 +9160,7 @@ var wa = (r) => {
 }
 te()
 te()
-me()
+he()
 function G(r, e, t) {
   let i = t !== "desc",
     s = String(e || "name").toLowerCase(),
@@ -8737,7 +9184,7 @@ function G(r, e, t) {
     n
   )
 }
-var Me = {
+var He = {
   global: {
     oauth: "https://login.microsoftonline.com",
     api: "https://graph.microsoft.com",
@@ -8755,7 +9202,7 @@ var Me = {
     api: "https://graph.microsoft.de",
   },
 }
-function wn(r, e) {
+function kn(r, e) {
   let t = ""
   return (
     r.thumbnails &&
@@ -8774,7 +9221,7 @@ function wn(r, e) {
     }
   )
 }
-async function _n(r) {
+async function Sn(r) {
   if (r.use_online_api && r.api_url_address) {
     let n = new URLSearchParams({
         refresh_ui: r.refresh_token,
@@ -8793,7 +9240,7 @@ async function _n(r) {
   }
   if (!r.client_id || !r.client_secret)
     throw new Error("empty ClientID or ClientSecret")
-  let t = `${(Me[r.region] || Me.global).oauth}/common/oauth2/v2.0/token`,
+  let t = `${(He[r.region] || He.global).oauth}/common/oauth2/v2.0/token`,
     s = await (
       await fetch(t, {
         method: "POST",
@@ -8836,12 +9283,12 @@ async function Ce(r, e, t, i, s) {
         o.status === 401) &&
       !s
     )
-      return (await _n(r), Ce(r, e, t, i, !0))
+      return (await Sn(r), Ce(r, e, t, i, !0))
     throw new Error(a?.message || `Request failed: ${o.status}`)
   }
   if (o.status !== 204) return o.json()
 }
-function Ha(r, e, t) {
+function Ya(r, e, t) {
   let i = e.replace(/\\/g, "/")
   if (!i || i === "/") return t ? `${r}/drive/root/${t}` : `${r}/drive/root`
   let s = i.startsWith("/") ? i.slice(1) : i
@@ -8850,12 +9297,12 @@ function Ha(r, e, t) {
   let n = s.split("/").map(encodeURIComponent).join("/")
   return t ? `${r}/drive/root:/${n}:/${t}` : `${r}/drive/root:/${n}:`
 }
-async function Ka(r, e) {
-  let t = Me[r.region] || Me.global,
+async function Za(r, e) {
+  let t = He[r.region] || He.global,
     i = r.is_sharepoint
       ? `${t.api}/v1.0/sites/${r.site_id}`
       : `${t.api}/v1.0/me`,
-    n = Ha(
+    n = Ya(
       i,
       e,
       "children?$top=1000&$expand=thumbnails($select=medium)&$select=id,name,size,fileSystemInfo,@microsoft.graph.downloadUrl,file,folder,parentReference",
@@ -8867,15 +9314,15 @@ async function Ka(r, e) {
   }
   return o
 }
-async function Wa(r, e) {
-  let t = Me[r.region] || Me.global,
+async function ec(r, e) {
+  let t = He[r.region] || He.global,
     i = r.is_sharepoint
       ? `${t.api}/v1.0/sites/${r.site_id}`
       : `${t.api}/v1.0/me`,
-    s = Ha(i, e)
+    s = Ya(i, e)
   return Ce(r, s, "GET")
 }
-var ci = class {
+var ui = class {
   root_folder_path = "/"
   region = "global"
   is_sharepoint = !1
@@ -8911,10 +9358,10 @@ var ci = class {
         (this.enable_direct_upload =
           this.enable_direct_upload.toLowerCase() === "true"),
       this.chunk_size < 1 && (this.chunk_size = 5),
-      this.refresh_token && (await _n(this)))
+      this.refresh_token && (await Sn(this)))
   }
   getMetaUrl(e, t, i) {
-    let s = Me[this.region] || Me.global
+    let s = He[this.region] || He.global
     if (e) return s.oauth
     let n = this.is_sharepoint
         ? `${s.api}/v1.0/sites/${this.site_id}`
@@ -8937,8 +9384,8 @@ var ci = class {
     return i ? `${n}/drive/root:/${c}:/${i}` : `${n}/drive/root:/${c}:`
   }
   async list(e, t) {
-    let s = (await Ka(this, t)).map((n) => {
-      let o = wn(n, ""),
+    let s = (await Za(this, t)).map((n) => {
+      let o = kn(n, ""),
         a = n["@microsoft.graph.downloadUrl"] || o.url || ""
       if (this.custom_host && a)
         try {
@@ -8959,8 +9406,8 @@ var ci = class {
     return G(s, this.order_by, this.order_direction)
   }
   async get(e, t) {
-    let i = await Wa(this, t),
-      s = wn(i, ""),
+    let i = await ec(this, t),
+      s = kn(i, ""),
       n = i["@microsoft.graph.downloadUrl"] || s.url || ""
     if (this.custom_host && n)
       try {
@@ -9061,7 +9508,7 @@ var ci = class {
     }
   }
 }
-function vn(r, e) {
+function Pn(r, e) {
   let t = ""
   return (
     r.thumbnails &&
@@ -9080,7 +9527,7 @@ function vn(r, e) {
     }
   )
 }
-var _t = {
+var vt = {
   global: {
     oauth: "https://login.microsoftonline.com",
     api: "https://graph.microsoft.com",
@@ -9099,7 +9546,7 @@ var _t = {
   },
 }
 function Ee(r, e, t, i) {
-  let s = _t[r.region] || _t.global
+  let s = vt[r.region] || vt.global
   if (e) return s.oauth
   let n = t ? t.replace(/\\/g, "/") : ""
   if (!n || n === "/")
@@ -9125,22 +9572,22 @@ function Ee(r, e, t, i) {
     ? `${s.api}/v1.0/users/${r.email}/drive/root:/${a}:/${i}`
     : `${s.api}/v1.0/users/${r.email}/drive/root:/${a}:`
 }
-async function bn(r) {
+async function An(r) {
   let e = null
   for (let t = 0; t < 3; t++)
     try {
-      await sp(r)
+      await yp(r)
       return
     } catch (i) {
       e = i
     }
   throw e || new Error("Failed to get access token")
 }
-async function sp(r) {
+async function yp(r) {
   if (!r.client_id || !r.client_secret)
     throw new Error("empty client_id or client_secret")
   if (!r.tenant_id) throw new Error("empty tenant_id")
-  let e = _t[r.region] || _t.global,
+  let e = vt[r.region] || vt.global,
     t = `${e.oauth}/${r.tenant_id}/oauth2/token`,
     i = new URLSearchParams({
       grant_type: "client_credentials",
@@ -9161,7 +9608,7 @@ async function sp(r) {
     throw new Error("empty token returned from Microsoft identity platform")
   ;((r.accessToken = n.access_token), r.onTokenUpdate?.(r.accessToken))
 }
-async function we(r, e, t, i, s) {
+async function xe(r, e, t, i, s) {
   let n =
       i !== void 0 &&
       (typeof i == "string" ||
@@ -9191,12 +9638,12 @@ async function we(r, e, t, i, s) {
         a.status === 401) &&
       !s
     )
-      return (await bn(r), we(r, e, t, i, !0))
+      return (await An(r), xe(r, e, t, i, !0))
     throw new Error(c?.message || `Request failed: ${a.status}`)
   }
   if (a.status !== 204) return a.json()
 }
-async function Ga(r, e) {
+async function tc(r, e) {
   let i = Ee(
       r,
       !1,
@@ -9205,23 +9652,23 @@ async function Ga(r, e) {
     ),
     s = []
   for (; i; ) {
-    let n = await we(r, i, "GET")
+    let n = await xe(r, i, "GET")
     ;(n.value && s.push(...n.value), (i = n["@odata.nextLink"]))
   }
   return s
 }
-async function Va(r, e) {
+async function rc(r, e) {
   let t = Ee(r, !1, e)
-  return we(r, t, "GET")
+  return xe(r, t, "GET")
 }
-async function Ja(r) {
-  let t = `${(_t[r.region] || _t.global).api}/v1.0/users/${r.email}/drive`
-  return we(r, t, "GET", void 0, !0)
+async function ic(r) {
+  let t = `${(vt[r.region] || vt.global).api}/v1.0/users/${r.email}/drive`
+  return xe(r, t, "GET", void 0, !0)
 }
-async function Qa(r, e) {
+async function sc(r, e) {
   let t = Ee(r, !1, e, "createUploadSession"),
     n = (
-      await we(r, t, "POST", {
+      await xe(r, t, "POST", {
         item: { "@microsoft.graph.conflictBehavior": "rename" },
       })
     ).uploadUrl
@@ -9232,7 +9679,7 @@ async function Qa(r, e) {
     Method: "PUT",
   }
 }
-var di = class {
+var pi = class {
   root_folder_path = "/"
   region = "global"
   client_id = ""
@@ -9263,11 +9710,11 @@ var di = class {
       this.client_id &&
         this.client_secret &&
         this.tenant_id &&
-        (await bn(this)))
+        (await An(this)))
   }
   async list(e, t) {
-    let s = (await Ga(this, t)).map((n) => {
-      let o = vn(n, ""),
+    let s = (await tc(this, t)).map((n) => {
+      let o = Pn(n, ""),
         a = n["@microsoft.graph.downloadUrl"] || o.url || ""
       if (this.custom_host && a)
         try {
@@ -9288,8 +9735,8 @@ var di = class {
     return G(s, this.order_by, this.order_direction)
   }
   async get(e, t) {
-    let i = await Va(this, t),
-      s = vn(i, ""),
+    let i = await rc(this, t),
+      s = Pn(i, ""),
       n = i["@microsoft.graph.downloadUrl"] || s.url || ""
     if (this.custom_host && n)
       try {
@@ -9311,7 +9758,7 @@ var di = class {
     let i = t.split("/").slice(0, -1).join("/") || "/",
       s = t.split("/").filter(Boolean).pop() || "",
       n = Ee(this, !1, i, "children")
-    await we(this, n, "POST", {
+    await xe(this, n, "POST", {
       name: s,
       folder: {},
       "@microsoft.graph.conflictBehavior": "rename",
@@ -9320,18 +9767,18 @@ var di = class {
   async rename(e, t, i) {
     let s = { name: i },
       n = Ee(this, !1, t)
-    await we(this, n, "PATCH", s)
+    await xe(this, n, "PATCH", s)
   }
   async remove(e, t, i) {
     for (let s of i) {
       let n = t === "/" ? `/${s}` : `${t}/${s}`,
         o = Ee(this, !1, n)
-      await we(this, o, "DELETE")
+      await xe(this, o, "DELETE")
     }
   }
   async move(e, t, i, s, n) {
     let o = Ee(this, !1, n),
-      a = await we(this, o, "GET"),
+      a = await xe(this, o, "GET"),
       c = a.id,
       d = a.parentReference?.driveId
     for (let l of i) {
@@ -9341,12 +9788,12 @@ var di = class {
           name: l,
         },
         f = Ee(this, !1, u)
-      await we(this, f, "PATCH", p)
+      await xe(this, f, "PATCH", p)
     }
   }
   async copy(e, t, i, s, n) {
     let o = Ee(this, !1, n),
-      a = await we(this, o, "GET"),
+      a = await xe(this, o, "GET"),
       c = a.id,
       d = a.parentReference?.driveId
     for (let l of i) {
@@ -9356,17 +9803,17 @@ var di = class {
           name: l,
         },
         f = Ee(this, !1, u, "copy")
-      await we(this, f, "POST", p)
+      await xe(this, f, "POST", p)
     }
   }
   async put(e, t, i) {
     if (i.length <= 4 * 1024 * 1024) {
       let s = Ee(this, !1, t, "content")
-      await we(this, s, "PUT", i)
+      await xe(this, s, "PUT", i)
     } else {
       let s = Ee(this, !1, t, "createUploadSession"),
         a = (
-          await we(this, s, "POST", {
+          await xe(this, s, "POST", {
             item: { "@microsoft.graph.conflictBehavior": "rename" },
           })
         ).uploadUrl,
@@ -9391,18 +9838,18 @@ var di = class {
   }
   async getDetails() {
     if (this.disable_disk_usage) return {}
-    let e = await Ja(this)
+    let e = await ic(this)
     return { total: e.quota.total, used: e.quota.used, free: e.quota.remaining }
   }
   async getDirectUploadInfo(e) {
     if (!this.enable_direct_upload)
       throw new Error("Direct upload is not enabled")
-    return Qa(this, e)
+    return sc(this, e)
   }
 }
-me()
-var np = "https://openapi.aliyundrive.com/adrive/v1.0",
-  li = class {
+he()
+var wp = "https://openapi.aliyundrive.com/adrive/v1.0",
+  fi = class {
     addition
     accessToken = ""
     refreshTokenVal = ""
@@ -9543,7 +9990,7 @@ var np = "https://openapi.aliyundrive.com/adrive/v1.0",
     }
     async openApiRequest(e, t, i = !0) {
       await this.ensureToken()
-      let s = e.startsWith("http") ? e : `${np}${e}`,
+      let s = e.startsWith("http") ? e : `${wp}${e}`,
         n = await fetch(s, {
           method: "POST",
           headers: {
@@ -9671,7 +10118,7 @@ var np = "https://openapi.aliyundrive.com/adrive/v1.0",
       })
     }
   }
-function Xa(r) {
+function nc(r) {
   let e = r.type === "folder"
   return {
     name: r.name,
@@ -9679,24 +10126,24 @@ function Xa(r) {
     is_dir: e,
     modified: r.updated_at || r.created_at || new Date().toISOString(),
     sign: "",
-    type: K(r.name, e),
+    type: L(r.name, e),
     thumb: r.thumbnail || "",
     raw_url: r.download_url || "",
   }
 }
-var ui = class {
+var hi = class {
   client
   addition
   pathFileIdCache = new Map()
   constructor(e) {
-    ;((this.addition = e), (this.client = new li(e)))
+    ;((this.addition = e), (this.client = new fi(e)))
   }
   async init() {
     await this.client.init()
   }
   async list(e, t) {
     let i = await this.resolveFileId(t),
-      n = (await this.client.listFiles(i)).map(Xa)
+      n = (await this.client.listFiles(i)).map(nc)
     return G(n, this.addition.order_by, this.addition.order_direction)
   }
   async get(e, t) {
@@ -9704,7 +10151,7 @@ var ui = class {
       s = await this.client.getFile(i).catch(() => null),
       n = await this.client.getDownloadUrl(i).catch(() => "")
     if (s) {
-      let c = Xa(s)
+      let c = nc(s)
       return ((c.raw_url = n || c.raw_url), c)
     }
     try {
@@ -9792,14 +10239,14 @@ var ui = class {
     return s
   }
 }
-var mr = "application/vnd.google-apps.folder",
-  Ya = "application/vnd.google-apps.shortcut",
-  Za =
+var xr = "application/vnd.google-apps.folder",
+  oc = "application/vnd.google-apps.shortcut",
+  ac =
     "files(id,name,mimeType,size,modifiedTime,createdTime,thumbnailLink,shortcutDetails,md5Checksum,sha1Checksum,sha256Checksum),nextPageToken"
-var ct = "https://www.googleapis.com/drive/v3",
-  ec = "https://www.googleapis.com/upload/drive/v3",
-  op = "https://oauth2.googleapis.com/token",
-  pi = class {
+var dt = "https://www.googleapis.com/drive/v3",
+  cc = "https://www.googleapis.com/upload/drive/v3",
+  xp = "https://oauth2.googleapis.com/token",
+  gi = class {
     addition
     accessToken = ""
     refreshTokenVal = ""
@@ -9870,7 +10317,7 @@ var ct = "https://www.googleapis.com/drive/v3",
           "GOCSPX-4bH5Kx3s_89_j6j2x-2x3-8x"
       if (s && n)
         try {
-          let o = await fetch(op, {
+          let o = await fetch(xp, {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body: new URLSearchParams({
@@ -9931,18 +10378,18 @@ var ct = "https://www.googleapis.com/drive/v3",
       do {
         let n = new URLSearchParams({
           q: `'${e}' in parents and trashed = false`,
-          fields: Za,
+          fields: ac,
           orderBy: s,
           pageSize: "1000",
           includeItemsFromAllDrives: "true",
           supportsAllDrives: "true",
         })
         i && n.set("pageToken", i)
-        let o = `${ct}/files?${n.toString()}`,
+        let o = `${dt}/files?${n.toString()}`,
           a = await this.request(o),
           c = a.files || []
         for (let d of c)
-          d.mimeType === Ya &&
+          d.mimeType === oc &&
             d.shortcutDetails?.targetId &&
             ((d.id = d.shortcutDetails.targetId),
             (d.mimeType = d.shortcutDetails.targetMimeType || d.mimeType))
@@ -9956,30 +10403,30 @@ var ct = "https://www.googleapis.com/drive/v3",
         includeItemsFromAllDrives: "true",
         supportsAllDrives: "true",
       })
-      return this.request(`${ct}/files/${e}?${t.toString()}`)
+      return this.request(`${dt}/files/${e}?${t.toString()}`)
     }
     getDownloadUrl(e) {
-      return `${ct}/files/${e}?includeItemsFromAllDrives=true&supportsAllDrives=true&alt=media&acknowledgeAbuse=true`
+      return `${dt}/files/${e}?includeItemsFromAllDrives=true&supportsAllDrives=true&alt=media&acknowledgeAbuse=true`
     }
     getDownloadHeaders() {
       return { Authorization: `Bearer ${this.accessToken}` }
     }
     async mkdir(e, t) {
-      await this.request(`${ct}/files?supportsAllDrives=true`, {
+      await this.request(`${dt}/files?supportsAllDrives=true`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: t, parents: [e], mimeType: mr }),
+        body: JSON.stringify({ name: t, parents: [e], mimeType: xr }),
       })
     }
     async rename(e, t) {
-      await this.request(`${ct}/files/${e}?supportsAllDrives=true`, {
+      await this.request(`${dt}/files/${e}?supportsAllDrives=true`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: t }),
       })
     }
     async remove(e) {
-      await this.request(`${ct}/files/${e}?supportsAllDrives=true`, {
+      await this.request(`${dt}/files/${e}?supportsAllDrives=true`, {
         method: "DELETE",
       })
     }
@@ -9989,14 +10436,14 @@ var ct = "https://www.googleapis.com/drive/v3",
         removeParents: t,
         supportsAllDrives: "true",
       })
-      await this.request(`${ct}/files/${e}?${s.toString()}`, {
+      await this.request(`${dt}/files/${e}?${s.toString()}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: "{}",
       })
     }
     async copy(e, t, i) {
-      await this.request(`${ct}/files/${e}/copy?supportsAllDrives=true`, {
+      await this.request(`${dt}/files/${e}/copy?supportsAllDrives=true`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: i, parents: [t] }),
@@ -10023,7 +10470,7 @@ Content-Type: ${s}\r
           u = Buffer.from(`\r
 --${a}--`),
           p = Buffer.concat([l, i, u])
-        await this.request(`${ec}/files?${o.toString()}`, {
+        await this.request(`${cc}/files?${o.toString()}`, {
           method: "POST",
           headers: { "Content-Type": `multipart/related; boundary=${a}` },
           body: p,
@@ -10034,7 +10481,7 @@ Content-Type: ${s}\r
           supportsAllDrives: "true",
         })
         await this.ensureToken()
-        let a = await fetch(`${ec}/files?${o.toString()}`, {
+        let a = await fetch(`${cc}/files?${o.toString()}`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${this.accessToken}`,
@@ -10104,37 +10551,37 @@ Content-Type: ${s}\r
       return { parentId: await this.resolveFileId(s), name: i }
     }
   }
-function tc(r) {
+function dc(r) {
   return {
     name: r.name,
     size: r.size ? parseInt(r.size, 10) : 0,
-    is_dir: r.mimeType === mr,
+    is_dir: r.mimeType === xr,
     modified: r.modifiedTime || r.createdTime || new Date().toISOString(),
     sign: "",
-    type: r.mimeType === mr ? 1 : 0,
+    type: r.mimeType === xr ? 1 : 0,
     thumb: r.thumbnailLink || "",
     raw_url: "",
   }
 }
-var fi = class {
+var mi = class {
   client
   addition
   constructor(e) {
-    ;((this.addition = e), (this.client = new pi(e)))
+    ;((this.addition = e), (this.client = new gi(e)))
   }
   async init() {
     await this.client.init()
   }
   async list(e, t) {
     let i = await this.client.resolveFileId(t),
-      n = (await this.client.listFiles(i)).map(tc)
+      n = (await this.client.listFiles(i)).map(dc)
     return G(n, this.addition.order_by, this.addition.order_direction)
   }
   async get(e, t) {
     let i = await this.client.resolveFileId(t),
       s = await this.client.getFile(i).catch(() => null)
     if (s) {
-      let a = tc(s)
+      let a = dc(s)
       return (
         (a.raw_url = this.client.getDownloadUrl(i)),
         (a.raw_url_headers = this.client.getDownloadHeaders()),
@@ -10198,23 +10645,23 @@ var fi = class {
     await this.client.putFile(s, n, i)
   }
 }
-me()
-var ap = {
+he()
+var _p = {
     ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) quark-cloud-drive/2.5.20 Chrome/100.0.4896.160 Electron/18.3.5.4-b478491100 Safari/537.36 Channel/pckk_other_ch",
     referer: "https://pan.quark.cn",
     api: "https://drive-m.quark.cn/1/clouddrive",
     pr: "ucpro",
   },
-  cp = {
+  vp = {
     ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) uc-cloud-drive/2.5.20 Chrome/100.0.4896.160 Electron/18.3.5.4-b478491100 Safari/537.36 Channel/pckk_other_ch",
     referer: "https://drive.uc.cn",
     api: "https://pc-api.uc.cn/1/clouddrive",
     pr: "UCBrowser",
   }
-function dp(r = "Quark") {
-  return r === "UC" ? cp : ap
+function bp(r = "Quark") {
+  return r === "UC" ? vp : _p
 }
-function rc(r, e, t) {
+function lc(r, e, t) {
   let i = r
       .split(";")
       .map((o) => o.trim())
@@ -10226,14 +10673,14 @@ function rc(r, e, t) {
     n = `${e}=${t}`
   return (s !== -1 ? (i[s] = n) : i.push(n), i.join("; "))
 }
-var hi = class {
+var yi = class {
   addition
   conf
   cookie
   onCookieUpdate
   constructor(e, t) {
     ;((this.addition = e),
-      (this.conf = dp(e.variant || "Quark")),
+      (this.conf = bp(e.variant || "Quark")),
       (this.cookie = e.cookie || ""),
       (this.onCookieUpdate = t))
   }
@@ -10269,16 +10716,16 @@ var hi = class {
     let c = await fetch(n.toString(), a),
       d = c.headers.get("set-cookie")
     if (d) {
-      let u = ic(d, "__puus")
+      let u = uc(d, "__puus")
       if (
         (u &&
-          ((this.cookie = rc(this.cookie, "__puus", u)),
+          ((this.cookie = lc(this.cookie, "__puus", u)),
           this.onCookieUpdate?.(this.cookie)),
         this.addition.variant === "Quark")
       ) {
-        let p = ic(d, "__pus")
+        let p = uc(d, "__pus")
         p &&
-          ((this.cookie = rc(this.cookie, "__pus", p)),
+          ((this.cookie = lc(this.cookie, "__pus", p)),
           this.onCookieUpdate?.(this.cookie))
       }
     }
@@ -10314,7 +10761,7 @@ var hi = class {
         a = o?.data?.list || []
       if (a.length === 0) break
       for (let d of a)
-        ((d.file_name = lp(d.file_name)),
+        ((d.file_name = kp(d.file_name)),
           this.addition.only_list_video_file
             ? (!d.file || d.category === 1) && t.push(d)
             : t.push(d))
@@ -10382,7 +10829,7 @@ var hi = class {
         pdir_fid: e,
         size: i,
         pre_hash: s,
-        format_type: up(t),
+        format_type: Sp(t),
       })
     ).data
   }
@@ -10408,7 +10855,7 @@ var hi = class {
     }
   }
 }
-function ic(r, e) {
+function uc(r, e) {
   let t = r.split(/,(?=[^;]+=[^;]+)/)
   for (let i of t) {
     let n = i.split(";")[0].trim(),
@@ -10418,7 +10865,7 @@ function ic(r, e) {
   }
   return null
 }
-function lp(r) {
+function kp(r) {
   return r
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
@@ -10427,7 +10874,7 @@ function lp(r) {
     .replace(/&#39;/g, "'")
     .replace(/&apos;/g, "'")
 }
-function up(r) {
+function Sp(r) {
   let e = r.split(".").pop()?.toLowerCase() || "",
     t = [
       "mp4",
@@ -10455,7 +10902,7 @@ function up(r) {
           ? "doc"
           : "others"
 }
-function sc(r) {
+function pc(r) {
   let e = !r.file,
     t = r.updated_at
       ? new Date(r.updated_at).toISOString()
@@ -10466,23 +10913,23 @@ function sc(r) {
     is_dir: e,
     modified: t,
     sign: "",
-    type: K(r.file_name, e),
+    type: L(r.file_name, e),
     thumb: r.thumbnail || "",
     raw_url: "",
   }
 }
-var gi = class {
+var wi = class {
   client
   pathFileIdCache = new Map()
   constructor(e) {
-    this.client = new hi(e)
+    this.client = new yi(e)
   }
   async init() {
     await this.client.init()
   }
   async list(e, t) {
     let i = await this.resolveFileId(t)
-    return (await this.client.getFiles(i)).map(sc)
+    return (await this.client.getFiles(i)).map(pc)
   }
   async get(e, t) {
     let i = t.split("/").filter(Boolean),
@@ -10509,7 +10956,7 @@ var gi = class {
       console.warn(`[Quark/UC] getDownloadUrl warning for ${n}:`, f.message)
     }
     if (l) {
-      let f = sc(l)
+      let f = pc(l)
       return ((f.raw_url = u), (f.raw_url_headers = p), f)
     }
     try {
@@ -10594,11 +11041,11 @@ var gi = class {
     return s
   }
 }
-me()
+he()
 var Oe = "https://yun.123pan.com/b/api",
-  pp = "https://login.123pan.com/api",
-  fp = pp + "/user/sign_in"
-function hp(r) {
+  Pp = "https://login.123pan.com/api",
+  Ap = Pp + "/user/sign_in"
+function Cp(r) {
   let e = (r || "").trim()
   if (!e) return ""
   if (/^Bearer\s+/i.test(e)) return e.replace(/^Bearer\s+/i, "").trim()
@@ -10617,18 +11064,18 @@ function hp(r) {
   }
   return i("sso-token") || i("token") || i("authorization") || ""
 }
-var gp = Oe + "/user/info",
-  mp = Oe + "/file/list/new",
-  yp = Oe + "/file/download_info",
-  xp = Oe + "/file/upload_request",
-  wp = Oe + "/file/mod_pid",
-  _p = Oe + "/file/rename",
-  vp = Oe + "/file/trash",
-  bp = Oe + "/file/upload_request",
-  kp = Oe + "/file/s3_upload_object/auth",
-  Sp = Oe + "/file/s3_repare_upload_parts_batch",
-  Pp = Oe + "/file/upload_complete/v2",
-  Ap = (() => {
+var Ep = Oe + "/user/info",
+  Dp = Oe + "/file/list/new",
+  Fp = Oe + "/file/download_info",
+  Tp = Oe + "/file/upload_request",
+  Ip = Oe + "/file/mod_pid",
+  Bp = Oe + "/file/rename",
+  Rp = Oe + "/file/trash",
+  Up = Oe + "/file/upload_request",
+  qp = Oe + "/file/s3_upload_object/auth",
+  Op = Oe + "/file/s3_repare_upload_parts_batch",
+  $p = Oe + "/file/upload_complete/v2",
+  jp = (() => {
     let r = new Array(256)
     for (let e = 0; e < 256; e++) {
       let t = e
@@ -10637,13 +11084,13 @@ var gp = Oe + "/user/info",
     }
     return r
   })()
-function nc(r) {
+function fc(r) {
   let e = 4294967295
   for (let t = 0; t < r.length; t++)
-    e = Ap[(e ^ r.charCodeAt(t)) & 255] ^ (e >>> 8)
+    e = jp[(e ^ r.charCodeAt(t)) & 255] ^ (e >>> 8)
   return (e ^ 4294967295) >>> 0
 }
-var Cp = [
+var zp = [
   "a",
   "d",
   "e",
@@ -10671,7 +11118,7 @@ var Cp = [
   "s",
   "z",
 ]
-function Ep(r) {
+function Lp(r) {
   let e = Math.round(1e7 * Math.random()).toString(),
     t = new Date(),
     s = Math.round((t.getTime() + 8 * 36e5) / 1e3).toString(),
@@ -10682,22 +11129,22 @@ function Ep(r) {
     d = String(t.getUTCMinutes()).padStart(2, "0"),
     u = `${n}${o}${a}${c}${d}`
       .split("")
-      .map((y) => Cp[parseInt(y)])
+      .map((y) => zp[parseInt(y)])
       .join(""),
-    p = (nc(u) >>> 0).toString(),
+    p = (fc(u) >>> 0).toString(),
     f = [s, e, r, "web", "3", p].join("|"),
-    h = (nc(f) >>> 0).toString()
+    h = (fc(f) >>> 0).toString()
   return `${p}=${s}-${e}-${h}`
 }
-function Dp(r) {
+function Np(r) {
   let e = r.indexOf("?"),
     t = e >= 0 ? r.substring(0, e) : r,
     i = e >= 0 ? r.substring(e + 1) : "",
     s = new URL(r),
-    n = Ep(s.pathname)
+    n = Lp(s.pathname)
   return `${t}?${i}${i ? "&" : ""}${n}`
 }
-var mi = class {
+var xi = class {
   addition
   accessToken = ""
   onTokenUpdate
@@ -10718,7 +11165,7 @@ var mi = class {
       }
     }
     if (this.addition.cookie) {
-      let e = hp(this.addition.cookie)
+      let e = Cp(this.addition.cookie)
       if (e) {
         this.accessToken = e
         try {
@@ -10750,7 +11197,7 @@ var mi = class {
             remember: !0,
           },
       s = await (
-        await fetch(fp, {
+        await fetch(Ap, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -10775,7 +11222,7 @@ var mi = class {
   }
   async request(e, t, i, s, n = !1) {
     let o = async () => {
-        let d = Dp(e),
+        let d = Np(e),
           l = {
             origin: "https://yun.123pan.com",
             referer: "https://yun.123pan.com/",
@@ -10810,7 +11257,7 @@ var mi = class {
     return a
   }
   async userInfo(e = !1) {
-    return (await this.request(gp, "GET", void 0, void 0, e)).data
+    return (await this.request(Ep, "GET", void 0, void 0, e)).data
   }
   async getFiles(e, t) {
     let i = [],
@@ -10848,7 +11295,7 @@ var mi = class {
           operateType: "4",
           inDirectSpace: "false",
         }),
-        c = `${mp}?${a.toString()}`,
+        c = `${Dp}?${a.toString()}`,
         d = await this.request(c, "GET"),
         l = d.data?.InfoList || []
       if ((i.push(...l), t?.findName)) {
@@ -10875,7 +11322,7 @@ var mi = class {
         size: e.Size,
         type: e.Type,
       },
-      s = (await this.request(yp, "POST", t)).data?.DownloadUrl || ""
+      s = (await this.request(Fp, "POST", t)).data?.DownloadUrl || ""
     if (!s) throw new Error("no download url")
     try {
       let a = new URL(s).searchParams.get("params")
@@ -10896,7 +11343,7 @@ var mi = class {
           s
   }
   async mkdir(e, t) {
-    let i = await this.request(xp, "POST", {
+    let i = await this.request(Tp, "POST", {
       driveId: 0,
       etag: "",
       fileName: t,
@@ -10907,20 +11354,20 @@ var mi = class {
     return i.data?.FileId != null ? String(i.data.FileId) : ""
   }
   async rename(e, t) {
-    await this.request(_p, "POST", {
+    await this.request(Bp, "POST", {
       driveId: 0,
       fileId: parseInt(e, 10),
       fileName: t,
     })
   }
   async move(e, t) {
-    await this.request(wp, "POST", {
+    await this.request(Ip, "POST", {
       fileIdList: e.map((i) => ({ FileId: parseInt(i, 10) })),
       parentFileId: parseInt(t, 10),
     })
   }
   async remove(e, t) {
-    await this.request(vp, "POST", {
+    await this.request(Rp, "POST", {
       driveId: 0,
       operation: !0,
       fileTrashInfoList: [t],
@@ -10951,7 +11398,7 @@ var mi = class {
       size: i,
       type: 0,
     }
-    return (await this.request(bp, "POST", n)).data
+    return (await this.request(Up, "POST", n)).data
   }
   async getS3Auth(e, t, i) {
     let s = {
@@ -10962,7 +11409,7 @@ var mi = class {
       partNumberStart: t,
       uploadId: e.UploadId,
     }
-    return (await this.request(kp, "POST", s)).data
+    return (await this.request(qp, "POST", s)).data
   }
   async getS3PreSignedUrls(e, t, i) {
     let s = {
@@ -10973,10 +11420,10 @@ var mi = class {
       uploadId: e.UploadId,
       StorageNode: e.StorageNode,
     }
-    return (await this.request(Sp, "POST", s)).data
+    return (await this.request(Op, "POST", s)).data
   }
   async completeS3(e, t, i) {
-    await this.request(Pp, "POST", {
+    await this.request($p, "POST", {
       StorageNode: e.StorageNode,
       bucket: e.Bucket,
       fileId: e.FileId,
@@ -11018,25 +11465,25 @@ var mi = class {
       let h = i.subarray(u, u + p),
         y = await fetch(f, { method: "PUT", body: h })
       if (y.status !== 200) {
-        let x = await y.text().catch(() => "")
+        let w = await y.text().catch(() => "")
         throw new Error(
-          `[123Pan] \u4E0A\u4F20\u7B2C ${l}/${a} \u5206\u7247\u5931\u8D25\uFF1AHTTP ${y.status} ${x}`,
+          `[123Pan] \u4E0A\u4F20\u7B2C ${l}/${a} \u5206\u7247\u5931\u8D25\uFF1AHTTP ${y.status} ${w}`,
         )
       }
     }
     await this.completeS3(n, i.length, a > 1)
   }
 }
-function Fp(r) {
+function Mp(r) {
   return Buffer.from(JSON.stringify(r), "utf8").toString("base64")
 }
-function oc(r) {
+function hc(r) {
   let e = JSON.parse(Buffer.from(r, "base64").toString("utf8"))
   if (!e || !e.bucket || !e.key || !e.uploadId)
     throw new Error("[123Pan] invalid upload session")
   return e
 }
-function ac(r) {
+function gc(r) {
   return {
     AccessKeyId: "",
     SecretAccessKey: "",
@@ -11050,7 +11497,7 @@ function ac(r) {
     Reuse: !1,
   }
 }
-function cc(r) {
+function mc(r) {
   let e = r.Type === 1
   return {
     name: r.FileName,
@@ -11060,18 +11507,18 @@ function cc(r) {
       ? new Date(r.UpdateAt).toISOString()
       : new Date().toISOString(),
     sign: String(r.FileId),
-    type: K(r.FileName, e),
+    type: L(r.FileName, e),
     thumb: "",
     raw_url: "",
   }
 }
-var yi = class {
+var _i = class {
   client
   addition
   pathIdCache = new Map()
   budget = { used: 0, limit: 45 }
   constructor(e, t) {
-    ;((this.addition = e), (this.client = new mi(e, t)))
+    ;((this.addition = e), (this.client = new xi(e, t)))
   }
   async init() {
     await this.client.login()
@@ -11215,7 +11662,7 @@ var yi = class {
   async list(e, t) {
     this.budget.used = 0
     let i = await this.resolveFolderId(t),
-      n = (await this.client.getFiles(i, { budget: this.budget })).map(cc)
+      n = (await this.client.getFiles(i, { budget: this.budget })).map(mc)
     return G(
       n,
       this.addition.order_by || "file_name",
@@ -11240,7 +11687,7 @@ var yi = class {
       }
     }
     let { file: s } = await this.resolveFile(t),
-      n = cc(s)
+      n = mc(s)
     if (s.Type !== 1)
       try {
         ;((n.raw_url = await this.client.getDownloadLink(s)),
@@ -11319,7 +11766,7 @@ var yi = class {
     if (a.Reuse || a.Key === "")
       return { reuse: !0, partCount: 0, chunkSize: c, session: "" }
     let d = Math.max(1, Math.ceil(s / c)),
-      l = Fp({
+      l = Mp({
         bucket: a.Bucket,
         key: a.Key,
         uploadId: a.UploadId,
@@ -11333,8 +11780,8 @@ var yi = class {
   }
   async uploadPart(e, t, i) {
     this.budget.used = 0
-    let s = oc(e),
-      n = await this.client.getPartUploadUrl(ac(s), t, s.partCount),
+    let s = hc(e),
+      n = await this.client.getPartUploadUrl(gc(s), t, s.partCount),
       o = await fetch(n, { method: "PUT", body: i })
     if (o.status !== 200) {
       let a = await o.text().catch(() => "")
@@ -11345,29 +11792,29 @@ var yi = class {
   }
   async completeUploadSession(e) {
     this.budget.used = 0
-    let t = oc(e)
-    await this.client.completeUpload(ac(t), t.size, t.partCount > 1)
+    let t = hc(e)
+    await this.client.completeUpload(gc(t), t.size, t.partCount > 1)
   }
 }
-me()
-xr()
-var Ip = "https://openapi.baidu.com/oauth/2.0/token",
-  lc = "https://pan.baidu.com/rest/2.0",
-  $t = 4 * 1024 * 1024,
-  Pn = 16 * 1024 * 1024,
-  An = 32 * 1024 * 1024,
-  Cn = 2048,
-  Bp = 1 * 1024 * 1024,
-  jt = "https://d.pcs.baidu.com",
-  Rp = 60 * 1e3,
-  wr = 3,
-  Dn = 1e3,
-  pc = 5e3,
-  Up = new Set([111, -6, 20016])
-function qp(r) {
+he()
+vr()
+var Kp = "https://openapi.baidu.com/oauth/2.0/token",
+  wc = "https://pan.baidu.com/rest/2.0",
+  zt = 4 * 1024 * 1024,
+  Dn = 16 * 1024 * 1024,
+  Fn = 32 * 1024 * 1024,
+  Tn = 2048,
+  Wp = 1 * 1024 * 1024,
+  Lt = "https://d.pcs.baidu.com",
+  Gp = 60 * 1e3,
+  br = 3,
+  Bn = 1e3,
+  _c = 5e3,
+  Vp = new Set([111, -6, 20016])
+function Jp(r) {
   return new Promise((e) => setTimeout(e, r))
 }
-function En(r) {
+function In(r) {
   if (!r) return r
   try {
     let e = new URL(r)
@@ -11376,7 +11823,7 @@ function En(r) {
     return r
   }
 }
-function Lt(r) {
+function Mt(r) {
   let e = { ...(r || {}) },
     t = (i, s) =>
       i == null || i === ""
@@ -11393,7 +11840,7 @@ function Lt(r) {
     (e.order_by = e.order_by || "name"),
     (e.order_direction = e.order_direction || "asc"),
     (e.upload_thread = e.upload_thread || "3"),
-    (e.upload_api = e.upload_api || jt),
+    (e.upload_api = e.upload_api || Lt),
     (e.use_dynamic_upload_api = t(e.use_dynamic_upload_api, !0)),
     (e.custom_upload_part_size = e.custom_upload_part_size || 0),
     (e.low_bandwith_upload_mode = t(e.low_bandwith_upload_mode, !1)),
@@ -11401,12 +11848,12 @@ function Lt(r) {
     e
   )
 }
-var _i = class r {
+var ki = class r {
     addition
     accessToken = ""
     onTokenUpdate
     constructor(e, t) {
-      ;((this.addition = Lt(e)),
+      ;((this.addition = Mt(e)),
         (this.onTokenUpdate = t),
         this.addition.access_token &&
           (this.accessToken = this.addition.access_token))
@@ -11450,7 +11897,7 @@ var _i = class r {
       }
       if (!e.client_id || !e.client_secret)
         throw new Error("empty ClientID or ClientSecret")
-      let t = new URL(Ip)
+      let t = new URL(Kp)
       ;(t.searchParams.set("grant_type", "refresh_token"),
         t.searchParams.set("refresh_token", e.refresh_token),
         t.searchParams.set("client_id", e.client_id),
@@ -11483,7 +11930,7 @@ var _i = class r {
             d = { method: t, headers: c }
           if (s && t === "POST") {
             let h = new URLSearchParams()
-            for (let [y, x] of Object.entries(s)) h.set(y, x)
+            for (let [y, w] of Object.entries(s)) h.set(y, w)
             ;((c["Content-Type"] = "application/x-www-form-urlencoded"),
               (d.body = h.toString()))
           }
@@ -11500,7 +11947,7 @@ var _i = class r {
           let f = typeof p.errno == "number" ? p.errno : 0
           if (f !== 0) {
             if (
-              (Up.has(f) && (await this.refreshToken()),
+              (Vp.has(f) && (await this.refreshToken()),
               f === 31023 && this.addition.download_api === "crack_video")
             )
               return p
@@ -11514,19 +11961,19 @@ var _i = class r {
           return p
         },
         o
-      for (let a = 0; a < wr; a++)
+      for (let a = 0; a < br; a++)
         try {
           return await n()
         } catch (c) {
-          ;((o = c), a < wr - 1 && (await qp(Dn * Math.pow(2, a))))
+          ;((o = c), a < br - 1 && (await Jp(Bn * Math.pow(2, a))))
         }
       throw o
     }
     get(e, t) {
-      return this.request(lc + e, "GET", t)
+      return this.request(wc + e, "GET", t)
     }
     postForm(e, t, i) {
-      return this.request(lc + e, "POST", t, i)
+      return this.request(wc + e, "POST", t, i)
     }
     async uinfo() {
       let e = await this.get("/xpan/nas", { method: "uinfo" })
@@ -11567,7 +12014,7 @@ var _i = class r {
               headers: { "User-Agent": "pan.baidu.com" },
             })
           ).headers.get("location") || s
-      return { url: En(o), headers: { "User-Agent": "pan.baidu.com" } }
+      return { url: In(o), headers: { "User-Agent": "pan.baidu.com" } }
     }
     async getCrackLink(e) {
       let i = (
@@ -11580,7 +12027,7 @@ var _i = class r {
       ).info?.[0]?.dlink
       if (!i) throw new Error("no dlink returned from crack filemetas")
       return {
-        url: En(i),
+        url: In(i),
         headers: { "User-Agent": this.addition.custom_crack_ua || "netdisk" },
       }
     }
@@ -11601,7 +12048,7 @@ var _i = class r {
       )?.info?.dlink
       if (!s) throw new Error("no dlink returned from mediainfo")
       return {
-        url: En(s),
+        url: In(s),
         headers: { "User-Agent": this.addition.custom_crack_ua || "netdisk" },
       }
     }
@@ -11615,7 +12062,7 @@ var _i = class r {
     async create(e, t, i, s, n, o, a) {
       let c = { path: e, size: String(t), isdir: String(i), rtype: "3" }
       return (
-        o !== 0 && a !== 0 && uc(c, a, o),
+        o !== 0 && a !== 0 && xc(c, a, o),
         s && (c.uploadid = s),
         n && (c.block_list = n),
         this.postForm("/xpan/file", { method: "create" }, c)
@@ -11631,7 +12078,7 @@ var _i = class r {
         block_list: i,
       }
       ;(s !== "" && n !== "" && ((c["content-md5"] = s), (c["slice-md5"] = n)),
-        uc(c, o, a))
+        xc(c, o, a))
       let d = await this.postForm("/xpan/file", { method: "precreate" }, c)
       return (
         d.return_type === 2 &&
@@ -11646,7 +12093,7 @@ var _i = class r {
       let a = new FormData()
       a.append("file", new Blob([s]), i)
       let c = new AbortController(),
-        d = setTimeout(() => c.abort(), n > 0 ? n : Rp)
+        d = setTimeout(() => c.abort(), n > 0 ? n : Gp)
       try {
         let u = await (
             await fetch(o.toString(), {
@@ -11662,7 +12109,7 @@ var _i = class r {
             p.includes("expired") ||
             p.includes("not found"))
         )
-          throw new zt()
+          throw new Nt()
         let f
         try {
           f = JSON.parse(u)
@@ -11679,7 +12126,7 @@ var _i = class r {
     }
     getUploadUrl(e, t) {
       let i = this.addition
-      return (!i.use_dynamic_upload_api || !t, i.upload_api || jt)
+      return (!i.use_dynamic_upload_api || !t, i.upload_api || Lt)
     }
     async requestForUploadUrl(e, t) {
       let i = await this.request(
@@ -11714,41 +12161,41 @@ var _i = class r {
             console.warn(
               "[baidu_netdisk] CustomUploadPartSize is not supported for non-vip user, use DefaultSliceSize",
             ),
-          e > Cn * $t &&
+          e > Tn * zt &&
             console.warn(
               `[baidu_netdisk] File size(${e}) is too large, may cause upload failure`,
             ),
-          $t
+          zt
         )
       if (s !== 0)
-        return s < $t
+        return s < zt
           ? (console.warn(
               `[baidu_netdisk] CustomUploadPartSize(${s}) is less than DefaultSliceSize, use DefaultSliceSize`,
             ),
-            $t)
-          : t === 1 && s > Pn
+            zt)
+          : t === 1 && s > Dn
             ? (console.warn(
                 `[baidu_netdisk] CustomUploadPartSize(${s}) is greater than VipSliceSize, use VipSliceSize`,
               ),
-              Pn)
-            : t === 2 && s > An
+              Dn)
+            : t === 2 && s > Fn
               ? (console.warn(
                   `[baidu_netdisk] CustomUploadPartSize(${s}) is greater than SVipSliceSize, use SVipSliceSize`,
                 ),
-                An)
+                Fn)
               : s
-      let n = $t
+      let n = zt
       if (
-        (t === 1 && (n = Pn), t === 2 && (n = An), i.low_bandwith_upload_mode)
+        (t === 1 && (n = Dn), t === 2 && (n = Fn), i.low_bandwith_upload_mode)
       ) {
-        let o = $t
+        let o = zt
         for (; o <= n; ) {
-          if (e <= Cn * o) return o
-          o += Bp
+          if (e <= Tn * o) return o
+          o += Wp
         }
       }
       return (
-        e > Cn * n &&
+        e > Tn * n &&
           console.warn(
             `[baidu_netdisk] File size(${e}) is too large, may cause upload failure`,
           ),
@@ -11760,20 +12207,20 @@ var _i = class r {
       return { total: e.total || 0, used: e.used || 0 }
     }
   },
-  zt = class extends Error {
+  Nt = class extends Error {
     constructor() {
       ;(super("uploadid expired"), (this.name = "ErrUploadIDExpired"))
     }
   }
-function uc(r, e, t) {
+function xc(r, e, t) {
   ;((r.local_mtime = String(t)), (r.local_ctime = String(e)))
 }
-var Op = new Error("empty files are not allowed by baidu netdisk")
-function $p(r) {
+var Qp = new Error("empty files are not allowed by baidu netdisk")
+function Xp(r) {
   return new Promise((e) => setTimeout(e, r))
 }
-function fc(r) {
-  let e = r.server_filename || _r(r.path),
+function vc(r) {
+  let e = r.server_filename || kr(r.path),
     t = r.server_ctime || r.ctime || 0,
     i = r.server_mtime || r.mtime || 0,
     s = r.isdir === 1
@@ -11784,23 +12231,23 @@ function fc(r) {
     created: t ? new Date(t * 1e3).toISOString() : void 0,
     modified: i ? new Date(i * 1e3).toISOString() : new Date().toISOString(),
     sign: String(r.fs_id),
-    type: K(e, s),
+    type: L(e, s),
     thumb: r.thumbs?.url3 || "",
     raw_url: "",
   }
 }
-function _r(r) {
+function kr(r) {
   let e = String(r || "").split("/")
   return e[e.length - 1] || ""
 }
-var vi = class {
+var Si = class {
   client
   addition
   uploadThread = 3
   vipType = 0
   pathCache = new Map()
   constructor(e, t) {
-    ;((this.addition = Lt(e)), (this.client = new _i(this.addition, t)))
+    ;((this.addition = Mt(e)), (this.client = new ki(this.addition, t)))
   }
   async init() {
     let e = this.addition,
@@ -11822,9 +12269,9 @@ var vi = class {
   }
   async list(e, t) {
     let i = await this.client.getFiles(this.baiduPath(t)),
-      s = i.map(fc)
+      s = i.map(vc)
     for (let n of i)
-      this.pathCache.set(n.path, { fsId: n.fs_id, parent: hc(n.path) })
+      this.pathCache.set(n.path, { fsId: n.fs_id, parent: bc(n.path) })
     return G(s, this.addition.order_by || "name", this.addition.order_direction)
   }
   async get(e, t) {
@@ -11839,8 +12286,8 @@ var vi = class {
         type: 1,
         raw_url: "",
       }
-    let s = hc(i),
-      n = _r(i),
+    let s = bc(i),
+      n = kr(i),
       o = (() => {
         try {
           return decodeURIComponent(n)
@@ -11857,7 +12304,7 @@ var vi = class {
       )
     if (!c) throw new Error(`file not found: ${n}`)
     this.pathCache.set(c.path, { fsId: c.fs_id, parent: s })
-    let d = fc(c)
+    let d = vc(c)
     if (c.isdir !== 1)
       try {
         let l = await this.getDownloadLink(c)
@@ -11890,28 +12337,28 @@ var vi = class {
     await this.client.manage("delete", [this.baiduPath(t)])
   }
   async move(e, t, i, s, n) {
-    let o = i[0] || _r(s),
+    let o = i[0] || kr(s),
       a = this.baiduPath(t)
     await this.client.manage("move", [
       { path: this.baiduPath(s), dest: a, newname: o },
     ])
   }
   async copy(e, t, i, s, n) {
-    let o = i[0] || _r(s),
+    let o = i[0] || kr(s),
       a = this.baiduPath(t)
     await this.client.manage("copy", [
       { path: this.baiduPath(s), dest: a, newname: o },
     ])
   }
   async put(e, t, i) {
-    if (i.length < 1) throw Op
+    if (i.length < 1) throw Qp
     let s = i.length,
       n = this.baiduPath(t),
-      o = _r(n),
+      o = kr(n),
       a = Math.floor(Date.now() / 1e3),
       c = a,
       d = a,
-      l = xi(i),
+      l = vi(i),
       u = JSON.stringify([l])
     try {
       await this.client.create(n, s, 0, "", u, c, d)
@@ -11923,37 +12370,37 @@ var vi = class {
       y = []
     for (let m = 0; m < f; m++) {
       let v = m === f - 1 ? h : p,
-        w = i.subarray(m * p, m * p + v)
-      y.push(xi(w))
+        x = i.subarray(m * p, m * p + v)
+      y.push(vi(x))
     }
-    let x = JSON.stringify(y),
+    let w = JSON.stringify(y),
       g = await this.client.precreate(
         n,
         s,
-        x,
+        w,
         l,
-        xi(i.subarray(0, 256 * 1024)),
+        vi(i.subarray(0, 256 * 1024)),
         d,
         c,
       )
     if (!(g.return_type === 2 && g.info)) {
       for (let m = 0; m < 2; m++) {
-        let v = this.addition.upload_api || jt
+        let v = this.addition.upload_api || Lt
         if (this.addition.use_dynamic_upload_api && g.uploadid)
           try {
             v = await this.client.requestForUploadUrl(n, g.uploadid)
           } catch {
-            v = this.addition.upload_api || jt
+            v = this.addition.upload_api || Lt
           }
-        let w = g.block_list || [],
+        let x = g.block_list || [],
           _ = !1,
           b = 0,
-          S = Math.max(1, Math.min(this.uploadThread, w.length)),
+          S = Math.max(1, Math.min(this.uploadThread, x.length)),
           A = async () => {
             for (;;) {
               let C = b++
-              if (C >= w.length) return
-              let P = w[C]
+              if (C >= x.length) return
+              let P = x[C]
               if (P < 0) continue
               let k = P * p,
                 D = P + 1 === f ? h : p,
@@ -11967,7 +12414,7 @@ var vi = class {
                   partseq: String(P),
                 },
                 O = !1
-              for (let q = 0; q < wr; q++)
+              for (let q = 0; q < br; q++)
                 try {
                   ;(await this.client.uploadSlice(
                     v,
@@ -11976,12 +12423,12 @@ var vi = class {
                     T,
                     (this.addition.upload_timeout || 60) * 1e3,
                   ),
-                    (w[C] = -1),
+                    (x[C] = -1),
                     (O = !0))
                   break
                 } catch (j) {
-                  if (j instanceof zt) throw j
-                  q < wr - 1 && (await $p(Math.min(Dn * Math.pow(2, q), pc)))
+                  if (j instanceof Nt) throw j
+                  q < br - 1 && (await Xp(Math.min(Bn * Math.pow(2, q), _c)))
                 }
               if (!O) throw ((_ = !0), new Error(`upload slice ${P} failed`))
             }
@@ -11990,46 +12437,46 @@ var vi = class {
           if ((await Promise.all(Array.from({ length: S }, () => A())), _))
             throw new Error("upload slice failed")
         } catch (C) {
-          if (C instanceof zt) {
-            let P = await this.client.precreate(n, s, x, "", "", d, c)
+          if (C instanceof Nt) {
+            let P = await this.client.precreate(n, s, w, "", "", d, c)
             if (P.return_type === 2 && P.info) return
             g = P
             continue
           }
           throw C
         }
-        await this.client.create(n, s, 0, g.uploadid, x, c, d)
+        await this.client.create(n, s, 0, g.uploadid, w, c, d)
         return
       }
       throw new Error("upload failed after retries")
     }
   }
 }
-function hc(r) {
+function bc(r) {
   let e = r.lastIndexOf("/")
   return e <= 0 ? "/" : r.slice(0, e)
 }
-me()
-xr()
+he()
+vr()
 var $e = "https://proapi.115.com",
-  jp = "https://passportapi.115.com",
-  zp = $e + "/open/upload/get_token",
-  Lp = $e + "/open/upload/init",
-  Np = $e + "/open/folder/add",
-  Mp = $e + "/open/ufile/files",
-  gc = $e + "/open/folder/get_info",
-  Hp = $e + "/open/ufile/copy",
-  Kp = $e + "/open/ufile/move",
-  Wp = $e + "/open/ufile/downurl",
-  Gp = $e + "/open/ufile/update",
-  Vp = $e + "/open/ufile/delete",
-  Jp = $e + "/open/user/info",
-  Qp = jp + "/open/refreshToken"
-function Xp(r) {
+  Yp = "https://passportapi.115.com",
+  Zp = $e + "/open/upload/get_token",
+  ef = $e + "/open/upload/init",
+  tf = $e + "/open/folder/add",
+  rf = $e + "/open/ufile/files",
+  kc = $e + "/open/folder/get_info",
+  sf = $e + "/open/ufile/copy",
+  nf = $e + "/open/ufile/move",
+  of = $e + "/open/ufile/downurl",
+  af = $e + "/open/ufile/update",
+  cf = $e + "/open/ufile/delete",
+  df = $e + "/open/user/info",
+  lf = Yp + "/open/refreshToken"
+function uf(r) {
   return r === 99 || String(r).startsWith("401")
 }
-var vr = 430004,
-  bi = class r {
+var Sr = 430004,
+  Pi = class r {
     addition
     accessToken = ""
     refreshTokenValue = ""
@@ -12086,7 +12533,7 @@ var vr = 430004,
       let e = new URLSearchParams()
       e.set("refresh_token", this.refreshTokenValue)
       let i = await (
-        await this.fetchWithRetry(Qp, {
+        await this.fetchWithRetry(lf, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: e.toString(),
@@ -12109,8 +12556,8 @@ var vr = 430004,
       await this.waitRateLimit()
       let a = async () => {
           let l = new URL(e)
-          for (let [x, g] of Object.entries(i || {}))
-            g !== "" && l.searchParams.set(x, g)
+          for (let [w, g] of Object.entries(i || {}))
+            g !== "" && l.searchParams.set(w, g)
           let u = {
             Accept: "application/json",
             "User-Agent":
@@ -12120,10 +12567,10 @@ var vr = 430004,
           this.accessToken && (u.Authorization = `Bearer ${this.accessToken}`)
           let p = { method: t, headers: u }
           if (s && t === "POST") {
-            let x = new URLSearchParams()
-            for (let [g, m] of Object.entries(s)) m !== "" && x.set(g, m)
+            let w = new URLSearchParams()
+            for (let [g, m] of Object.entries(s)) m !== "" && w.set(g, m)
             ;((u["Content-Type"] = "application/x-www-form-urlencoded"),
-              (p.body = x.toString()))
+              (p.body = w.toString()))
           }
           let f = await this.fetchWithRetry(l.toString(), p),
             h = await f.text(),
@@ -12144,7 +12591,7 @@ var vr = 430004,
       let d = c?.state
       if (d === !1 || d === void 0) {
         let l = Number(c?.code ?? 0)
-        if (Xp(l) && !o) {
+        if (uf(l) && !o) {
           ;(await this.refreshToken(), (c = (await a()).body))
           let p = c?.state
           if (p !== !1 && p !== void 0) return c
@@ -12152,9 +12599,9 @@ var vr = 430004,
             `115 \u7F51\u76D8 API \u9519\u8BEF\uFF08code ${c?.code} ${c?.message}\uFF09`,
           )
         }
-        if (l === vr) {
+        if (l === Sr) {
           let u = new Error("115 object not found")
-          throw ((u.code = vr), u)
+          throw ((u.code = Sr), u)
         }
         throw new Error(
           `115 \u7F51\u76D8 API \u9519\u8BEF\uFF08code ${l} ${c?.message || ""}\uFF09`,
@@ -12163,10 +12610,10 @@ var vr = 430004,
       return c
     }
     async userInfo() {
-      return (await this.request(Jp, "GET"))?.data
+      return (await this.request(df, "GET"))?.data
     }
     async getFiles(e) {
-      let t = await this.request(Mp, "GET", {
+      let t = await this.request(rf, "GET", {
         cid: e.cid,
         limit: String(e.limit),
         offset: String(e.offset),
@@ -12178,40 +12625,40 @@ var vr = 430004,
       return { files: t.data || [], count: t.count || 0 }
     }
     async getFolderInfo(e) {
-      return (await this.request(gc, "GET", { file_id: e }))?.data
+      return (await this.request(kc, "GET", { file_id: e }))?.data
     }
     async getFolderInfoByPath(e) {
-      return (await this.request(gc, "POST", void 0, { path: e }))?.data
+      return (await this.request(kc, "POST", void 0, { path: e }))?.data
     }
     async mkdir(e, t) {
-      return (await this.request(Np, "POST", void 0, { pid: e, file_name: t }))
+      return (await this.request(tf, "POST", void 0, { pid: e, file_name: t }))
         ?.data
     }
     async move(e, t) {
-      await this.request(Kp, "POST", void 0, { file_ids: e, to_cid: t })
+      await this.request(nf, "POST", void 0, { file_ids: e, to_cid: t })
     }
     async updateFile(e, t) {
-      await this.request(Gp, "POST", void 0, { file_id: e, file_name: t })
+      await this.request(af, "POST", void 0, { file_id: e, file_name: t })
     }
     async copy(e, t) {
-      await this.request(Hp, "POST", void 0, {
+      await this.request(sf, "POST", void 0, {
         pid: e,
         file_id: t,
         no_dupli: "1",
       })
     }
     async delFile(e, t) {
-      await this.request(Vp, "POST", void 0, { file_ids: e, parent_id: t })
+      await this.request(cf, "POST", void 0, { file_ids: e, parent_id: t })
     }
     async downUrl(e, t) {
-      return (await this.request(Wp, "POST", void 0, { pick_code: e }, t))?.data
+      return (await this.request(of, "POST", void 0, { pick_code: e }, t))?.data
     }
     async uploadGetToken() {
-      return (await this.request(zp, "GET"))?.data
+      return (await this.request(Zp, "GET"))?.data
     }
     async uploadInit(e) {
       return (
-        await this.request(Lp, "POST", void 0, {
+        await this.request(ef, "POST", void 0, {
           file_name: e.fileName,
           file_size: String(e.fileSize),
           target: `U_1_${e.target}`,
@@ -12223,10 +12670,10 @@ var vr = 430004,
       )?.data
     }
   }
-var ki =
+var Ai =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36 Chrome/142.0.0.0 OpenList/425.6.30",
-  Yp = 45
-function mc(r) {
+  pf = 45
+function Sc(r) {
   let e = r.fc === "0"
   return {
     name: r.fn,
@@ -12237,12 +12684,12 @@ function mc(r) {
       ? new Date(r.upt * 1e3).toISOString()
       : new Date().toISOString(),
     sign: r.fid,
-    type: K(r.fn, e),
+    type: L(r.fn, e),
     thumb: r.thumbnail || r.fco || "",
     raw_url: "",
   }
 }
-function Zp(r) {
+function ff(r) {
   let e = { ...(r || {}) }
   return (
     (e.order_by = e.order_by || "file_name"),
@@ -12254,17 +12701,17 @@ function Zp(r) {
     e
   )
 }
-var Si = class r {
+var Ci = class r {
   client
   addition
   pageSize = 200
   parentPath = "/"
   fidCache = new Map()
-  budget = { used: 0, limit: Yp }
+  budget = { used: 0, limit: pf }
   linkCache = new Map()
   static LINK_TTL_MS = 1800 * 1e3
   constructor(e, t) {
-    ;((this.addition = Zp(e)), (this.client = new bi(this.addition, t)))
+    ;((this.addition = ff(e)), (this.client = new Pi(this.addition, t)))
   }
   async init() {
     let t = this.addition.page_size || 200
@@ -12272,7 +12719,7 @@ var Si = class r {
     try {
       await this.client.userInfo()
     } catch (s) {
-      if (s?.code === vr) throw s
+      if (s?.code === Sr) throw s
       let n = String(s?.message || s)
       throw n.includes("fetch") || n.includes("ECONN") || n.includes("abort")
         ? new Error(
@@ -12320,7 +12767,7 @@ var Si = class r {
         o: this.addition.order_by || "file_name",
         showDir: !0,
       })
-      for (let c of o) (s.push(mc(c)), this.fidCache.set(c.fid, c.fid))
+      for (let c of o) (s.push(Sc(c)), this.fidCache.set(c.fid, c.fid))
       if (s.length >= a || o.length === 0) break
       n += o.length
     }
@@ -12347,7 +12794,7 @@ var Si = class r {
       let d = await this.client.getFolderInfoByPath(n)
       if (d.file_id) return (this.fidCache.set(i, d.file_id), d.file_id)
     } catch (d) {
-      if (d?.code !== vr && d?.code !== 990002) throw d
+      if (d?.code !== Sr && d?.code !== 990002) throw d
     }
     let o = i.split("/").filter(Boolean),
       a = t,
@@ -12441,19 +12888,19 @@ var Si = class r {
         raw_url: "",
       }
     let s = await this.resolveFile(t),
-      n = mc(s)
+      n = Sc(s)
     if (s.fc !== "0" && s.pc)
       try {
-        let o = `${s.fid}|${ki}`,
+        let o = `${s.fid}|${Ai}`,
           a = this.linkCache.get(o)
         if (a && a.expire > Date.now())
-          ((n.raw_url = a.url), (n.raw_url_headers = { "User-Agent": ki }))
+          ((n.raw_url = a.url), (n.raw_url_headers = { "User-Agent": Ai }))
         else {
           if (!this.reserve()) throw new Error("subrequest budget exceeded")
-          let d = (await this.client.downUrl(s.pc, ki))[s.fid]
+          let d = (await this.client.downUrl(s.pc, Ai))[s.fid]
           d?.url?.url &&
             ((n.raw_url = d.url.url),
-            (n.raw_url_headers = { "User-Agent": ki }),
+            (n.raw_url_headers = { "User-Agent": Ai }),
             this.linkCache.set(o, {
               url: d.url.url,
               expire: Date.now() + r.LINK_TTL_MS,
@@ -12518,9 +12965,9 @@ var Si = class r {
       o = "/" + s.join("/"),
       c = await this.resolveFolderId(o),
       d = i.length,
-      l = (await wi(i)).toUpperCase(),
+      l = (await bi(i)).toUpperCase(),
       u = Math.min(128 * 1024, d),
-      p = (await wi(i.subarray(0, u))).toUpperCase()
+      p = (await bi(i.subarray(0, u))).toUpperCase()
     if (!this.reserve()) throw new Error("subrequest budget exceeded")
     let f = await this.client.uploadInit({
       fileName: n,
@@ -12532,10 +12979,10 @@ var Si = class r {
     if (f.status === 2) return
     if ([6, 7, 8].includes(f.status) && f.sign_check) {
       let y = f.sign_check.split("-"),
-        x = parseInt(y[0], 10),
+        w = parseInt(y[0], 10),
         g = parseInt(y[1], 10)
-      if (Number.isFinite(x) && Number.isFinite(g)) {
-        let m = (await wi(i.subarray(x, g + 1))).toUpperCase()
+      if (Number.isFinite(w) && Number.isFinite(g)) {
+        let m = (await bi(i.subarray(w, g + 1))).toUpperCase()
         if (!this.reserve()) throw new Error("subrequest budget exceeded")
         if (
           ((f = await this.client.uploadInit({
@@ -12578,7 +13025,7 @@ x-oss-security-token:${e.SecurityToken}
 ${d}
 ${c}
 ${l}${u}`,
-      f = await dc(p, e.AccessKeySecret),
+      f = await yc(p, e.AccessKeySecret),
       h = await fetch(n, {
         method: "PUT",
         headers: {
@@ -12600,7 +13047,7 @@ ${l}${u}`,
     }
   }
 }
-me()
+he()
 function re(r) {
   if (!r) return "/"
   let t = r
@@ -12609,22 +13056,22 @@ function re(r) {
     .replace(/^\/|\/$/g, "")
   return t ? "/" + t : "/"
 }
-function He(r) {
+function Ke(r) {
   let e = re(r)
   if (e === "/") return "/"
   let t = e.split("/").filter(Boolean)
   return (t.pop(), t.length ? "/" + t.join("/") : "/")
 }
-function he(r) {
+function ge(r) {
   let e = re(r)
   if (e === "/") return ""
   let t = e.split("/").filter(Boolean)
   return t[t.length - 1] || ""
 }
-function Nt(...r) {
+function Ht(...r) {
   return re(r.join("/"))
 }
-function vt(r, e, t) {
+function bt(r, e, t) {
   if (!r || !r.trim()) return `${e.UserName} ${t} ${e.ObjPath}`
   let i = r
   return (
@@ -12638,7 +13085,7 @@ function vt(r, e, t) {
     i
   )
 }
-function yc(r, e) {
+function Pc(r, e) {
   let t = re(r),
     i = re(e),
     s = 1
@@ -12655,7 +13102,7 @@ function yc(r, e) {
     u = i.slice(s + 1)
   return { ancestor: a, aChildName: c, bChildName: d, aRest: l, bRest: u }
 }
-var Pi = class {
+var Ei = class {
   addition
   token
   owner
@@ -12798,7 +13245,7 @@ var Pi = class {
     let o = re(e),
       a = re(s)
     for (; o !== a; ) {
-      o = He(o)
+      o = Ke(o)
       let { tree: c, dirSha: d } = await this.getTreeDirectly(o, n),
         l = c.tree.find((p) => p.sha === t)
       if (!l) throw new Error(`Object with sha ${t} not found in ${o}`)
@@ -12808,13 +13255,13 @@ var Pi = class {
     return i
   }
 }
-var Ai = class {
+var Di = class {
   addition
   client
   isOnBranch = !1
   commitLock = Promise.resolve()
   constructor(e) {
-    ;((this.addition = e), (this.client = new Pi(e)))
+    ;((this.addition = e), (this.client = new Ei(e)))
   }
   async acquireLock(e) {
     let t = this.commitLock,
@@ -12899,7 +13346,7 @@ var Ai = class {
           is_dir: c,
           modified: new Date(0).toISOString(),
           sign: "",
-          type: K(a.path, c),
+          type: L(a.path, c),
           raw_url: "",
         })
       }
@@ -12913,7 +13360,7 @@ var Ai = class {
           is_dir: a,
           modified: new Date(0).toISOString(),
           sign: "",
-          type: K(o.name, a),
+          type: L(o.name, a),
           raw_url: this.formatDownloadUrl(o.download_url),
         })
       }
@@ -12924,14 +13371,14 @@ var Ai = class {
       s = await this.client.getContents(i, this.addition.ref)
     if (s.type === "submodule") throw new Error("cannot download a submodule")
     let n = s.type === "dir" || !!s.entries,
-      o = s.name || he(i) || "root"
+      o = s.name || ge(i) || "root"
     return {
       name: o,
       size: s.size || 0,
       is_dir: n,
       modified: new Date(0).toISOString(),
       sign: "",
-      type: K(o, n),
+      type: L(o, n),
       raw_url: this.formatDownloadUrl(s.download_url),
     }
   }
@@ -12939,8 +13386,8 @@ var Ai = class {
     if (!this.isOnBranch)
       throw new Error("cannot write to non-branch reference")
     let i = re(t),
-      s = He(i),
-      n = he(i)
+      s = Ke(i),
+      n = ge(i)
     await this.acquireLock(async () => {
       let o = await this.client.getContents(s, this.addition.ref)
       if (!o.entries && o.type !== "dir")
@@ -12960,13 +13407,13 @@ var Ai = class {
           "/",
           this.addition.ref,
         ),
-        u = vt(
+        u = bt(
           this.addition.mkdir_commit_message,
           {
             UserName: "OpenListNext",
             ObjName: n,
             ObjPath: i,
-            ParentName: he(s),
+            ParentName: ge(s),
             ParentPath: s,
           },
           "mkdir",
@@ -12978,8 +13425,8 @@ var Ai = class {
     if (!this.isOnBranch)
       throw new Error("cannot write to non-branch reference")
     let s = re(t),
-      n = He(s),
-      o = he(s)
+      n = Ke(s),
+      o = ge(s)
     await this.acquireLock(async () => {
       let a = await this.client.putBlob(i),
         c = await this.client.getContents(n, this.addition.ref)
@@ -12997,13 +13444,13 @@ var Ai = class {
           "/",
           this.addition.ref,
         ),
-        p = vt(
+        p = bt(
           this.addition.put_commit_message,
           {
             UserName: "OpenListNext",
             ObjName: o,
             ObjPath: s,
-            ParentName: he(n),
+            ParentName: ge(n),
             ParentPath: n,
           },
           "upload",
@@ -13015,8 +13462,8 @@ var Ai = class {
     if (!this.isOnBranch)
       throw new Error("cannot write to non-branch reference")
     let s = re(t),
-      n = He(s),
-      o = he(s)
+      n = Ke(s),
+      o = ge(s)
     await this.acquireLock(async () => {
       let { tree: a, dirSha: c } = await this.client.getTreeDirectly(
           n,
@@ -13029,16 +13476,16 @@ var Ai = class {
         u = { path: i, mode: d.mode, type: d.type, sha: d.sha },
         p = await this.client.newTree(c, [l, u]),
         f = await this.client.renewParentTrees(n, c, p, "/", this.addition.ref),
-        h = vt(
+        h = bt(
           this.addition.rename_commit_message,
           {
             UserName: "OpenListNext",
             ObjName: o,
             ObjPath: s,
-            ParentName: he(n),
+            ParentName: ge(n),
             ParentPath: n,
             TargetName: i,
-            TargetPath: Nt(n, i),
+            TargetPath: Ht(n, i),
           },
           "rename",
         )
@@ -13049,8 +13496,8 @@ var Ai = class {
     if (!this.isOnBranch)
       throw new Error("cannot write to non-branch reference")
     let s = re(t),
-      n = He(s),
-      o = he(s)
+      n = Ke(s),
+      o = ge(s)
     await this.acquireLock(async () => {
       let { tree: a, dirSha: c } = await this.client.getTreeDirectly(
           n,
@@ -13064,13 +13511,13 @@ var Ai = class {
         l.push({ path: ".gitkeep", mode: "100644", type: "blob", content: "" })
       let u = await this.client.newTree(c, l),
         p = await this.client.renewParentTrees(n, c, u, "/", this.addition.ref),
-        f = vt(
+        f = bt(
           this.addition.delete_commit_message,
           {
             UserName: "OpenListNext",
             ObjName: o,
             ObjPath: s,
-            ParentName: he(n),
+            ParentName: ge(n),
             ParentPath: n,
           },
           "remove",
@@ -13086,8 +13533,8 @@ var Ai = class {
     if (a.startsWith(o)) throw new Error("cannot move parent dir to child")
     await this.acquireLock(async () => {
       let c = "",
-        d = He(o),
-        l = he(o)
+        d = Ke(o),
+        l = ge(o)
       if (a.startsWith(d)) {
         let {
             dstOldSha: p,
@@ -13096,13 +13543,13 @@ var Ai = class {
             srcParentTree: y,
           } = await this.copyWithoutRenewTree(o, a),
           g = a.slice(d.length).replace(/^\//, "").split("/")[0],
-          m = Nt(d, g),
+          m = Ht(d, g),
           v = await this.client.renewParentTrees(a, p, f, m, this.addition.ref),
-          w = y.tree.find((S) => S.path === l),
+          x = y.tree.find((S) => S.path === l),
           _ = y.tree.find((S) => S.path === g)
-        if (!w || !_) throw new Error("Object not found during move")
+        if (!x || !_) throw new Error("Object not found during move")
         let b = await this.client.newTree(h, [
-          { path: w.path, mode: w.mode, type: w.type, sha: null },
+          { path: x.path, mode: x.mode, type: x.type, sha: null },
           { path: _.path, mode: _.mode, type: _.type, sha: v },
         ])
         c = await this.client.renewParentTrees(d, h, b, "/", this.addition.ref)
@@ -13122,11 +13569,11 @@ var Ai = class {
             type: "blob",
             content: "",
           })
-        let x = await this.client.newTree(f, y),
+        let w = await this.client.newTree(f, y),
           m = o.slice(a.length).replace(/^\//, "").split("/")[0]
         if (!m) throw new Error("cannot move in place")
-        let v = Nt(a, m),
-          w = await this.client.renewParentTrees(d, f, x, v, this.addition.ref),
+        let v = Ht(a, m),
+          x = await this.client.renewParentTrees(d, f, w, v, this.addition.ref),
           { tree: _, dirSha: b } = await this.client.getTreeDirectly(
             a,
             this.addition.ref,
@@ -13134,7 +13581,7 @@ var Ai = class {
           S = _.tree.find((C) => C.path === m)
         if (!S) throw new Error("Object not found")
         let A = await this.client.newTree(b, [
-          { path: S.path, mode: S.mode, type: S.type, sha: w },
+          { path: S.path, mode: S.mode, type: S.type, sha: x },
           { path: h.path, mode: h.mode, type: h.type, sha: h.sha },
         ])
         c = await this.client.renewParentTrees(a, b, A, "/", this.addition.ref)
@@ -13145,9 +13592,9 @@ var Ai = class {
             srcParentOldSha: h,
             srcParentTree: y,
           } = await this.copyWithoutRenewTree(o, a),
-          x = y.tree.find((T) => T.path === l)
-        if (!x) throw new Error("Object not found")
-        let g = [{ path: x.path, mode: x.mode, type: x.type, sha: null }]
+          w = y.tree.find((T) => T.path === l)
+        if (!w) throw new Error("Object not found")
+        let g = [{ path: w.path, mode: w.mode, type: w.type, sha: null }]
         y.tree.length === 1 &&
           g.push({
             path: ".gitkeep",
@@ -13156,26 +13603,26 @@ var Ai = class {
             content: "",
           })
         let m = await this.client.newTree(h, g),
-          { ancestor: v, aChildName: w, bChildName: _ } = yc(o, a),
+          { ancestor: v, aChildName: x, bChildName: _ } = Pc(o, a),
           b = await this.client.renewParentTrees(
             a,
             p,
             f,
-            Nt(v, _),
+            Ht(v, _),
             this.addition.ref,
           ),
           S = await this.client.renewParentTrees(
             d,
             h,
             m,
-            Nt(v, w),
+            Ht(v, x),
             this.addition.ref,
           ),
           { tree: A, dirSha: C } = await this.client.getTreeDirectly(
             v,
             this.addition.ref,
           ),
-          P = A.tree.find((T) => T.path === w),
+          P = A.tree.find((T) => T.path === x),
           k = A.tree.find((T) => T.path === _)
         if (!P || !k) throw new Error("Ancestor child tree not found")
         let D = await this.client.newTree(C, [
@@ -13184,15 +13631,15 @@ var Ai = class {
         ])
         c = await this.client.renewParentTrees(v, C, D, "/", this.addition.ref)
       }
-      let u = vt(
+      let u = bt(
         this.addition.move_commit_message,
         {
           UserName: "OpenListNext",
           ObjName: l,
           ObjPath: o,
-          ParentName: he(d),
+          ParentName: ge(d),
           ParentPath: d,
-          TargetName: he(a),
+          TargetName: ge(a),
           TargetPath: a,
         },
         "move",
@@ -13212,15 +13659,15 @@ var Ai = class {
           a,
         ),
         l = await this.client.renewParentTrees(a, c, d, "/", this.addition.ref),
-        u = vt(
+        u = bt(
           this.addition.copy_commit_message,
           {
             UserName: "OpenListNext",
-            ObjName: he(o),
+            ObjName: ge(o),
             ObjPath: o,
-            ParentName: he(He(o)),
-            ParentPath: He(o),
-            TargetName: he(a),
+            ParentName: ge(Ke(o)),
+            ParentPath: Ke(o),
+            TargetName: ge(a),
             TargetPath: a,
           },
           "copy",
@@ -13231,8 +13678,8 @@ var Ai = class {
   async copyWithoutRenewTree(e, t) {
     let i = await this.client.getContents(t, this.addition.ref)
     if (!i.entries && i.type !== "dir") throw new Error(`${t} is not a folder`)
-    let s = He(e),
-      n = he(e),
+    let s = Ke(e),
+      n = ge(e),
       { tree: o, dirSha: a } = await this.client.getTreeDirectly(
         s,
         this.addition.ref,
@@ -13254,34 +13701,34 @@ var Ai = class {
     }
   }
 }
-me()
-var Ie = sr(kr(), 1),
-  Cd = "https://api-pan.xunlei.com/drive/v1",
-  Xe = `${Cd}/files`,
-  Zy = `${Cd}/tasks`,
-  Ed = "https://xluser-ssl.xunlei.com",
-  us = `${Ed}/v1`,
-  In = "drive#folder",
-  Dd = "drive#file"
-var Bn = "UPLOAD_TYPE_RESUMABLE"
-var ef = "access_end_point_token",
-  Fd = "40",
-  tf = "34a062aaa22f906fca4fefe9fb3a3021"
-function bt(r) {
+he()
+var Ie = ar(Ar(), 1),
+  Ud = "https://api-pan.xunlei.com/drive/v1",
+  Ye = `${Ud}/files`,
+  hw = `${Ud}/tasks`,
+  qd = "https://xluser-ssl.xunlei.com",
+  hs = `${qd}/v1`,
+  qn = "drive#folder",
+  Od = "drive#file"
+var On = "UPLOAD_TYPE_RESUMABLE"
+var hf = "access_end_point_token",
+  $d = "40",
+  gf = "34a062aaa22f906fca4fefe9fb3a3021"
+function kt(r) {
   return Ie.default.MD5(r).toString(Ie.default.enc.Hex)
 }
-function Pd(r, e) {
+function Bd(r, e) {
   let t = e.match(/:\/\/[^/]+((\/[^/\s?#]+)*)/),
     i = t ? t[1] : e
   return `${r}:${i}`
 }
-function Ad(r, e) {
-  let t = `${r}${e}${Fd}${tf}`,
+function Rd(r, e) {
+  let t = `${r}${e}${$d}${gf}`,
     i = Ie.default.SHA1(t).toString(Ie.default.enc.Hex),
     s = Ie.default.MD5(i).toString(Ie.default.enc.Hex)
   return `div101.${r}${s}`
 }
-function Td(r) {
+function jd(r) {
   let e = r.length,
     t = 262144
   for (; e / t > 512 && t < 2097152; ) t = t << 1
@@ -13296,7 +13743,7 @@ function Td(r) {
   for (let n of i) s.concat(n)
   return Ie.default.SHA1(s).toString(Ie.default.enc.Hex)
 }
-var Sr = class {
+var Cr = class {
   options
   tokenResp = null
   coreLoginResp = null
@@ -13315,7 +13762,7 @@ var Sr = class {
       }
     let e = Date.now().toString(),
       t = `${this.options.clientId}${this.options.clientVersion}${this.options.packageName}${this.options.deviceId}${e}`
-    for (let i of this.options.algorithms) t = bt(t + i)
+    for (let i of this.options.algorithms) t = kt(t + i)
     return { timestamp: e, sign: `1.${t}` }
   }
   async refreshCaptchaToken(e, t) {
@@ -13327,7 +13774,7 @@ var Sr = class {
         meta: t,
         redirect_uri: "xlaccsdk01://xunlei.com/callback?state=harbor",
       },
-      s = await this.rawRequest(`${us}/shield/captcha/init`, {
+      s = await this.rawRequest(`${hs}/shield/captcha/init`, {
         method: "POST",
         body: i,
       })
@@ -13365,7 +13812,7 @@ var Sr = class {
       await this.refreshCaptchaToken(e, i))
   }
   formatReviewData(e) {
-    let t = Ad(this.options.deviceId, this.options.packageName),
+    let t = Rd(this.options.deviceId, this.options.packageName),
       i = {
         creditkey: e.creditkey,
         reviewurl: `${e.reviewurl}&deviceid=${t}`,
@@ -13434,7 +13881,7 @@ var Sr = class {
       }
       throw new Error(`Token expired error ${n}`)
     } else if (n === 9) {
-      let o = Pd(t.method || "GET", e)
+      let o = Bd(t.method || "GET", e)
       return (
         await this.refreshCaptchaTokenAtLogin(o, this.tokenResp.user_id || ""),
         this.authRequest(e, t)
@@ -13446,18 +13893,18 @@ var Sr = class {
     return s
   }
   async coreLogin(e, t) {
-    let i = `${Ed}/xluser.core.login/v3/login`,
+    let i = `${qd}/xluser.core.login/v3/login`,
       s = {
         protocolVersion: "301",
         sequenceNo: "1000012",
         platformVersion: "10",
         isCompressed: "0",
-        appid: Fd,
+        appid: $d,
         clientVersion: this.options.clientVersion,
         peerID: "00000000000000000000000000000000",
         appName: "ANDROID-com.xunlei.downloadprovider",
         sdkVersion: "512000",
-        devicesign: Ad(this.options.deviceId, this.options.packageName),
+        devicesign: Rd(this.options.deviceId, this.options.packageName),
         netWorkType: "WIFI",
         providerName: "NONE",
         deviceModel: "M2004J7AC",
@@ -13483,14 +13930,14 @@ var Sr = class {
   }
   async login(e, t) {
     let s = (await this.coreLogin(e, t)).sessionID,
-      n = `${us}/auth/signin/token`
-    await this.refreshCaptchaTokenInLogin(Pd("POST", n), e)
+      n = `${hs}/auth/signin/token`
+    await this.refreshCaptchaTokenInLogin(Bd("POST", n), e)
     let o = await this.rawRequest(n, {
       method: "POST",
       body: {
         client_id: this.options.clientId,
         client_secret: this.options.clientSecret,
-        provider: ef,
+        provider: hf,
         signin_token: s,
       },
     })
@@ -13502,7 +13949,7 @@ var Sr = class {
     )
   }
   async refreshToken(e) {
-    let t = `${us}/auth/token`,
+    let t = `${hs}/auth/token`,
       i = await this.rawRequest(t, {
         method: "POST",
         body: {
@@ -13521,14 +13968,14 @@ var Sr = class {
   async isLogin() {
     if (!this.tokenResp?.access_token) return !1
     try {
-      return (await this.authRequest(`${us}/user/me`, { method: "GET" }), !0)
+      return (await this.authRequest(`${hs}/user/me`, { method: "GET" }), !0)
     } catch {
       return !1
     }
   }
 }
-function Id(r, e, t) {
-  let i = r.kind === In,
+function zd(r, e, t) {
+  let i = r.kind === qn,
     s = r.web_content_link || ""
   if (t && r.medias && r.medias.length > 0) {
     for (let n of r.medias)
@@ -13543,30 +13990,30 @@ function Id(r, e, t) {
     is_dir: i,
     modified: r.modified_time || r.created_time || new Date().toISOString(),
     sign: "",
-    type: K(r.name, i),
+    type: L(r.name, i),
     thumb: r.thumbnail_link || r.icon_link || "",
     raw_url: s,
     raw_url_headers: { "User-Agent": e },
   }
 }
-function Bd(r) {
+function Ld(r) {
   if (r?.device_id && r.device_id.trim().length === 32)
     return r.device_id.trim()
   let e = `${r?.username || ""}${r?.password || ""}`
   return e.trim()
-    ? bt(e)
-    : bt(Math.random().toString(36) + Date.now().toString(36))
+    ? kt(e)
+    : kt(Math.random().toString(36) + Date.now().toString(36))
 }
-var Pr = class {
+var Er = class {
     client
     addition
     identity = ""
     onPersistCallback
     constructor(e, t) {
       ;((this.addition = e), (this.onPersistCallback = t))
-      let i = Bd(e)
+      let i = Ld(e)
       ;((e.device_id = i),
-        (this.client = new Sr({
+        (this.client = new Cr({
           deviceId: i,
           clientId: "Xp6vsxz_7IYVw2BB",
           clientSecret: "Xp6vsy4tN9toTVdMSpomVdXpRmES",
@@ -13617,7 +14064,7 @@ var Pr = class {
     async init() {
       let e = this.addition.username || "",
         t = this.addition.password || "",
-        i = bt(`${e}${t}`)
+        i = kt(`${e}${t}`)
       ;(this.identity !== i || !(await this.client.isLogin())) &&
         ((this.identity = i), await this.client.login(e, t))
     }
@@ -13632,7 +14079,7 @@ var Pr = class {
         s = [],
         n = ""
       for (;;) {
-        let o = new URL(Xe)
+        let o = new URL(Ye)
         ;(o.searchParams.set("space", this.addition.space || ""),
           o.searchParams.set("__type", "drive"),
           o.searchParams.set("refresh", "true"),
@@ -13651,7 +14098,7 @@ var Pr = class {
         let a = await this.client.authRequest(o.toString(), { method: "GET" })
         if (a.files && a.files.length > 0)
           for (let c of a.files)
-            s.push(Id(c, this.downloadUserAgent, this.useVideoUrl))
+            s.push(zd(c, this.downloadUserAgent, this.useVideoUrl))
         if (!a.next_page_token) break
         n = a.next_page_token
       }
@@ -13659,20 +14106,20 @@ var Pr = class {
     }
     async get(e, t) {
       let i = this.resolveFolderId(t),
-        s = new URL(`${Xe}/${i}`)
+        s = new URL(`${Ye}/${i}`)
       s.searchParams.set("space", this.addition.space || "")
       let n = await this.client.authRequest(s.toString(), { method: "GET" })
-      return Id(n, this.downloadUserAgent, this.useVideoUrl)
+      return zd(n, this.downloadUserAgent, this.useVideoUrl)
     }
     async mkdir(e, t) {
       let i = t.split("/").filter(Boolean),
         s = i.pop() || "new_folder",
         n = "/" + i.join("/"),
         o = this.resolveFolderId(n)
-      await this.client.authRequest(Xe, {
+      await this.client.authRequest(Ye, {
         method: "POST",
         body: {
-          kind: In,
+          kind: qn,
           name: s,
           parent_id: o,
           space: this.addition.space || "",
@@ -13681,14 +14128,14 @@ var Pr = class {
     }
     async rename(e, t, i) {
       let s = this.resolveFolderId(t)
-      await this.client.authRequest(`${Xe}/${s}`, {
+      await this.client.authRequest(`${Ye}/${s}`, {
         method: "PATCH",
         body: { name: i, space: this.addition.space || "" },
       })
     }
     async remove(e, t, i) {
       let s = this.resolveFolderId(t),
-        n = new URL(`${Xe}/${s}/trash`)
+        n = new URL(`${Ye}/${s}/trash`)
       ;(n.searchParams.set("space", this.addition.space || ""),
         await this.client.authRequest(n.toString(), {
           method: "PATCH",
@@ -13698,7 +14145,7 @@ var Pr = class {
     async move(e, t, i, s, n) {
       let o = this.resolveFolderId(s),
         a = this.resolveFolderId(t)
-      await this.client.authRequest(`${Xe}:batchMove`, {
+      await this.client.authRequest(`${Ye}:batchMove`, {
         method: "POST",
         body: {
           to: { parent_id: a },
@@ -13710,7 +14157,7 @@ var Pr = class {
     async copy(e, t, i, s, n) {
       let o = this.resolveFolderId(s),
         a = this.resolveFolderId(t)
-      await this.client.authRequest(`${Xe}:batchCopy`, {
+      await this.client.authRequest(`${Ye}:batchCopy`, {
         method: "POST",
         body: {
           to: { parent_id: a },
@@ -13724,20 +14171,20 @@ var Pr = class {
         n = s.pop() || "file",
         o = "/" + s.join("/"),
         a = this.resolveFolderId(o),
-        c = Td(i),
-        d = await this.client.authRequest(Xe, {
+        c = jd(i),
+        d = await this.client.authRequest(Ye, {
           method: "POST",
           body: {
-            kind: Dd,
+            kind: Od,
             parent_id: a,
             name: n,
             size: i.length.toString(),
             hash: c,
-            upload_type: Bn,
+            upload_type: On,
             space: this.addition.space || "",
           },
         })
-      if (d.upload_type === Bn && d.resumable?.params) {
+      if (d.upload_type === On && d.resumable?.params) {
         let l = d.resumable.params,
           u = l.endpoint
         ;(u.startsWith(l.bucket + ".") && (u = u.slice(l.bucket.length + 1)),
@@ -13752,10 +14199,10 @@ var Pr = class {
       }
     }
   },
-  ps = class extends Pr {
+  gs = class extends Er {
     constructor(e, t) {
       super(e, t)
-      let i = Bd(e)
+      let i = Ld(e)
       e.device_id = i
       let s =
         e.sign_type === "captcha_sign"
@@ -13764,7 +14211,7 @@ var Pr = class {
               .split(",")
               .map((n) => n.trim())
               .filter(Boolean)
-      this.client = new Sr({
+      this.client = new Cr({
         deviceId: i,
         clientId: e.client_id || "Xp6vsxz_7IYVw2BB",
         clientSecret: e.client_secret || "Xp6vsy4tN9toTVdMSpomVdXpRmES",
@@ -13801,8 +14248,8 @@ var Pr = class {
       let e = this.addition,
         t = ""
       ;(e.login_type === "refresh_token"
-        ? (t = bt(e.refresh_token || ""))
-        : (t = bt(`${e.username || ""}${e.password || ""}`)),
+        ? (t = kt(e.refresh_token || ""))
+        : (t = kt(`${e.username || ""}${e.password || ""}`)),
         (this.identity !== t || !(await this.client.isLogin())) &&
           ((this.identity = t),
           e.login_type === "refresh_token" && e.refresh_token
@@ -13812,18 +14259,18 @@ var Pr = class {
               (await this.client.login(e.username, e.password))))
     }
   }
-me()
-var rf = /([0-9.]*)\s*([\u4e00-\u9fa5]+)/,
-  sf = /([0-9.]+)\s*([bkm]+)/i,
-  nf = /arg1='([0-9A-Z]+)'/i
-function Rd(r) {
+he()
+var mf = /([0-9.]*)\s*([\u4e00-\u9fa5]+)/,
+  yf = /([0-9.]+)\s*([bkm]+)/i,
+  wf = /arg1='([0-9A-Z]+)'/i
+function Nd(r) {
   if (!r) return new Date().toISOString()
   let e = r.trim(),
     t = new Date(e)
   if (!isNaN(t.getTime())) return t.toISOString()
   let i = Date.now(),
     s = 864e5,
-    n = e.match(rf)
+    n = e.match(mf)
   if (n) {
     let o = parseFloat(n[1]) || 0,
       a = n[2]
@@ -13839,9 +14286,9 @@ function Rd(r) {
   }
   return new Date().toISOString()
 }
-function Ud(r) {
+function Md(r) {
   if (!r) return 0
-  let e = r.trim().match(sf)
+  let e = r.trim().match(yf)
   if (!e) return 0
   let t = parseFloat(e[1])
   switch (e[2].toUpperCase()) {
@@ -13857,7 +14304,7 @@ function Ud(r) {
       return 0
   }
 }
-function Ar(r) {
+function Dr(r) {
   return r.replace(/<!--[\s\S]*?-->|[^:]\/\/.*|\/\*[\s\S]*?\*\//g, (e) =>
     e.slice(1, 3) === "//"
       ? e.slice(0, 1)
@@ -13865,7 +14312,7 @@ function Ar(r) {
 `,
   )
 }
-function qd(r) {
+function Hd(r) {
   let e = "",
     t = !1,
     i = !1
@@ -13901,7 +14348,7 @@ function qd(r) {
   }
   return e
 }
-function of(r) {
+function xf(r) {
   let e = [
       6, 28, 34, 31, 33, 18, 30, 23, 9, 8, 19, 38, 17, 24, 0, 5, 32, 21, 10, 22,
       25, 14, 15, 3, 16, 27, 13, 35, 2, 29, 11, 26, 4, 36, 1, 39, 37, 7, 20, 12,
@@ -13913,7 +14360,7 @@ function of(r) {
   }
   return t.join("")
 }
-function af(r, e) {
+function _f(r, e) {
   let t = Math.min(r.length, e.length),
     i = Math.floor(t / 2),
     s = ""
@@ -13925,16 +14372,16 @@ function af(r, e) {
   }
   return s
 }
-function fs(r) {
-  let e = r.match(nf)
+function ms(r) {
+  let e = r.match(wf)
   if (!e || e.length < 2)
     throw new Error(
       "[Lanzou] \u65E0\u6CD5\u5339\u914D\u5230 acw_sc__v2 \u7684 arg1 \u53C2\u6570",
     )
   let t = e[1]
-  return af(of(t), "3000176000856006061501533003690027800375")
+  return _f(xf(t), "3000176000856006061501533003690027800375")
 }
-function cf(r, e) {
+function vf(r, e) {
   if (!r || !e) return ""
   if (r !== "sasign") {
     let t = e.match(
@@ -13966,7 +14413,7 @@ function cf(r, e) {
   }
   return ""
 }
-function df(r, e) {
+function bf(r, e) {
   let t = {},
     i = /['"]?([a-zA-Z0-9_$]+)['"]?\s*:\s*(['"]?([^'",}\s]+)['"]?)/g,
     s = r.matchAll(i)
@@ -13977,13 +14424,13 @@ function df(r, e) {
     if (!c) t[o] = ""
     else if (a.includes("'") || a.includes('"') || /^\d+$/.test(a)) t[o] = c
     else {
-      let d = cf(c, e)
+      let d = vf(c, e)
       t[o] = d !== "" ? d : c
     }
   }
   return t
 }
-function lf(r) {
+function kf(r) {
   let e = {},
     t = r.split("&")
   for (let i of t) {
@@ -13992,22 +14439,22 @@ function lf(r) {
   }
   return e
 }
-function Mt(r, e) {
+function Kt(r, e) {
   let t = e || r,
     i = Array.from(r.matchAll(/data\s*:\s*({[\s\S]*?})/g))
   if (i.length > 0) {
     let n = i[0][1]
     for (let a of i) a[1].length > n.length && (n = a[1])
-    let o = df(n, t)
+    let o = bf(n, t)
     if (Object.keys(o).length > 0) return o
   }
   let s = r.match(/data\s*:\s*['"]([^'"]+)['"]/)
-  if (s && s[1].includes("=")) return lf(s[1])
+  if (s && s[1].includes("=")) return kf(s[1])
   throw new Error(
     "[Lanzou] \u672A\u80FD\u627E\u5230\u8BF7\u6C42\u53C2\u6570 data \u5BF9\u8C61",
   )
 }
-function Od(r, e) {
+function Kd(r, e) {
   let t = new RegExp(`function\\s+${e}\\s*\\([^)]*\\)\\s*\\{`, "i"),
     i = r.search(t)
   if (i === -1) throw new Error(`[Lanzou] \u672A\u627E\u5230\u51FD\u6570 ${e}`)
@@ -14018,7 +14465,7 @@ function Od(r, e) {
     else if (r[o] === "}" && (s--, s === 0)) return r.slice(i, o + 1)
   return r.slice(i)
 }
-var hs = class {
+var ys = class {
   addition
   cookie = ""
   uid = ""
@@ -14105,7 +14552,7 @@ var hs = class {
       this.updateCookie(s.headers.get("set-cookie"))
       let n = await s.text()
       if (n.includes("acw_sc__v2")) {
-        e = fs(n)
+        e = ms(n)
         continue
       }
       let o
@@ -14135,9 +14582,9 @@ var hs = class {
         "[Lanzou] \u672A\u80FD\u83B7\u53D6\u5230 uid\uFF0C\u8BF7\u68C0\u67E5 Cookie \u662F\u5426\u6709\u6548",
       )
     this.uid = t[1]
-    let i = Ar(e)
+    let i = Dr(e)
     try {
-      let s = Mt(i)
+      let s = Kt(i)
       this.vei = s.vei || ""
     } catch {
       let s = e.match(/['"]?vei['"]?\s*:\s*['"]?([^'",\s]+)['"]?/)
@@ -14172,7 +14619,7 @@ var hs = class {
       this.updateCookie(u.headers.get("set-cookie"))
       let p = await u.text()
       if (p.includes("acw_sc__v2")) {
-        n = fs(p)
+        n = ms(p)
         continue
       }
       return p
@@ -14264,10 +14711,10 @@ var hs = class {
       : this.getFolderByShareUrl(t, s)
   }
   async getFolderByShareUrl(e, t) {
-    let i = Ar(t),
+    let i = Dr(t),
       s = {}
     try {
-      s = Mt(i)
+      s = Kt(i)
     } catch {
       s = {}
     }
@@ -14312,14 +14759,14 @@ var hs = class {
       o = (s || this.getShareUrl()).replace(/\/+$/, ""),
       a = `${o}/${n}`,
       c = i
-    ;(c || (c = await this.request(a, "GET")), (c = Ar(c)), (c = qd(c)))
+    ;(c || (c = await this.request(a, "GET")), (c = Dr(c)), (c = Hd(c)))
     let d = {},
       l = "",
       u = "",
       p = { id: n, is_folder: !1 }
     if (c.includes("pwdload") || c.includes("passwddiv")) {
-      let m = Od(c, "down_p")
-      ;((d = Mt(m, c)), (d.p = t || this.addition.share_password || ""))
+      let m = Kd(c, "down_p")
+      ;((d = Kt(m, c)), (d.p = t || this.addition.share_password || ""))
       let v =
           m.match(/['"]?\/?ajaxm\.php\?file=(\d+)['"]?/) ||
           c.match(/['"]?\/?ajaxm\.php\?file=(\d+)['"]?/) ||
@@ -14327,9 +14774,9 @@ var hs = class {
           c.match(/file\s*[:=]\s*['"]?(\d+)['"]?/) ||
           m.match(/var\s+file_id\s*=\s*['"]?(\d+)['"]?/) ||
           c.match(/var\s+file_id\s*=\s*['"]?(\d+)['"]?/),
-        w = v ? v[1] : ""
-      if (!w) throw new Error("[Lanzou] \u672A\u627E\u5230\u6587\u4EF6 ID")
-      let _ = await this.request(`${o}/ajaxm.php?file=${w}`, "POST", d, a),
+        x = v ? v[1] : ""
+      if (!x) throw new Error("[Lanzou] \u672A\u627E\u5230\u6587\u4EF6 ID")
+      let _ = await this.request(`${o}/ajaxm.php?file=${x}`, "POST", d, a),
         b
       try {
         b = JSON.parse(_)
@@ -14357,10 +14804,10 @@ var hs = class {
           "[Lanzou] \u672A\u627E\u5230\u4E0B\u8F7D\u9875\u9762 iframe \u53C2\u6570",
         )
       let v = m[1],
-        w = `${o}${v.startsWith("/") ? "" : "/"}${v}`,
-        _ = await this.request(w, "GET", void 0, a),
-        b = Ar(_)
-      d = Mt(b, b)
+        x = `${o}${v.startsWith("/") ? "" : "/"}${v}`,
+        _ = await this.request(x, "GET", void 0, a),
+        b = Dr(_)
+      d = Kt(b, b)
       let S =
           b.match(/['"]?\/?ajaxm\.php\?file=(\d+)['"]?/) ||
           b.match(/file\s*[:=]\s*['"]?(\d+)['"]?/) ||
@@ -14368,7 +14815,7 @@ var hs = class {
           b.match(/var\s+file_id\s*=\s*['"]?(\d+)['"]?/),
         A = S ? S[1] : ""
       if (!A) throw new Error("[Lanzou] \u672A\u627E\u5230\u6587\u4EF6 ID")
-      let C = await this.request(`${o}/ajaxm.php?file=${A}`, "POST", d, w),
+      let C = await this.request(`${o}/ajaxm.php?file=${A}`, "POST", d, x),
         P
       try {
         P = JSON.parse(C)
@@ -14399,7 +14846,7 @@ var hs = class {
     h && (p.size = h[1])
     let y = c.match(/\d+\s*[秒天分小][钟时]?前|[昨前]天|\d{4}-\d{2}-\d{2}/)
     y && (p.time = y[0])
-    let x = u,
+    let w = u,
       g = ""
     for (let m = 0; m < 3; m++) {
       let v = {
@@ -14407,8 +14854,8 @@ var hs = class {
           "User-Agent": this.getUserAgent(),
           "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
         },
-        w = "down_ip=1"
-      ;(g && (w += `; acw_sc__v2=${g}`), (v.Cookie = w))
+        x = "down_ip=1"
+      ;(g && (x += `; acw_sc__v2=${g}`), (v.Cookie = x))
       let _ = await fetch(u, { method: "GET", headers: v, redirect: "manual" })
       if (
         _.status === 301 ||
@@ -14419,32 +14866,32 @@ var hs = class {
       ) {
         let S = _.headers.get("location")
         if (S) {
-          x = new URL(S, u).toString()
+          w = new URL(S, u).toString()
           break
         }
       }
       if (_.status === 200 && _.url && _.url !== u) {
-        x = _.url
+        w = _.url
         break
       }
       let b = await _.text()
       if (b.includes("acw_sc__v2")) {
-        g = fs(b)
+        g = ms(b)
         continue
       }
       try {
-        let S = Mt(b, b)
+        let S = Kt(b, b)
         ;((S.el = "2"), await new Promise((P) => setTimeout(P, 1500)))
         let A = await this.request(`${l}/ajax.php`, "POST", S, l),
           C = JSON.parse(A)
         if (C.url) {
-          x = C.url.startsWith("http") ? C.url : new URL(C.url, l).toString()
+          w = C.url.startsWith("http") ? C.url : new URL(C.url, l).toString()
           break
         }
       } catch {}
       break
     }
-    return ((p.url = x), p)
+    return ((p.url = w), p)
   }
   async getFileRealInfo(e) {
     try {
@@ -14482,7 +14929,7 @@ var hs = class {
       : await this.doupload({ task: "6", file_id: e })
   }
 }
-function uf(r) {
+function Sf(r) {
   let e = { ...(r || {}) }
   return (
     (e.type = e.type || "cookie"),
@@ -14502,11 +14949,11 @@ function uf(r) {
     e
   )
 }
-function Rn(r, e) {
+function $n(r, e) {
   let t = !!r.is_folder || !!r.fol_id,
     i = r.name_all || r.name || "",
-    s = e?.size !== void 0 ? e.size : Ud(r.size || "0"),
-    n = e?.time ? e.time : Rd(r.time || ""),
+    s = e?.size !== void 0 ? e.size : Md(r.size || "0"),
+    n = e?.time ? e.time : Nd(r.time || ""),
     o = r.fol_id || r.id || ""
   return {
     name: i,
@@ -14514,17 +14961,17 @@ function Rn(r, e) {
     is_dir: t,
     modified: n,
     sign: o,
-    type: K(i, t),
+    type: L(i, t),
     thumb: "",
     raw_url: r.url || "",
   }
 }
-var gs = class {
+var ws = class {
   client
   addition
   pathIdCache = new Map()
   constructor(e, t) {
-    ;((this.addition = uf(e)), (this.client = new hs(this.addition, t)))
+    ;((this.addition = Sf(e)), (this.client = new ys(this.addition, t)))
   }
   async init() {
     await this.client.init()
@@ -14633,7 +15080,7 @@ var gs = class {
               this.addition.share_password,
             )
           : await this.client.getAllFiles(i)
-      ).map((o) => Rn(o))
+      ).map((o) => $n(o))
     return G(
       n,
       this.addition.order_by === "name"
@@ -14661,7 +15108,7 @@ var gs = class {
       }
     }
     let { item: s, isDir: n } = await this.resolveItem(t)
-    if (n) return Rn(s)
+    if (n) return $n(s)
     let o = s.url
     if (!o)
       try {
@@ -14709,7 +15156,7 @@ var gs = class {
       try {
         a = await this.client.getFileRealInfo(o)
       } catch {}
-    let c = Rn(s, a)
+    let c = $n(s, a)
     return (
       (c.raw_url = o || ""),
       (c.raw_url_headers = { "User-Agent": this.client.getUserAgent() }),
@@ -14774,48 +15221,48 @@ var gs = class {
     )
   }
 }
-me()
-var ye = sr(kr(), 1)
-function pf(r) {
+he()
+var ye = ar(Ar(), 1)
+function Pf(r) {
   let e = r.replace(/\s+/g, ""),
     t = atob(e),
     i = new Uint8Array(t.length)
   for (let s = 0; s < t.length; s++) i[s] = t.charCodeAt(s)
   return i
 }
-function ff(r) {
+function Af(r) {
   let e = ""
   for (let t = 0; t < r.length; t++) e += String.fromCharCode(r[t])
   return btoa(e)
 }
-function hf(r) {
+function Cf(r) {
   return Array.from(r)
     .map((e) => e.toString(16).padStart(2, "0"))
     .join("")
 }
-function Un(r) {
+function jn(r) {
   let e = 0n
   for (let t = 0; t < r.length; t++) e = (e << 8n) | BigInt(r[t])
   return e
 }
-function gf(r, e) {
+function Ef(r, e) {
   let t = new Uint8Array(e),
     i = r
   for (let s = e - 1; s >= 0; s--) ((t[s] = Number(i & 0xffn)), (i >>= 8n))
   return t
 }
-function mf(r, e, t) {
+function Df(r, e, t) {
   let i = 1n
   for (r = r % t; e > 0n; )
     (e % 2n === 1n && (i = (i * r) % t), (r = (r * r) % t), (e /= 2n))
   return i
 }
-function yf(r) {
+function Ff(r) {
   let e = r
       .replace(/-----BEGIN[^-]+-----/g, "")
       .replace(/-----END[^-]+-----/g, "")
       .replace(/\s+/g, ""),
-    t = pf(e),
+    t = Pf(e),
     i = 0
   function s() {
     let d = t[i++],
@@ -14836,7 +15283,7 @@ function yf(r) {
       if (f & 128) {
         let y = f & 127
         f = 0
-        for (let x = 0; x < y; x++) f = (f << 8) | t[u++]
+        for (let w = 0; w < y; w++) f = (f << 8) | t[u++]
       }
       let h = u
       if (((u += f), p === 2)) {
@@ -14858,10 +15305,10 @@ function yf(r) {
     let d = a
     ;((a = c), (c = d))
   }
-  return { n: Un(a), e: Un(c), keyLength: a.length }
+  return { n: jn(a), e: jn(c), keyLength: a.length }
 }
-function ms(r, e, t = !1) {
-  let { n: i, e: s, keyLength: n } = yf(e),
+function xs(r, e, t = !1) {
+  let { n: i, e: s, keyLength: n } = Ff(e),
     o = typeof r == "string" ? new TextEncoder().encode(r) : r
   if (o.length > n - 11)
     throw new Error(`Data too long for RSA key size: ${o.length} > ${n - 11}`)
@@ -14871,19 +15318,19 @@ function ms(r, e, t = !1) {
   crypto.getRandomValues(d)
   let l = 0
   for (let y = 0; y < a; y++) {
-    let x = d[l++]
-    for (; x === 0; )
-      (l >= d.length && (crypto.getRandomValues(d), (l = 0)), (x = d[l++]))
-    c[y] = x
+    let w = d[l++]
+    for (; w === 0; )
+      (l >= d.length && (crypto.getRandomValues(d), (l = 0)), (w = d[l++]))
+    c[y] = w
   }
   let u = new Uint8Array(n)
   ;((u[0] = 0), (u[1] = 2), u.set(c, 2), (u[2 + a] = 0), u.set(o, 3 + a))
-  let p = Un(u),
-    f = mf(p, s, i),
-    h = gf(f, n)
-  return t ? hf(h) : ff(h)
+  let p = jn(u),
+    f = Df(p, s, i),
+    h = Ef(f, n)
+  return t ? Cf(h) : Af(h)
 }
-function $d(r, e) {
+function Wd(r, e) {
   let t =
       typeof e == "string"
         ? ye.default.enc.Utf8.parse(e.slice(0, 16))
@@ -14894,27 +15341,27 @@ function $d(r, e) {
     padding: ye.default.pad.Pkcs7,
   }).ciphertext.toString(ye.default.enc.Hex)
 }
-function jd(r, e) {
+function Gd(r, e) {
   return ye.default.HmacSHA1(r, e).toString(ye.default.enc.Hex)
 }
-function zd(r) {
+function Vd(r) {
   return typeof r == "string"
     ? ye.default.enc.Utf8.parse(r)
     : ye.default.lib.WordArray.create(r)
 }
-function ys(r) {
-  return ye.default.MD5(zd(r)).toString(ye.default.enc.Hex)
+function _s(r) {
+  return ye.default.MD5(Vd(r)).toString(ye.default.enc.Hex)
 }
-function Ld(r) {
-  return ye.default.MD5(zd(r)).toString(ye.default.enc.Base64)
+function Jd(r) {
+  return ye.default.MD5(Vd(r)).toString(ye.default.enc.Base64)
 }
-function qn(r = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx") {
+function zn(r = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx") {
   return r.replace(/[xy]/g, (e) => {
     let t = (Math.random() * 16) | 0
     return (e === "x" ? t : (t & 3) | 8).toString(16)
   })
 }
-function On() {
+function Ln() {
   return (
     "0." +
     Math.floor(Math.random() * 1e17)
@@ -14922,13 +15369,13 @@ function On() {
       .padStart(17, "0")
   )
 }
-function xf(r, e, t) {
+function Tf(r, e, t) {
   let i = r ? r.split(";").map((o) => o.trim()) : [],
     s = `${e}=${t}`,
     n = i.findIndex((o) => o.startsWith(`${e}=`))
   return (n !== -1 ? (i[n] = s) : i.push(s), i.filter(Boolean).join("; "))
 }
-function wf(r, e) {
+function If(r, e) {
   if (!e) return r
   let t = r,
     i = e.split(/,(?=\s*[a-zA-Z0-9_\-]+=[^;]+)/)
@@ -14938,12 +15385,12 @@ function wf(r, e) {
     if (o > 0) {
       let a = n.slice(0, o).trim(),
         c = n.slice(o + 1).trim()
-      t = xf(t, a, c)
+      t = Tf(t, a, c)
     }
   }
   return t
 }
-function _f(r) {
+function Bf(r) {
   let e = r
   if (typeof e.getSetCookie == "function") {
     let i = e.getSetCookie()
@@ -14952,15 +15399,15 @@ function _f(r) {
   let t = r.get("set-cookie")
   return t ? [t] : []
 }
-function Nd(r) {
+function Qd(r) {
   let e = r.replace(/("id"\s*:\s*)(-?\d{16,})(?=\s*[,}])/g, '$1"$2"')
   return JSON.parse(e)
 }
-var vf = new Set(["cloud.189.cn", "open.e.189.cn"])
-function $n(r) {
-  return r.protocol === "https:" && vf.has(r.hostname)
+var Rf = new Set(["cloud.189.cn", "open.e.189.cn"])
+function Nn(r) {
+  return r.protocol === "https:" && Rf.has(r.hostname)
 }
-function Md(r) {
+function Xd(r) {
   try {
     let e = new URL(r, "https://open.e.189.cn")
     return !!e.searchParams.get("lt") && !!e.searchParams.get("reqId")
@@ -14968,7 +15415,7 @@ function Md(r) {
     return !1
   }
 }
-function jn(r) {
+function Mn(r) {
   try {
     let e = new URL(r, "https://open.e.189.cn")
     return (
@@ -14979,7 +15426,7 @@ function jn(r) {
     return !1
   }
 }
-var xs = class {
+var vs = class {
   addition
   cookie = ""
   cookieDirty = !1
@@ -15009,16 +15456,16 @@ var xs = class {
     return (this.cookie && (e.Cookie = this.cookie), e)
   }
   async updateCookie(e) {
-    let t = _f(e)
+    let t = Bf(e)
     if (t.length === 0) return
-    let i = t.reduce((s, n) => wf(s, n), this.cookie)
+    let i = t.reduce((s, n) => If(s, n), this.cookie)
     i !== this.cookie && ((this.cookie = i), (this.cookieDirty = !0))
   }
   async followRedirectsWithCookies(e, t) {
     let i = e
     for (let s = 0; s <= 8; s++) {
       let n = new URL(i)
-      if (!$n(n))
+      if (!Nn(n))
         throw new Error(
           n.protocol !== "https:"
             ? `[189Cloud] \u767B\u5F55\u91CD\u5B9A\u5411\u5FC5\u987B\u4F7F\u7528 HTTPS: ${n.origin}`
@@ -15033,8 +15480,8 @@ var xs = class {
         let u = i
         if (a.url && a.url !== i) {
           let p = new URL(a.url, i)
-          if (Md(p.toString()) || jn(p.toString())) {
-            if (!$n(p))
+          if (Xd(p.toString()) || Mn(p.toString())) {
+            if (!Nn(p))
               throw new Error(
                 p.protocol !== "https:"
                   ? `[189Cloud] \u767B\u5F55\u91CD\u5B9A\u5411\u5FC5\u987B\u4F7F\u7528 HTTPS: ${p.origin}`
@@ -15050,7 +15497,7 @@ var xs = class {
           "[189Cloud] \u767B\u5F55\u91CD\u5B9A\u5411\u6B21\u6570\u8FC7\u591A",
         )
       let l = new URL(c, i)
-      if (!$n(l))
+      if (!Nn(l))
         throw new Error(
           l.protocol !== "https:"
             ? `[189Cloud] \u767B\u5F55\u91CD\u5B9A\u5411\u5FC5\u987B\u4F7F\u7528 HTTPS: ${l.origin}`
@@ -15064,9 +15511,9 @@ var xs = class {
     let i = e
     for (let s = 0; s < 3; s++) {
       let n = new URL(e)
-      n.searchParams.set("noCache", On())
+      n.searchParams.set("noCache", Ln())
       let o = await this.followRedirectsWithCookies(n.toString(), t)
-      if (((i = o.url), Md(o.url) || jn(o.url))) return o.url
+      if (((i = o.url), Xd(o.url) || Mn(o.url))) return o.url
       s < 2 && (await new Promise((a) => setTimeout(a, 150 * (s + 1))))
     }
     return i
@@ -15082,7 +15529,7 @@ var xs = class {
       }
     this.cookie && (i.Cookie = this.cookie)
     let s = await this.resolveLoginUrl(t, i)
-    if (jn(s)) return
+    if (Mn(s)) return
     if (!this.addition.username || !this.addition.password) {
       if (this.cookie) return
       throw new Error(
@@ -15138,14 +15585,14 @@ var xs = class {
       )
     let h = f.data.pre || "",
       y = f.data.pubKey,
-      x = h + ms(this.addition.username, y, !0),
-      g = h + ms(this.addition.password, y, !0),
+      w = h + xs(this.addition.username, y, !0),
+      g = h + xs(this.addition.password, y, !0),
       m = {
         version: "v2.0",
         apToken: "",
         appKey: c,
         accountType: u.data.accountType || "01",
-        userName: x,
+        userName: w,
         epd: g,
         captchaType: "",
         validateCode: "",
@@ -15165,9 +15612,9 @@ var xs = class {
         { method: "POST", headers: { ...d() }, body: new URLSearchParams(m) },
       )
     await this.updateCookie(v.headers)
-    let w = await v.json()
-    if (w.result !== 0) {
-      let _ = w.msg || "\u767B\u5F55\u5931\u8D25"
+    let x = await v.json()
+    if (x.result !== 0) {
+      let _ = x.msg || "\u767B\u5F55\u5931\u8D25"
       throw _.includes("\u9A8C\u8BC1\u7801") ||
         _.includes("\u6ED1\u5757") ||
         _.includes("\u8BBE\u5907\u9501")
@@ -15176,8 +15623,8 @@ var xs = class {
           )
         : new Error(`[189Cloud] \u767B\u5F55\u5931\u8D25: ${_}`)
     }
-    w.toUrl &&
-      (await this.followRedirectsWithCookies(w.toUrl, {
+    x.toUrl &&
+      (await this.followRedirectsWithCookies(x.toUrl, {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       }))
@@ -15186,7 +15633,7 @@ var xs = class {
     let i = t.method || "GET",
       s = t.retryOnInvalidSession !== !1,
       n = new URL(e)
-    if ((n.searchParams.set("noCache", On()), t.params))
+    if ((n.searchParams.set("noCache", Ln()), t.params))
       for (let [p, f] of Object.entries(t.params))
         f !== void 0 && n.searchParams.set(p, f)
     let o = {
@@ -15205,7 +15652,7 @@ var xs = class {
     let d = await c.text(),
       l
     try {
-      l = Nd(d)
+      l = Qd(d)
     } catch {
       throw new Error(
         `[189Cloud] \u975E\u9884\u671F\u54CD\u5E94: ${d.slice(0, 200)}`,
@@ -15378,8 +15825,8 @@ var xs = class {
   async uploadRequest(e, t) {
     this.sessionKey || (this.sessionKey = await this.getSessionKey())
     let i = String(Date.now()),
-      s = qn(),
-      n = qn("xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx").slice(
+      s = zn(),
+      n = zn("xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx").slice(
         0,
         16 + Math.floor(Math.random() * 17),
       ),
@@ -15387,8 +15834,8 @@ var xs = class {
         .sort()
         .map((y) => `${y}=${t[y]}`)
         .join("&"),
-      a = $d(o, n.slice(0, 16)),
-      c = jd(
+      a = Wd(o, n.slice(0, 16)),
+      c = Gd(
         `SessionKey=${this.sessionKey}&Operate=GET&RequestURI=${e}&Date=${i}&params=${a}`,
         n,
       ),
@@ -15399,7 +15846,7 @@ var xs = class {
         Signature: c,
         "X-Request-Date": i,
         "X-Request-ID": s,
-        EncryptionText: ms(n, d, !1),
+        EncryptionText: xs(n, d, !1),
         PkId: l,
       }
     this.cookie && (u.Cookie = this.cookie)
@@ -15415,7 +15862,7 @@ var xs = class {
       )
     let h
     try {
-      h = Nd(f)
+      h = Qd(f)
     } catch {
       throw new Error(
         `[189Cloud] \u4E0A\u4F20\u63A5\u53E3\u8FD4\u56DE\u65E0\u6548\u54CD\u5E94: ${f.slice(0, 200)}`,
@@ -15472,7 +15919,7 @@ var xs = class {
   async getMultiUploadUrls(e, t, i) {
     let n = (
       await this.uploadRequest("/person/getMultiUploadUrls", {
-        partInfo: `${t}-${Ld(i)}`,
+        partInfo: `${t}-${Jd(i)}`,
         uploadFileId: e,
       })
     ).uploadUrls?.[`partNumber_${t}`]
@@ -15539,12 +15986,12 @@ var xs = class {
     )
   }
 }
-var bf = 45,
-  kf = 10 * 1024 * 1024
-function Sf(r) {
+var Uf = 45,
+  qf = 10 * 1024 * 1024
+function Of(r) {
   return Buffer.from(JSON.stringify(r), "utf8").toString("base64")
 }
-function Hd(r) {
+function Yd(r) {
   try {
     let e = JSON.parse(Buffer.from(r, "base64").toString("utf8"))
     if (
@@ -15565,7 +16012,7 @@ function Hd(r) {
     )
   }
 }
-function Gd(r) {
+function tl(r) {
   if (!r) return new Date().toISOString()
   try {
     let e = new Date(r)
@@ -15573,31 +16020,31 @@ function Gd(r) {
   } catch {}
   return new Date().toISOString()
 }
-function Kd(r) {
+function Zd(r) {
   return {
     name: r.name,
     size: 0,
     is_dir: !0,
-    modified: Gd(r.lastOpTime),
+    modified: tl(r.lastOpTime),
     sign: String(r.id),
     type: 1,
     thumb: "",
     raw_url: "",
   }
 }
-function Wd(r) {
+function el(r) {
   return {
     name: r.name,
     size: r.size || 0,
     is_dir: !1,
-    modified: Gd(r.lastOpTime),
+    modified: tl(r.lastOpTime),
     sign: String(r.id),
-    type: K(r.name, !1),
+    type: L(r.name, !1),
     thumb: r.icon?.smallUrl || r.icon?.largeUrl || "",
     raw_url: "",
   }
 }
-function Pf(r) {
+function $f(r) {
   let e = { ...(r || {}) }
   return (
     (e.username = e.username || ""),
@@ -15609,13 +16056,13 @@ function Pf(r) {
     e
   )
 }
-var ws = class {
+var bs = class {
   client
   addition
   pathIdCache = new Map()
-  budget = { used: 0, limit: bf }
+  budget = { used: 0, limit: Uf }
   constructor(e, t) {
-    ;((this.addition = Pf(e)), (this.client = new xs(this.addition, t)))
+    ;((this.addition = $f(e)), (this.client = new vs(this.addition, t)))
   }
   async init() {
     await this.client.login()
@@ -15715,7 +16162,7 @@ var ws = class {
       { files: s, folders: n } = await this.client.getFiles(i, {
         budget: this.budget,
       }),
-      o = [...n.map(Kd), ...s.map(Wd)]
+      o = [...n.map(Zd), ...s.map(el)]
     return G(
       o,
       this.addition.order_by === "filename"
@@ -15744,8 +16191,8 @@ var ws = class {
       }
     }
     let { file: s, isDir: n } = await this.resolveFile(t)
-    if (n) return Kd(s)
-    let o = Wd(s)
+    if (n) return Zd(s)
+    let o = el(s)
     try {
       ;((o.raw_url = await this.client.getDownloadUrl(String(s.id))),
         (o.raw_url_headers = this.client.getDownloadHeaders()))
@@ -15798,7 +16245,7 @@ var ws = class {
       n = s.pop()
     if (!n) throw new Error("[189Cloud] \u4E0A\u4F20\u8DEF\u5F84\u65E0\u6548")
     let o = "/" + s.join("/"),
-      a = await this.createUploadSession(o, o, n, i.length, ys(i))
+      a = await this.createUploadSession(o, o, n, i.length, _s(i))
     if (a.reuse) return
     let c = []
     for (let d = 1; d <= a.partCount; d++) {
@@ -15810,7 +16257,7 @@ var ws = class {
     await this.completeUploadSession(a.session, c)
   }
   async createUploadSession(e, t, i, s, n) {
-    let o = kf,
+    let o = qf,
       a = String(n || "")
         .trim()
         .toLowerCase()
@@ -15838,7 +16285,7 @@ var ws = class {
           reuse: !1,
           partCount: c,
           chunkSize: o,
-          session: Sf({
+          session: Of({
             uploadFileId: l.uploadFileId,
             sessionKey: l.sessionKey,
             fileMd5: a,
@@ -15849,7 +16296,7 @@ var ws = class {
         }
   }
   async uploadPart(e, t, i) {
-    let s = Hd(e)
+    let s = Yd(e)
     if (!Number.isInteger(t) || t < 1 || t > s.partCount)
       throw new Error(`[189Cloud] \u5206\u7247\u5E8F\u53F7\u65E0\u6548: ${t}`)
     this.client.setSessionKey(s.sessionKey)
@@ -15872,10 +16319,10 @@ var ws = class {
         `[189Cloud] \u4E0A\u4F20\u7B2C ${t}/${s.partCount} \u5206\u7247\u5931\u8D25: HTTP ${a.status} ${c}`,
       )
     }
-    return { partMd5: ys(i) }
+    return { partMd5: _s(i) }
   }
   async completeUploadSession(e, t = []) {
-    let i = Hd(e)
+    let i = Yd(e)
     this.client.setSessionKey(i.sessionKey)
     let s = t
       .map((o) =>
@@ -15891,27 +16338,27 @@ var ws = class {
     let n =
       i.partCount === 1
         ? i.fileMd5
-        : ys(
+        : _s(
             s.join(`
 `),
           ).toUpperCase()
     await this.client.commitMultiUpload(i.uploadFileId, i.fileMd5, n)
   }
 }
-me()
-var kt = sr(kr(), 1)
-function Ye(r, e) {
+he()
+var St = ar(Ar(), 1)
+function Ze(r, e) {
   let t = r.replace(/\/+$/, ""),
     i = e.replace(/^\/+/, "")
   return !t && !i ? "/" : t ? (i ? `${t}/${i}` : t) : "/" + i
 }
-function Af(r) {
+function jf(r) {
   return r
     .split("/")
     .map((e) => encodeURIComponent(e))
     .join("/")
 }
-function Vd(r, e) {
+function rl(r, e) {
   let t = [],
     i,
     s =
@@ -15961,14 +16408,14 @@ function Vd(r, e) {
           p,
         ),
       y = h ? h[1].trim() : "",
-      x = d.replace(/\/+$/, ""),
-      g = (x && x.split("/").pop()) || "",
+      w = d.replace(/\/+$/, ""),
+      g = (w && w.split("/").pop()) || "",
       m = y || g,
       v =
         /<(?:[a-zA-Z0-9_-]+:)?getcontentlength\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?getcontentlength>/i.exec(
           p,
         ),
-      w = f ? 0 : (v && parseInt(v[1].trim(), 10)) || 0,
+      x = f ? 0 : (v && parseInt(v[1].trim(), 10)) || 0,
       _ =
         /<(?:[a-zA-Z0-9_-]+:)?getlastmodified\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?getlastmodified>/i.exec(
           p,
@@ -15991,21 +16438,21 @@ function Vd(r, e) {
       k = {
         name: m,
         path: d,
-        size: w,
+        size: x,
         modified: b,
         isFolder: f,
         contentType: A,
         etag: P,
       },
       D = e.replace(/\/+$/, "").toLowerCase(),
-      T = x.toLowerCase()
+      T = w.toLowerCase()
     !i && (T === D || T.endsWith(D) || (D === "" && T === ""))
       ? (i = k)
       : t.push(k)
   }
   return { self: i, items: t }
 }
-function Cf(r) {
+function zf(r) {
   let e = {},
     t = r.replace(/^digest\s+/i, "").split(/,\s*/)
   for (let i of t) {
@@ -16029,7 +16476,7 @@ function Cf(r) {
   }
   return e
 }
-function Jd(r, e, t, i, s, n = 1) {
+function il(r, e, t, i, s, n = 1) {
   let o = n.toString(16).padStart(8, "0"),
     a = Math.random().toString(36).substring(2, 18),
     c = r.realm || "",
@@ -16037,17 +16484,17 @@ function Jd(r, e, t, i, s, n = 1) {
     l = (r.algorithm || "MD5").toUpperCase(),
     u = r.qop || "",
     p = ""
-  if (l === "MD5" || l === "") p = kt.default.MD5(`${e}:${c}:${t}`).toString()
+  if (l === "MD5" || l === "") p = St.default.MD5(`${e}:${c}:${t}`).toString()
   else if (l === "MD5-SESS") {
-    let x = kt.default.MD5(`${e}:${c}:${t}`).toString()
-    p = kt.default.MD5(`${x}:${d}:${a}`).toString()
+    let w = St.default.MD5(`${e}:${c}:${t}`).toString()
+    p = St.default.MD5(`${w}:${d}:${a}`).toString()
   }
   let f = ""
-  ;(u === "auth" || u === "") && (f = kt.default.MD5(`${i}:${s}`).toString())
+  ;(u === "auth" || u === "") && (f = St.default.MD5(`${i}:${s}`).toString())
   let h = ""
   u
-    ? (h = kt.default.MD5(`${p}:${d}:${o}:${a}:${u}:${f}`).toString())
-    : (h = kt.default.MD5(`${p}:${d}:${f}`).toString())
+    ? (h = St.default.MD5(`${p}:${d}:${o}:${a}:${u}:${f}`).toString())
+    : (h = St.default.MD5(`${p}:${d}:${f}`).toString())
   let y = `Digest username="${e}", realm="${c}", nonce="${d}", uri="${s}", response="${h}"`
   return (
     l && (y += `, algorithm=${l}`),
@@ -16056,17 +16503,17 @@ function Jd(r, e, t, i, s, n = 1) {
     y
   )
 }
-var Ef = {
+var Lf = {
   com: "https://login.microsoftonline.com",
   cn: "https://login.chinacloudapi.cn",
   us: "https://login.microsoftonline.us",
   de: "https://login.microsoftonline.de",
 }
-async function Df(r, e, t) {
+async function Nf(r, e, t) {
   let i = new URL(t),
     s = i.hostname.split("."),
     n = s[s.length - 1],
-    a = `${Ef[n] || "https://login.microsoftonline.com"}/extSTS.srf`,
+    a = `${Lf[n] || "https://login.microsoftonline.com"}/extSTS.srf`,
     c = `<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"
 xmlns:a="http://www.w3.org/2005/08/addressing"
 xmlns:u="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd">
@@ -16126,40 +16573,40 @@ xmlns:u="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-util
       redirect: "manual",
     }),
     y = "",
-    x = "",
+    w = "",
     g = (m) => {
       let v = []
       if (m.headers.getSetCookie) v.push(...m.headers.getSetCookie())
       else {
-        let w = m.headers.get("set-cookie")
-        w && v.push(w)
+        let x = m.headers.get("set-cookie")
+        x && v.push(x)
       }
-      for (let w of v) {
-        let _ = /rtFa=([^;]+)/.exec(w)
+      for (let x of v) {
+        let _ = /rtFa=([^;]+)/.exec(x)
         _ && (y = _[1])
-        let b = /FedAuth=([^;]+)/.exec(w)
-        b && (x = b[1])
+        let b = /FedAuth=([^;]+)/.exec(x)
+        b && (w = b[1])
       }
     }
-  if ((g(h), !y || !x)) {
+  if ((g(h), !y || !w)) {
     let m = h.headers.get("location")
     if (m) {
       let v = new URL(m, f).toString(),
-        w = await fetch(v, {
+        x = await fetch(v, {
           method: "GET",
-          headers: { Cookie: `rtFa=${y}; FedAuth=${x}` },
+          headers: { Cookie: `rtFa=${y}; FedAuth=${w}` },
           redirect: "manual",
         })
-      g(w)
+      g(x)
     }
   }
-  if (!y && !x)
+  if (!y && !w)
     throw new Error(
       "SharePoint auth failed: rtFa / FedAuth cookies not returned",
     )
-  return `rtFa=${y}; FedAuth=${x}`
+  return `rtFa=${y}; FedAuth=${w}`
 }
-var _s = class {
+var ks = class {
   address
   username
   password
@@ -16175,7 +16622,7 @@ var _s = class {
   }
   async init() {
     this.isSharepoint &&
-      (this.sharepointCookie = await Df(
+      (this.sharepointCookie = await Nf(
         this.username,
         this.password,
         this.address,
@@ -16183,7 +16630,7 @@ var _s = class {
   }
   buildUrl(e) {
     let t = e.replace(/^\/+/, "")
-    return t ? `${this.address}/${Af(t)}` : this.address
+    return t ? `${this.address}/${jf(t)}` : this.address
   }
   getAuthHeaders(e, t) {
     let i = {}
@@ -16191,7 +16638,7 @@ var _s = class {
       i.Cookie = this.sharepointCookie
     else if (this.digestParts)
       (this.ncCount++,
-        (i.Authorization = Jd(
+        (i.Authorization = il(
           this.digestParts,
           this.username,
           this.password,
@@ -16221,8 +16668,8 @@ var _s = class {
     if (d.status === 401 && !this.isSharepoint) {
       let l = d.headers.get("www-authenticate") || ""
       if (/digest/i.test(l)) {
-        ;((this.digestParts = Cf(l)), (this.ncCount = 1))
-        let u = Jd(
+        ;((this.digestParts = zf(l)), (this.ncCount = 1))
+        let u = il(
             this.digestParts,
             this.username,
             this.password,
@@ -16268,7 +16715,7 @@ var _s = class {
       )
     }
     let s = await i.text(),
-      { items: n } = Vd(s, e)
+      { items: n } = rl(s, e)
     return n
   }
   async stat(e) {
@@ -16298,7 +16745,7 @@ var _s = class {
       )
     }
     let s = await i.text(),
-      { self: n, items: o } = Vd(s, e),
+      { self: n, items: o } = rl(s, e),
       a = n || o[0]
     if (!a) throw new Error(`Object not found in PROPFIND response: ${e}`)
     return a
@@ -16384,7 +16831,7 @@ var _s = class {
     return { url: t, headers: n }
   }
 }
-function Ff(r) {
+function Mf(r) {
   let e = { ...(r || {}) }
   return (
     (e.vendor = e.vendor || "other"),
@@ -16400,18 +16847,18 @@ function Ff(r) {
     e
   )
 }
-var vs = class {
+var Ss = class {
   client
   addition
   constructor(e) {
-    ;((this.addition = Ff(e)), (this.client = new _s(this.addition)))
+    ;((this.addition = Mf(e)), (this.client = new ks(this.addition)))
   }
   async init() {
     await this.client.init()
   }
   getRemotePath(e) {
     let t = this.addition.root_folder_path || "/"
-    return Ye(t, e || "/")
+    return Ze(t, e || "/")
   }
   fileItemFromWebdav(e, t) {
     let i = this.client.getLink(t)
@@ -16421,7 +16868,7 @@ var vs = class {
       is_dir: e.isFolder,
       modified: e.modified,
       sign: e.path || t,
-      type: K(e.name, e.isFolder),
+      type: L(e.name, e.isFolder),
       thumb: "",
       raw_url: e.isFolder ? void 0 : i.url,
       raw_url_headers: e.isFolder ? void 0 : i.headers,
@@ -16430,7 +16877,7 @@ var vs = class {
   async list(e, t) {
     let i = this.getRemotePath(t),
       n = (await this.client.readDir(i)).map((o) => {
-        let a = Ye(i, o.name)
+        let a = Ze(i, o.name)
         return this.fileItemFromWebdav(o, a)
       })
     return G(
@@ -16452,15 +16899,15 @@ var vs = class {
     let s = this.getRemotePath(t),
       n = s.lastIndexOf("/"),
       o = n >= 0 ? s.substring(0, n) : "/",
-      a = Ye(o, i)
+      a = Ze(o, i)
     await this.client.move(s, a, !0)
   }
   async move(e, t, i, s, n) {
     let o = this.getRemotePath(s),
       a = this.getRemotePath(n)
     for (let c of i) {
-      let d = Ye(o, c),
-        l = Ye(a, c)
+      let d = Ze(o, c),
+        l = Ze(a, c)
       await this.client.move(d, l, !0)
     }
   }
@@ -16468,8 +16915,8 @@ var vs = class {
     let o = this.getRemotePath(s),
       a = this.getRemotePath(n)
     for (let c of i) {
-      let d = Ye(o, c),
-        l = Ye(a, c)
+      let d = Ze(o, c),
+        l = Ze(a, c)
       await this.client.copy(d, l, !0)
     }
   }
@@ -16477,7 +16924,7 @@ var vs = class {
     let s = this.getRemotePath(t)
     if (i && i.length > 0)
       for (let n of i) {
-        let o = Ye(s, n)
+        let o = Ze(s, n)
         await this.client.remove(o)
       }
     else await this.client.remove(s)
@@ -16487,32 +16934,32 @@ var vs = class {
     await this.client.put(s, i)
   }
 }
-me()
+he()
 var Be = "1001000021",
-  bs = "XFmi9GS2hzk98jGX",
-  Qd = "10000001",
-  Xd = "https://panservice.mail.wo.cn",
-  zn = "https://tjupload.pan.wo.cn",
-  Ln =
+  Ps = "XFmi9GS2hzk98jGX",
+  sl = "10000001",
+  nl = "https://panservice.mail.wo.cn",
+  Hn = "https://tjupload.pan.wo.cn",
+  Kn =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36 Edg/114.0.1823.37"
-var ut = "api-user",
-  Nn = "wohome",
-  Yd = "wocloud"
-var Zd = "AppQueryUser",
-  el = "AppRefreshToken"
-var tl = "QueryCloudUsageInfo"
-var rl = "ClassifyRule",
-  il = "GetZoneInfo"
-var sl = "FamilyUserCurrentEncode",
-  nl = "QueryAllFiles"
-var ol = "GetDownloadUrlV2"
-var al = "CreateDirectory",
-  cl = "RenameFileOrDirectory",
-  dl = "MoveFile",
-  ll = "CopyFile",
-  ul = "DeleteFile"
-var pl = "upload2C"
-var Mn = {
+var pt = "api-user",
+  Wn = "wohome",
+  ol = "wocloud"
+var al = "AppQueryUser",
+  cl = "AppRefreshToken"
+var dl = "QueryCloudUsageInfo"
+var ll = "ClassifyRule",
+  ul = "GetZoneInfo"
+var pl = "FamilyUserCurrentEncode",
+  fl = "QueryAllFiles"
+var hl = "GetDownloadUrlV2"
+var gl = "CreateDirectory",
+  ml = "RenameFileOrDirectory",
+  yl = "MoveFile",
+  wl = "CopyFile",
+  xl = "DeleteFile"
+var _l = "upload2C"
+var Gn = {
   name_asc: 1,
   name_desc: 2,
   size_asc: 3,
@@ -16520,11 +16967,11 @@ var Mn = {
   time_asc: 5,
   time_desc: 6,
 }
-var ve = sr(kr(), 1)
-var Tf = "wNSOYIB1k1DjY5lA",
-  ks = class {
-    key = bs
-    iv = Tf
+var ve = ar(Ar(), 1)
+var Hf = "wNSOYIB1k1DjY5lA",
+  As = class {
+    key = Ps
+    iv = Hf
     accessKey = ""
     constructor(e) {
       e && this.setAccessToken(e)
@@ -16535,7 +16982,7 @@ var Tf = "wNSOYIB1k1DjY5lA",
         : e && (this.accessKey = e)
     }
     encrypt(e, t) {
-      let i = t === ut ? this.key : this.accessKey || this.key,
+      let i = t === pt ? this.key : this.accessKey || this.key,
         s = ve.default.enc.Utf8.parse(i),
         n = ve.default.enc.Utf8.parse(this.iv)
       return ve.default.AES.encrypt(ve.default.enc.Utf8.parse(e), s, {
@@ -16545,7 +16992,7 @@ var Tf = "wNSOYIB1k1DjY5lA",
       }).toString()
     }
     decrypt(e, t) {
-      let i = t === ut ? this.key : this.accessKey || this.key,
+      let i = t === pt ? this.key : this.accessKey || this.key,
         s = ve.default.enc.Utf8.parse(i),
         n = ve.default.enc.Utf8.parse(this.iv)
       return ve.default.AES.decrypt(e, s, {
@@ -16555,10 +17002,10 @@ var Tf = "wNSOYIB1k1DjY5lA",
       }).toString(ve.default.enc.Utf8)
     }
     userEncrypt(e) {
-      return this.encrypt(e, ut)
+      return this.encrypt(e, pt)
     }
     userDecrypt(e) {
-      return this.decrypt(e, ut)
+      return this.decrypt(e, pt)
     }
     woHomeEncrypt(e) {
       return this.encrypt(e, "wohome")
@@ -16574,14 +17021,14 @@ var Tf = "wNSOYIB1k1DjY5lA",
       return { key: t, resTime: i, reqSeq: s, channel: e, sign: o, version: n }
     }
   }
-function If(r) {
+function Kf(r) {
   let e = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
     t = ""
   for (let i = 0; i < r; i++)
     t += e.charAt(Math.floor(Math.random() * e.length))
   return t
 }
-function Bf(r = new Date()) {
+function Wf(r = new Date()) {
   let e = (c) => String(c).padStart(2, "0"),
     t = r.getFullYear(),
     i = e(r.getMonth() + 1),
@@ -16591,7 +17038,7 @@ function Bf(r = new Date()) {
     a = e(r.getSeconds())
   return `${t}${i}${s}${n}${o}${a}`
 }
-var Ss = class {
+var Cs = class {
   addition
   accessToken
   refreshTokenValue
@@ -16605,7 +17052,7 @@ var Ss = class {
       (this.accessToken = e.access_token || ""),
       (this.refreshTokenValue = e.refresh_token || ""),
       (this.onTokenUpdate = t),
-      (this.crypto = new ks(this.accessToken)))
+      (this.crypto = new As(this.accessToken)))
   }
   getAccessToken() {
     return this.accessToken
@@ -16630,11 +17077,11 @@ var Ss = class {
     let c = {
       Origin: "https://pan.wo.cn",
       Referer: "https://pan.wo.cn/",
-      "User-Agent": Ln,
+      "User-Agent": Kn,
       "Content-Type": "application/json;charset=UTF-8",
     }
     this.accessToken && (c.Accesstoken = this.accessToken)
-    let d = `${Xd}/${e}/dispatcher`,
+    let d = `${nl}/${e}/dispatcher`,
       l = await fetch(d, {
         method: "POST",
         headers: c,
@@ -16652,7 +17099,7 @@ var Ss = class {
       )
     let p = u.RSP?.RSP_CODE
     if (p !== "0000") {
-      if (e !== ut && n && p === "9999")
+      if (e !== pt && n && p === "9999")
         return (await this.refreshToken(), this.request(e, t, i, s, !1))
       throw new Error(
         `[WoPan] Request failed with rsp_code: ${p}, rsp_desc: ${u.RSP?.RSP_DESC || ""}`,
@@ -16677,15 +17124,15 @@ var Ss = class {
     return f
   }
   async requestApiUser(e, t, i = {}) {
-    return this.request(ut, e, t, i)
+    return this.request(pt, e, t, i)
   }
   async requestWoHome(e, t, i = {}) {
-    return this.request(Nn, e, t, i)
+    return this.request(Wn, e, t, i)
   }
   async appRefreshToken() {
     return await this.requestApiUser(
-      el,
-      { refreshToken: this.refreshTokenValue, clientSecret: bs },
+      cl,
+      { refreshToken: this.refreshTokenValue, clientSecret: Ps },
       { clientId: Be, secret: !0 },
     )
   }
@@ -16699,7 +17146,7 @@ var Ss = class {
   }
   async appQueryUser() {
     return this.requestApiUser(
-      Zd,
+      al,
       { accessToken: this.accessToken },
       { clientId: Be, secret: !0 },
     )
@@ -16710,7 +17157,7 @@ var Ss = class {
     e?.userId && (this.phone = e.userId)
   }
   async classifyRule() {
-    return this.requestWoHome(rl, {}, { key: !0 })
+    return this.requestWoHome(ll, {}, { key: !0 })
   }
   async initClassifyRule() {
     if (this.classifyRuleData) return
@@ -16718,15 +17165,15 @@ var Ss = class {
     e && (this.classifyRuleData = e)
   }
   async getZoneInfo() {
-    return this.requestWoHome(il, { appId: Qd }, { key: !0 })
+    return this.requestWoHome(ul, { appId: sl }, { key: !0 })
   }
   async initZoneURL() {
     if (this.zoneURL) return
     let e = await this.getZoneInfo().catch(() => null)
-    this.zoneURL = e?.url || zn
+    this.zoneURL = e?.url || Hn
   }
   async familyUserCurrentEncode() {
-    return this.requestWoHome(sl, { clientId: Be }, { secret: !0 })
+    return this.requestWoHome(pl, { clientId: Be }, { secret: !0 })
   }
   async initData() {
     ;(!this.accessToken &&
@@ -16753,12 +17200,12 @@ var Ss = class {
     }
     return (
       e === "1" && o && (a.familyId = o),
-      this.requestWoHome(nl, a, { secret: !0 })
+      this.requestWoHome(fl, a, { secret: !0 })
     )
   }
   async getDownloadUrlV2(e) {
     let t = { type: "1", fidList: e, clientId: Be }
-    return this.requestWoHome(ol, t, { secret: !0 })
+    return this.requestWoHome(hl, t, { secret: !0 })
   }
   async createDirectory(e, t, i, s = "") {
     let n = {
@@ -16768,13 +17215,13 @@ var Ss = class {
       directoryName: i,
       clientId: Be,
     }
-    return this.requestWoHome(al, n, { secret: !0 })
+    return this.requestWoHome(gl, n, { secret: !0 })
   }
   async renameFileOrDirectory(e, t, i, s, n = "") {
     let o = t === 0 ? "0" : this.getFileType(s),
       a = { spaceType: e, type: t, fileType: o, id: i, name: s, clientId: Be }
     ;(e === "1" && n && (a.familyId = n),
-      await this.requestWoHome(cl, a, { secret: !0 }))
+      await this.requestWoHome(ml, a, { secret: !0 }))
   }
   async moveFile(e, t, i, s, n, o = "", a = "") {
     let c = {
@@ -16788,7 +17235,7 @@ var Ss = class {
     }
     ;(s === "1" && o && (c.fromFamilyId = o),
       n === "1" && a && (c.familyId = a),
-      await this.requestWoHome(dl, c, { secret: !0 }))
+      await this.requestWoHome(yl, c, { secret: !0 }))
   }
   async copyFile(e, t, i, s, n, o = "", a = "") {
     let c = {
@@ -16802,7 +17249,7 @@ var Ss = class {
     }
     ;(s === "1" && o && (c.fromFamilyId = o),
       n === "1" && a && (c.familyId = a),
-      await this.requestWoHome(ll, c, { secret: !0 }))
+      await this.requestWoHome(wl, c, { secret: !0 }))
   }
   async deleteFile(e, t, i) {
     let s = {
@@ -16812,13 +17259,13 @@ var Ss = class {
       fileList: i,
       clientId: Be,
     }
-    await this.requestWoHome(ul, s, { secret: !0 })
+    await this.requestWoHome(xl, s, { secret: !0 })
   }
   async queryCloudUsageInfo() {
     return (
       await this.initPhone(),
       this.requestWoHome(
-        tl,
+        dl,
         { phoneNum: this.phone, clientId: Be },
         { secret: !0 },
       )
@@ -16826,7 +17273,7 @@ var Ss = class {
   }
   async upload2C(e, t, i, s, n = "", o) {
     await this.initZoneURL()
-    let c = `${this.zoneURL || zn}/openapi/client/${pl}`,
+    let c = `${this.zoneURL || Hn}/openapi/client/${_l}`,
       d =
         i instanceof Uint8Array
           ? i
@@ -16835,7 +17282,7 @@ var Ss = class {
             : new Uint8Array(i),
       l = d.length,
       u = Math.max(1, Math.ceil(l / 8388608)),
-      p = Bf(),
+      p = Wf(),
       f = {
         spaceType: e,
         directoryId: s,
@@ -16845,14 +17292,14 @@ var Ss = class {
         fileType: this.getFileType(t),
       }
     e === "1" && n && (f.familyId = n)
-    let h = this.crypto.encrypt(JSON.stringify(f), Nn),
-      y = `${Date.now()}_${If(6)}`,
-      x = 0,
+    let h = this.crypto.encrypt(JSON.stringify(f), Wn),
+      y = `${Date.now()}_${Kf(6)}`,
+      w = 0,
       g = ""
     for (let m = 1; m <= u; m++) {
       let v = (m - 1) * 8388608,
-        w = m === u ? l - v : 8388608,
-        _ = d.subarray(v, v + w),
+        x = m === u ? l - v : 8388608,
+        _ = d.subarray(v, v + x),
         b = new FormData()
       ;(b.append("uniqueId", y),
         b.append("accessToken", this.accessToken),
@@ -16860,10 +17307,10 @@ var Ss = class {
         b.append("psToken", "undefined"),
         b.append("fileSize", String(l)),
         b.append("totalPart", String(u)),
-        b.append("channel", Yd),
+        b.append("channel", ol),
         b.append("directoryId", s),
         b.append("fileInfo", h),
-        b.append("partSize", String(w)),
+        b.append("partSize", String(x)),
         b.append("partIndex", String(m)))
       let S = new Blob(
         [_.buffer.slice(_.byteOffset, _.byteOffset + _.byteLength)],
@@ -16875,7 +17322,7 @@ var Ss = class {
         headers: {
           Origin: "https://pan.wo.cn",
           Referer: "https://pan.wo.cn/",
-          "User-Agent": Ln,
+          "User-Agent": Kn,
         },
         body: b,
       })
@@ -16888,12 +17335,12 @@ var Ss = class {
         throw new Error(
           `[WoPan] Upload part ${m}/${u} failed: ${C.code} ${C.msg || ""}`,
         )
-      ;(C.data?.fid && (g = C.data.fid), (x += w), o?.(x, l))
+      ;(C.data?.fid && (g = C.data.fid), (w += x), o?.(w, l))
     }
     return g
   }
 }
-function Uf(r) {
+function Vf(r) {
   if (!r) return new Date().toISOString()
   if (r.length >= 14) {
     let e = r.slice(0, 4),
@@ -16912,20 +17359,20 @@ function Uf(r) {
   } catch {}
   return new Date().toISOString()
 }
-function fl(r) {
+function vl(r) {
   let e = r.type === 0
   return {
     name: r.name,
     size: r.size || 0,
     is_dir: e,
-    modified: Uf(r.createTime),
+    modified: Vf(r.createTime),
     sign: r.fid || r.id,
-    type: K(r.name, e),
+    type: L(r.name, e),
     thumb: r.thumbUrl || "",
     raw_url: "",
   }
 }
-function Kn(r) {
+function Jn(r) {
   let e = { ...(r || {}) }
   return (
     (e.root_folder_id = e.root_folder_id || "0"),
@@ -16936,15 +17383,15 @@ function Kn(r) {
     e
   )
 }
-var Ps = class {
+var Es = class {
   client
   addition
   defaultFamilyId = ""
   pathFileMapCache = new Map()
   pathFolderIdCache = new Map()
   constructor(e, t) {
-    ;((this.addition = Kn(e)),
-      (this.client = new Ss(this.addition, (i, s) => {
+    ;((this.addition = Jn(e)),
+      (this.client = new Cs(this.addition, (i, s) => {
         ;((this.addition.access_token = i),
           (this.addition.refresh_token = s),
           t?.(i, s))
@@ -16958,7 +17405,7 @@ var Ps = class {
   }
   getSortRuleNum() {
     let e = this.addition.sort_rule || "name_asc"
-    return Mn[e] || Mn.name_asc
+    return Gn[e] || Gn.name_asc
   }
   getRootId() {
     return this.addition.root_folder_id || "0"
@@ -16979,7 +17426,7 @@ var Ps = class {
       ;(this.pathFileMapCache.set(c, a),
         a.type === 0 && this.pathFolderIdCache.set(c, a.id))
     }
-    let o = s.map(fl)
+    let o = s.map(vl)
     return G(o, this.addition.order_by, this.addition.order_direction)
   }
   async get(e, t) {
@@ -17011,7 +17458,7 @@ var Ps = class {
       }
       throw new Error(`[WoPan] File not found: ${t}`)
     }
-    let n = fl(s)
+    let n = vl(s)
     if (!n.is_dir && s.fid) {
       let o = await this.client.getDownloadUrlV2([s.fid]).catch(() => null)
       o?.list?.[0]?.downloadUrl && (n.raw_url = o.list[0].downloadUrl)
@@ -17189,55 +17636,55 @@ var Ps = class {
     )
   }
 }
-me()
-var qf = new TextEncoder()
-function Er(r) {
-  return typeof r == "string" ? qf.encode(r) : r
+he()
+var Jf = new TextEncoder()
+function Tr(r) {
+  return typeof r == "string" ? Jf.encode(r) : r
 }
-function Gn(r) {
+function Xn(r) {
   let e = r instanceof Uint8Array ? r : new Uint8Array(r),
     t = ""
   for (let i = 0; i < e.length; i++) t += e[i].toString(16).padStart(2, "0")
   return t
 }
-async function Wn(r) {
-  let e = await crypto.subtle.digest("SHA-256", Er(r))
-  return Gn(e)
+async function Qn(r) {
+  let e = await crypto.subtle.digest("SHA-256", Tr(r))
+  return Xn(e)
 }
-async function Cr(r, e) {
+async function Fr(r, e) {
   let t = await crypto.subtle.importKey(
       "raw",
-      Er(r),
+      Tr(r),
       { name: "HMAC", hash: "SHA-256" },
       !1,
       ["sign"],
     ),
-    i = await crypto.subtle.sign("HMAC", t, Er(e))
+    i = await crypto.subtle.sign("HMAC", t, Tr(e))
   return new Uint8Array(i)
 }
-async function hl(r, e) {
-  let t = await Cr(r, e)
-  return Gn(t)
+async function bl(r, e) {
+  let t = await Fr(r, e)
+  return Xn(t)
 }
-async function Of(r, e) {
+async function Qf(r, e) {
   let t = await crypto.subtle.importKey(
       "raw",
-      Er(r),
+      Tr(r),
       { name: "HMAC", hash: "SHA-1" },
       !1,
       ["sign"],
     ),
-    i = await crypto.subtle.sign("HMAC", t, Er(e))
-  return Gn(i)
+    i = await crypto.subtle.sign("HMAC", t, Tr(e))
+  return Xn(i)
 }
-function et(r, e = !0) {
+function tt(r, e = !0) {
   let t = encodeURIComponent(r).replace(
     /[!'()*]/g,
     (i) => "%" + i.charCodeAt(0).toString(16).toUpperCase(),
   )
   return (e || (t = t.replace(/%2F/g, "/")), t)
 }
-function gl(r = new Date()) {
+function kl(r = new Date()) {
   let e = (l) => l.toString().padStart(2, "0"),
     t = r.getUTCFullYear(),
     i = e(r.getUTCMonth() + 1),
@@ -17248,14 +17695,14 @@ function gl(r = new Date()) {
     c = `${t}${i}${s}`
   return { amzDate: `${c}T${n}${o}${a}Z`, dateStamp: c }
 }
-async function ml(r, e, t, i = "s3") {
+async function Sl(r, e, t, i = "s3") {
   let s = "AWS4" + r,
-    n = await Cr(s, e),
-    o = await Cr(n, t),
-    a = await Cr(o, i)
-  return await Cr(a, "aws4_request")
+    n = await Fr(s, e),
+    o = await Fr(n, t),
+    a = await Fr(o, i)
+  return await Fr(a, "aws4_request")
 }
-async function yl(r) {
+async function Pl(r) {
   let {
       method: e,
       url: t,
@@ -17269,48 +17716,48 @@ async function yl(r) {
       date: l = new Date(),
     } = r,
     u = new URL(t),
-    { amzDate: p, dateStamp: f } = gl(l),
+    { amzDate: p, dateStamp: f } = kl(l),
     h =
       c != null
-        ? await Wn(c)
+        ? await Qn(c)
         : "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     y = { ...a }
   ;((y.host = u.host),
     (y["x-amz-date"] = p),
     (y["x-amz-content-sha256"] = h),
     o && (y["x-amz-security-token"] = o))
-  let x = Object.keys(y)
+  let w = Object.keys(y)
       .map((E) => E.toLowerCase())
       .sort(),
     g = ""
-  for (let E of x) {
+  for (let E of w) {
     let q = (Object.entries(y).find(([j]) => j.toLowerCase() === E)?.[1] || "")
       .trim()
       .replace(/\s+/g, " ")
     g += `${E}:${q}
 `
   }
-  let m = x.join(";"),
+  let m = w.join(";"),
     v = u.pathname || "/",
-    w = et(v, !1),
+    x = tt(v, !1),
     _ = []
   ;(u.searchParams.forEach((E, O) => {
     _.push([O, E])
   }),
     _.sort(([E], [O]) => (E < O ? -1 : E > O ? 1 : 0)))
-  let b = _.map(([E, O]) => `${et(E)}=${et(O)}`).join("&"),
-    S = [e.toUpperCase(), w, b, g, m, h].join(`
+  let b = _.map(([E, O]) => `${tt(E)}=${tt(O)}`).join("&"),
+    S = [e.toUpperCase(), x, b, g, m, h].join(`
 `),
     A = `${f}/${i}/${d}/aws4_request`,
-    C = await Wn(S),
+    C = await Qn(S),
     P = ["AWS4-HMAC-SHA256", p, A, C].join(`
 `),
-    k = await ml(n, f, i, d),
-    D = await hl(k, P),
+    k = await Sl(n, f, i, d),
+    D = await bl(k, P),
     T = `AWS4-HMAC-SHA256 Credential=${s}/${A}, SignedHeaders=${m}, Signature=${D}`
   return ((y.authorization = T), { headers: y, url: u.toString() })
 }
-async function As(r) {
+async function Ds(r) {
   let {
       method: e = "GET",
       url: t,
@@ -17324,7 +17771,7 @@ async function As(r) {
       customQueryParams: l = {},
     } = r,
     u = new URL(t),
-    { amzDate: p, dateStamp: f } = gl(d),
+    { amzDate: p, dateStamp: f } = kl(d),
     h = `${f}/${i}/${c}/aws4_request`
   ;(u.searchParams.set("X-Amz-Algorithm", "AWS4-HMAC-SHA256"),
     u.searchParams.set("X-Amz-Credential", `${s}/${h}`),
@@ -17334,25 +17781,25 @@ async function As(r) {
     o && u.searchParams.set("X-Amz-Security-Token", o))
   for (let [D, T] of Object.entries(l)) u.searchParams.set(D, T)
   let y = u.pathname || "/",
-    x = et(y, !1),
+    w = tt(y, !1),
     g = []
   ;(u.searchParams.forEach((D, T) => {
     T.toLowerCase() !== "x-amz-signature" && g.push([T, D])
   }),
     g.sort(([D], [T]) => (D < T ? -1 : D > T ? 1 : 0)))
-  let m = g.map(([D, T]) => `${et(D)}=${et(T)}`).join("&"),
-    w = `host:${u.host}
+  let m = g.map(([D, T]) => `${tt(D)}=${tt(T)}`).join("&"),
+    x = `host:${u.host}
 `,
-    S = [e.toUpperCase(), x, m, w, "host", "UNSIGNED-PAYLOAD"].join(`
+    S = [e.toUpperCase(), w, m, x, "host", "UNSIGNED-PAYLOAD"].join(`
 `),
-    A = await Wn(S),
+    A = await Qn(S),
     C = ["AWS4-HMAC-SHA256", p, h, A].join(`
 `),
-    P = await ml(n, f, i, c),
-    k = await hl(P, C)
+    P = await Sl(n, f, i, c),
+    k = await bl(P, C)
   return (u.searchParams.set("X-Amz-Signature", k), u.toString())
 }
-async function xl(r, e) {
+async function Al(r, e) {
   let t = "/auth/tmp_token.json",
     i = JSON.stringify({ channel: "OSS_FULL", scopes: ["*"] }),
     s =
@@ -17360,7 +17807,7 @@ async function xl(r, e) {
       `
 ` +
       i,
-    n = await Of(e, s),
+    n = await Qf(e, s),
     o = `TOKEN ${r}:${n}`,
     a = await fetch("https://api.dogecloud.com" + t, {
       method: "POST",
@@ -17381,10 +17828,10 @@ async function xl(r, e) {
     expiredAt: c.data.ExpiredAt,
   }
 }
-var $f = 5 * 1e3 * 1e3 * 1e3,
-  jf = 100 * 1024 * 1024,
-  zf = 5 * 1024 * 1024 * 1024,
-  Lf = 1e4
+var Xf = 5 * 1e3 * 1e3 * 1e3,
+  Yf = 100 * 1024 * 1024,
+  Zf = 5 * 1024 * 1024 * 1024,
+  eh = 1e4
 function oe(...r) {
   return r
     .map((e) => e.replace(/^\/+|\/+$/g, ""))
@@ -17395,35 +17842,35 @@ function je(r, e = !1) {
   let t = (r || "").replace(/^\/+/, "")
   return (t && e && !t.endsWith("/") && (t += "/"), t)
 }
-function Dr(r) {
+function Ir(r) {
   return r && r.trim() ? r.trim() : ".openlist"
 }
-function pt(r) {
+function ft(r) {
   let e = r.replace(/\/+$/, ""),
     t = e.lastIndexOf("/")
   return t >= 0 ? e.substring(t + 1) : e
 }
-function Vn(r) {
+function Yn(r) {
   let e = r.replace(/\/+$/, ""),
     t = e.lastIndexOf("/")
   return t >= 0 ? e.substring(0, t) : ""
 }
-function wl(r, e) {
+function Cl(r, e) {
   let t = ("/" + r + "/").replace(/\/+/g, "/")
   return ("/" + e + "/").replace(/\/+/g, "/").startsWith(t)
 }
-function le(r, e) {
+function pe(r, e) {
   let t = r.match(new RegExp(`<${e}[^>]*>([\\s\\S]*?)<\\/${e}>`, "i"))
   return t ? t[1].trim() : void 0
 }
-function Cs(r, e) {
+function Fs(r, e) {
   let t = [],
     i = new RegExp(`<${e}[^>]*>([\\s\\S]*?)<\\/${e}>`, "gi"),
     s
   for (; (s = i.exec(r)) !== null; ) t.push(s[1])
   return t
 }
-function St(r) {
+function Pt(r) {
   return r
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
@@ -17431,21 +17878,21 @@ function St(r) {
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
 }
-function tt(r, e) {
-  let t = le(r, "Code") || "Unknown",
-    i = le(r, "Message") || r || `HTTP ${e}`,
-    s = new Error(`S3 Error [${t}]: ${St(i)} (status ${e})`)
+function rt(r, e) {
+  let t = pe(r, "Code") || "Unknown",
+    i = pe(r, "Message") || r || `HTTP ${e}`,
+    s = new Error(`S3 Error [${t}]: ${Pt(i)} (status ${e})`)
   return ((s.code = t), (s.status = e), s)
 }
-function Nf(r, e, t, i = !1) {
+function th(r, e, t, i = !1) {
   let s = [],
-    n = Dr(t),
-    o = Cs(r, "CommonPrefixes")
+    n = Ir(t),
+    o = Fs(r, "CommonPrefixes")
   for (let l of o) {
-    let u = le(l, "Prefix")
+    let u = pe(l, "Prefix")
     if (u) {
-      let p = St(u),
-        f = pt(p)
+      let p = Pt(u),
+        f = ft(p)
       f &&
         s.push({
           name: f,
@@ -17456,28 +17903,28 @@ function Nf(r, e, t, i = !1) {
         })
     }
   }
-  let a = Cs(r, "Contents")
+  let a = Fs(r, "Contents")
   for (let l of a) {
-    let u = le(l, "Key")
+    let u = pe(l, "Key")
     if (!u) continue
-    let p = St(u)
+    let p = Pt(u)
     if (p.endsWith("/")) continue
-    let f = pt(p)
+    let f = ft(p)
     if (!i && (f === n || f === t)) continue
-    let h = parseInt(le(l, "Size") || "0", 10),
-      y = le(l, "LastModified") || new Date().toISOString(),
-      x = le(l, "ETag")?.replace(/"/g, "")
+    let h = parseInt(pe(l, "Size") || "0", 10),
+      y = pe(l, "LastModified") || new Date().toISOString(),
+      w = pe(l, "ETag")?.replace(/"/g, "")
     s.push({
       name: f,
       size: h,
       isFolder: !1,
       modified: y,
       path: oe(e, f),
-      etag: x,
+      etag: w,
     })
   }
-  let c = le(r, "IsTruncated") === "true",
-    d = le(r, "NextMarker")
+  let c = pe(r, "IsTruncated") === "true",
+    d = pe(r, "NextMarker")
   return {
     files: s,
     isTruncated: c,
@@ -17485,15 +17932,15 @@ function Nf(r, e, t, i = !1) {
     lastEvaluatedKey: s.length > 0 ? s[s.length - 1].path : void 0,
   }
 }
-function Mf(r, e, t, i = !1) {
+function rh(r, e, t, i = !1) {
   let s = [],
-    n = Dr(t),
-    o = Cs(r, "CommonPrefixes")
+    n = Ir(t),
+    o = Fs(r, "CommonPrefixes")
   for (let l of o) {
-    let u = le(l, "Prefix")
+    let u = pe(l, "Prefix")
     if (u) {
-      let p = St(u),
-        f = pt(p)
+      let p = Pt(u),
+        f = ft(p)
       f &&
         s.push({
           name: f,
@@ -17504,28 +17951,28 @@ function Mf(r, e, t, i = !1) {
         })
     }
   }
-  let a = Cs(r, "Contents")
+  let a = Fs(r, "Contents")
   for (let l of a) {
-    let u = le(l, "Key")
+    let u = pe(l, "Key")
     if (!u) continue
-    let p = St(u)
+    let p = Pt(u)
     if (p.endsWith("/")) continue
-    let f = pt(p)
+    let f = ft(p)
     if (!i && (f === n || f === t)) continue
-    let h = parseInt(le(l, "Size") || "0", 10),
-      y = le(l, "LastModified") || new Date().toISOString(),
-      x = le(l, "ETag")?.replace(/"/g, "")
+    let h = parseInt(pe(l, "Size") || "0", 10),
+      y = pe(l, "LastModified") || new Date().toISOString(),
+      w = pe(l, "ETag")?.replace(/"/g, "")
     s.push({
       name: f,
       size: h,
       isFolder: !1,
       modified: y,
       path: oe(e, f),
-      etag: x,
+      etag: w,
     })
   }
-  let c = le(r, "IsTruncated") === "true",
-    d = le(r, "NextContinuationToken")
+  let c = pe(r, "IsTruncated") === "true",
+    d = pe(r, "NextContinuationToken")
   return {
     files: s,
     isTruncated: c,
@@ -17533,23 +17980,23 @@ function Mf(r, e, t, i = !1) {
     lastEvaluatedKey: s.length > 0 ? s[s.length - 1].path : void 0,
   }
 }
-function Hf(r) {
-  let e = le(r, "UploadId")
+function ih(r) {
+  let e = pe(r, "UploadId")
   if (!e)
     throw new Error("InitiateMultipartUpload returned empty UploadId: " + r)
-  return St(e)
+  return Pt(e)
 }
-function Kf(r) {
-  let e = le(r, "ETag")
+function sh(r) {
+  let e = pe(r, "ETag")
   if (!e) throw new Error("UploadPartCopy returned empty ETag: " + r)
-  return St(e).replace(/"/g, "")
+  return Pt(e).replace(/"/g, "")
 }
-function Wf(r) {
-  let e = Math.max(jf, Math.floor((r - 1) / Lf) + 1)
-  if (e > zf) throw new Error(`Object size ${r} exceeds multipart copy limit`)
+function nh(r) {
+  let e = Math.max(Yf, Math.floor((r - 1) / eh) + 1)
+  if (e > Zf) throw new Error(`Object size ${r} exceeds multipart copy limit`)
   return e
 }
-var Es = class {
+var Ts = class {
   addition
   bucket
   endpoint
@@ -17607,7 +18054,7 @@ var Es = class {
   async fetch(e, t, i = null, s = {}) {
     let n = { ...s }
     this.userAgent && (n["user-agent"] = this.userAgent)
-    let { headers: o } = await yl({
+    let { headers: o } = await Pl({
         method: e,
         url: t,
         region: this.region,
@@ -17635,8 +18082,8 @@ var Es = class {
         let l = this.getUrl("", d),
           u = await this.fetch("GET", l),
           p = await u.text()
-        if (!u.ok) throw tt(p, u.status)
-        let f = Mf(p, e, o, i)
+        if (!u.ok) throw rt(p, u.status)
+        let f = rh(p, e, o, i)
         if ((n.push(...f.files), !f.isTruncated)) break
         if (f.nextContinuationToken) {
           a = f.nextContinuationToken
@@ -17653,8 +18100,8 @@ var Es = class {
         let d = this.getUrl("", c),
           l = await this.fetch("GET", d),
           u = await l.text()
-        if (!l.ok) throw tt(u, l.status)
-        let p = Nf(u, e, o, i)
+        if (!l.ok) throw rt(u, l.status)
+        let p = th(u, e, o, i)
         if ((n.push(...p.files), !p.isTruncated)) break
         if (p.nextMarker) a = p.nextMarker
         else if (p.files.length > 0) a = p.files[p.files.length - 1].path
@@ -17669,7 +18116,7 @@ var Es = class {
     if (i.status === 404) return null
     if (!i.ok) {
       let a = await i.text().catch(() => "")
-      throw tt(a, i.status)
+      throw rt(a, i.status)
     }
     let s = parseInt(i.headers.get("content-length") || "0", 10),
       n = i.headers.get("last-modified") || new Date().toISOString(),
@@ -17691,7 +18138,7 @@ var Es = class {
       o = await this.fetch("PUT", s, t, n)
     if (!o.ok) {
       let a = await o.text().catch(() => "")
-      throw tt(a, o.status)
+      throw rt(a, o.status)
     }
   }
   async deleteObject(e) {
@@ -17699,32 +18146,32 @@ var Es = class {
       i = await this.fetch("DELETE", t)
     if (!i.ok && i.status !== 404 && i.status !== 204) {
       let s = await i.text().catch(() => "")
-      throw tt(s, i.status)
+      throw rt(s, i.status)
     }
   }
   async copyObject(e, t, i) {
-    if (i !== void 0 && i > $f) return this.copyMultipart(e, t, i)
+    if (i !== void 0 && i > Xf) return this.copyMultipart(e, t, i)
     let s = je(e, !1),
       n = je(t, !1),
-      o = et(`${this.bucket}/${s}`, !1),
+      o = tt(`${this.bucket}/${s}`, !1),
       a = this.getUrl(n),
       c = { "x-amz-copy-source": o },
       d = await this.fetch("PUT", a, null, c)
     if (!d.ok) {
       let l = await d.text().catch(() => "")
-      throw tt(l, d.status)
+      throw rt(l, d.status)
     }
   }
   async copyMultipart(e, t, i) {
     let s = je(e, !1),
       n = je(t, !1),
-      o = et(`${this.bucket}/${s}`, !1),
+      o = tt(`${this.bucket}/${s}`, !1),
       a = this.getUrl(n, { uploads: "" }),
       c = await this.fetch("POST", a),
       d = await c.text()
-    if (!c.ok) throw tt(d, c.status)
-    let l = Hf(d),
-      u = Wf(i),
+    if (!c.ok) throw rt(d, c.status)
+    let l = ih(d),
+      u = nh(i),
       p = []
     try {
       let f = 0,
@@ -17732,18 +18179,18 @@ var Es = class {
       for (; f < i; ) {
         let m = Math.min(f + u, i) - 1,
           v = this.getUrl(n, { partNumber: h.toString(), uploadId: l }),
-          w = {
+          x = {
             "x-amz-copy-source": o,
             "x-amz-copy-source-range": `bytes=${f}-${m}`,
           },
-          _ = await this.fetch("PUT", v, null, w),
+          _ = await this.fetch("PUT", v, null, x),
           b = await _.text()
-        if (!_.ok) throw tt(b, _.status)
-        let S = Kf(b)
+        if (!_.ok) throw rt(b, _.status)
+        let S = sh(b)
         ;(p.push({ partNumber: h, etag: S }), (f += u), h++)
       }
       let y = this.getUrl(n, { uploadId: l }),
-        x = [
+        w = [
           "<CompleteMultipartUpload>",
           ...p.map(
             (m) =>
@@ -17751,12 +18198,12 @@ var Es = class {
           ),
           "</CompleteMultipartUpload>",
         ].join(""),
-        g = await this.fetch("POST", y, x, {
+        g = await this.fetch("POST", y, w, {
           "content-type": "application/xml",
         })
       if (!g.ok) {
         let m = await g.text().catch(() => "")
-        throw tt(m, g.status)
+        throw rt(m, g.status)
       }
     } catch (f) {
       let h = this.getUrl(n, { uploadId: l })
@@ -17776,7 +18223,7 @@ var Es = class {
     }
     if (s)
       if (n) {
-        let f = await As({
+        let f = await Ds({
             url: l,
             region: this.region,
             accessKeyId: this.accessKeyId,
@@ -17793,9 +18240,9 @@ var Es = class {
             : (h.host = s.replace(/\/+$/, "")),
           o)
         ) {
-          let x = "/" + this.bucket
-          if (h.pathname.startsWith(x)) {
-            let g = h.pathname.substring(x.length)
+          let w = "/" + this.bucket
+          if (h.pathname.startsWith(w)) {
+            let g = h.pathname.substring(w.length)
             ;(g || (g = "/"), (h.pathname = g))
           }
         }
@@ -17807,16 +18254,16 @@ var Es = class {
         f.length === 2 &&
           (f[0] === "http" || f[0] === "https") &&
           ((h = f[0]), (y = f[1].replace(/\/+$/, "")))
-        let x = this.isPathStyle ? `/${this.bucket}/${c}` : `/${c}`
+        let w = this.isPathStyle ? `/${this.bucket}/${c}` : `/${c}`
         return (
           o &&
-            x.startsWith(`/${this.bucket}`) &&
-            ((x = x.substring(`/${this.bucket}`.length)), x || (x = "/")),
-          { url: `${h}://${y}${x.startsWith("/") ? "" : "/"}${x}` }
+            w.startsWith(`/${this.bucket}`) &&
+            ((w = w.substring(`/${this.bucket}`.length)), w || (w = "/")),
+          { url: `${h}://${y}${w.startsWith("/") ? "" : "/"}${w}` }
         )
       }
     return {
-      url: await As({
+      url: await Ds({
         url: l,
         region: this.region,
         accessKeyId: this.accessKeyId,
@@ -17841,7 +18288,7 @@ var Es = class {
         (c = l.toString()))
     }
     return {
-      upload_url: await As({
+      upload_url: await Ds({
         method: "PUT",
         url: c,
         region: this.region,
@@ -17854,7 +18301,7 @@ var Es = class {
     }
   }
 }
-function Gf(r) {
+function oh(r) {
   let e = { ...(r || {}) }
   return (
     (e.bucket = (e.bucket || "").trim()),
@@ -17882,16 +18329,16 @@ function Gf(r) {
     e
   )
 }
-var Ds = class {
+var Is = class {
   client
   addition
   driverName
   dogeExpiredAt
   dogeTimer
   constructor(e, t = "S3") {
-    ;((this.addition = Gf(e)),
+    ;((this.addition = oh(e)),
       (this.driverName = t),
-      (this.client = new Es(this.addition)))
+      (this.client = new Ts(this.addition)))
   }
   async init() {
     this.driverName.toLowerCase().includes("doge") &&
@@ -17899,7 +18346,7 @@ var Ds = class {
   }
   async refreshDogeToken() {
     try {
-      let e = await xl(
+      let e = await Al(
         this.addition.access_key_id,
         this.addition.secret_access_key,
       )
@@ -17929,7 +18376,7 @@ var Ds = class {
   getRemotePath(e) {
     let t = this.addition.root_folder_path || "/",
       i = e || "/"
-    return (t !== "/" && !wl(t, i) && (i = oe(t, i)), je(i, !1))
+    return (t !== "/" && !Cl(t, i) && (i = oe(t, i)), je(i, !1))
   }
   async fileItemFromS3(e, t) {
     let i, s
@@ -17951,7 +18398,7 @@ var Ds = class {
       is_dir: e.isFolder,
       modified: e.modified,
       sign: e.etag || t,
-      type: K(e.name, e.isFolder),
+      type: L(e.name, e.isFolder),
       thumb: "",
       raw_url: i,
       raw_url_headers: s,
@@ -17979,7 +18426,7 @@ var Ds = class {
     let i = this.getRemotePath(t),
       s = await this.client.headObject(i)
     if (s) {
-      let a = pt(i)
+      let a = ft(i)
       return this.fileItemFromS3(
         {
           name: a,
@@ -17995,7 +18442,7 @@ var Ds = class {
     let n = this.addition.list_object_version === "v2" ? "v2" : "v1"
     if ((await this.client.listPrefixProbe(i, n)) || i === "" || i === "/")
       return {
-        name: pt(i),
+        name: ft(i),
         size: 0,
         is_dir: !0,
         modified: new Date().toISOString(),
@@ -18007,14 +18454,14 @@ var Ds = class {
   async mkdir(e, t) {
     await this.checkDogeToken()
     let i = this.getRemotePath(t),
-      s = Dr(this.addition.placeholder),
+      s = Ir(this.addition.placeholder),
       n = oe(i, s)
     await this.client.putObject(n, new Uint8Array(0))
   }
   async rename(e, t, i) {
     await this.checkDogeToken()
     let s = this.getRemotePath(t),
-      n = Vn(s),
+      n = Yn(s),
       o = oe(n, i),
       a = await this.client.headObject(s)
     a
@@ -18084,7 +18531,7 @@ var Ds = class {
         ? await this.removeDirRecursive(o)
         : await this.client.deleteObject(o)
     }
-    let s = Dr(this.addition.placeholder)
+    let s = Ir(this.addition.placeholder)
     ;(await this.client.deleteObject(oe(e, s)).catch(() => {}),
       this.addition.placeholder &&
         (await this.client
@@ -18110,18 +18557,18 @@ var Ds = class {
   }
   async other(e, t, i) {
     if (e === "direct_upload" || e === "get_direct_upload_info") {
-      let s = i?.name || i?.fileName || pt(t),
-        n = Vn(t)
+      let s = i?.name || i?.fileName || ft(t),
+        n = Yn(t)
       return await this.getDirectUploadInfo(n, s)
     }
     throw new Error(`Unsupported method ${e}`)
   }
 }
-me()
-function Jn(r, e) {
+he()
+function Zn(r, e) {
   return (r << e) | (r >>> (32 - e))
 }
-var Fs = class r {
+var Bs = class r {
   h0 = 1732584193
   h1 = 4023233417
   h2 = 2562383102
@@ -18153,7 +18600,7 @@ var Fs = class r {
       t[c] = (e[d] << 24) | (e[d + 1] << 16) | (e[d + 2] << 8) | e[d + 3]
     }
     for (let c = 16; c < 80; c++)
-      t[c] = Jn(t[c - 3] ^ t[c - 8] ^ t[c - 14] ^ t[c - 16], 1)
+      t[c] = Zn(t[c - 3] ^ t[c - 8] ^ t[c - 14] ^ t[c - 16], 1)
     let i = this.h0,
       s = this.h1,
       n = this.h2,
@@ -18169,8 +18616,8 @@ var Fs = class r {
           : c < 60
             ? ((d = (s & n) | (s & o) | (n & o)), (l = 2400959708))
             : ((d = s ^ n ^ o), (l = 3395469782))
-      let u = (Jn(i, 5) + d + a + l + t[c]) | 0
-      ;((a = o), (o = n), (n = Jn(s, 30)), (s = i), (i = u))
+      let u = (Zn(i, 5) + d + a + l + t[c]) | 0
+      ;((a = o), (o = n), (n = Zn(s, 30)), (s = i), (i = u))
     }
     ;((this.h0 = (this.h0 + i) | 0),
       (this.h1 = (this.h1 + s) | 0),
@@ -18218,13 +18665,13 @@ var Fs = class r {
     )
   }
 }
-function _l(r) {
+function El(r) {
   if (typeof Buffer < "u") return Buffer.from(r).toString("base64")
   let e = ""
   for (let t = 0; t < r.length; t++) e += String.fromCharCode(r[t])
   return btoa(e)
 }
-function vl(r) {
+function Dl(r) {
   let e = new Map()
   if (!r) return e
   let t = r.split(";")
@@ -18240,30 +18687,30 @@ function vl(r) {
   }
   return e
 }
-function Ts(r) {
+function Rs(r) {
   let e = []
   for (let [t, i] of r.entries()) t && i && e.push(`${t}=${i}`)
   return e.join("; ")
 }
-var Is = class {
+var Us = class {
   cookies = new Map()
   onCookieUpdate
   pendingCookie = null
   addition
   constructor(e, t) {
     ;((this.addition = e),
-      (this.cookies = vl(e.cookies || "")),
+      (this.cookies = Dl(e.cookies || "")),
       (this.onCookieUpdate = t))
   }
   getCookies() {
     return this.cookies
   }
   getCookieStr() {
-    return Ts(this.cookies)
+    return Rs(this.cookies)
   }
   setCookiesStr(e) {
-    ;((this.cookies = vl(e)),
-      (this.pendingCookie = Ts(this.cookies)),
+    ;((this.cookies = Dl(e)),
+      (this.pendingCookie = Rs(this.cookies)),
       (this.addition.cookies = this.pendingCookie),
       this.onCookieUpdate && this.onCookieUpdate(this.pendingCookie))
   }
@@ -18289,7 +18736,7 @@ var Is = class {
       }
     }
     s &&
-      ((this.pendingCookie = Ts(this.cookies)),
+      ((this.pendingCookie = Rs(this.cookies)),
       (this.addition.cookies = this.pendingCookie),
       this.onCookieUpdate && this.onCookieUpdate(this.pendingCookie))
   }
@@ -18368,7 +18815,7 @@ var Is = class {
     ;(n.openid && this.cookies.set("openid", n.openid),
       n.access_token && this.cookies.set("access_token", n.access_token),
       n.refresh_token && this.cookies.set("refresh_token", n.refresh_token),
-      (this.pendingCookie = Ts(this.cookies)),
+      (this.pendingCookie = Rs(this.cookies)),
       (this.addition.cookies = this.pendingCookie),
       this.onCookieUpdate && this.onCookieUpdate(this.pendingCookie))
   }
@@ -18430,11 +18877,11 @@ var Is = class {
       c = `https://upload.weiyun.com/ftnup_v2/weiyun?g_tk=${encodeURIComponent(a)}&cmd=${i}`
       let y = "----WebKitFormBoundaryIifrOqiswelC8nfe"
       l["Content-Type"] = `multipart/form-data; boundary=${y}`
-      let x = JSON.stringify(this.newUploadJson(t, i, s)),
+      let w = JSON.stringify(this.newUploadJson(t, i, s)),
         g = `--${y}\r
 Content-Disposition: form-data; name="json"\r
 \r
-${x}\r
+${w}\r
 `,
         m = ""
       n &&
@@ -18447,10 +18894,10 @@ Content-Type: application/octet-stream\r
       let v = `\r
 --${y}--\r
 `,
-        w = new TextEncoder(),
-        _ = w.encode(g),
-        b = n ? w.encode(m) : new Uint8Array(0),
-        S = w.encode(v),
+        x = new TextEncoder(),
+        _ = x.encode(g),
+        b = n ? x.encode(m) : new Uint8Array(0),
+        S = x.encode(v),
         A = n ? new Uint8Array(n) : new Uint8Array(0),
         C = _.length + b.length + A.length + S.length,
         P = new Uint8Array(C),
@@ -18618,7 +19065,7 @@ Content-Type: application/octet-stream\r
       u === 0 && (u = 128),
       (d = s - l))
     let p = [],
-      f = new Fs()
+      f = new Bs()
     for (let _ = 0; _ < d; _ += 1048576) {
       let b = n.subarray(_, _ + 1048576)
       ;(f.update(b), p.push({ sha: f.getStateHex(), offset: _, size: 1048576 }))
@@ -18626,9 +19073,9 @@ Content-Type: application/octet-stream\r
     let h = n.subarray(d, d + l - u)
     f.update(h)
     let y = f.getStateHex(),
-      x = n.subarray(d + l - u, s)
-    f.update(x)
-    let g = _l(x),
+      w = n.subarray(d + l - u, s)
+    f.update(w)
+    let g = El(w),
       m = f.digestHex()
     p.push({ sha: m, offset: d, size: l })
     let v = {
@@ -18647,12 +19094,12 @@ Content-Type: application/octet-stream\r
         check_data: g,
         block_info_list: p,
       },
-      w = await this.request("preUpload", "PreUpload", 247120, v)
+      x = await this.request("preUpload", "PreUpload", 247120, v)
     return (
-      w.common_upload_rsp &&
-        ((w.common_upload_rsp.file_sha = m),
-        (w.common_upload_rsp.file_size = s)),
-      w
+      x.common_upload_rsp &&
+        ((x.common_upload_rsp.file_sha = m),
+        (x.common_upload_rsp.file_size = s)),
+      x
     )
   }
   async addUploadChannel(e, t, i) {
@@ -18681,12 +19128,12 @@ Content-Type: application/octet-stream\r
     )
   }
 }
-var Vf = 45,
-  bl = 1024 * 1024
-function Jf(r) {
+var ah = 45,
+  Fl = 1024 * 1024
+function ch(r) {
   return Buffer.from(JSON.stringify(r), "utf8").toString("base64")
 }
-function Qf(r) {
+function dh(r) {
   try {
     let e = JSON.parse(Buffer.from(r, "base64").toString("utf8"))
     if (
@@ -18704,7 +19151,7 @@ function Qf(r) {
     )
   }
 }
-function Pl(r) {
+function Bl(r) {
   if (!r) return new Date().toISOString()
   try {
     let e = typeof r == "string" ? parseInt(r, 10) : r
@@ -18717,31 +19164,31 @@ function Pl(r) {
   } catch {}
   return new Date().toISOString()
 }
-function kl(r) {
+function Tl(r) {
   return {
     name: r.dir_name,
     size: 0,
     is_dir: !0,
-    modified: Pl(r.dir_mtime || r.dir_ctime),
+    modified: Bl(r.dir_mtime || r.dir_ctime),
     sign: r.dir_key,
     type: 1,
     thumb: "",
     raw_url: "",
   }
 }
-function Sl(r) {
+function Il(r) {
   return {
     name: r.filename,
     size: r.file_size || 0,
     is_dir: !1,
-    modified: Pl(r.file_mtime || r.file_ctime),
+    modified: Bl(r.file_mtime || r.file_ctime),
     sign: r.file_id,
-    type: K(r.filename, !1),
+    type: L(r.filename, !1),
     thumb: r.ext_info?.thumb_url || "",
     raw_url: "",
   }
 }
-function Qn(r) {
+function eo(r) {
   let e = { ...(r || {}) }
   return (
     (e.root_folder_id = (e.root_folder_id || "").trim()),
@@ -18752,16 +19199,16 @@ function Qn(r) {
     e
   )
 }
-var Bs = class {
+var qs = class {
   client
   addition
   rootFolderId = ""
   rootPdirKey = ""
   uploadThreads = 4
   pathFolderCache = new Map()
-  budget = { used: 0, limit: Vf }
+  budget = { used: 0, limit: ah }
   constructor(e, t) {
-    ;((this.addition = Qn(e)), (this.client = new Is(this.addition, t)))
+    ;((this.addition = eo(e)), (this.client = new Us(this.addition, t)))
   }
   async init() {
     let e = parseInt(this.addition.upload_thread || "4", 10)
@@ -18922,7 +19369,7 @@ var Bs = class {
       )
         break
     }
-    let a = [...s.map(kl), ...n.map(Sl)]
+    let a = [...s.map(Tl), ...n.map(Il)]
     return G(
       a,
       this.addition.order_by === "size"
@@ -18952,9 +19399,9 @@ var Bs = class {
         raw_url: "",
       }
     let { file: s, folder: n, parent: o, isDir: a } = await this.resolveFile(t)
-    if (a && n) return kl(n)
+    if (a && n) return Tl(n)
     if (s) {
-      let c = Sl(s)
+      let c = Il(s)
       try {
         let d = await this.client.diskFileDownload({
           ppdir_key: o.pdirKey,
@@ -19079,7 +19526,7 @@ var Bs = class {
     for (let u of l) {
       let p = { ...u }
       for (; p.offset < i.length; ) {
-        let f = Math.min(p.len || bl, i.length - p.offset),
+        let f = Math.min(p.len || Fl, i.length - p.offset),
           h = i.subarray(p.offset, p.offset + f),
           y = await this.client.uploadPiece(p, d, h)
         if (y.upload_state === 2) break
@@ -19090,7 +19537,7 @@ var Bs = class {
   async createUploadSession(e, t, i, s, n) {
     this.budget.used = 0
     let o = await this.resolveFolder(t || "/"),
-      a = bl,
+      a = Fl,
       c = Math.max(1, Math.ceil(Math.max(0, Number(s) || 0) / a)),
       d = new Uint8Array(0),
       l = await this.client.preUpload(
@@ -19119,7 +19566,7 @@ var Bs = class {
       reuse: !1,
       partCount: c,
       chunkSize: a,
-      session: Jf({
+      session: ch({
         uploadKey: u.upload_key,
         ex: u.ex,
         parentDirKey: o.pdirKey,
@@ -19133,7 +19580,7 @@ var Bs = class {
     }
   }
   async uploadPart(e, t, i) {
-    let s = Qf(e)
+    let s = dh(e)
     if (!Number.isInteger(t) || t < 1 || t > s.partCount)
       throw new Error(`[WeiYun] \u5206\u7247\u5E8F\u53F7\u65E0\u6548: ${t}`)
     let n = (t - 1) * s.chunkSize,
@@ -19143,18 +19590,28 @@ var Bs = class {
   }
   async completeUploadSession(e, t = []) {}
 }
-var Yn = null
-async function Xf() {
-  if (!Yn) {
-    let { LocalDriver: r } = await Promise.resolve().then(() => (Cl(), Al))
-    Yn = new r()
+var no = null
+async function uh() {
+  if (!no) {
+    let { LocalDriver: r } = await Promise.resolve().then(() => (Ul(), Rl))
+    no = new r()
   }
-  return Yn
+  return no
 }
-var Zn = new Map(),
-  Yf = new Map(),
-  Rs = new Map()
-async function Zf(r, e, t) {
+async function ph(r) {
+  if (typeof process < "u" && process.release?.name === "node") {
+    let { SFTPDriver: e } = await Promise.resolve().then(() => (Ll(), zl)),
+      t = new e(de(r))
+    return (await t.init?.(), t)
+  }
+  throw new Error(
+    "SFTP storage driver requires Node.js runtime (raw TCP sockets not available in Cloudflare Workers)",
+  )
+}
+var oo = new Map(),
+  fh = new Map(),
+  $s = new Map()
+async function hh(r, e, t) {
   let i = r.get(e)
   if (i) return i
   let s = t()
@@ -19165,25 +19622,26 @@ async function Zf(r, e, t) {
     throw (r.get(e) === s && r.delete(e), n)
   }
 }
-function ue(r) {
+function de(r) {
   let e = r?.addition
   return e ? (typeof e == "string" ? JSON.parse(e || "{}") : e) : {}
 }
-async function El(r, e) {
+async function Nl(r, e) {
   let t = (r || "").toLowerCase().replace(/[^a-z0-9]/g, "")
   if (t === "local") {
-    if (typeof process < "u" && process.release?.name === "node") return Xf()
+    if (typeof process < "u" && process.release?.name === "node") return uh()
     throw new Error(
       "Local storage driver requires Node.js runtime (not available in Cloudflare Workers)",
     )
   }
+  if (t === "sftp") return ph(e)
   if (!e)
     throw new Error(
       "failed get driver: storage config not found for driver " + r,
     )
   let i
   if (t === "onedriveapp") {
-    i = new di(ue(e))
+    i = new pi(de(e))
     try {
       await i.init?.()
     } catch (s) {
@@ -19196,7 +19654,7 @@ async function El(r, e) {
     t === "onedrivesharepoint" ||
     (t.startsWith("onedrive") && t !== "onedriveapp")
   ) {
-    i = new ci(ue(e), async (s) => {
+    i = new ui(de(e), async (s) => {
       try {
         let n = await U(),
           o = (n.storages || []).find((c) => c.id === e?.id)
@@ -19224,29 +19682,29 @@ async function El(r, e) {
     t === "aliyundriveoauth2" ||
     t.includes("aliyun")
   )
-    ((i = new ui(ue(e))), await i.init?.())
+    ((i = new hi(de(e))), await i.init?.())
   else if (
     t === "googledrive" ||
     t === "gdrive" ||
     t === "google" ||
     t.startsWith("google")
   )
-    ((i = new fi(ue(e))), await i.init?.())
+    ((i = new mi(de(e))), await i.init?.())
   else if (
     t === "quark" ||
     t === "quarkuc" ||
     t === "uc" ||
     t === "quarkcookie"
   )
-    ((i = new gi(ue(e))), await i.init?.())
+    ((i = new wi(de(e))), await i.init?.())
   else if (
     t === "123pan" ||
     t === "123" ||
     t === "123panshare" ||
     t.startsWith("123")
   ) {
-    let s = ue(e)
-    ;((i = new yi(s, async (n) => {
+    let s = de(e)
+    ;((i = new _i(s, async (n) => {
       try {
         let o = await U(),
           a = (o.storages || []).find((d) => d.id === e?.id)
@@ -19269,8 +19727,8 @@ async function El(r, e) {
     t === "baidushare" ||
     t.startsWith("baidu")
   ) {
-    let s = ue(e)
-    ;((i = new vi(s, async (n) => {
+    let s = de(e)
+    ;((i = new Si(s, async (n) => {
       try {
         let o = await U(),
           a = (o.storages || []).find((d) => d.id === e?.id)
@@ -19281,7 +19739,7 @@ async function El(r, e) {
             : a.addition || {}
         ;((c.access_token = n.access_token),
           (c.refresh_token = n.refresh_token),
-          (a.addition = JSON.stringify(Lt(c))),
+          (a.addition = JSON.stringify(Mt(c))),
           await $(o))
       } catch (o) {
         console.warn("[baidu_netdisk] failed to persist token:", o)
@@ -19295,8 +19753,8 @@ async function El(r, e) {
     t === "115cloud" ||
     t.startsWith("115")
   ) {
-    let s = ue(e)
-    ;((i = new Si(s, async (n) => {
+    let s = de(e)
+    ;((i = new Ci(s, async (n) => {
       try {
         let o = await U(),
           a = (o.storages || []).find((d) => d.id === e?.id)
@@ -19315,8 +19773,8 @@ async function El(r, e) {
     })),
       await i.init?.())
   } else if (t === "github" || t === "githubapi" || t === "github_api") {
-    let s = ue(e)
-    ;((i = new Ai(s)), await i.init?.())
+    let s = de(e)
+    ;((i = new Di(s)), await i.init?.())
   } else if (
     t === "thunderexpert" ||
     t === "thunderbrowserexpert" ||
@@ -19324,8 +19782,8 @@ async function El(r, e) {
     (t.includes("thunder") && t.includes("expert")) ||
     (t.includes("xunlei") && t.includes("expert"))
   ) {
-    let s = ue(e)
-    ;((i = new ps(s, async (n) => {
+    let s = de(e)
+    ;((i = new gs(s, async (n) => {
       try {
         ;(n.device_id && (s.device_id = n.device_id),
           n.refresh_token && (s.refresh_token = n.refresh_token),
@@ -19357,8 +19815,8 @@ async function El(r, e) {
     t.includes("thunder") ||
     t.includes("xunlei")
   ) {
-    let s = ue(e)
-    ;((i = new Pr(s, async (n) => {
+    let s = de(e)
+    ;((i = new Er(s, async (n) => {
       try {
         ;(n.device_id && (s.device_id = n.device_id),
           n.refresh_token && (s.refresh_token = n.refresh_token),
@@ -19389,8 +19847,8 @@ async function El(r, e) {
     t === "lanzoui" ||
     t === "lanzous"
   ) {
-    let s = ue(e)
-    ;((i = new gs(s, async (n) => {
+    let s = de(e)
+    ;((i = new ws(s, async (n) => {
       try {
         let o = await U(),
           a = (o.storages || []).find((d) => d.id === e?.id)
@@ -19416,11 +19874,11 @@ async function El(r, e) {
     t.startsWith("189") ||
     t.includes("cloud189")
   ) {
-    let s = ue(e)
-    ;((i = new ws(s)), await i.init?.())
+    let s = de(e)
+    ;((i = new bs(s)), await i.init?.())
   } else if (t === "webdav" || t === "webdavdriver") {
-    let s = ue(e)
-    ;((i = new vs(s)), await i.init?.())
+    let s = de(e)
+    ;((i = new Ss(s)), await i.init?.())
   } else if (
     t === "s3" ||
     t === "doge" ||
@@ -19434,8 +19892,8 @@ async function El(r, e) {
     t === "oss" ||
     t === "kodo"
   ) {
-    let s = ue(e)
-    ;((i = new Ds(s, e.driver || "S3")), await i.init?.())
+    let s = de(e)
+    ;((i = new Is(s, e.driver || "S3")), await i.init?.())
   } else if (
     t === "wopan" ||
     t === "unicom" ||
@@ -19443,8 +19901,8 @@ async function El(r, e) {
     t === "woyun" ||
     t === "chinaunicom"
   ) {
-    let s = ue(e)
-    ;((i = new Ps(s, async (n, o) => {
+    let s = de(e)
+    ;((i = new Es(s, async (n, o) => {
       try {
         let a = await U(),
           c = (a.storages || []).find((l) => l.id === e?.id)
@@ -19455,7 +19913,7 @@ async function El(r, e) {
             : c.addition || {}
         ;((d.access_token = n),
           (d.refresh_token = o),
-          (c.addition = JSON.stringify(Kn(d))),
+          (c.addition = JSON.stringify(Jn(d))),
           await $(a))
       } catch (a) {
         console.warn("[WoPan] failed to persist tokens:", a)
@@ -19468,8 +19926,8 @@ async function El(r, e) {
     t === "txweiyun" ||
     t.includes("weiyun")
   ) {
-    let s = ue(e)
-    ;((i = new Bs(s, async (n) => {
+    let s = de(e)
+    ;((i = new qs(s, async (n) => {
       try {
         let o = await U(),
           a = (o.storages || []).find((d) => d.id === e?.id)
@@ -19478,7 +19936,7 @@ async function El(r, e) {
           typeof a.addition == "string"
             ? JSON.parse(a.addition || "{}")
             : a.addition || {}
-        ;((c.cookies = n), (a.addition = JSON.stringify(Qn(c))), await $(o))
+        ;((c.cookies = n), (a.addition = JSON.stringify(eo(c))), await $(o))
       } catch (o) {
         console.warn("[WeiYun] failed to persist cookies:", o)
       }
@@ -19489,24 +19947,24 @@ async function El(r, e) {
 }
 async function ee(r, e) {
   if ((r || "").toLowerCase().replace(/[^a-z0-9]/g, "") === "local")
-    return El(r, e)
+    return Nl(r, e)
   if (!e)
     throw new Error(
       "failed get driver: storage config not found for driver " + r,
     )
   let i = `${e.id}_${e.modified}`,
-    s = Zn.get(i)
+    s = oo.get(i)
   return (
     s ||
-    Zf(Yf, i, async () => {
-      let n = Zn.get(i)
+    hh(fh, i, async () => {
+      let n = oo.get(i)
       if (n) return n
-      let o = await El(r, e)
-      return (Zn.set(i, o), o)
+      let o = await Nl(r, e)
+      return (oo.set(i, o), o)
     })
   )
 }
-function eh(r) {
+function gh(r) {
   let e = (r || "").toLowerCase().replace(/[^a-z0-9]/g, "")
   return (
     e === "189" ||
@@ -19516,7 +19974,7 @@ function eh(r) {
     e === "189pan"
   )
 }
-async function th(r, e) {
+async function mh(r, e) {
   if (r)
     try {
       r(e)
@@ -19524,10 +19982,10 @@ async function th(r, e) {
     } catch {}
   await e
 }
-async function rh(r, e) {
+async function yh(r, e) {
   let t = String(r?.id || "")
   if (!t) return
-  let s = (Rs.get(t) || Promise.resolve())
+  let s = ($s.get(t) || Promise.resolve())
     .catch(() => {})
     .then(async () => {
       let n = await U(),
@@ -19537,21 +19995,21 @@ async function rh(r, e) {
         typeof o.addition == "string"
           ? JSON.parse(o.addition || "{}")
           : o.addition || {}
-      ;(a.cookies !== void 0 || Dl(r?.driver)
+      ;(a.cookies !== void 0 || Ml(r?.driver)
         ? (a.cookies = e)
         : (a.cookie = e),
         (o.addition = JSON.stringify(a)),
         String(r?.id) === t && (r.addition = o.addition),
         await $(n))
     })
-  Rs.set(t, s)
+  $s.set(t, s)
   try {
     await s
   } finally {
-    Rs.get(t) === s && Rs.delete(t)
+    $s.get(t) === s && $s.delete(t)
   }
 }
-function Dl(r) {
+function Ml(r) {
   let e = (r || "").toLowerCase().replace(/[^a-z0-9]/g, "")
   return (
     e === "weiyun" ||
@@ -19561,15 +20019,15 @@ function Dl(r) {
   )
 }
 async function be(r, e, t, i) {
-  if (!eh(r) && !Dl(r)) return
+  if (!gh(r) && !Ml(r)) return
   let n = t.consumePendingCookie?.call(t)
   if (!n) return
-  let o = rh(e, n).catch((a) => {
+  let o = yh(e, n).catch((a) => {
     console.warn(`[${r}] failed to persist cookie:`, a)
   })
-  await th(i?.waitUntil, o)
+  await mh(i?.waitUntil, o)
 }
-async function ht(r, e) {
+async function gt(r, e) {
   let t = await ne(r),
     i = [],
     s = "Virtual"
@@ -19622,12 +20080,12 @@ async function ht(r, e) {
       }
     }),
     i.forEach((c) => {
-      c.type || (c.type = K(c.name, c.is_dir))
+      c.type || (c.type = L(c.name, c.is_dir))
     }),
     { content: i, provider: s, storage: t.storage }
   )
 }
-async function Fr(r, e) {
+async function Rr(r, e) {
   let t = await ne(r)
   if (t.isVirtual)
     return {
@@ -19644,7 +20102,7 @@ async function Fr(r, e) {
     }
   if (t.storage && t.relative === "/") {
     let o = t.cleanPath.split("/").filter(Boolean).pop() || "root",
-      a = ue(t.storage)
+      a = de(t.storage)
     return {
       item: {
         name: o,
@@ -19668,7 +20126,7 @@ async function Fr(r, e) {
     await be(i, t.storage, s, e)
   }
   return (
-    n.type || (n.type = K(n.name, n.is_dir)),
+    n.type || (n.type = L(n.name, n.is_dir)),
     {
       item: n,
       provider: i,
@@ -19676,7 +20134,7 @@ async function Fr(r, e) {
     }
   )
 }
-async function Fl(r, e) {
+async function Hl(r, e) {
   let t = await ne(r)
   if (t.isVirtual) throw new Error("failed get storage: storage not found")
   let i = await ee(t.storage.driver, t.storage)
@@ -19686,7 +20144,7 @@ async function Fl(r, e) {
     await be(t.storage.driver, t.storage, i, e)
   }
 }
-async function Tl(r, e, t) {
+async function Kl(r, e, t) {
   let i = await ne(r)
   if (i.isVirtual) throw new Error("failed get storage: storage not found")
   let s = await ee(i.storage.driver, i.storage)
@@ -19696,7 +20154,7 @@ async function Tl(r, e, t) {
     await be(i.storage.driver, i.storage, s, t)
   }
 }
-async function Il(r, e, t) {
+async function Wl(r, e, t) {
   for (let i of e) {
     let s = `${r}/${i}`,
       n = await ne(s)
@@ -19709,7 +20167,7 @@ async function Il(r, e, t) {
     }
   }
 }
-async function Bl(r, e, t, i) {
+async function Gl(r, e, t, i) {
   for (let s of t) {
     let n = `${r}/${s}`,
       o = `${e}/${s}`,
@@ -19725,7 +20183,7 @@ async function Bl(r, e, t, i) {
     }
   }
 }
-async function Rl(r, e, t, i) {
+async function Vl(r, e, t, i) {
   for (let s of t) {
     let n = `${r}/${s}`,
       o = `${e}/${s}`,
@@ -19741,7 +20199,7 @@ async function Rl(r, e, t, i) {
     }
   }
 }
-async function eo(r, e, t) {
+async function ao(r, e, t) {
   let i = await ne(r)
   if (i.isVirtual) throw new Error("failed get storage: storage not found")
   let s = await ee(i.storage.driver, i.storage)
@@ -19752,14 +20210,14 @@ async function eo(r, e, t) {
   }
 }
 te()
-var Tr = (r) =>
+var Ur = (r) =>
   "/" +
   String(r || "")
     .split("/")
     .filter(Boolean)
     .join("/")
-async function Ht(r, e, t) {
-  let s = Tr(r).split("/").filter(Boolean)
+async function Wt(r, e, t) {
+  let s = Ur(r).split("/").filter(Boolean)
   if (s.length < 1) return { ok: !1, error: "Invalid share path" }
   let n, o
   if (s[0] === "@s") {
@@ -19788,8 +20246,8 @@ async function Ht(r, e, t) {
   )
     return { ok: !0, share: c, virtualList: !0 }
   if (c.files.length === 1) {
-    let p = Tr(c.files[0]),
-      f = Tr([p, ...o].join("/"))
+    let p = Ur(c.files[0]),
+      f = Ur([p, ...o].join("/"))
     return { ok: !0, share: c, realPath: f }
   }
   let d = o[0],
@@ -19798,12 +20256,12 @@ async function Ht(r, e, t) {
       return f[f.length - 1] === d
     })
   if (!l) return { ok: !1, error: "path not found in share" }
-  let u = Tr([Tr(l), ...o.slice(1)].join("/"))
+  let u = Ur([Ur(l), ...o.slice(1)].join("/"))
   return { ok: !0, share: c, realPath: u }
 }
 te()
-Ke()
-var xh = {
+We()
+var Bh = {
   SEE_HIDES: 0,
   ACCESS_WITHOUT_PASSWORD: 1,
   OFFLINE_DOWNLOAD: 2,
@@ -19821,25 +20279,25 @@ var xh = {
   SHARE: 14,
   CUSTOMIZE_SHARE_ID: 15,
 }
-function wh(r) {
+function Rh(r) {
   return !r || r.role === 1
 }
-function _o(r) {
+function Co(r) {
   return !!r && r.role === 2
 }
-function _h(r, e) {
+function Uh(r, e) {
   return !r || r.disabled
     ? !1
-    : _o(r)
+    : Co(r)
       ? !0
-      : wh(r)
+      : Rh(r)
         ? !1
         : ((r.permission >> e) & 1) === 1
 }
 function De(r) {
-  return _h(r, xh.WRITE_CONTENT)
+  return Uh(r, Bh.WRITE_CONTENT)
 }
-function de(r, e = "/") {
+function le(r, e = "/") {
   let t = e || "/"
   if (t.startsWith("/@s")) return t
   let i = (r?.base_path || "/").trim()
@@ -19850,10 +20308,10 @@ function de(r, e = "/") {
   return s === "/" ? i : `${i}${s}`
 }
 te()
-Ke()
-xr()
-var vh = 24 * 3600
-async function Ur(r) {
+We()
+vr()
+var qh = 24 * 3600
+async function jr(r) {
   try {
     let e = await U(r?.env),
       t = {}
@@ -19862,28 +20320,28 @@ async function Ur(r) {
       s = parseInt(t.link_expiration, 10) || 0
     return !i && s <= 0
       ? { enabled: !1, expiresIn: 0 }
-      : { enabled: !0, expiresIn: s > 0 ? s : vh }
+      : { enabled: !0, expiresIn: s > 0 ? s : qh }
   } catch {
     return { enabled: !1, expiresIn: 0 }
   }
 }
-async function vo(r, e, t) {
-  let i = await ze(r),
+async function Eo(r, e, t) {
+  let i = await Le(r),
     s = Math.floor(Date.now() / 1e3) + t,
-    n = await Sn(`${e}:${s}`, i)
+    n = await En(`${e}:${s}`, i)
   return `${s}.${n}`
 }
-async function w0(r, e, t) {
+async function B0(r, e, t) {
   let i = t.lastIndexOf(".")
   if (i <= 0) return !1
   let s = parseInt(t.slice(0, i), 10),
     n = t.slice(i + 1)
   if (!Number.isFinite(s) || s <= Math.floor(Date.now() / 1e3)) return !1
-  let o = await ze(r)
-  return (await Sn(`${e}:${s}`, o)) === n
+  let o = await Le(r)
+  return (await En(`${e}:${s}`, o)) === n
 }
-Rr()
-async function _0(r = {}, e) {
+$r()
+async function R0(r = {}, e) {
   let t = (r.parent || "/").replace(/\/+/g, "/") || "/",
     i = String(r.keywords || "")
       .trim()
@@ -19896,22 +20354,22 @@ async function _0(r = {}, e) {
     d = []
   async function l(h, y) {
     if (y > a || d.length >= c) return
-    let x = []
+    let w = []
     try {
-      x = (await ht(h)).content || []
+      w = (await gt(h)).content || []
     } catch {
       return
     }
-    for (let g of x) {
+    for (let g of w) {
       if (d.length >= c) break
       let m = !i || g.name.toLowerCase().includes(i),
         v = !!g.is_dir,
-        w = !0
+        x = !0
       if (
-        (s === 1 && !v && (w = !1),
-        s === 2 && v && (w = !1),
+        (s === 1 && !v && (x = !1),
+        s === 2 && v && (x = !1),
         m &&
-          w &&
+          x &&
           d.push({
             ...g,
             parent: h.endsWith("/") && h !== "/" ? h.slice(0, -1) : h,
@@ -19928,7 +20386,7 @@ async function _0(r = {}, e) {
     p = (n - 1) * o
   return { content: d.slice(p, p + o), total: u }
 }
-var pe = new J(),
+var fe = new J(),
   Fe = (r) => {
     try {
       let e = r.executionCtx
@@ -19939,9 +20397,9 @@ var pe = new J(),
       return
     }
   },
-  We = (r) =>
+  Ge = (r) =>
     r.json({ code: 403, message: "Permission denied", data: null }, 403)
-pe.post("/dirs", async (r) => {
+fe.post("/dirs", async (r) => {
   let e = await r.req.json().catch(() => ({})),
     t = await Y(r),
     i = e.path || "/"
@@ -19949,16 +20407,16 @@ pe.post("/dirs", async (r) => {
     return r.json({ code: 401, message: "Unauthorized", data: null }, 401)
   let n = Fe(r),
     o = i
-  ;(!e.force_root || !_o(t)) && (o = de(t, o))
+  ;(!e.force_root || !Co(t)) && (o = le(t, o))
   try {
     if (o.startsWith("/@s")) {
-      let d = await Ht(o, e.password || "", r.env)
+      let d = await Wt(o, e.password || "", r.env)
       if (!d.ok) return r.json({ code: 400, message: d.error, data: null })
       if (d.virtualList) {
         let p = []
         for (let f of d.share.files || [])
           try {
-            let { item: h } = await Fr(f, n)
+            let { item: h } = await Rr(f, n)
             if (h.is_dir) {
               let y = String(f).split("/").filter(Boolean)
               p.push({
@@ -19974,7 +20432,7 @@ pe.post("/dirs", async (r) => {
           } catch {}
         return r.json({ code: 200, message: "success", data: p })
       }
-      let { content: l } = await ht(d.realPath, n),
+      let { content: l } = await gt(d.realPath, n),
         u = l
           .filter((p) => p.is_dir)
           .map((p) => ({
@@ -19988,7 +20446,7 @@ pe.post("/dirs", async (r) => {
           }))
       return r.json({ code: 200, message: "success", data: u })
     }
-    let { content: a } = await ht(o, n),
+    let { content: a } = await gt(o, n),
       c = a
         .filter((d) => d.is_dir)
         .map((d) => ({
@@ -20005,13 +20463,13 @@ pe.post("/dirs", async (r) => {
     return r.json({ code: 500, message: ie(a), data: null })
   }
 })
-pe.post("/list", async (r) => {
+fe.post("/list", async (r) => {
   let e = await r.req.json().catch(() => ({})),
     t = await Y(r)
   if (!(e.path || "/").startsWith("/@s") && (!t || t.disabled))
     return r.json({ code: 401, message: "Unauthorized", data: null }, 401)
   let s = Fe(r),
-    n = de(t, e.path || "/"),
+    n = le(t, e.path || "/"),
     o = parseInt(e.page, 10) || 1,
     a = parseInt(e.per_page, 10) || 0,
     c = (d) => {
@@ -20023,15 +20481,15 @@ pe.post("/list", async (r) => {
     }
   try {
     if (n.startsWith("/@s")) {
-      let w = await Ht(n, e.password || "", r.env)
-      if (!w.ok) return r.json({ code: 400, message: w.error, data: null })
-      if (w.virtualList) {
+      let x = await Wt(n, e.password || "", r.env)
+      if (!x.ok) return r.json({ code: 400, message: x.error, data: null })
+      if (x.virtualList) {
         let P = []
-        for (let T of w.share.files || []) {
+        for (let T of x.share.files || []) {
           let E = String(T).split("/").filter(Boolean),
             O = E[E.length - 1] || T
           try {
-            let { item: q } = await Fr(T, s)
+            let { item: q } = await Rr(T, s)
             P.push({
               name: O,
               size: q.size || 0,
@@ -20043,7 +20501,7 @@ pe.post("/list", async (r) => {
             })
           } catch {
             try {
-              ;(await ht(T, s),
+              ;(await gt(T, s),
                 P.push({
                   name: O,
                   size: 0,
@@ -20073,15 +20531,15 @@ pe.post("/list", async (r) => {
           data: {
             content: k,
             total: D,
-            readme: w.share.readme || "",
-            header: w.share.header || "",
+            readme: x.share.readme || "",
+            header: x.share.header || "",
             write: !1,
             write_content_bypass: !1,
             provider: "Share",
           },
         })
       }
-      let { content: _, provider: b } = await ht(w.realPath, s),
+      let { content: _, provider: b } = await gt(x.realPath, s),
         S = _.map((P) => ({
           name: P.name,
           size: P.size,
@@ -20099,50 +20557,50 @@ pe.post("/list", async (r) => {
         data: {
           content: A,
           total: C,
-          readme: w.share.readme || "",
-          header: w.share.header || "",
+          readme: x.share.readme || "",
+          header: x.share.header || "",
           write: !1,
           write_content_bypass: !1,
           provider: b,
         },
       })
     }
-    let { content: d, provider: l, storage: u } = await ht(n, s),
+    let { content: d, provider: l, storage: u } = await gt(n, s),
       p = De(t),
-      f = await Ur(r),
+      f = await jr(r),
       h = await Promise.all(
-        d.map(async (w) => {
-          let _ = `${n}/${w.name}`.replace(/\/{2,}/g, "/"),
+        d.map(async (x) => {
+          let _ = `${n}/${x.name}`.replace(/\/{2,}/g, "/"),
             b =
-              !w.is_dir && f.enabled
-                ? await vo(r, _, f.expiresIn)
-                : w.sign || ""
+              !x.is_dir && f.enabled
+                ? await Eo(r, _, f.expiresIn)
+                : x.sign || ""
           return {
-            name: w.name,
-            size: w.size,
-            is_dir: w.is_dir,
-            created: w.created || w.modified || new Date().toISOString(),
-            modified: w.modified || new Date().toISOString(),
+            name: x.name,
+            size: x.size,
+            is_dir: x.is_dir,
+            created: x.created || x.modified || new Date().toISOString(),
+            modified: x.modified || new Date().toISOString(),
             sign: b,
-            thumb: w.thumb || "",
-            type: w.type ?? 0,
+            thumb: x.thumb || "",
+            type: x.type ?? 0,
           }
         }),
       ),
       y = 0
     if (u && ((y = parseInt(u.page_size, 10) || 0), !y && u.addition))
       try {
-        let w =
+        let x =
           typeof u.addition == "string" ? JSON.parse(u.addition) : u.addition
-        y = parseInt(w?.page_size, 10) || 0
+        y = parseInt(x?.page_size, 10) || 0
       } catch {}
-    let x = a > 0 ? a : y > 0 ? y : 0,
-      g = (w) => {
-        let _ = w.length
-        if (x <= 0) return { content: w, total: _ }
-        let S = (Math.max(1, o) - 1) * x,
-          A = S + x
-        return { content: w.slice(S, A), total: _ }
+    let w = a > 0 ? a : y > 0 ? y : 0,
+      g = (x) => {
+        let _ = x.length
+        if (w <= 0) return { content: x, total: _ }
+        let S = (Math.max(1, o) - 1) * w,
+          A = S + w
+        return { content: x.slice(S, A), total: _ }
       },
       { content: m, total: v } = g(h)
     return r.json({
@@ -20156,31 +20614,31 @@ pe.post("/list", async (r) => {
         write: p,
         write_content_bypass: !1,
         provider: l,
-        page_size: x > 0 ? x : void 0,
+        page_size: w > 0 ? w : void 0,
       },
     })
   } catch (d) {
     return r.json({ code: 500, message: ie(d), data: null })
   }
 })
-pe.post("/get", async (r) => {
+fe.post("/get", async (r) => {
   let e = await r.req.json().catch(() => ({})),
     t = await Y(r)
   if (!(e.path || "/").startsWith("/@s") && (!t || t.disabled))
     return r.json({ code: 401, message: "Unauthorized", data: null }, 401)
   let s = Fe(r),
-    n = de(t, e.path || "/")
+    n = le(t, e.path || "/")
   try {
     if (n.startsWith("/@s")) {
-      let u = await Ht(n, e.password || "", r.env)
+      let u = await Wt(n, e.password || "", r.env)
       if (!u.ok) return r.json({ code: 400, message: u.error, data: null })
       if (u.virtualList) {
-        let x = n.split("/").filter(Boolean)[1] || "share"
+        let w = n.split("/").filter(Boolean)[1] || "share"
         return r.json({
           code: 200,
           message: "success",
           data: {
-            name: x,
+            name: w,
             size: 0,
             is_dir: !0,
             modified: new Date().toISOString(),
@@ -20198,7 +20656,7 @@ pe.post("/get", async (r) => {
         })
       }
       let p = n.split("/").filter(Boolean)[1] || "",
-        { item: f, provider: h } = await Fr(u.realPath, s),
+        { item: f, provider: h } = await Rr(u.realPath, s),
         y = n.replace(/^\/@s\/[^/]+/, "")
       return r.json({
         code: 200,
@@ -20222,9 +20680,9 @@ pe.post("/get", async (r) => {
         },
       })
     }
-    let { item: o, provider: a, rawUrl: c } = await Fr(n, s),
-      d = await Ur(r),
-      l = !o.is_dir && d.enabled ? await vo(r, n, d.expiresIn) : o.sign || ""
+    let { item: o, provider: a, rawUrl: c } = await Rr(n, s),
+      d = await jr(r),
+      l = !o.is_dir && d.enabled ? await Eo(r, n, d.expiresIn) : o.sign || ""
     return r.json({
       code: 200,
       message: "success",
@@ -20250,54 +20708,54 @@ pe.post("/get", async (r) => {
     return r.json({ code: 500, message: ie(o), data: null })
   }
 })
-pe.post("/mkdir", async (r) => {
+fe.post("/mkdir", async (r) => {
   let e = await Y(r)
-  if (!De(e)) return We(r)
+  if (!De(e)) return Ge(r)
   let t = await r.req.json().catch(() => ({})),
-    i = de(e, t.path || "/"),
+    i = le(e, t.path || "/"),
     s = Fe(r)
   try {
     return (
-      await Fl(i, s),
+      await Hl(i, s),
       r.json({ code: 200, message: "success", data: null })
     )
   } catch (n) {
     return r.json({ code: 500, message: ie(n), data: null })
   }
 })
-pe.post("/rename", async (r) => {
+fe.post("/rename", async (r) => {
   let e = await Y(r)
-  if (!De(e)) return We(r)
+  if (!De(e)) return Ge(r)
   let { path: t, name: i } = await r.req.json().catch(() => ({})),
     s = Fe(r)
   try {
-    let n = de(e, t || "/")
+    let n = le(e, t || "/")
     return (
-      await Tl(n, i, s),
+      await Kl(n, i, s),
       r.json({ code: 200, message: "success", data: null })
     )
   } catch (n) {
     return r.json({ code: 500, message: ie(n), data: null })
   }
 })
-pe.post("/remove", async (r) => {
+fe.post("/remove", async (r) => {
   let e = await Y(r)
-  if (!De(e)) return We(r)
+  if (!De(e)) return Ge(r)
   let { dir: t, names: i } = await r.req.json().catch(() => ({})),
     s = Fe(r)
   try {
-    let n = de(e, t || "/")
+    let n = le(e, t || "/")
     return (
-      await Il(n, i, s),
+      await Wl(n, i, s),
       r.json({ code: 200, message: "success", data: null })
     )
   } catch (n) {
     return r.json({ code: 500, message: ie(n), data: null })
   }
 })
-pe.post("/move", async (r) => {
+fe.post("/move", async (r) => {
   let e = await Y(r)
-  if (!De(e)) return We(r)
+  if (!De(e)) return Ge(r)
   let {
       src_dir: t,
       dst_dir: i,
@@ -20305,19 +20763,19 @@ pe.post("/move", async (r) => {
     } = await r.req.json().catch(() => ({})),
     n = Fe(r)
   try {
-    let o = de(e, t || "/"),
-      a = de(e, i || "/")
+    let o = le(e, t || "/"),
+      a = le(e, i || "/")
     return (
-      await Bl(o, a, s, n),
+      await Gl(o, a, s, n),
       r.json({ code: 200, message: "success", data: null })
     )
   } catch (o) {
     return r.json({ code: 500, message: ie(o), data: null })
   }
 })
-pe.post("/copy", async (r) => {
+fe.post("/copy", async (r) => {
   let e = await Y(r)
-  if (!De(e)) return We(r)
+  if (!De(e)) return Ge(r)
   let {
       src_dir: t,
       dst_dir: i,
@@ -20325,37 +20783,37 @@ pe.post("/copy", async (r) => {
     } = await r.req.json().catch(() => ({})),
     n = Fe(r)
   try {
-    let o = de(e, t || "/"),
-      a = de(e, i || "/")
+    let o = le(e, t || "/"),
+      a = le(e, i || "/")
     return (
-      await Rl(o, a, s, n),
+      await Vl(o, a, s, n),
       r.json({ code: 200, message: "success", data: null })
     )
   } catch (o) {
     return r.json({ code: 500, message: ie(o), data: null })
   }
 })
-pe.put("/put", async (r) => {
+fe.put("/put", async (r) => {
   let e = await Y(r)
-  if (!De(e)) return We(r)
+  if (!De(e)) return Ge(r)
   let t = decodeURIComponent(r.req.header("File-Path") || ""),
-    i = de(e, t),
+    i = le(e, t),
     s = Fe(r)
   try {
     let n = await r.req.arrayBuffer()
     return (
-      await eo(i, Buffer.from(n), s),
+      await ao(i, Buffer.from(n), s),
       r.json({ code: 200, message: "success", data: null })
     )
   } catch (n) {
     return r.json({ code: 500, message: ie(n), data: null })
   }
 })
-pe.put("/form", async (r) => {
+fe.put("/form", async (r) => {
   let e = await Y(r)
-  if (!De(e)) return We(r)
+  if (!De(e)) return Ge(r)
   let t = decodeURIComponent(r.req.header("File-Path") || ""),
-    i = de(e, t),
+    i = le(e, t),
     s = Fe(r)
   try {
     let o = (await r.req.formData()).get("file")
@@ -20367,23 +20825,23 @@ pe.put("/form", async (r) => {
       })
     let a = Buffer.from(await o.arrayBuffer())
     return (
-      await eo(i, a, s),
+      await ao(i, a, s),
       r.json({ code: 200, message: "success", data: null })
     )
   } catch (n) {
     return r.json({ code: 500, message: ie(n), data: null })
   }
 })
-pe.post("/upload/create", async (r) => {
+fe.post("/upload/create", async (r) => {
   let e = await Y(r)
-  if (!De(e)) return We(r)
+  if (!De(e)) return Ge(r)
   let {
       path: t,
       file_name: i,
       size: s,
       md5: n,
     } = await r.req.json().catch(() => ({})),
-    o = de(e, t || "/"),
+    o = le(e, t || "/"),
     a = Fe(r)
   if (!i)
     return r.json({
@@ -20408,13 +20866,13 @@ pe.post("/upload/create", async (r) => {
     return r.json({ code: 500, message: ie(c), data: null })
   }
 })
-pe.put("/upload/part", async (r) => {
+fe.put("/upload/part", async (r) => {
   let e = await Y(r)
-  if (!De(e)) return We(r)
+  if (!De(e)) return Ge(r)
   let t = r.req.header("X-Upload-Session") || "",
     i = parseInt(r.req.header("X-Part-Number") || "0", 10),
     s = decodeURIComponent(r.req.header("Upload-Path") || ""),
-    n = de(e, s),
+    n = le(e, s),
     o = Fe(r)
   if (!t || !(i >= 1) || !n)
     return r.json({
@@ -20440,15 +20898,15 @@ pe.put("/upload/part", async (r) => {
     return r.json({ code: 500, message: ie(a), data: null })
   }
 })
-pe.post("/upload/complete", async (r) => {
+fe.post("/upload/complete", async (r) => {
   let e = await Y(r)
-  if (!De(e)) return We(r)
+  if (!De(e)) return Ge(r)
   let {
       path: t,
       session: i,
       partMd5s: s,
     } = await r.req.json().catch(() => ({})),
-    n = de(e, t || "/"),
+    n = le(e, t || "/"),
     o = Fe(r)
   if (!i)
     return r.json({
@@ -20472,12 +20930,12 @@ pe.post("/upload/complete", async (r) => {
     return r.json({ code: 500, message: ie(a), data: null })
   }
 })
-pe.post("/add_offline_download", async (r) => {
+fe.post("/add_offline_download", async (r) => {
   let e = await Y(r)
   if (!e || e.disabled)
     return r.json({ code: 401, message: "Unauthorized", data: null }, 401)
   let { path: t, urls: i } = await r.req.json().catch(() => ({})),
-    s = de(e, t || "/")
+    s = le(e, t || "/")
   return !i || i.length === 0
     ? r.json({ code: 400, message: "No URLs provided" })
     : r.json({
@@ -20487,14 +20945,14 @@ pe.post("/add_offline_download", async (r) => {
         data: null,
       })
 })
-pe.post("/search", async (r) => {
+fe.post("/search", async (r) => {
   let e = await Y(r)
   if (!e || e.disabled)
     return r.json({ code: 401, message: "Unauthorized", data: null }, 401)
   let t = await r.req.json().catch(() => ({})),
-    i = de(e, t.parent || "/")
+    i = le(e, t.parent || "/")
   try {
-    let s = await _0(
+    let s = await R0(
       {
         parent: i,
         keywords: t.keywords || "",
@@ -20509,12 +20967,12 @@ pe.post("/search", async (r) => {
     return r.json({ code: 500, message: ie(s), data: null }, 500)
   }
 })
-pe.post("/other", async (r) => {
+fe.post("/other", async (r) => {
   let e = await Y(r)
   if (!e || e.disabled)
     return r.json({ code: 401, message: "Unauthorized", data: null }, 401)
   let t = await r.req.json().catch(() => ({})),
-    i = de(e, t.path || "/"),
+    i = le(e, t.path || "/"),
     s = t.method
   if (!s)
     return r.json(
@@ -20542,18 +21000,18 @@ pe.post("/other", async (r) => {
     return r.json({ code: 500, message: ie(n), data: null }, 500)
   }
 })
-Br()
+Or()
 te()
-Ke()
-var bo = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
-function bh(r) {
+We()
+var Do = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+function Oh(r) {
   let e = String(r).toUpperCase().replace(/[\s=]/g, "")
   if (!e) throw new Error("Empty base32 secret")
   let t = [],
     i = 0,
     s = 0
   for (let n of e) {
-    let o = bo.indexOf(n)
+    let o = Do.indexOf(n)
     if (o === -1) throw new Error(`Invalid base32 character: ${n}`)
     ;((i = (i << 5) | o),
       (s += 5),
@@ -20561,20 +21019,20 @@ function bh(r) {
   }
   return new Uint8Array(t)
 }
-function kh(r) {
+function $h(r) {
   let e = 0,
     t = 0,
     i = ""
   for (let s = 0; s < r.length; s++)
     for (e = (e << 8) | r[s], t += 8; t >= 5; )
-      ((i += bo[(e >> (t - 5)) & 31]), (t -= 5))
-  return (t > 0 && (i += bo[(e << (5 - t)) & 31]), i)
+      ((i += Do[(e >> (t - 5)) & 31]), (t -= 5))
+  return (t > 0 && (i += Do[(e << (5 - t)) & 31]), i)
 }
-function v0(r = 20) {
+function U0(r = 20) {
   let e = new Uint8Array(r)
-  return (crypto.getRandomValues(e), kh(e))
+  return (crypto.getRandomValues(e), $h(e))
 }
-async function Sh(r, e) {
+async function jh(r, e) {
   let t = await crypto.subtle.importKey(
       "raw",
       r,
@@ -20585,12 +21043,12 @@ async function Sh(r, e) {
     i = await crypto.subtle.sign("HMAC", t, e)
   return new Uint8Array(i)
 }
-async function Ph(r, e = Date.now(), t = 30, i = 6) {
+async function zh(r, e = Date.now(), t = 30, i = 6) {
   let s = Math.floor(e / 1e3 / t),
     n = new Uint8Array(8),
     o = s
   for (let u = 7; u >= 0; u--) ((n[u] = o & 255), (o = Math.floor(o / 256)))
-  let a = await Sh(bh(r), n),
+  let a = await jh(Oh(r), n),
     c = a[a.length - 1] & 15,
     l =
       (((a[c] & 127) << 24) |
@@ -20600,14 +21058,14 @@ async function Ph(r, e = Date.now(), t = 30, i = 6) {
       Math.pow(10, i)
   return String(l).padStart(i, "0")
 }
-async function ko(r, e, t = 1, i = Date.now()) {
+async function Fo(r, e, t = 1, i = Date.now()) {
   if (!r || !e) return !1
   let s = String(e).trim()
   if (!/^\d{6}$/.test(s)) return !1
-  for (let n = -t; n <= t; n++) if ((await Ph(r, i + n * 3e4)) === s) return !0
+  for (let n = -t; n <= t; n++) if ((await zh(r, i + n * 3e4)) === s) return !0
   return !1
 }
-function b0(r, e, t = "OpenListNext") {
+function q0(r, e, t = "OpenListNext") {
   let i = encodeURIComponent(`${t}:${e}`),
     s = new URLSearchParams({
       secret: r,
@@ -20618,16 +21076,16 @@ function b0(r, e, t = "OpenListNext") {
     })
   return `otpauth://totp/${i}?${s.toString()}`
 }
-function k0(r) {
+function O0(r) {
   return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(r)}`
 }
 te()
-function Ah(r) {
+function Lh(r) {
   let e = ""
   for (let t = 0; t < r.length; t++) e += String.fromCharCode(r[t])
   return btoa(e)
 }
-function S0(r) {
+function $0(r) {
   let e = String(r || "")
       .replace(/[\s\r\n]/g, "")
       .replace(/-/g, "+")
@@ -20643,7 +21101,7 @@ function S0(r) {
     return null
   }
 }
-var Ch = [
+var Nh = [
   "ssh-rsa",
   "ssh-dss",
   "ssh-ed25519",
@@ -20655,14 +21113,14 @@ var Ch = [
   "sk-ssh-ed25519@openssh.com.webauthn",
   "sk-ecdsa-sha2-nistp256@openssh.com.webauthn",
 ]
-function So(r) {
+function To(r) {
   let e = String(r || "")
     .trim()
     .split(/\s+/)
   if (e.length < 2) return null
   let t = e[0]
-  if (!Ch.includes(t)) return null
-  let i = S0(e[1])
+  if (!Nh.includes(t)) return null
+  let i = $0(e[1])
   return !i || i.length < 16
     ? null
     : {
@@ -20671,19 +21129,19 @@ function So(r) {
         comment: e.slice(2).join(" ") || "",
       }
 }
-async function P0(r) {
-  let e = So(r)
+async function j0(r) {
+  let e = To(r)
   if (!e) return null
-  let t = S0(e.blobBase64)
+  let t = $0(e.blobBase64)
   if (!t) return null
   let i = await crypto.subtle.digest(
       "SHA-256",
       t.buffer.slice(t.byteOffset, t.byteOffset + t.byteLength),
     ),
     s = new Uint8Array(i)
-  return "SHA256:" + Ah(s).replace(/=+$/, "")
+  return "SHA256:" + Lh(s).replace(/=+$/, "")
 }
-function A0() {
+function z0() {
   let r = globalThis
   return typeof r.crypto?.randomUUID == "function"
     ? r.crypto.randomUUID()
@@ -20692,14 +21150,14 @@ function A0() {
         Math.random().toString(36).slice(2, 10) +
         Math.random().toString(36).slice(2, 10)
 }
-async function Gt(r, e) {
+async function Jt(r, e) {
   let i = ((await U(e)).users || []).find((s) => s.id === r)
   return i ? i.ssh_keys || [] : []
 }
-async function C0(r, e, t, i) {
-  let s = So(e)
+async function L0(r, e, t, i) {
+  let s = To(e)
   if (!s) throw new Error("Invalid OpenSSH public key format")
-  let n = await P0(e)
+  let n = await j0(e)
   if (!n) throw new Error("Failed to compute SSH key fingerprint")
   let o = await U(i),
     a = (o.users || []).find((d) => d.id === r)
@@ -20710,7 +21168,7 @@ async function C0(r, e, t, i) {
   )
     throw new Error("SSH key with this fingerprint already exists")
   let c = {
-    id: A0(),
+    id: z0(),
     name: (t || s.comment || s.type).slice(0, 64),
     public_key: e.trim(),
     fingerprint: n,
@@ -20718,7 +21176,7 @@ async function C0(r, e, t, i) {
   }
   return (a.ssh_keys.push(c), await $(o, i), c)
 }
-async function zs(r, e, t) {
+async function Hs(r, e, t) {
   let i = await U(t),
     s = (i.users || []).find((o) => o.id === r)
   if (!s || !Array.isArray(s.ssh_keys)) return !1
@@ -20728,12 +21186,12 @@ async function zs(r, e, t) {
     s.ssh_keys.length !== n ? (await $(i, t), !0) : !1
   )
 }
-var Ve = new J(),
-  qr = new J(),
-  Eh = 5,
-  Dh = 900 * 1e3,
-  Ft = new Map()
-function Fh(r) {
+var Je = new J(),
+  zr = new J(),
+  Mh = 5,
+  Hh = 900 * 1e3,
+  It = new Map()
+function Kh(r) {
   return (
     r.req.header("CF-Connecting-IP") ||
     r.req.header("x-real-ip") ||
@@ -20741,44 +21199,44 @@ function Fh(r) {
     "unknown"
   )
 }
-function Po(r, e) {
-  return `${Fh(r)}|${String(e || "").toLowerCase()}`
+function Io(r, e) {
+  return `${Kh(r)}|${String(e || "").toLowerCase()}`
 }
-function E0(r, e) {
-  if (Ft.size > 1e4) {
+function N0(r, e) {
+  if (It.size > 1e4) {
     let i = Date.now()
-    for (let [s, n] of Ft) n.lockedUntil < i && n.count === 0 && Ft.delete(s)
+    for (let [s, n] of It) n.lockedUntil < i && n.count === 0 && It.delete(s)
   }
-  let t = Ft.get(Po(r, e))
+  let t = It.get(Io(r, e))
   return !!t && t.lockedUntil > Date.now()
 }
-function D0(r, e) {
-  let t = Po(r, e),
+function M0(r, e) {
+  let t = Io(r, e),
     i = Date.now(),
-    s = Ft.get(t) || { count: 0, lockedUntil: 0 }
+    s = It.get(t) || { count: 0, lockedUntil: 0 }
   s.lockedUntil > i ||
     ((s.count += 1),
-    s.count >= Eh && ((s.lockedUntil = i + Dh), (s.count = 0)),
-    Ft.set(t, s))
+    s.count >= Mh && ((s.lockedUntil = i + Hh), (s.count = 0)),
+    It.set(t, s))
 }
-function F0(r, e) {
-  Ft.delete(Po(r, e))
+function H0(r, e) {
+  It.delete(Io(r, e))
 }
-async function Ge(r) {
+async function Ve(r) {
   let t = new TextEncoder().encode(`${r}-https://github.com/alist-org/alist`),
     i = await crypto.subtle.digest("SHA-256", t)
   return Array.from(new Uint8Array(i))
     .map((n) => n.toString(16).padStart(2, "0"))
     .join("")
 }
-async function T0(r) {
+async function K0(r) {
   let e = await U(r)
   if (!e.users || e.users.length === 0) {
     let t =
         (r && r.ADMIN_PASSWORD) ||
         (typeof process < "u" ? process.env?.ADMIN_PASSWORD : "") ||
         "",
-      i = await Ge(t || "admin")
+      i = await Ve(t || "admin")
     ;((e.users = [
       {
         id: 1,
@@ -20813,18 +21271,18 @@ async function T0(r) {
         (r && r.ADMIN_PASSWORD) ||
         (typeof process < "u" ? process.env?.ADMIN_PASSWORD : "") ||
         ""
-      ;((t.password = await Ge(i || "admin")), await $(e, r))
+      ;((t.password = await Ve(i || "admin")), await $(e, r))
     }
   }
   return { db: e, users: e.users }
 }
-async function Vt(r) {
+async function Qt(r) {
   let e = r.req.header("Authorization")
   if (!e) return null
   let t = e.startsWith("Bearer ") ? e.substring(7) : e
   try {
-    let i = await ze(r),
-      s = await mt(t, i, "HS256"),
+    let i = await Le(r),
+      s = await yt(t, i, "HS256"),
       n = await U(r.env)
     n.users || (n.users = [])
     let o = n.users.find((a) => a.id === s.id || a.username === s.username)
@@ -20833,21 +21291,21 @@ async function Vt(r) {
     return null
   }
 }
-async function I0(r, e) {
+async function W0(r, e) {
   if (!r.otp_secret)
     return { ok: !0, code: 200, httpStatus: 200, message: "ok" }
   let t = String(e.otp_code || e.code || "").trim()
   return t
-    ? (await ko(r.otp_secret, t))
+    ? (await Fo(r.otp_secret, t))
       ? { ok: !0, code: 200, httpStatus: 200, message: "ok" }
       : { ok: !1, code: 401, httpStatus: 401, message: "Invalid OTP code" }
     : { ok: !1, code: 402, httpStatus: 200, message: "OTP code required" }
 }
-Ve.post("/login", async (r) => {
+Je.post("/login", async (r) => {
   let e = await r.req.json().catch(() => ({})),
     t = (e.username || "").trim(),
     i = e.password || ""
-  if (E0(r, t))
+  if (N0(r, t))
     return r.json(
       {
         code: 429,
@@ -20857,40 +21315,40 @@ Ve.post("/login", async (r) => {
       },
       429,
     )
-  let s = await Ge(i),
-    { users: n } = await T0(r.env),
+  let s = await Ve(i),
+    { users: n } = await K0(r.env),
     o = n.find((a) => a.username === t && !a.disabled)
   if (o) {
     let a = o.password || ""
     if ((a !== "" && a === i) || a === s) {
-      let d = await I0(o, e)
+      let d = await W0(o, e)
       if (!d.ok)
         return r.json(
           { code: d.code, message: d.message, data: null },
           d.httpStatus,
         )
-      F0(r, t)
+      H0(r, t)
       let l = {
           id: o.id,
           username: o.username,
           role: o.role,
           exp: Math.floor(Date.now() / 1e3) + 3600 * 24 * 7,
         },
-        u = await ze(r),
-        p = await Ir(l, u)
+        u = await Le(r),
+        p = await qr(l, u)
       return r.json({ code: 200, message: "success", data: { token: p } })
     }
   }
   return (
-    D0(r, t),
+    M0(r, t),
     r.json({ code: 401, message: "Invalid credentials", data: null }, 401)
   )
 })
-Ve.post("/login/hash", async (r) => {
+Je.post("/login/hash", async (r) => {
   let e = await r.req.json().catch(() => ({})),
     t = (e.username || "").trim(),
     i = e.password || ""
-  if (E0(r, t))
+  if (N0(r, t))
     return r.json(
       {
         code: 429,
@@ -20900,37 +21358,37 @@ Ve.post("/login/hash", async (r) => {
       },
       429,
     )
-  let { users: s } = await T0(r.env),
+  let { users: s } = await K0(r.env),
     n = s.find((o) => o.username === t && !o.disabled)
   if (n) {
     let o = n.password || "",
-      a = o.length === 64 ? o : await Ge(o || "admin")
+      a = o.length === 64 ? o : await Ve(o || "admin")
     if (i === o || i === a) {
-      let d = await I0(n, e)
+      let d = await W0(n, e)
       if (!d.ok)
         return r.json(
           { code: d.code, message: d.message, data: null },
           d.httpStatus,
         )
-      F0(r, t)
+      H0(r, t)
       let l = {
           id: n.id,
           username: n.username,
           role: n.role,
           exp: Math.floor(Date.now() / 1e3) + 3600 * 24 * 7,
         },
-        u = await ze(r),
-        p = await Ir(l, u)
+        u = await Le(r),
+        p = await qr(l, u)
       return r.json({ code: 200, message: "success", data: { token: p } })
     }
   }
   return (
-    D0(r, t),
+    M0(r, t),
     r.json({ code: 401, message: "Invalid credentials", data: null }, 401)
   )
 })
-var Ao = async (r) => {
-    let e = await Vt(r)
+var Bo = async (r) => {
+    let e = await Qt(r)
     if (!e)
       return r.json({ code: 401, message: "Unauthorized", data: null }, 401)
     let { db: t, user: i } = e,
@@ -20947,13 +21405,13 @@ var Ao = async (r) => {
     return (
       s.password &&
         s.password.trim() !== "" &&
-        ((i.password = await Ge(s.password.trim())),
+        ((i.password = await Ve(s.password.trim())),
         (i.pwd_update_at = new Date().toISOString())),
       await $(t, r.env),
       r.json({ code: 200, message: "success", data: null })
     )
   },
-  Co = async (r) => {
+  Ro = async (r) => {
     let e = await Y(r)
     return !e || e.disabled
       ? r.json({ code: 401, message: "Unauthorized", data: null }, 401)
@@ -20973,13 +21431,13 @@ var Ao = async (r) => {
           },
         })
   }
-Ve.get("/me", Co)
-Ve.post("/me/update", Ao)
-var Or = (r) => r.json({ code: 200, message: "success", data: null })
-Ve.get("/logout", Or)
-Ve.post("/logout", Or)
-Ve.post("/2fa/generate", async (r) => {
-  let e = await Vt(r)
+Je.get("/me", Ro)
+Je.post("/me/update", Bo)
+var Lr = (r) => r.json({ code: 200, message: "success", data: null })
+Je.get("/logout", Lr)
+Je.post("/logout", Lr)
+Je.post("/2fa/generate", async (r) => {
+  let e = await Qt(r)
   if (!e) return r.json({ code: 401, message: "Unauthorized", data: null }, 401)
   let { user: t } = e
   if (t.otp_secret)
@@ -20987,16 +21445,16 @@ Ve.post("/2fa/generate", async (r) => {
       { code: 400, message: "2FA already enabled", data: null },
       400,
     )
-  let i = v0(),
-    s = b0(i, t.username)
+  let i = U0(),
+    s = q0(i, t.username)
   return r.json({
     code: 200,
     message: "success",
-    data: { qr: k0(s), secret: i },
+    data: { qr: O0(s), secret: i },
   })
 })
-Ve.post("/2fa/verify", async (r) => {
-  let e = await Vt(r)
+Je.post("/2fa/verify", async (r) => {
+  let e = await Qt(r)
   if (!e) return r.json({ code: 401, message: "Unauthorized", data: null }, 401)
   let { db: t, user: i } = e,
     s = await r.req.json().catch(() => ({})),
@@ -21004,7 +21462,7 @@ Ve.post("/2fa/verify", async (r) => {
     o = String(s.secret || "").trim()
   return o
     ? /^[A-Z2-7]+$/i.test(o)
-      ? (await ko(o, n))
+      ? (await Fo(o, n))
         ? ((i.otp_secret = o.toUpperCase()),
           await $(t, r.env),
           r.json({ code: 200, message: "success", data: null }))
@@ -21015,22 +21473,22 @@ Ve.post("/2fa/verify", async (r) => {
         400,
       )
 })
-qr.get("/sshkey/list", async (r) => {
-  let e = await Vt(r)
+zr.get("/sshkey/list", async (r) => {
+  let e = await Qt(r)
   if (!e) return r.json({ code: 401, message: "Unauthorized", data: null }, 401)
-  let t = await Gt(e.user.id, r.env)
+  let t = await Jt(e.user.id, r.env)
   return r.json({
     code: 200,
     message: "success",
     data: { content: t, total: t.length },
   })
 })
-qr.post("/sshkey/add", async (r) => {
-  let e = await Vt(r)
+zr.post("/sshkey/add", async (r) => {
+  let e = await Qt(r)
   if (!e) return r.json({ code: 401, message: "Unauthorized", data: null }, 401)
   let t = await r.req.json().catch(() => ({}))
   try {
-    let i = await C0(
+    let i = await L0(
       e.user.id,
       t.key || t.public_key || "",
       t.name || t.title || "",
@@ -21044,8 +21502,8 @@ qr.post("/sshkey/add", async (r) => {
     )
   }
 })
-qr.post("/sshkey/delete", async (r) => {
-  let e = await Vt(r)
+zr.post("/sshkey/delete", async (r) => {
+  let e = await Qt(r)
   if (!e) return r.json({ code: 401, message: "Unauthorized", data: null }, 401)
   let t = r.req.query("id")
   if (!t)
@@ -21053,19 +21511,19 @@ qr.post("/sshkey/delete", async (r) => {
       { code: 400, message: "Missing id parameter", data: null },
       400,
     )
-  if (!(await zs(e.user.id, t, r.env)))
+  if (!(await Hs(e.user.id, t, r.env)))
     return r.json({ code: 404, message: "SSH key not found", data: null }, 404)
-  let s = await Gt(e.user.id, r.env)
+  let s = await Jt(e.user.id, r.env)
   return r.json({ code: 200, message: "success", data: s })
 })
 te()
-$s()
-Rr()
+Ns()
+$r()
 te()
-Br()
-Ke()
-var Le = new J()
-Le.get("/list", async (r) => {
+Or()
+We()
+var Ne = new J()
+Ne.get("/list", async (r) => {
   let t = ((await U(r.env)).users || []).map((i) => ({
     id: i.id,
     username: i.username,
@@ -21084,7 +21542,7 @@ Le.get("/list", async (r) => {
     data: { content: t, total: t.length },
   })
 })
-Le.get("/get", async (r) => {
+Ne.get("/get", async (r) => {
   let e = r.req.query("id")
   if (!e)
     return r.json(
@@ -21112,7 +21570,7 @@ Le.get("/get", async (r) => {
       })
     : r.json({ code: 404, message: "User not found", data: null }, 404)
 })
-Le.post("/create", async (r) => {
+Ne.post("/create", async (r) => {
   let e = await r.req.json().catch(() => ({}))
   if (!e.username)
     return r.json(
@@ -21129,7 +21587,7 @@ Le.post("/create", async (r) => {
     )
   let n = t.users.reduce((d, l) => Math.max(d, l.id || 0), 0) + 1,
     o = e.password || "123456",
-    a = await Ge(o),
+    a = await Ve(o),
     c = {
       id: n,
       username: e.username,
@@ -21148,7 +21606,7 @@ Le.post("/create", async (r) => {
     r.json({ code: 200, message: "success", data: null })
   )
 })
-Le.post("/update", async (r) => {
+Ne.post("/update", async (r) => {
   let e = await r.req.json().catch(() => ({}))
   if (!e.id)
     return r.json(
@@ -21173,7 +21631,7 @@ Le.post("/update", async (r) => {
   return (
     e.password &&
       e.password.trim() !== "" &&
-      ((n.password = await Ge(e.password)),
+      ((n.password = await Ve(e.password)),
       (n.pwd_update_at = new Date().toISOString())),
     e.role !== void 0 && (n.role = parseInt(e.role, 10)),
     e.permission !== void 0 && (n.permission = parseInt(e.permission, 10)),
@@ -21186,7 +21644,7 @@ Le.post("/update", async (r) => {
     r.json({ code: 200, message: "success", data: null })
   )
 })
-var B0 = async (r) => {
+var G0 = async (r) => {
   let e = r.req.query("id")
   if (!e)
     return r.json(
@@ -21207,18 +21665,18 @@ var B0 = async (r) => {
     r.json({ code: 200, message: "success", data: null })
   )
 }
-Le.post("/delete", B0)
-Le.post("/cancel", B0)
-Le.get("/sshkey/list", async (r) => {
+Ne.post("/delete", G0)
+Ne.post("/cancel", G0)
+Ne.get("/sshkey/list", async (r) => {
   let e = parseInt(r.req.query("uid") || "0", 10),
-    t = await Gt(e, r.env)
+    t = await Jt(e, r.env)
   return r.json({
     code: 200,
     message: "success",
     data: { content: t, total: t.length },
   })
 })
-Le.post("/sshkey/delete", async (r) => {
+Ne.post("/sshkey/delete", async (r) => {
   let e = parseInt(r.req.query("uid") || "0", 10),
     t = r.req.query("id")
   if (!e || !t)
@@ -21226,12 +21684,12 @@ Le.post("/sshkey/delete", async (r) => {
       { code: 400, message: "Missing uid or id parameter", data: null },
       400,
     )
-  if (!(await zs(e, t, r.env)))
+  if (!(await Hs(e, t, r.env)))
     return r.json({ code: 404, message: "SSH key not found", data: null }, 404)
-  let s = await Gt(e, r.env)
+  let s = await Jt(e, r.env)
   return r.json({ code: 200, message: "success", data: s })
 })
-Le.post("/cancel_2fa", async (r) => {
+Ne.post("/cancel_2fa", async (r) => {
   let e = parseInt(r.req.query("id") || "0", 10)
   if (!e)
     return r.json(
@@ -21246,13 +21704,13 @@ Le.post("/cancel_2fa", async (r) => {
       r.json({ code: 200, message: "success", data: null }))
     : r.json({ code: 404, message: "User not found", data: null }, 404)
 })
-var R0 = async (r) => {
+var V0 = async (r) => {
   let e = r.req.header("Authorization")
   if (!e) return r.json({ code: 401, message: "Unauthorized", data: null }, 401)
   let t = e.startsWith("Bearer ") ? e.substring(7) : e
   try {
-    let i = await ze(r),
-      s = await mt(t, i, "HS256"),
+    let i = await Le(r),
+      s = await yt(t, i, "HS256"),
       n = await r.req.json().catch(() => ({})),
       o = n.old_password || "",
       a = n.new_password || ""
@@ -21267,13 +21725,13 @@ var R0 = async (r) => {
     if (d === -1)
       return r.json({ code: 404, message: "User not found", data: null }, 404)
     let l = c.users[d],
-      u = await Ge(o)
+      u = await Ve(o)
     return l.password && l.password !== o && l.password !== u
       ? r.json(
           { code: 400, message: "Incorrect old password", data: null },
           400,
         )
-      : ((l.password = await Ge(a)),
+      : ((l.password = await Ve(a)),
         (l.pwd_update_at = new Date().toISOString()),
         (c.users[d] = l),
         await $(c, r.env),
@@ -21291,7 +21749,7 @@ var R0 = async (r) => {
 }
 var z = new J()
 z.use("*", async (r, e) => {
-  if (!(await Et(r)))
+  if (!(await Ft(r)))
     return r.json({ code: 401, message: "Unauthorized", data: null })
   await e()
 })
@@ -21342,10 +21800,10 @@ z.get("/storage/get", async (r) => {
     ? r.json({ code: 200, message: "success", data: i })
     : r.json({ code: 404, message: "storage not found", data: null })
 })
-var U0 = (r) => {
+var J0 = (r) => {
     let e = (r || "").toLowerCase().replace(/[^a-z0-9]/g, "")
     if (!e) return ""
-    let i = Object.keys(Ls).find(
+    let i = Object.keys(Ks).find(
       (s) =>
         s.toLowerCase() === e ||
         s.toLowerCase().replace(/[^a-z0-9]/g, "") === e,
@@ -21404,7 +21862,7 @@ var U0 = (r) => {
                                       : r || "")
     )
   },
-  q0 = (r, e) => {
+  Q0 = (r, e) => {
     let t = ""
     if (typeof e == "object" && e !== null)
       try {
@@ -21464,8 +21922,8 @@ z.post("/storage/create", async (r) => {
       message: "mount path already exists",
       data: null,
     })
-  let n = U0(e.driver),
-    o = q0(n, e.addition || "{}"),
+  let n = J0(e.driver),
+    o = Q0(n, e.addition || "{}"),
     a = {
       ...e,
       driver: n,
@@ -21515,8 +21973,8 @@ z.post("/storage/update", async (r) => {
   let n = t.storages.findIndex((o) => o.id === e.id)
   if (n !== -1) {
     let o = e.driver || t.storages[n].driver,
-      a = U0(o),
-      c = q0(
+      a = J0(o),
+      c = Q0(
         a,
         e.addition !== void 0 ? e.addition : t.storages[n].addition || "{}",
       ),
@@ -21611,7 +22069,7 @@ z.get("/driver/names", (r) =>
     ],
   }),
 )
-var fe = [
+var ue = [
     { name: "mount_path", type: "string", default: "", required: !0 },
     { name: "order", type: "number", default: "0", required: !1 },
     { name: "remark", type: "string", default: "", required: !1 },
@@ -21626,11 +22084,11 @@ var fe = [
     },
     { name: "down_proxy_url", type: "string", default: "", required: !1 },
   ],
-  Ls = {
+  Ks = {
     AliyundriveOpen: {
       name: "AliyundriveOpen",
       default_mount_path: "/aliyundrive",
-      common: fe,
+      common: ue,
       additional: [
         {
           name: "refresh_token",
@@ -21705,7 +22163,7 @@ var fe = [
     Onedrive: {
       name: "Onedrive",
       default_mount_path: "/onedrive",
-      common: fe.slice(0, 3),
+      common: ue.slice(0, 3),
       additional: [
         {
           name: "root_folder_path",
@@ -21789,7 +22247,7 @@ var fe = [
     OnedriveAPP: {
       name: "OnedriveAPP",
       default_mount_path: "/onedrive_app",
-      common: fe.slice(0, 3),
+      common: ue.slice(0, 3),
       additional: [
         {
           name: "root_folder_path",
@@ -21859,7 +22317,7 @@ var fe = [
     GoogleDrive: {
       name: "GoogleDrive",
       default_mount_path: "/google-drive",
-      common: fe,
+      common: ue,
       additional: [
         {
           name: "refresh_token",
@@ -21914,7 +22372,7 @@ var fe = [
     Quark: {
       name: "Quark",
       default_mount_path: "/quark",
-      common: fe,
+      common: ue,
       additional: [
         {
           name: "variant",
@@ -21972,7 +22430,7 @@ var fe = [
     "123Pan": {
       name: "123Pan",
       default_mount_path: "/123",
-      common: fe,
+      common: ue,
       additional: [
         { name: "username", type: "string", default: "", required: !0 },
         { name: "password", type: "string", default: "", required: !0 },
@@ -22034,7 +22492,7 @@ var fe = [
     BaiduNetdisk: {
       name: "BaiduNetdisk",
       default_mount_path: "/baidu",
-      common: fe,
+      common: ue,
       additional: [
         {
           name: "refresh_token",
@@ -22153,7 +22611,7 @@ var fe = [
     "115Open": {
       name: "115Open",
       default_mount_path: "/115",
-      common: fe,
+      common: ue,
       additional: [
         {
           name: "access_token",
@@ -22220,7 +22678,7 @@ var fe = [
     "GitHub API": {
       name: "GitHub API",
       default_mount_path: "/github",
-      common: fe,
+      common: ue,
       additional: [
         {
           name: "root_folder_path",
@@ -22314,7 +22772,7 @@ var fe = [
     Thunder: {
       name: "Thunder",
       default_mount_path: "/thunder",
-      common: fe,
+      common: ue,
       additional: [
         { name: "root_folder_id", type: "string", default: "", required: !1 },
         { name: "username", type: "string", default: "", required: !0 },
@@ -22370,7 +22828,7 @@ var fe = [
     ThunderExpert: {
       name: "ThunderExpert",
       default_mount_path: "/thunderexpert",
-      common: fe,
+      common: ue,
       additional: [
         { name: "root_folder_id", type: "string", default: "", required: !1 },
         {
@@ -22501,7 +22959,7 @@ var fe = [
     "189Cloud": {
       name: "189Cloud",
       default_mount_path: "/189",
-      common: fe,
+      common: ue,
       additional: [
         {
           name: "username",
@@ -22560,7 +23018,7 @@ var fe = [
     Lanzou: {
       name: "Lanzou",
       default_mount_path: "/lanzou",
-      common: fe,
+      common: ue,
       additional: [
         {
           name: "type",
@@ -22662,7 +23120,7 @@ var fe = [
     WebDav: {
       name: "WebDav",
       default_mount_path: "/webdav",
-      common: fe,
+      common: ue,
       additional: [
         {
           name: "vendor",
@@ -22715,7 +23173,7 @@ var fe = [
     WoPan: {
       name: "WoPan",
       default_mount_path: "/wopan",
-      common: fe,
+      common: ue,
       additional: [
         { name: "root_folder_id", type: "string", default: "0", required: !1 },
         { name: "refresh_token", type: "text", default: "", required: !0 },
@@ -22764,7 +23222,7 @@ var fe = [
     S3: {
       name: "S3",
       default_mount_path: "/s3",
-      common: fe,
+      common: ue,
       additional: [
         {
           name: "root_folder_path",
@@ -22868,7 +23326,7 @@ var fe = [
     Doge: {
       name: "Doge",
       default_mount_path: "/doge",
-      common: fe,
+      common: ue,
       additional: [
         {
           name: "root_folder_path",
@@ -22972,7 +23430,7 @@ var fe = [
     WeiYun: {
       name: "WeiYun",
       default_mount_path: "/weiyun",
-      common: fe,
+      common: ue,
       additional: [
         { name: "root_folder_id", type: "string", default: "", required: !1 },
         { name: "cookies", type: "text", default: "", required: !0 },
@@ -23010,13 +23468,56 @@ var fe = [
         check_status: !0,
       },
     },
+    SFTP: {
+      name: "SFTP",
+      default_mount_path: "/sftp",
+      common: ue,
+      additional: [
+        {
+          name: "address",
+          type: "string",
+          default: "",
+          required: !0,
+          help: "SSH host:port (e.g. 127.0.0.1:22)",
+        },
+        { name: "username", type: "string", default: "", required: !0 },
+        { name: "password", type: "string", default: "", required: !1 },
+        { name: "private_key", type: "text", default: "", required: !1 },
+        { name: "passphrase", type: "string", default: "", required: !1 },
+        {
+          name: "root_folder_path",
+          type: "string",
+          default: "/",
+          required: !1,
+        },
+        {
+          name: "ignore_symlink_error",
+          type: "bool",
+          default: "false",
+          required: !1,
+          help: "Ignore symlink error",
+        },
+      ],
+      config: {
+        name: "SFTP",
+        local_sort: !0,
+        only_local: !1,
+        only_proxy: !0,
+        no_cache: !1,
+        no_upload: !1,
+        need_ms: !1,
+        default_root: "/",
+        check_status: !0,
+        no_link_url: !0,
+      },
+    },
   }
 z.get("/driver/list", (r) =>
-  r.json({ code: 200, message: "success", data: Ls }),
+  r.json({ code: 200, message: "success", data: Ks }),
 )
 z.get("/driver/info", (r) => {
   let e = r.req.query("driver") || "",
-    t = Ls[e] || Ls.AliyundriveOpen
+    t = Ks[e] || Ks.AliyundriveOpen
   return r.json({ code: 200, message: "success", data: t })
 })
 z.get("/setting/list", async (r) => {
@@ -23060,7 +23561,7 @@ z.post("/setting/default", async (r) => {
   let t = parseInt(e, 10),
     i = await U(r.env)
   i.settings = (i.settings || []).filter((o) => o.group !== t)
-  let s = gr.settings.filter((o) => o.group === t),
+  let s = wr.settings.filter((o) => o.group === t),
     n = new Set(s.map((o) => o.key))
   return (
     (i.settings = i.settings.filter((o) => !n.has(o.key))),
@@ -23079,7 +23580,7 @@ z.post("/setting/delete", async (r) => {
     r.json({ code: 200, message: "success", data: null })
   )
 })
-function Th(r = 32) {
+function Wh(r = 32) {
   let e = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
     t = ""
   for (let i = 0; i < r; i++)
@@ -23088,7 +23589,7 @@ function Th(r = 32) {
 }
 z.post("/setting/reset_token", async (r) => {
   let e = await U(r.env),
-    t = Th(32),
+    t = Wh(32),
     i = (e.settings || []).findIndex((s) => s.key === "token")
   return (
     i !== -1
@@ -23109,7 +23610,7 @@ z.post("/setting/reset_token", async (r) => {
     r.json({ code: 200, message: "success", data: t })
   )
 })
-var rt = async (r, e, t = 14) => {
+var it = async (r, e, t = 14) => {
   let i = await U(r)
   i.settings || (i.settings = [])
   for (let [s, n] of Object.entries(e)) {
@@ -23131,21 +23632,21 @@ var rt = async (r, e, t = 14) => {
 z.post("/setting/set_115", async (r) => {
   let e = await r.req.json().catch(() => ({}))
   return (
-    await rt(r.env, { "115_temp_dir": e.temp_dir || "" }),
+    await it(r.env, { "115_temp_dir": e.temp_dir || "" }),
     r.json({ code: 200, message: "success", data: "success" })
   )
 })
 z.post("/setting/set_115_open", async (r) => {
   let e = await r.req.json().catch(() => ({}))
   return (
-    await rt(r.env, { "115_open_temp_dir": e.temp_dir || "" }),
+    await it(r.env, { "115_open_temp_dir": e.temp_dir || "" }),
     r.json({ code: 200, message: "success", data: "success" })
   )
 })
 z.post("/setting/set_123_pan", async (r) => {
   let e = await r.req.json().catch(() => ({}))
   return (
-    await rt(r.env, {
+    await it(r.env, {
       "123_pan_temp_dir": e.temp_dir || "",
       "123_temp_dir": e.temp_dir || "",
     }),
@@ -23155,7 +23656,7 @@ z.post("/setting/set_123_pan", async (r) => {
 z.post("/setting/set_123_open", async (r) => {
   let e = await r.req.json().catch(() => ({}))
   return (
-    await rt(r.env, {
+    await it(r.env, {
       "123_open_temp_dir": e.temp_dir || "",
       "123_open_callback_url": e.callback_url || "",
     }),
@@ -23165,28 +23666,28 @@ z.post("/setting/set_123_open", async (r) => {
 z.post("/setting/set_pikpak", async (r) => {
   let e = await r.req.json().catch(() => ({}))
   return (
-    await rt(r.env, { pikpak_temp_dir: e.temp_dir || "" }),
+    await it(r.env, { pikpak_temp_dir: e.temp_dir || "" }),
     r.json({ code: 200, message: "success", data: "success" })
   )
 })
 z.post("/setting/set_thunder", async (r) => {
   let e = await r.req.json().catch(() => ({}))
   return (
-    await rt(r.env, { thunder_temp_dir: e.temp_dir || "" }),
+    await it(r.env, { thunder_temp_dir: e.temp_dir || "" }),
     r.json({ code: 200, message: "success", data: "success" })
   )
 })
 z.post("/setting/set_thunder_browser", async (r) => {
   let e = await r.req.json().catch(() => ({}))
   return (
-    await rt(r.env, { thunder_browser_temp_dir: e.temp_dir || "" }),
+    await it(r.env, { thunder_browser_temp_dir: e.temp_dir || "" }),
     r.json({ code: 200, message: "success", data: "success" })
   )
 })
 z.post("/setting/set_thunderx", async (r) => {
   let e = await r.req.json().catch(() => ({}))
   return (
-    await rt(r.env, { thunderx_temp_dir: e.temp_dir || "" }),
+    await it(r.env, { thunderx_temp_dir: e.temp_dir || "" }),
     r.json({ code: 200, message: "success", data: "success" })
   )
 })
@@ -23197,7 +23698,7 @@ z.post("/setting/reset_token", async (r) => {
       : Math.random().toString(36).substring(2) +
         Math.random().toString(36).substring(2)
   return (
-    await rt(r.env, { token: e }),
+    await it(r.env, { token: e }),
     r.json({ code: 200, message: "success", data: e })
   )
 })
@@ -23307,9 +23808,9 @@ z.post("/meta/delete", async (r) => {
     r.json({ code: 200, message: "success", data: null })
   )
 })
-z.route("/user", Le)
+z.route("/user", Ne)
 z.get("/kv/status", async (r) => {
-  let e = await yn(r.env)
+  let e = await vn(r.env)
   return r.json({ code: 200, message: "success", data: e })
 })
 z.get("/index/progress", (r) =>
@@ -23530,26 +24031,26 @@ z.post("/plugin/batch_save", async (r) => {
 })
 te()
 te()
-function O0(r, e) {
+function Uo(r, e) {
   let t = r.replace(/bytes=/, "").split("-"),
     i = parseInt(t[0], 10),
     s = t[1] ? parseInt(t[1], 10) : e - 1,
     n = s - i + 1
   return { start: i, end: s, chunksize: n }
 }
-Ke()
-Rr()
-var Ms = null,
-  Ns = null
-async function Ih() {
-  if (typeof process < "u" && process.release?.name === "node" && !Ms)
+We()
+$r()
+var Gs = null,
+  Ws = null
+async function Gh() {
+  if (typeof process < "u" && process.release?.name === "node" && !Gs)
     try {
-      ;((Ms = await import("fs/promises")),
-        (Ns = (await import("fs")).createReadStream))
+      ;((Gs = await import("fs/promises")),
+        (Ws = (await import("fs")).createReadStream))
     } catch {}
 }
-var Je = new J(),
-  Bh = (r) => {
+var Qe = new J(),
+  Vh = (r) => {
     try {
       let e = r.executionCtx
       return !e || typeof e.waitUntil != "function"
@@ -23559,8 +24060,8 @@ var Je = new J(),
       return
     }
   }
-Je.get("/*", async (r) => {
-  await Ih()
+Qe.get("/*", async (r) => {
+  await Gh()
   let e =
       r.req.query("proxy") === "true" ||
       r.req.path.startsWith("/p") ||
@@ -23581,7 +24082,7 @@ Je.get("/*", async (r) => {
     let s = i,
       n = r.req.path.startsWith("/api/sd") || r.req.path.startsWith("/sd")
     if (n) {
-      let d = await Ht(s, r.req.query("pwd") || "", r.env)
+      let d = await Wt(s, r.req.query("pwd") || "", r.env)
       if (!d.ok) return r.text(d.error || "Share not found", 404)
       if (d.virtualList || !d.realPath)
         return r.text("Cannot download share root", 400)
@@ -23590,9 +24091,9 @@ Je.get("/*", async (r) => {
       let d = await Y(r)
       if (!d || d.disabled) return r.text("Unauthorized", 401)
     }
-    if (!n && (await Ur(r)).enabled) {
+    if (!n && (await jr(r)).enabled) {
       let l = r.req.query("sign") || ""
-      if (!(await w0(r, s, l))) return r.text("Invalid or expired sign", 401)
+      if (!(await B0(r, s, l))) return r.text("Invalid or expired sign", 401)
     }
     let o = await ne(s)
     if (o.isVirtual || !o.physical)
@@ -23606,7 +24107,7 @@ Je.get("/*", async (r) => {
           try {
             u = await l.get(s, o.physical)
           } finally {
-            await be(o.storage.driver, o.storage, l, Bh(r))
+            await be(o.storage.driver, o.storage, l, Vh(r))
           }
           if (u && u.raw_url)
             if (
@@ -23640,7 +24141,7 @@ Je.get("/*", async (r) => {
                   "Access-Control-Expose-Headers",
                   "Content-Range, Accept-Ranges, Content-Length, Content-Disposition",
                 ))
-              let x = {
+              let w = {
                   pdf: "application/pdf",
                   mp4: "video/mp4",
                   webm: "video/webm",
@@ -23657,12 +24158,12 @@ Je.get("/*", async (r) => {
                   svg: "image/svg+xml",
                 },
                 g = s.split(".").pop()?.toLowerCase() || "",
-                m = x[g] || "application/octet-stream"
+                m = w[g] || "application/octet-stream"
               r.header("Content-Type", y.headers.get("content-type") || m)
               let v = y.headers.get("content-length")
               v && r.header("Content-Length", v)
-              let w = y.headers.get("content-range")
-              ;(w && r.header("Content-Range", w),
+              let x = y.headers.get("content-range")
+              ;(x && r.header("Content-Range", x),
                 r.header(
                   "Accept-Ranges",
                   y.headers.get("accept-ranges") || "bytes",
@@ -23685,7 +24186,28 @@ Je.get("/*", async (r) => {
                 ),
                 r.redirect(u.raw_url, 302)
               )
-          else {
+          else if (typeof l.createReadStream == "function" && u && !u.is_dir) {
+            r.header("Access-Control-Allow-Origin", "*")
+            let p = u.size || 0,
+              f = r.req.header("Range")
+            if (f && p > 0) {
+              let { start: h, end: y, chunksize: w } = Uo(f, p),
+                g = await l.createReadStream(o.physical, { start: h, end: y })
+              return (
+                r.header("Content-Range", `bytes ${h}-${y}/${p}`),
+                r.header("Accept-Ranges", "bytes"),
+                r.header("Content-Length", w.toString()),
+                r.header("Content-Type", "application/octet-stream"),
+                r.body(g, 206)
+              )
+            } else {
+              ;(p > 0 && r.header("Content-Length", p.toString()),
+                r.header("Accept-Ranges", "bytes"),
+                r.header("Content-Type", "application/octet-stream"))
+              let h = await l.createReadStream(o.physical)
+              return r.body(h)
+            }
+          } else {
             let p =
               u?.raw_url_error ||
               (u?.is_dir
@@ -23707,15 +24229,15 @@ ${p}`,
           )
         }
     }
-    if (!Ms || !Ns)
+    if (!Gs || !Ws)
       return r.text("Local file streaming not supported in Edge Runtime", 500)
-    let a = await Ms.stat(o.physical)
+    let a = await Gs.stat(o.physical)
     if (a.isDirectory()) return r.text("Cannot download directory", 400)
     r.header("Access-Control-Allow-Origin", "*")
     let c = r.req.header("Range")
     if (c) {
-      let { start: d, end: l, chunksize: u } = O0(c, a.size),
-        p = Ns(o.physical, { start: d, end: l })
+      let { start: d, end: l, chunksize: u } = Uo(c, a.size),
+        p = Ws(o.physical, { start: d, end: l })
       return (
         r.header("Content-Range", `bytes ${d}-${l}/${a.size}`),
         r.header("Accept-Ranges", "bytes"),
@@ -23726,7 +24248,7 @@ ${p}`,
     } else {
       ;(r.header("Content-Length", a.size.toString()),
         r.header("Accept-Ranges", "bytes"))
-      let d = Ns(o.physical)
+      let d = Ws(o.physical)
       return r.body(d)
     }
   } catch (s) {
@@ -23737,8 +24259,8 @@ ${p}`,
   }
 })
 te()
-var Jt = new J()
-Jt.get("/settings", async (r) => {
+var Xt = new J()
+Xt.get("/settings", async (r) => {
   let e = await U(r.env),
     t = {
       title: "OpenListNext Serverless",
@@ -23812,7 +24334,7 @@ Allow: /`,
     r.json({ code: 200, message: "success", data: t })
   )
 })
-Jt.get("/archive_extensions", (r) =>
+Xt.get("/archive_extensions", (r) =>
   r.json({
     code: 200,
     message: "success",
@@ -23830,14 +24352,14 @@ Jt.get("/archive_extensions", (r) =>
     ],
   }),
 )
-Jt.get("/offline_download_tools", (r) =>
+Xt.get("/offline_download_tools", (r) =>
   r.json({ code: 200, message: "success", data: [] }),
 )
-Jt.get("/plugins", async (r) => {
+Xt.get("/plugins", async (r) => {
   let i = ((await U(r.env)).plugins || []).filter((s) => s.enabled)
   return r.json({ code: 200, message: "success", data: i })
 })
-function Rh() {
+function Jh() {
   return [
     {
       name: "list_files",
@@ -23856,7 +24378,7 @@ function Rh() {
     },
   ]
 }
-function Uh() {
+function Qh() {
   return [
     {
       uri: "openlistnext://storage/metrics",
@@ -23866,7 +24388,7 @@ function Uh() {
     },
   ]
 }
-function qh() {
+function Xh() {
   return [
     {
       name: "summarize_directory",
@@ -23877,14 +24399,14 @@ function qh() {
     },
   ]
 }
-function $0(r, e, t) {
+function X0(r, e, t) {
   switch (r) {
     case "tools/list":
-      return { jsonrpc: "2.0", result: { tools: Rh() }, id: e }
+      return { jsonrpc: "2.0", result: { tools: Jh() }, id: e }
     case "resources/list":
-      return { jsonrpc: "2.0", result: { resources: Uh() }, id: e }
+      return { jsonrpc: "2.0", result: { resources: Qh() }, id: e }
     case "prompts/list":
-      return { jsonrpc: "2.0", result: { prompts: qh() }, id: e }
+      return { jsonrpc: "2.0", result: { prompts: Xh() }, id: e }
     default:
       return {
         jsonrpc: "2.0",
@@ -23893,10 +24415,10 @@ function $0(r, e, t) {
       }
   }
 }
-Ke()
-var $r = new J()
-$r.use("*", ke)
-$r.get(
+We()
+var Nr = new J()
+Nr.use("*", ke)
+Nr.get(
   "/sse",
   (r) => (
     r.header("Content-Type", "text/event-stream"),
@@ -23908,7 +24430,7 @@ data: /api/mcp/messages
 `)
   ),
 )
-$r.post("/messages", async (r) => {
+Nr.post("/messages", async (r) => {
   let e = await r.req.json().catch(() => ({})),
     { method: t, id: i, params: s } = e
   if (!t)
@@ -23920,15 +24442,15 @@ $r.post("/messages", async (r) => {
       },
       400,
     )
-  let n = $0(t, i, s),
+  let n = X0(t, i, s),
     o = n.error ? 404 : 200
   return r.json(n, o)
 })
 te()
-$s()
-var Eo = new J()
-Eo.get("/info", async (r) => {
-  let e = await Et(r),
+Ns()
+var qo = new J()
+qo.get("/info", async (r) => {
+  let e = await Ft(r),
     t = await U(r.env),
     i = {
       runtime: "Cloudflare Workers / Edge",
@@ -23950,16 +24472,16 @@ Eo.get("/info", async (r) => {
   )
 })
 te()
-Ke()
-var xe = new J()
-xe.use("/list", ke)
-xe.use("/get", ke)
-xe.use("/update", ke)
-xe.use("/delete", ke)
-xe.use("/cancel", ke)
-xe.use("/enable", ke)
-xe.use("/disable", ke)
-xe.get("/list", async (r) => {
+We()
+var we = new J()
+we.use("/list", ke)
+we.use("/get", ke)
+we.use("/update", ke)
+we.use("/delete", ke)
+we.use("/cancel", ke)
+we.use("/enable", ke)
+we.use("/disable", ke)
+we.get("/list", async (r) => {
   let e = await U(r.env)
   return r.json({
     code: 200,
@@ -23967,19 +24489,19 @@ xe.get("/list", async (r) => {
     data: { content: e.shares || [], total: (e.shares || []).length },
   })
 })
-xe.get("/get", async (r) => {
+we.get("/get", async (r) => {
   let e = r.req.query("id") || "",
     i = ((await U(r.env)).shares || []).find((s) => s.id === e)
   return i
     ? r.json({ code: 200, message: "success", data: i })
     : r.json({ code: 404, message: "share not found", data: null })
 })
-xe.post("/create", async (r) => {
+we.post("/create", async (r) => {
   let e = await Y(r)
   if (!e) return r.json({ code: 401, message: "Unauthorized", data: null }, 401)
   let t = await r.req.json().catch(() => ({})),
     i = await U(r.env),
-    s = t.id && String(t.id).trim() !== "" ? String(t.id).trim() : Oh()
+    s = t.id && String(t.id).trim() !== "" ? String(t.id).trim() : Yh()
   if ((i.shares || []).some((o) => o.id === s))
     return r.json({ code: 400, message: "share id already exists", data: null })
   let n = {
@@ -24007,10 +24529,10 @@ xe.post("/create", async (r) => {
     r.json({ code: 200, message: "success", data: n })
   )
 })
-function Oh() {
+function Yh() {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 16)
 }
-xe.post("/update", async (r) => {
+we.post("/update", async (r) => {
   let e = await r.req.json().catch(() => ({})),
     t = await U(r.env)
   if (!e.id)
@@ -24048,7 +24570,7 @@ xe.post("/update", async (r) => {
       await $(t, r.env),
       r.json({ code: 200, message: "success", data: null }))
 })
-xe.post("/delete", async (r) => {
+we.post("/delete", async (r) => {
   let e = r.req.query("id") || "",
     t = await U(r.env)
   return (
@@ -24058,7 +24580,7 @@ xe.post("/delete", async (r) => {
     r.json({ code: 200, message: "success", data: null })
   )
 })
-xe.post("/enable", async (r) => {
+we.post("/enable", async (r) => {
   let e = r.req.query("id") || "",
     t = await U(r.env),
     i = (t.shares || []).find((s) => s.id === e)
@@ -24067,7 +24589,7 @@ xe.post("/enable", async (r) => {
     r.json({ code: 200, message: "success", data: null })
   )
 })
-xe.post("/disable", async (r) => {
+we.post("/disable", async (r) => {
   let e = r.req.query("id") || "",
     t = await U(r.env),
     i = (t.shares || []).find((s) => s.id === e)
@@ -24077,7 +24599,7 @@ xe.post("/disable", async (r) => {
   )
 })
 te()
-Ke()
+We()
 var Se = new J()
 Se.all("/refresh", ke, async (r) => {
   let e = await U(r.env),
@@ -24120,25 +24642,25 @@ Se.all("/refresh", ke, async (r) => {
     })
   )
 })
-var Tt = { upload: [], copy: [], move: [], offline_download: [] }
+var Bt = { upload: [], copy: [], move: [], offline_download: [] }
 Se.use("*", ke)
 Se.get("/:type/:state", (r) => {
   let e = r.req.param("type"),
     t = r.req.param("state"),
-    s = (Tt[e] || []).filter((n) => (t === "done" ? n.done : !n.done))
+    s = (Bt[e] || []).filter((n) => (t === "done" ? n.done : !n.done))
   return r.json({ code: 200, message: "success", data: s })
 })
 Se.post("/:type/clear_done", (r) => {
   let e = r.req.param("type")
   return (
-    Tt[e] && (Tt[e] = Tt[e].filter((t) => !t.done)),
+    Bt[e] && (Bt[e] = Bt[e].filter((t) => !t.done)),
     r.json({ code: 200, message: "success", data: null })
   )
 })
 Se.post("/:type/clear_succeeded", (r) => {
   let e = r.req.param("type")
   return (
-    Tt[e] && (Tt[e] = Tt[e].filter((t) => t.state !== "succeeded")),
+    Bt[e] && (Bt[e] = Bt[e].filter((t) => t.state !== "succeeded")),
     r.json({ code: 200, message: "success", data: null })
   )
 })
@@ -24163,9 +24685,9 @@ Se.post("/:type/delete", (r) =>
 Se.post("/:type/delete_some", (r) =>
   r.json({ code: 200, message: "success", data: null }),
 )
-var jr = new Map(),
-  Qt = new Map()
-function $h(r) {
+var Mr = new Map(),
+  Yt = new Map()
+function Zh(r) {
   return (
     r.req.header("CF-Connecting-IP") ||
     r.req.header("x-real-ip") ||
@@ -24173,13 +24695,13 @@ function $h(r) {
     "unknown"
   )
 }
-function jh() {
+function eg() {
   let r = Date.now()
-  if (jr.size > 2e4) for (let [e, t] of jr) r - t.start > 6e4 && jr.delete(e)
-  if (Qt.size > 2e4) for (let [e, t] of Qt) r - t.start > 36e5 && Qt.delete(e)
+  if (Mr.size > 2e4) for (let [e, t] of Mr) r - t.start > 6e4 && Mr.delete(e)
+  if (Yt.size > 2e4) for (let [e, t] of Yt) r - t.start > 36e5 && Yt.delete(e)
 }
-async function zh(r, e) {
-  let t = $h(r),
+async function tg(r, e) {
+  let t = Zh(r),
     i = Date.now(),
     s = 0,
     n = 0
@@ -24190,9 +24712,9 @@ async function zh(r, e) {
     ;((s = parseInt(a.ip_limit, 10) || 0),
       (n = parseInt(a.traffic_limit, 10) || 0))
   } catch {}
-  if ((jh(), s > 0)) {
-    let o = jr.get(t)
-    if (!o || i - o.start > 6e4) jr.set(t, { start: i, count: 1 })
+  if ((eg(), s > 0)) {
+    let o = Mr.get(t)
+    if (!o || i - o.start > 6e4) Mr.set(t, { start: i, count: 1 })
     else if (((o.count += 1), o.count > s))
       return r.json(
         { code: 429, message: "Too many requests, slow down", data: null },
@@ -24200,7 +24722,7 @@ async function zh(r, e) {
       )
   }
   if (n > 0) {
-    let o = Qt.get(t),
+    let o = Yt.get(t),
       a = n * 1024 * 1024
     if (o && i - o.start <= 36e5 && o.bytes >= a)
       return r.json(
@@ -24221,15 +24743,15 @@ async function zh(r, e) {
   ) {
     let o = parseInt(r.res?.headers?.get("content-length") || "0", 10) || 0
     if (o > 0) {
-      let a = Qt.get(t)
+      let a = Yt.get(t)
       !a || i - a.start > 36e5
-        ? Qt.set(t, { start: i, bytes: o })
+        ? Yt.set(t, { start: i, bytes: o })
         : (a.bytes += o)
     }
   }
 }
-function j0(r) {
-  ;(r.use("*", zh),
+function Y0(r) {
+  ;(r.use("*", tg),
     r.use("*", async (e, t) => {
       ;(await t(),
         e.res.headers.set("X-Frame-Options", "DENY"),
@@ -24246,7 +24768,7 @@ function j0(r) {
     }),
     r.use(
       "*",
-      wa({
+      Ca({
         origin: (e, t) => {
           if (!e) return e
           let n = (
@@ -24271,24 +24793,24 @@ function j0(r) {
         credentials: !0,
       }),
     ),
-    r.route("/raw", Je),
-    r.route("/fs", pe),
-    r.route("/auth", Ve),
-    r.route("/public", Jt),
+    r.route("/raw", Qe),
+    r.route("/fs", fe),
+    r.route("/auth", Je),
+    r.route("/public", Xt),
     r.route("/admin", z),
-    r.route("/mcp", $r),
-    r.route("/debug", Eo),
-    r.route("/share", xe),
+    r.route("/mcp", Nr),
+    r.route("/debug", qo),
+    r.route("/share", we),
     r.route("/task", Se),
-    r.route("/d", Je),
-    r.route("/sd", Je),
-    r.route("/p", Je),
-    r.route("/me", qr),
-    r.get("/me", Co),
-    r.post("/me/update", Ao),
-    r.post("/user/update_pwd", R0),
-    r.get("/logout", Or),
-    r.post("/logout", Or),
+    r.route("/d", Qe),
+    r.route("/sd", Qe),
+    r.route("/p", Qe),
+    r.route("/me", zr),
+    r.get("/me", Ro),
+    r.post("/me/update", Bo),
+    r.post("/user/update_pwd", V0),
+    r.get("/logout", Lr),
+    r.post("/logout", Lr),
     r.get("/health", (e) =>
       e.json({
         ok: !0,
@@ -24299,21 +24821,21 @@ function j0(r) {
     ))
 }
 te()
-var It = new J()
-It.use("*", async (r, e) => {
-  ;(mn(r.env), await e())
+var Rt = new J()
+Rt.use("*", async (r, e) => {
+  ;(_n(r.env), await e())
 })
-var z0 = new J()
-j0(z0)
-It.route("/api", z0)
-It.route("/d", Je)
-It.route("/sd", Je)
-It.route("/p", Je)
-var Do = null
-function L0(r) {
-  Do = r
+var Z0 = new J()
+Y0(Z0)
+Rt.route("/api", Z0)
+Rt.route("/d", Qe)
+Rt.route("/sd", Qe)
+Rt.route("/p", Qe)
+var Oo = null
+function eu(r) {
+  Oo = r
 }
-It.all("*", async (r) => {
+Rt.all("*", async (r) => {
   let e = r.env
   if (e && e.ASSETS && typeof e.ASSETS.fetch == "function") {
     let t = new URL(r.req.url),
@@ -24331,15 +24853,15 @@ It.all("*", async (r) => {
     let s = new Request(`${t.origin}/index.html`, r.req.raw)
     return e.ASSETS.fetch(s)
   }
-  return Do && (r.req.method === "GET" || r.req.method === "HEAD")
-    ? r.body(Do, 200, {
+  return Oo && (r.req.method === "GET" || r.req.method === "HEAD")
+    ? r.body(Oo, 200, {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-cache, must-revalidate",
       })
     : r.text("404 Not Found", 404)
 })
-var N0 = It
-var M0 = `<!doctype html>
+var tu = Rt
+var ru = `<!doctype html>
 <html lang="en" translate="no">
   <head>
     <!-- customize head -->
@@ -24364,17 +24886,17 @@ var M0 = `<!doctype html>
         main_color: undefined,
       }
     </script>
-    <script type="module" crossorigin src="/assets/index-Y9EU-H5y.js"></script>
+    <script type="module" crossorigin src="/assets/index-D8C4ozw-.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-Dd_uD5pT.js">
-    <link rel="modulepreload" crossorigin href="/assets/entry-Tjb0BDfG.js">
-    <link rel="modulepreload" crossorigin href="/assets/entry-B-w-Y07W.js">
+    <link rel="modulepreload" crossorigin href="/assets/entry-DthSYKYd.js">
+    <link rel="modulepreload" crossorigin href="/assets/entry-DQ32c-X-.js">
     <link rel="modulepreload" crossorigin href="/assets/preload-helper-Czpn1I53.js">
-    <link rel="modulepreload" crossorigin href="/assets/store-By_wapJI.js">
-    <link rel="modulepreload" crossorigin href="/assets/lib-BS-DMHmY.js">
-    <link rel="modulepreload" crossorigin href="/assets/fi-CICXDCKS.js">
+    <link rel="modulepreload" crossorigin href="/assets/store-Cy-PAbbw.js">
+    <link rel="modulepreload" crossorigin href="/assets/lib-BWzJFwIv.js">
+    <link rel="modulepreload" crossorigin href="/assets/fi-Bd9BjP2B.js">
     <link rel="modulepreload" crossorigin href="/assets/micromark-factory-space-C61DdfyV.js">
     <link rel="modulepreload" crossorigin href="/assets/lib-BI7MA2me.js">
-    <link rel="modulepreload" crossorigin href="/assets/components-4H2Qe_51.js">
+    <link rel="modulepreload" crossorigin href="/assets/components-C-deq5Wg.js">
     <link rel="modulepreload" crossorigin href="/assets/archive-DWS1gHM1.js">
     <link rel="stylesheet" crossorigin href="/assets/components-DFUx0M5w.css">
     <link rel="stylesheet" crossorigin href="/assets/index-CEjh6L5N.css">
@@ -24388,16 +24910,16 @@ var M0 = `<!doctype html>
     <!-- customize body -->
     <script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script>
     <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-W3AHIlJa.js"></script>
-    <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/index-legacy-VHAlJoyJ.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
+    <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/index-legacy-CO3FBXkA.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
   </body>
 </html>
 `
-L0(M0)
-function Nh(r) {
-  return N0.fetch(r.request, r.env, r)
+eu(ru)
+function ig(r) {
+  return tu.fetch(r.request, r.env, r)
 }
-var Nv = Nh
-export { Nv as default, Nh as onRequest }
+var pb = ig
+export { pb as default, ig as onRequest }
 /*! Bundled license information:
 
 crypto-js/ripemd160.js:

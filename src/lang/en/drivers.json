@@ -1800,5 +1800,21 @@
     },
     "upload_thread": "Upload Threads",
     "upload_thread-tips": "Concurrent upload threads (4<=thread<=32, default 4)"
+  },
+  "SFTP": {
+    "address": "SSH Address",
+    "address-tips": "SSH host and port (e.g. 127.0.0.1:22)",
+    "username": "Username",
+    "username-tips": "SSH login username",
+    "password": "Password",
+    "password-tips": "SSH login password (leave empty if using private key)",
+    "private_key": "Private Key",
+    "private_key-tips": "SSH private key for public-key authentication",
+    "passphrase": "Passphrase",
+    "passphrase-tips": "Passphrase for encrypted private key",
+    "root_folder_path": "Root Folder Path",
+    "root_folder_path-tips": "Root directory path to mount (default /)",
+    "ignore_symlink_error": "Ignore Symlink Error",
+    "ignore_symlink_error-tips": "Ignore broken symlink errors and keep entries"
   }
 }

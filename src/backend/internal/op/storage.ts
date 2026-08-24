@@ -37,6 +37,18 @@ async function getLocalDriver(): Promise<StorageDriver> {
   return _localDriver
 }
 
+async function getSFTPDriver(storageConfig: any): Promise<StorageDriver> {
+  if (typeof process !== "undefined" && process.release?.name === "node") {
+    const { SFTPDriver } = await import("../../drivers/sftp")
+    const driver = new SFTPDriver(parseAddition(storageConfig))
+    await driver.init?.()
+    return driver
+  }
+  throw new Error(
+    "SFTP storage driver requires Node.js runtime (raw TCP sockets not available in Cloudflare Workers)",
+  )
+}
+
 const driverCache = new Map<string, StorageDriver>()
 const driverInitCache = new Map<string, Promise<StorageDriver>>()
 const cookiePersistenceCache = new Map<string, Promise<void>>()
@@ -84,6 +96,9 @@ async function createDriver(
     throw new Error(
       "Local storage driver requires Node.js runtime (not available in Cloudflare Workers)",
     )
+  }
+  if (normDriver === "sftp") {
+    return getSFTPDriver(storageConfig)
   }
 
   if (!storageConfig) {

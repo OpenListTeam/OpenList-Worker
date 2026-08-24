@@ -1806,5 +1806,21 @@
     },
     "upload_thread": "上传并发线程数",
     "upload_thread-tips": "限制4<=thread<=32，默认4"
+  },
+  "SFTP": {
+    "address": "SSH 地址",
+    "address-tips": "SSH 主机与端口（例如 127.0.0.1:22）",
+    "username": "用户名",
+    "username-tips": "SSH 登录用户名",
+    "password": "密码",
+    "password-tips": "SSH 密码（使用私钥时可留空）",
+    "private_key": "私钥",
+    "private_key-tips": "使用私钥验证代替密码（PEM 格式文本）",
+    "passphrase": "私钥密码",
+    "passphrase-tips": "私钥的加密口令（若私钥无加密可留空）",
+    "root_folder_path": "根文件夹路径",
+    "root_folder_path-tips": "挂载的根路径（默认为 /）",
+    "ignore_symlink_error": "忽略符号链接错误",
+    "ignore_symlink_error-tips": "当软链接目标失效时忽略错误并保留条目"
   }
 }
