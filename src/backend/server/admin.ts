@@ -350,20 +350,30 @@ adminRouter.post("/storage/enable", async (c) => {
   if (s) {
     s.disabled = false
     s.modified = new Date().toISOString()
-    try {
-      const driver = await getDriver(s.driver, s)
-      await driver.init?.()
-      s.status = "work"
-    } catch (e: any) {
-      s.status = e.message || String(e)
-      await saveDb(db, c.env)
-      return c.json({
-        code: 500,
-        message: e.message || String(e),
-        data: null,
-      })
-    }
     await saveDb(db, c.env)
+    // 异步初始化驱动（不阻塞响应）：启用多个云盘时立即返回，
+    // 初始化完成后更新状态；失败时把错误写入 status，下次访问或
+    // 重新加载时会再次尝试。
+    ;(async () => {
+      try {
+        const driver = await getDriver(s.driver, s)
+        await driver.init?.()
+        const db2 = await getDb(c.env)
+        const st = db2.storages.find((x: any) => x.id === id)
+        if (st && !st.disabled) {
+          st.status = "work"
+          st.modified = new Date().toISOString()
+          await saveDb(db2, c.env)
+        }
+      } catch (e: any) {
+        const db3 = await getDb(c.env)
+        const st = db3.storages.find((x: any) => x.id === id)
+        if (st && !st.disabled) {
+          st.status = e.message || String(e)
+          await saveDb(db3, c.env)
+        }
+      }
+    })()
   }
   return c.json({ code: 200, message: "success", data: null })
 })
