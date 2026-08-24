@@ -180,8 +180,9 @@ export class Pan189Client {
   private async followRedirectsWithCookies(
     initialUrl: string,
     headers: Record<string, string>,
-  ): Promise<{ response: Response; url: string }> {
+  ): Promise<{ response: Response; url: string; urls: string[] }> {
     let currentUrl = initialUrl
+    const visitedUrls: string[] = [currentUrl]
 
     for (let redirectCount = 0; redirectCount <= 8; redirectCount++) {
       const currentUrlObj = new URL(currentUrl)
@@ -224,9 +225,10 @@ export class Pan189Client {
               )
             }
             terminalUrl = responseUrl.toString()
+            visitedUrls.push(terminalUrl)
           }
         }
-        return { response, url: terminalUrl }
+        return { response, url: terminalUrl, urls: visitedUrls }
       }
       if (redirectCount === 8) {
         throw new Error("[189Cloud] 登录重定向次数过多")
@@ -241,6 +243,7 @@ export class Pan189Client {
         )
       }
       currentUrl = nextUrl.toString()
+      visitedUrls.push(currentUrl)
     }
 
     throw new Error("[189Cloud] 登录重定向失败")
@@ -262,6 +265,14 @@ export class Pan189Client {
 
       if (hasOAuthParams(result.url) || isLoggedInUrl(result.url)) {
         return result.url
+      }
+
+      // Workers/CDN 可能隐藏最终响应的 Location 或把 Response.url 归一化为
+      // 请求地址，导致 result.url 缺 lt/reqId。从重定向历史中回退查找任意
+      // 携带 OAuth 参数（lt + reqId）的跳转 URL，避免误报参数缺失。
+      const oauthUrl = result.urls.find((u) => hasOAuthParams(u))
+      if (oauthUrl) {
+        return oauthUrl
       }
 
       if (attempt < 2) {

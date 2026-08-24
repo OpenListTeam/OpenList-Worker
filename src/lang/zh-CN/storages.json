@@ -55,7 +55,8 @@
   "table_fields": {
     "status": {
       "work": "正常运作",
-      "disabled": "已禁用"
+      "disabled": "已禁用",
+      "cookie_expired": "⚠️ Cookie 已过期，请更新"
     }
   },
   "other": {

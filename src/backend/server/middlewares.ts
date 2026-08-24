@@ -1,6 +1,6 @@
 import { Context } from "hono"
 import { verify } from "hono/jwt"
-import { checkAdminAuth } from "../pkg/utils"
+import { checkAdminAuth, isStaticApiToken } from "../pkg/utils"
 import { getDb } from "../internal/model/db"
 
 // 不再硬编码 JWT 密钥。优先使用环境变量 JWT_SECRET（推荐在生产配置），
@@ -127,8 +127,9 @@ export async function getUserFromContext(c: Context): Promise<{
   allow_ldap?: boolean
   otp_secret?: string
 } | null> {
-  // 静态 API token：与 /admin 同等信任
-  if (await checkAdminAuth(c)) {
+  // 仅静态 API token（settings.token）命中才视为匿名管理员；
+  // JWT 管理员走下方正常解析，避免用户名被硬编码成 "api-token"。
+  if (await isStaticApiToken(c)) {
     return {
       role: 2,
       permission: 0,
