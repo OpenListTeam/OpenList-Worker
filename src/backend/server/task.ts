@@ -18,6 +18,26 @@ taskRouter.all("/refresh", adminAuthMiddleware, async (c) => {
     try {
       const driver = await getDriver(s.driver, s)
       await driver.init?.()
+      // lanzou 驱动：主动校验 Cookie 是否过期（有效期约 15 天），
+      // 失效时标记 status=cookie_expired，管理后台可直接看到提示
+      if (
+        typeof (driver as any).checkCookieValid === "function" &&
+        /lanzou/i.test(String(s.driver))
+      ) {
+        const check = await (driver as any).checkCookieValid()
+        if (!check.valid) {
+          s.status = "cookie_expired"
+          failed++
+          results.push({
+            id: s.id,
+            mount_path: s.mount_path,
+            driver: s.driver,
+            status: "cookie_expired",
+            error: check.error || "Cookie expired",
+          })
+          continue
+        }
+      }
       s.status = "work"
       refreshed++
       results.push({

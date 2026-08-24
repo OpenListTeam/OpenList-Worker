@@ -55,7 +55,8 @@
   "table_fields": {
     "status": {
       "work": "Working",
-      "disabled": "Disabled"
+      "disabled": "Disabled",
+      "cookie_expired": "⚠️ Cookie expired, please update"
     }
   },
   "other": {

@@ -70,6 +70,14 @@ export class LanzouDriver implements StorageDriver {
     await this.client.init()
   }
 
+  /**
+   * 校验当前 Cookie 是否有效（供管理后台 /task/refresh 状态刷新调用）。
+   * 有效返回 true；失效返回 false 并附过期提示。
+   */
+  async checkCookieValid(): Promise<{ valid: boolean; error?: string }> {
+    return this.client.checkCookieValid()
+  }
+
   private isUrlMode(): boolean {
     return this.addition.type === "url"
   }
@@ -268,6 +276,10 @@ export class LanzouDriver implements StorageDriver {
           const resolved = await this.client.getFilesByShareUrl(
             item.id || "",
             item.pwd || this.addition.share_password || "",
+            undefined,
+            // 分享页域名每个人不同（如 xxx.lanzn.com），
+            // 先探测分享页真实域名再解析直链，避免一直用兜底域名请求
+            await this.client.probeShareDomain(item.id || ""),
           )
           downloadUrl = resolved.url
           item.name_all = resolved.name_all || item.name_all
