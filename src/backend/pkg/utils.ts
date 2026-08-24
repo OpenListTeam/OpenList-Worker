@@ -30,21 +30,24 @@ export async function checkAdminAuth(c: Context): Promise<boolean> {
     ? authHeader.substring(7)
     : authHeader
 
-  // 1. 静态 API token（settings.token）
-  const db = await getDb(c.env)
-  const tokenSetting = db.settings.find((s: any) => s.key === "token")
-  if (tokenSetting && tokenSetting.value && token === tokenSetting.value) {
+  if (!token) return false
+
+  // 1. 显式环境变量配置的高权限管理员 API 密钥（如配置了 ADMIN_API_TOKEN）
+  const env =
+    (c as any).env || (typeof process !== "undefined" ? process.env : {}) || {}
+  const envAdminToken = env.ADMIN_API_TOKEN
+  if (envAdminToken && envAdminToken.length >= 16 && token === envAdminToken) {
     return true
   }
 
-  // 2. JWT：管理员登录用户也视为管理员（登录用户变管理员判定）
+  // 2. JWT：管理员用户凭证校验（严格检查 role === 2 且用户未被禁用）
   try {
     const { verify } = await import("hono/jwt")
     const { getJwtSecret } = await import("../server/middlewares")
     const secret = await getJwtSecret(c)
     const payload: any = await verify(token, secret, "HS256")
     if (payload && payload.role === 2) {
-      // 确认该用户存在于 DB 且未被禁用
+      const db = await getDb(c.env)
       const user = (db.users || []).find(
         (u: any) => u.id === payload.id || u.username === payload.username,
       )

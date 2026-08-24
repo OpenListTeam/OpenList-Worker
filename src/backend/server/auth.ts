@@ -209,10 +209,7 @@ authRouter.post("/login", async (c) => {
   if (matchedUser) {
     const userPass = matchedUser.password || ""
     const isPasswordValid =
-      // 兼容 AList 明文存储的密码（直接相等）
-      (userPass !== "" && userPass === rawPassword) ||
-      // 标准流程：sha256(明文 + salt) 哈希比对
-      userPass === hashedPassword
+      userPass !== "" && userPass.length === 64 && userPass === hashedPassword
 
     if (isPasswordValid) {
       const otpCheck = await checkUserOtp(matchedUser, body)
@@ -247,7 +244,9 @@ authRouter.post("/login", async (c) => {
 authRouter.post("/login/hash", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const username = (body.username || "").trim()
-  const inputHash = body.password || ""
+  const inputHash = String(body.password || "")
+    .trim()
+    .toLowerCase()
 
   // 防爆破：与 /login 同一计数体系
   if (isLoginLocked(c, username)) {
@@ -268,14 +267,11 @@ authRouter.post("/login/hash", async (c) => {
     (u: any) => u.username === username && !u.disabled,
   )
 
-  if (matchedUser) {
-    const userPass = matchedUser.password || ""
-    const userPassHash =
-      userPass.length === 64
-        ? userPass
-        : await hashPassword(userPass || "admin")
-
-    const isHashValid = inputHash === userPass || inputHash === userPassHash
+  if (matchedUser && inputHash.length === 64) {
+    const userPass = String(matchedUser.password || "")
+      .trim()
+      .toLowerCase()
+    const isHashValid = userPass.length === 64 && inputHash === userPass
 
     if (isHashValid) {
       const otpCheck = await checkUserOtp(matchedUser, body)

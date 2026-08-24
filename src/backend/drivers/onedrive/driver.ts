@@ -32,7 +32,37 @@ export class Onedrive implements StorageDriver {
     onTokenUpdate?: (token: string) => void,
   ) {
     if (addition) {
-      Object.assign(this, addition)
+      if (addition.root_folder_path !== undefined)
+        this.root_folder_path = String(addition.root_folder_path)
+      if (addition.region !== undefined) this.region = String(addition.region)
+      if (addition.is_sharepoint !== undefined)
+        this.is_sharepoint = !!addition.is_sharepoint
+      if (addition.use_online_api !== undefined)
+        this.use_online_api = !!addition.use_online_api
+      if (addition.api_url_address !== undefined)
+        this.api_url_address = String(addition.api_url_address)
+      if (addition.client_id !== undefined)
+        this.client_id = String(addition.client_id)
+      if (addition.client_secret !== undefined)
+        this.client_secret = String(addition.client_secret)
+      if (addition.redirect_uri !== undefined)
+        this.redirect_uri = String(addition.redirect_uri)
+      if (addition.refresh_token !== undefined)
+        this.refresh_token = String(addition.refresh_token)
+      if (addition.site_id !== undefined)
+        this.site_id = String(addition.site_id)
+      if (addition.chunk_size !== undefined)
+        this.chunk_size = Number(addition.chunk_size) || 5
+      if (addition.custom_host !== undefined)
+        this.custom_host = String(addition.custom_host)
+      if (addition.disable_disk_usage !== undefined)
+        this.disable_disk_usage = !!addition.disable_disk_usage
+      if (addition.enable_direct_upload !== undefined)
+        this.enable_direct_upload = !!addition.enable_direct_upload
+      if (addition.order_by !== undefined)
+        this.order_by = String(addition.order_by)
+      if (addition.order_direction !== undefined)
+        this.order_direction = String(addition.order_direction)
     }
     this.onTokenUpdate = onTokenUpdate
   }

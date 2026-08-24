@@ -163,6 +163,160 @@ class PluginEngine {
     }
   }
 
+  private createScopedPluginApi(plugin: PluginItem) {
+    const isHighPriv = Boolean(plugin.high_privilege)
+    const perms = plugin.permissions || []
+    const hasPerm = (p: PluginPermission) => isHighPriv || perms.includes(p)
+    const self = this
+
+    return {
+      version: "2.0.0",
+      bus,
+      notify,
+      request: r,
+
+      // Filesystem Operations guarded by permission
+      fs: {
+        list: (path: string, password = "", page = 1, per_page = 0) =>
+          r.post("/fs/list", { path, password, page, per_page }),
+        get: (path: string, password = "") =>
+          r.post("/fs/get", { path, password }),
+        mkdir: (path: string) => {
+          if (!hasPerm("fs:write")) {
+            throw new Error(`[Plugin ${plugin.id}] Permission denied: fs:write`)
+          }
+          return r.post("/fs/mkdir", { path })
+        },
+        rename: (path: string, name: string) => {
+          if (!hasPerm("fs:write")) {
+            throw new Error(`[Plugin ${plugin.id}] Permission denied: fs:write`)
+          }
+          return r.post("/fs/rename", { path, name })
+        },
+        remove: (dir: string, names: string[]) => {
+          if (!hasPerm("fs:write")) {
+            throw new Error(`[Plugin ${plugin.id}] Permission denied: fs:write`)
+          }
+          return r.post("/fs/remove", { dir, names })
+        },
+        copy: (src_dir: string, dst_dir: string, names: string[]) => {
+          if (!hasPerm("fs:write")) {
+            throw new Error(`[Plugin ${plugin.id}] Permission denied: fs:write`)
+          }
+          return r.post("/fs/copy", { src_dir, dst_dir, names })
+        },
+        move: (src_dir: string, dst_dir: string, names: string[]) => {
+          if (!hasPerm("fs:write")) {
+            throw new Error(`[Plugin ${plugin.id}] Permission denied: fs:write`)
+          }
+          return r.post("/fs/move", { src_dir, dst_dir, names })
+        },
+        form: (url: string, data: FormData) => {
+          if (!hasPerm("fs:write")) {
+            throw new Error(`[Plugin ${plugin.id}] Permission denied: fs:write`)
+          }
+          return r.post(url, data)
+        },
+      },
+
+      // Admin & System Operations strictly guarded by high_privilege
+      admin: {
+        getSettings: (group = 0) => {
+          if (!isHighPriv) {
+            throw new Error(`[Plugin ${plugin.id}] Admin privilege required`)
+          }
+          return r.get(`/admin/setting/list?groups=${group}`)
+        },
+        saveSettings: (settings: any[]) => {
+          if (!isHighPriv) {
+            throw new Error(`[Plugin ${plugin.id}] Admin privilege required`)
+          }
+          return r.post("/admin/setting/save", settings)
+        },
+        getStorages: () => {
+          if (!isHighPriv) {
+            throw new Error(`[Plugin ${plugin.id}] Admin privilege required`)
+          }
+          return r.get("/admin/storage/list")
+        },
+        loadAllStorages: () => {
+          if (!isHighPriv) {
+            throw new Error(`[Plugin ${plugin.id}] Admin privilege required`)
+          }
+          return r.post("/admin/storage/load_all")
+        },
+        getUsers: () => {
+          if (!isHighPriv) {
+            throw new Error(`[Plugin ${plugin.id}] Admin privilege required`)
+          }
+          return r.get("/admin/user/list")
+        },
+        getKvStatus: () => {
+          if (!isHighPriv) {
+            throw new Error(`[Plugin ${plugin.id}] Admin privilege required`)
+          }
+          return r.get("/admin/kv/status")
+        },
+      },
+
+      // Hook Event System
+      registerHook: (hookName: string, fn: PluginHookFn) => {
+        if (!self.hooks.has(hookName)) {
+          self.hooks.set(hookName, new Set())
+        }
+        self.hooks.get(hookName)!.add(fn)
+        return () => {
+          self.hooks.get(hookName)?.delete(fn)
+        }
+      },
+      emitHook: (hookName: string, data?: any) => {
+        return self.emitHook(hookName, data)
+      },
+
+      // Config & Permissions API
+      getConfig: () => plugin.config_values || {},
+      hasPermission: (permission: PluginPermission) => hasPerm(permission),
+
+      // UI & Widget Injections
+      addFloatingWidget: (
+        id: string,
+        renderFnOrHtml: string | ((container: HTMLElement) => void),
+      ) => {
+        return self.mountFloatingWidget(id, renderFnOrHtml)
+      },
+      removeFloatingWidget: (id: string) => {
+        self.unmountFloatingWidget(id)
+      },
+      registerFileAction: (action: PluginCustomAction) => {
+        self.fileActions.set(action.id, action)
+        bus.emit("plugin:file_action_registered", action)
+      },
+      registerHeaderAction: (action: PluginCustomAction) => {
+        self.headerActions.set(action.id, action)
+        bus.emit("plugin:header_action_registered", action)
+      },
+      getFileActions: () => Array.from(self.fileActions.values()),
+      getHeaderActions: () => Array.from(self.headerActions.values()),
+
+      // Dynamic Assets & Utility Loaders
+      loadScript: loadScriptIIFE,
+      loadCSS: loadCSS,
+      injectCSS: (id: string, css: string) => {
+        const styleId = `oplist-plugin-injected-${id}`
+        let el = document.getElementById(styleId) as HTMLStyleElement | null
+        if (!el) {
+          el = document.createElement("style")
+          el.id = styleId
+          document.head.appendChild(el)
+        }
+        el.textContent = css
+        return el
+      },
+
+      getActivePlugins: () => [...self.activePlugins],
+    }
+  }
+
   public async loadPlugin(plugin: PluginItem): Promise<boolean> {
     if (!plugin.enabled) return false
 
@@ -198,9 +352,10 @@ class PluginEngine {
       }
     }
 
-    // 3. Execute script with high-privilege context
+    // 3. Execute script with scoped context
     if (plugin.script_content && plugin.script_content.trim()) {
       try {
+        const scopedApi = this.createScopedPluginApi(plugin)
         const scriptFn = new Function(
           "OpenListPlugin",
           "plugin",
@@ -208,7 +363,7 @@ class PluginEngine {
           "privilege",
           `"use strict";\ntry {\n${plugin.script_content}\n} catch (err) { console.error("[Plugin ${plugin.id}] Runtime error:", err); }`,
         )
-        scriptFn(window.OpenListPlugin, plugin, plugin.config_values || {}, {
+        scriptFn(scopedApi, plugin, plugin.config_values || {}, {
           isHighPrivilege: Boolean(plugin.high_privilege),
           permissions: plugin.permissions || [],
         })

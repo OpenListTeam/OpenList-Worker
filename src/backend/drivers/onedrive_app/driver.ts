@@ -34,7 +34,28 @@ export class OnedriveAPP implements StorageDriver {
     onTokenUpdate?: (token: string) => void,
   ) {
     if (addition) {
-      Object.assign(this, addition)
+      if (addition.root_folder_path !== undefined)
+        this.root_folder_path = String(addition.root_folder_path)
+      if (addition.region !== undefined) this.region = String(addition.region)
+      if (addition.client_id !== undefined)
+        this.client_id = String(addition.client_id)
+      if (addition.client_secret !== undefined)
+        this.client_secret = String(addition.client_secret)
+      if (addition.tenant_id !== undefined)
+        this.tenant_id = String(addition.tenant_id)
+      if (addition.email !== undefined) this.email = String(addition.email)
+      if (addition.chunk_size !== undefined)
+        this.chunk_size = Number(addition.chunk_size) || 5
+      if (addition.custom_host !== undefined)
+        this.custom_host = String(addition.custom_host)
+      if (addition.disable_disk_usage !== undefined)
+        this.disable_disk_usage = !!addition.disable_disk_usage
+      if (addition.enable_direct_upload !== undefined)
+        this.enable_direct_upload = !!addition.enable_direct_upload
+      if (addition.order_by !== undefined)
+        this.order_by = String(addition.order_by)
+      if (addition.order_direction !== undefined)
+        this.order_direction = String(addition.order_direction)
     }
     this.onTokenUpdate = onTokenUpdate
   }
