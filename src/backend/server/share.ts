@@ -1,8 +1,18 @@
 import { Hono } from "hono"
 import { getDb, saveDb } from "../internal/model/db"
 import { adminAuthMiddleware, getUserFromContext } from "./middlewares"
+import { can, PermissionBit, isAdmin, getActualPath } from "../pkg/permission"
 
 export const shareRouter = new Hono()
+
+function sanitizePath(p: string): string {
+  const normalized = (p || "").replace(/\\/g, "/").replace(/\/+/g, "/")
+  const segments = normalized.split("/").filter((s) => s && s !== ".")
+  if (segments.some((s) => s === "..")) {
+    throw new Error("Path traversal segment '..' is not allowed")
+  }
+  return "/" + segments.join("/")
+}
 
 // 分享管理接口需要管理员权限（list/get/update/delete）
 shareRouter.use("/list", adminAuthMiddleware)
@@ -13,13 +23,17 @@ shareRouter.use("/cancel", adminAuthMiddleware)
 shareRouter.use("/enable", adminAuthMiddleware)
 shareRouter.use("/disable", adminAuthMiddleware)
 
-// List all shares
+// List all shares (sanitizes plain password field)
 shareRouter.get("/list", async (c) => {
   const db = await getDb(c.env)
+  const sanitizedShares = (db.shares || []).map((s: any) => ({
+    ...s,
+    pwd: s.pwd ? "******" : "",
+  }))
   return c.json({
     code: 200,
     message: "success",
-    data: { content: db.shares || [], total: (db.shares || []).length },
+    data: { content: sanitizedShares, total: sanitizedShares.length },
   })
 })
 
@@ -37,24 +51,59 @@ shareRouter.get("/get", async (c) => {
 // Create a new share (requires logged-in user with SHARE permission; admins always allowed)
 shareRouter.post("/create", async (c) => {
   const user = await getUserFromContext(c)
-  if (!user) {
+  if (!user || user.disabled) {
     return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
   }
+
+  // 检查分享权限位
+  if (!isAdmin(user) && !can(user, PermissionBit.SHARE)) {
+    return c.json({ code: 403, message: "Permission denied", data: null }, 403)
+  }
+
   const body = await c.req.json().catch(() => ({}))
   const db = await getDb(c.env)
 
-  // Auto-generate a random share id when the client leaves it empty
-  const shareId =
-    body.id && String(body.id).trim() !== ""
-      ? String(body.id).trim()
-      : generateShareId()
+  // 校验并清理分享路径
+  let files: string[] = []
+  if (Array.isArray(body.files)) {
+    try {
+      files = body.files.map((f: string) => {
+        const clean = sanitizePath(String(f))
+        return isAdmin(user) ? clean : getActualPath(user, clean)
+      })
+    } catch (err: any) {
+      return c.json(
+        { code: 400, message: err.message || "Invalid file path", data: null },
+        400,
+      )
+    }
+  }
+
+  // 校验自定义 ID 格式
+  const rawId = body.id ? String(body.id).trim() : ""
+  if (rawId && !/^[a-zA-Z0-9_-]{1,64}$/.test(rawId)) {
+    return c.json(
+      {
+        code: 400,
+        message:
+          "Invalid share id format (only alphanumeric, _ and - allowed, max 64 chars)",
+        data: null,
+      },
+      400,
+    )
+  }
+
+  const shareId = rawId || generateShareId()
 
   if ((db.shares || []).some((s: any) => s.id === shareId)) {
-    return c.json({
-      code: 400,
-      message: "share id already exists",
-      data: null,
-    })
+    return c.json(
+      {
+        code: 400,
+        message: "share id already exists",
+        data: null,
+      },
+      400,
+    )
   }
 
   const newShare = {
@@ -70,7 +119,7 @@ shareRouter.post("/create", async (c) => {
     order_by: body.order_by || "",
     order_direction: body.order_direction || "",
     extract_folder: body.extract_folder || "",
-    files: body.files || [],
+    files,
     remark: body.remark || "",
     readme: body.readme || "",
     header: body.header || "",

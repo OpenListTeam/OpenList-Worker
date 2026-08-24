@@ -288,8 +288,8 @@ export const updatePwdHandler = async (c: any) => {
     const oldHashed = await hashPassword(oldPassword)
 
     if (
-      user.password &&
-      user.password !== oldPassword &&
+      !user.password ||
+      user.password.length !== 64 ||
       user.password !== oldHashed
     ) {
       return c.json(

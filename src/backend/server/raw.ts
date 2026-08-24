@@ -6,6 +6,7 @@ import { resolveShare } from "../internal/op/share"
 import { getUserFromContext } from "./middlewares"
 import { getSignPolicy, verifyDownloadSign } from "../pkg/sign"
 import { safeErrorMessage } from "../pkg/errs"
+import { assertSafeUrl } from "../pkg/http"
 
 let fsPromises: any = null
 let createReadStream: any = null
@@ -155,6 +156,12 @@ rawRouter.get("/*", async (c) => {
               // Forward Range header for video/audio/PDF seeking
               const rangeReq = c.req.header("Range")
               if (rangeReq) headers["Range"] = rangeReq
+
+              try {
+                assertSafeUrl(fileItem.raw_url, "Proxy download")
+              } catch (ssrfErr: any) {
+                return c.text(ssrfErr.message || "SSRF blocked", 403)
+              }
 
               let upstreamRes = await fetch(fileItem.raw_url, { headers })
 
