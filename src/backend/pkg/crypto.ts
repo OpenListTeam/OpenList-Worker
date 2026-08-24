@@ -153,13 +153,20 @@ export async function hmacSha1Base64(
 
 // ─── AES-256-GCM helpers ─────────────────────────────────────────────────────
 
-async function deriveKey(password: string): Promise<CryptoKey> {
+const PBKDF2_ITERATIONS = 100000
+
+async function deriveKey(
+  password: string,
+  salt: Uint8Array | string = "salt",
+  iterations = PBKDF2_ITERATIONS,
+): Promise<CryptoKey> {
   const enc = toBytes(password)
+  const saltBytes = toBytes(salt)
   const keyMat = await crypto.subtle.importKey("raw", enc, "PBKDF2", false, [
     "deriveKey",
   ])
   return crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt: toBytes("salt"), iterations: 1, hash: "SHA-256" },
+    { name: "PBKDF2", salt: saltBytes, iterations, hash: "SHA-256" },
     keyMat,
     { name: "AES-GCM", length: 256 },
     false,
@@ -169,32 +176,52 @@ async function deriveKey(password: string): Promise<CryptoKey> {
 
 /**
  * Encrypt data with AES-256-GCM.
- * Returns "<ivHex>:<ciphertextHex>" (authTag is appended by SubtleCrypto).
+ * Returns "<saltHex>:<ivHex>:<ciphertextHex>" (authTag is appended by SubtleCrypto).
  */
 export async function encrypt(data: string, key: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16))
   const iv = crypto.getRandomValues(new Uint8Array(12))
-  const ck = await deriveKey(key)
+  const ck = await deriveKey(key, salt, PBKDF2_ITERATIONS)
   const cipherBuf = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
     ck,
     toBytes(data),
   )
-  return `${hexEncode(iv.buffer)}:${hexEncode(cipherBuf)}`
+  return `${hexEncode(salt.buffer)}:${hexEncode(iv.buffer)}:${hexEncode(cipherBuf)}`
 }
 
 /**
  * Decrypt data encrypted by `encrypt()`.
+ * Supports both new format (<saltHex>:<ivHex>:<cipherHex>) and legacy format (<ivHex>:<cipherHex>).
  */
 export async function decrypt(
   encryptedData: string,
   key: string,
 ): Promise<string> {
-  const colonIdx = encryptedData.indexOf(":")
-  const ivHex = encryptedData.slice(0, colonIdx)
-  const cipherHex = encryptedData.slice(colonIdx + 1)
+  const parts = encryptedData.split(":")
+  let salt: Uint8Array | string = "salt"
+  let ivHex = ""
+  let cipherHex = ""
+  let iterations = 1
+
+  if (parts.length === 3) {
+    // New secure format: salt:iv:ciphertext
+    salt = fromHex(parts[0])
+    ivHex = parts[1]
+    cipherHex = parts[2]
+    iterations = PBKDF2_ITERATIONS
+  } else if (parts.length === 2) {
+    // Legacy format compatibility: iv:ciphertext (1 iteration, static "salt")
+    ivHex = parts[0]
+    cipherHex = parts[1]
+    iterations = 1
+  } else {
+    throw new Error("Invalid encrypted data format")
+  }
+
   const iv = fromHex(ivHex)
   const cipherBuf = fromHex(cipherHex)
-  const ck = await deriveKey(key)
+  const ck = await deriveKey(key, salt, iterations)
   const plainBuf = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: iv as any },
     ck,

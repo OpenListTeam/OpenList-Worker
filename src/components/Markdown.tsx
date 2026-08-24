@@ -255,10 +255,12 @@ export function Markdown(props: {
     on([md, mermaidTheme], async () => {
       setShow(false)
 
-      const { html, hasMermaid } = await renderMarkdown(
-        md(),
-        props.sanitize || getSettingBool("filter_readme_scripts"),
-      )
+      const shouldSanitize =
+        props.sanitize !== undefined
+          ? props.sanitize
+          : getSettingBool("filter_readme_scripts") !== false
+
+      const { html, hasMermaid } = await renderMarkdown(md(), shouldSanitize)
       setMarkdownHTML(html)
 
       setTimeout(() => {

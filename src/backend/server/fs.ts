@@ -430,11 +430,44 @@ fsRouter.post("/get", async (c) => {
   }
 })
 
+function validateFileName(name: any): string {
+  if (typeof name !== "string" || !name.trim()) {
+    throw new Error("Invalid or empty file name")
+  }
+  const clean = name.trim()
+  if (
+    clean === "." ||
+    clean === ".." ||
+    clean.includes("/") ||
+    clean.includes("\\") ||
+    clean.includes("\0")
+  ) {
+    throw new Error(`Illegal file name '${clean}'`)
+  }
+  return clean
+}
+
+function validateDirPath(p: any): string {
+  if (typeof p !== "string") {
+    throw new Error("Path must be a string")
+  }
+  if (p.includes("\0")) {
+    throw new Error("Path contains illegal null byte")
+  }
+  return p
+}
+
 fsRouter.post("/mkdir", async (c) => {
   const user = await getUserFromContext(c)
   if (!canWrite(user)) return permissionDenied(c)
   const body = await c.req.json().catch(() => ({}))
-  const reqPath = getActualPath(user, body.path || "/")
+  const rawPath = body.path || "/"
+  try {
+    validateDirPath(rawPath)
+  } catch (e: any) {
+    return c.json({ code: 400, message: e.message, data: null }, 400)
+  }
+  const reqPath = getActualPath(user, rawPath)
   const requestContext = getStorageRequestContext(c)
   try {
     await makeDirectory(reqPath, requestContext)
@@ -448,10 +481,17 @@ fsRouter.post("/rename", async (c) => {
   const user = await getUserFromContext(c)
   if (!canWrite(user)) return permissionDenied(c)
   const { path: oldPath, name: newName } = await c.req.json().catch(() => ({}))
+  let cleanName = ""
+  try {
+    validateDirPath(oldPath || "/")
+    cleanName = validateFileName(newName)
+  } catch (e: any) {
+    return c.json({ code: 400, message: e.message, data: null }, 400)
+  }
   const requestContext = getStorageRequestContext(c)
   try {
     const actualOldPath = getActualPath(user, oldPath || "/")
-    await renameItem(actualOldPath, newName, requestContext)
+    await renameItem(actualOldPath, cleanName, requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: safeErrorMessage(e), data: null })
@@ -462,10 +502,27 @@ fsRouter.post("/remove", async (c) => {
   const user = await getUserFromContext(c)
   if (!canWrite(user)) return permissionDenied(c)
   const { dir, names } = await c.req.json().catch(() => ({}))
+  if (!Array.isArray(names) || names.length === 0) {
+    return c.json(
+      {
+        code: 400,
+        message: "Parameter 'names' must be a non-empty array",
+        data: null,
+      },
+      400,
+    )
+  }
+  let cleanNames: string[] = []
+  try {
+    validateDirPath(dir || "/")
+    cleanNames = names.map((n: string) => validateFileName(n))
+  } catch (e: any) {
+    return c.json({ code: 400, message: e.message, data: null }, 400)
+  }
   const requestContext = getStorageRequestContext(c)
   try {
     const actualDir = getActualPath(user, dir || "/")
-    await removeItems(actualDir, names, requestContext)
+    await removeItems(actualDir, cleanNames, requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: safeErrorMessage(e), data: null })
@@ -476,11 +533,29 @@ fsRouter.post("/move", async (c) => {
   const user = await getUserFromContext(c)
   if (!canWrite(user)) return permissionDenied(c)
   const { src_dir, dst_dir, names } = await c.req.json().catch(() => ({}))
+  if (!Array.isArray(names) || names.length === 0) {
+    return c.json(
+      {
+        code: 400,
+        message: "Parameter 'names' must be a non-empty array",
+        data: null,
+      },
+      400,
+    )
+  }
+  let cleanNames: string[] = []
+  try {
+    validateDirPath(src_dir || "/")
+    validateDirPath(dst_dir || "/")
+    cleanNames = names.map((n: string) => validateFileName(n))
+  } catch (e: any) {
+    return c.json({ code: 400, message: e.message, data: null }, 400)
+  }
   const requestContext = getStorageRequestContext(c)
   try {
     const actualSrcDir = getActualPath(user, src_dir || "/")
     const actualDstDir = getActualPath(user, dst_dir || "/")
-    await moveItems(actualSrcDir, actualDstDir, names, requestContext)
+    await moveItems(actualSrcDir, actualDstDir, cleanNames, requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: safeErrorMessage(e), data: null })
@@ -491,11 +566,29 @@ fsRouter.post("/copy", async (c) => {
   const user = await getUserFromContext(c)
   if (!canWrite(user)) return permissionDenied(c)
   const { src_dir, dst_dir, names } = await c.req.json().catch(() => ({}))
+  if (!Array.isArray(names) || names.length === 0) {
+    return c.json(
+      {
+        code: 400,
+        message: "Parameter 'names' must be a non-empty array",
+        data: null,
+      },
+      400,
+    )
+  }
+  let cleanNames: string[] = []
+  try {
+    validateDirPath(src_dir || "/")
+    validateDirPath(dst_dir || "/")
+    cleanNames = names.map((n: string) => validateFileName(n))
+  } catch (e: any) {
+    return c.json({ code: 400, message: e.message, data: null }, 400)
+  }
   const requestContext = getStorageRequestContext(c)
   try {
     const actualSrcDir = getActualPath(user, src_dir || "/")
     const actualDstDir = getActualPath(user, dst_dir || "/")
-    await copyItems(actualSrcDir, actualDstDir, names, requestContext)
+    await copyItems(actualSrcDir, actualDstDir, cleanNames, requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: safeErrorMessage(e), data: null })
@@ -506,6 +599,17 @@ fsRouter.put("/put", async (c) => {
   const user = await getUserFromContext(c)
   if (!canWrite(user)) return permissionDenied(c)
   const rawPath = decodeURIComponent(c.req.header("File-Path") || "")
+  if (!rawPath.trim()) {
+    return c.json(
+      { code: 400, message: "Missing File-Path header", data: null },
+      400,
+    )
+  }
+  try {
+    validateDirPath(rawPath)
+  } catch (e: any) {
+    return c.json({ code: 400, message: e.message, data: null }, 400)
+  }
   const reqPath = getActualPath(user, rawPath)
   const requestContext = getStorageRequestContext(c)
   try {
@@ -521,6 +625,17 @@ fsRouter.put("/form", async (c) => {
   const user = await getUserFromContext(c)
   if (!canWrite(user)) return permissionDenied(c)
   const rawPath = decodeURIComponent(c.req.header("File-Path") || "")
+  if (!rawPath.trim()) {
+    return c.json(
+      { code: 400, message: "Missing File-Path header", data: null },
+      400,
+    )
+  }
+  try {
+    validateDirPath(rawPath)
+  } catch (e: any) {
+    return c.json({ code: 400, message: e.message, data: null }, 400)
+  }
   const reqPath = getActualPath(user, rawPath)
   const requestContext = getStorageRequestContext(c)
   try {
