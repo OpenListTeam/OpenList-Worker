@@ -146,9 +146,16 @@ export class S3Client {
   }
 
   private buildCanonicalQuery(params: Record<string, string>): string {
+    // S3 prefix/delimiter keep "/" literal (not %2F) for signature correctness
+    const s3Params = ["prefix", "delimiter"]
     return Object.entries(params)
       .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
-      .map(([k, v]) => `${uriEncode(k)}=${uriEncode(v)}`)
+      .map(([k, v]) => {
+        const encodedV = s3Params.includes(k)
+          ? v.split("/").map(uriEncode).join("/")
+          : uriEncode(v)
+        return `${uriEncode(k)}=${encodedV}`
+      })
       .join("&")
   }
 
