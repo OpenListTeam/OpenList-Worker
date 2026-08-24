@@ -16,7 +16,8 @@ async function hmacSha256(
           false,
           ["sign"],
         )
-  return crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(data)) as Promise<ArrayBuffer>
+  const sig = await crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(data))
+  return new Uint8Array(sig).buffer as ArrayBuffer
 }
 
 async function sha256(data: ArrayBuffer | Uint8Array): Promise<string> {
