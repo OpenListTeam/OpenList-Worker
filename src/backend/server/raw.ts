@@ -136,7 +136,9 @@ rawRouter.get("/*", async (c) => {
               normDriver === "webdav" ||
               normDriver === "sharepoint" ||
               normDriver === "onedrive" ||
-              normDriver === "onedriveapp"
+              normDriver === "onedriveapp" ||
+              normDriver === "weiyun" ||
+              normDriver === "tencentweiyun"
             if (needsProxy) {
               console.log(
                 `[rawRouter] Proxying download for '${reqPath}' via ${resolved.storage.driver}`,

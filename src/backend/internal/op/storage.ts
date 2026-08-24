@@ -21,6 +21,10 @@ import { Cloud189Driver } from "../../drivers/189/driver"
 import { WebdavDriver } from "../../drivers/webdav/driver"
 import { WoPanDriver, normalizeWoPanAddition } from "../../drivers/wopan/driver"
 import { S3Driver, normalizeS3Addition } from "../../drivers/s3/driver"
+import {
+  WeiyunDriver,
+  normalizeWeiyunAddition,
+} from "../../drivers/weiyun/driver"
 
 // LocalDriver is not available in Cloudflare Workers (no fs module).
 // When running in Node.js container mode, import dynamically on first use.
@@ -420,6 +424,32 @@ async function createDriver(
       }
     })
     await driver.init?.()
+  } else if (
+    normDriver === "weiyun" ||
+    normDriver === "tencentweiyun" ||
+    normDriver === "txweiyun" ||
+    normDriver.includes("weiyun")
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new WeiyunDriver(addition, async (cookie) => {
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        stAddition.cookies = cookie
+        st.addition = JSON.stringify(normalizeWeiyunAddition(stAddition))
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[WeiYun] failed to persist cookies:", e)
+      }
+    })
+    await driver.init?.()
   } else {
     throw new Error(
       "failed get driver: unsupported driver '" + driverName + "'",
@@ -504,7 +534,14 @@ async function persistStorageCookie(
         typeof st.addition === "string"
           ? JSON.parse(st.addition || "{}")
           : st.addition || {}
-      stAddition.cookie = cookie
+      if (
+        stAddition.cookies !== undefined ||
+        isWeiyunDriver(storageConfig?.driver)
+      ) {
+        stAddition.cookies = cookie
+      } else {
+        stAddition.cookie = cookie
+      }
       st.addition = JSON.stringify(stAddition)
       if (String(storageConfig?.id) === storageId) {
         storageConfig.addition = st.addition
@@ -522,13 +559,23 @@ async function persistStorageCookie(
   }
 }
 
+function isWeiyunDriver(driverName: string): boolean {
+  const normDriver = (driverName || "").toLowerCase().replace(/[^a-z0-9]/g, "")
+  return (
+    normDriver === "weiyun" ||
+    normDriver === "tencentweiyun" ||
+    normDriver === "txweiyun" ||
+    normDriver.includes("weiyun")
+  )
+}
+
 export async function flushPendingDriverState(
   driverName: string,
   storageConfig: any,
   driver: StorageDriver,
   requestContext?: StorageRequestContext,
 ): Promise<void> {
-  if (!isCloud189Driver(driverName)) return
+  if (!isCloud189Driver(driverName) && !isWeiyunDriver(driverName)) return
 
   const consumePendingCookie = (
     driver as StorageDriver & {
@@ -539,7 +586,7 @@ export async function flushPendingDriverState(
   if (!cookie) return
 
   const persistence = persistStorageCookie(storageConfig, cookie).catch((e) => {
-    console.warn("[189Cloud] failed to persist cookie:", e)
+    console.warn(`[${driverName}] failed to persist cookie:`, e)
   })
   await scheduleStoragePersistence(requestContext?.waitUntil, persistence)
 }

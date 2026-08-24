@@ -1787,5 +1787,24 @@
     "page_size-tips": "列表每页大小（1~1150）",
     "limit_rate": "请求限速",
     "limit_rate-tips": "所有 API 请求限速（[limit]r/1s），0 表示不限速"
+  },
+  "WeiYun": {
+    "root_folder_id": "根文件夹ID",
+    "root_folder_id-tips": "展示根目录留空，程序会自动填充；只展示单个文件夹则填写文件夹ID",
+    "cookies": "Cookie",
+    "cookies-tips": "登录微云后复制任意请求中的Cookie（推荐使用微信登录，Token更稳定）",
+    "order_by": "排序字段",
+    "order_bys": {
+      "name": "文件名",
+      "size": "大小",
+      "updated_at": "修改时间"
+    },
+    "order_direction": "排序方向",
+    "order_directions": {
+      "asc": "升序",
+      "desc": "降序"
+    },
+    "upload_thread": "上传并发线程数",
+    "upload_thread-tips": "限制4<=thread<=32，默认4"
   }
 }
