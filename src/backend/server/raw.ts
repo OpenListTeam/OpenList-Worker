@@ -224,6 +224,9 @@ rawRouter.get("/*", fsReadAuthMiddleware, async (c) => {
               c.header("Accept-Ranges", stream.headers["accept-ranges"] || "bytes")
               if (stream.headers["etag"]) c.header("ETag", stream.headers["etag"])
               if (stream.headers["last-modified"]) c.header("Last-Modified", stream.headers["last-modified"])
+              // Force download — prevent browser from rendering JSON/XML/HTML inline
+              const fileName = reqPath.split("/").pop() || "download"
+              c.header("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`)
               return c.body(stream.body as any)
             }
           }
