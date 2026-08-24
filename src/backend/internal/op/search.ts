@@ -61,6 +61,10 @@ export async function search(
 
       const nameMatch = !keyword || item.name.toLowerCase().includes(keyword)
       const isDir = !!item.is_dir
+      // 挂载点虚拟文件夹（storage.ts 合并虚拟子挂载时 sign 为空），
+      // 不是真实资源，不显示也不递归进入
+      const isMountPoint = isDir && !item.sign
+      if (isMountPoint) continue
 
       let scopeMatch = true
       if (scope === 1 && !isDir) scopeMatch = false

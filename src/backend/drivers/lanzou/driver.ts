@@ -268,6 +268,10 @@ export class LanzouDriver implements StorageDriver {
           const resolved = await this.client.getFilesByShareUrl(
             item.id || "",
             item.pwd || this.addition.share_password || "",
+            undefined,
+            // 分享页域名每个人不同（如 xxx.lanzn.com），
+            // 先探测分享页真实域名再解析直链，避免一直用兜底域名请求
+            await this.client.probeShareDomain(item.id || ""),
           )
           downloadUrl = resolved.url
           item.name_all = resolved.name_all || item.name_all

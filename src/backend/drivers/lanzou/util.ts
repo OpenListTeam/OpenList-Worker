@@ -138,6 +138,47 @@ export class LanzouClient {
   }
 
   /**
+   * 探测分享页真实域名。
+   * 蓝奏云每个账号的分享页域名都不同（如 https://自定义部分.lanzn.com），
+   * 配置的 shareUrl 只是兜底。向兜底域名请求一次分享页，从页面 HTML 的
+   * iframe/src 或 JS 变量里提取真实分享域名；失败时回退到配置域名。
+   */
+  async probeShareDomain(shareId: string): Promise<string> {
+    const cleanShareId = (shareId || "").replace(/^\//, "")
+    if (!cleanShareId) return this.getShareUrl()
+    try {
+      const pageData = await this.request(
+        `${this.getShareUrl()}/${cleanShareId}`,
+        "GET",
+      )
+      const realDomain = this.extractRealShareDomain(pageData)
+      return realDomain || this.getShareUrl()
+    } catch {
+      return this.getShareUrl()
+    }
+  }
+
+  /** 从分享页 HTML 中提取真实分享域名（iframe src / /fn? 链接 / 域名变量） */
+  private extractRealShareDomain(pageData: string): string {
+    const candidates: string[] = []
+    const iframeMatch = pageData.match(/<iframe[^>]*?src=["'](https?:\/\/[^"'/]+)/i)
+    if (iframeMatch) candidates.push(iframeMatch[1])
+    const fnMatch = pageData.match(/["'](https?:\/\/[^"']*?\/fn\?[^"']*)["']/i)
+    if (fnMatch) candidates.push(fnMatch[1])
+    const domMatch = pageData.match(/["']?(?:dom|url)\s*[:=]\s*["']?(https?:\/\/[^"'\s]+)/i)
+    if (domMatch) candidates.push(domMatch[1])
+    for (const raw of candidates) {
+      try {
+        const u = new URL(raw)
+        return `${u.protocol}//${u.host}`
+      } catch {
+        // 继续下一个候选
+      }
+    }
+    return ""
+  }
+
+  /**
    * 账号密码登录
    */
   async login(): Promise<void> {
@@ -584,10 +625,10 @@ export class LanzouClient {
     customShareDomain?: string,
   ): Promise<LanzouFileOrFolder> {
     const cleanShareId = shareId.replace(/^\//, "")
-    const shareBaseDomain = (customShareDomain || this.getShareUrl()).replace(
-      /\/+$/,
-      "",
-    )
+    const shareBaseDomain = (
+      customShareDomain ||
+      (await this.probeShareDomain(cleanShareId))
+    ).replace(/\/+$/, "")
     const sharePageUrl = `${shareBaseDomain}/${cleanShareId}`
     let pageData = cachedPageData
     if (!pageData) {
