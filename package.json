@@ -26,7 +26,7 @@
     "i18n:release": "npm run crowdin:download && node ./scripts/i18n.mjs",
     "start": "node dist/api/[...route].js",
     "dev": "vite --port 3000 --host 0.0.0.0",
-    "build": "vite build && npm run build:edge",
+    "build": "vite build && node scripts/build-edge.mjs",
     "build:edge": "node scripts/build-edge.mjs",
     "dev:worker": "wrangler dev",
     "deploy:worker": "wrangler deploy --yes",
