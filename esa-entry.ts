@@ -54,6 +54,39 @@ function getEdgeKVCtorAtRequestTime(): any {
 }
 
 /**
+ * 模块级 KV 缓存（跨请求共享）。
+ *
+ * 解决 ESA EdgeKV 最终一致性问题：put 写入后需要几秒到几十秒同步到所有边缘节点，
+ * 保存设置后立即 get 可能打到还没同步的节点读到旧值，导致"保存后刷新复原"。
+ *
+ * 此处维护一个带 TTL 的模块级缓存：
+ * - put 成功后立即写入缓存，后续 get 优先从缓存读，不依赖 EdgeKV 同步
+ * - get 未命中缓存时才发起真实 KV get，并写入缓存
+ * - 缓存 TTL 60 秒，避免长期持有旧数据（其他实例/节点更新的数据最多延迟 60 秒）
+ * - 模块级缓存在函数实例复用期间有效，冷启动后为空（正常行为）
+ */
+const MODULE_KV_CACHE_TTL_MS = 60_000
+const moduleKvCache = new Map<string, { value: string | null; timestamp: number }>()
+
+function getModuleKvCache(key: string): string | null | undefined {
+  const entry = moduleKvCache.get(key)
+  if (!entry) return undefined
+  if (Date.now() - entry.timestamp > MODULE_KV_CACHE_TTL_MS) {
+    moduleKvCache.delete(key)
+    return undefined
+  }
+  return entry.value
+}
+
+function setModuleKvCache(key: string, value: string | null): void {
+  moduleKvCache.set(key, { value, timestamp: Date.now() })
+}
+
+function deleteModuleKvCache(key: string): void {
+  moduleKvCache.delete(key)
+}
+
+/**
  * 包装 ESA EdgeKV 为项目通用的 { get, put, delete } 接口。
  * @param edgeKv 原始 EdgeKV 实例
  * @param cache  请求级缓存 Map（每次请求新建），同 key 仅发起一次真实 KV 调用
@@ -65,6 +98,12 @@ function wrapEsaEdgeKV(edgeKv: any, cache?: Map<string, string | null>) {
       if (cache && cache.has(key)) {
         return cache.get(key) as string | null
       }
+      // 2. 命中模块级缓存（带 TTL）：直接返回，解决 EdgeKV 最终一致性导致的"保存后复原"
+      const moduleCached = getModuleKvCache(key)
+      if (moduleCached !== undefined) {
+        if (cache) cache.set(key, moduleCached)
+        return moduleCached
+      }
       try {
         let val = await edgeKv.get(key)
         if (val != null && typeof val !== "string") {
@@ -75,20 +114,24 @@ function wrapEsaEdgeKV(edgeKv: any, cache?: Map<string, string | null>) {
           }
         }
         const result = val ?? null
-        // 2. 写入请求级缓存（含 null，避免 404 反复重试）
+        // 3. 写入请求级缓存和模块级缓存（含 null，避免 404 反复重试）
         if (cache) cache.set(key, result)
+        setModuleKvCache(key, result)
         return result
       } catch (e) {
         console.error(`[ESA/KV] get failed key=${key}:`, e)
-        // 3. 失败也缓存 null，避免同一请求内反复重试耗尽配额
+        // 4. 失败也缓存 null，避免同一请求内反复重试耗尽配额
         if (cache) cache.set(key, null)
+        setModuleKvCache(key, null)
         return null
       }
     },
     async put(key: string, value: string): Promise<void> {
       await edgeKv.put(key, value)
-      // put 成功后更新缓存，使后续同请求 get 能拿到新值
+      // put 成功后立即更新请求级缓存和模块级缓存，使后续 get 能拿到新值
+      // （不依赖 EdgeKV 最终一致性同步，解决"保存后刷新复原"）
       if (cache) cache.set(key, value)
+      setModuleKvCache(key, value)
     },
     async delete(key: string): Promise<void> {
       try {
@@ -96,6 +139,7 @@ function wrapEsaEdgeKV(edgeKv: any, cache?: Map<string, string | null>) {
       } catch {}
       // delete 后使缓存失效
       if (cache) cache.delete(key)
+      deleteModuleKvCache(key)
     },
   }
 }
