@@ -25,8 +25,21 @@ async function build() {
     loader: { ".html": "text", ".node": "empty" },
   })
 
+  // 阿里云 ESA（边缘安全加速）边缘函数入口
+  // platform: neutral 匹配 Workers 风格运行时；.html loader 内联 SPA 壳
+  await esbuild.build({
+    entryPoints: ["esa-entry.ts"],
+    bundle: true,
+    platform: "neutral",
+    outfile: "dist/esa-entry.js",
+    minify: true,
+    format: "esm",
+    external: ["ssh2", "cpu-features", "iconv-lite"],
+    loader: { ".html": "text", ".node": "empty" },
+  })
+
   console.log(
-    "✓ Edge build complete -> dist/api/[...route].js & cloud-functions/[[default]].js",
+    "✓ Edge build complete -> dist/api/[...route].js & cloud-functions/[[default]].js & dist/esa-entry.js",
   )
 }
 
