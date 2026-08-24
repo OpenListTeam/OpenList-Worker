@@ -79,7 +79,7 @@ async function generateTOTPWithCounter(
 ): Promise<string> {
   const keyBytes = base32Decode(secret)
   const counterBytes = intToBytes(counter)
-  const hmac = await hmacSha1(keyBytes.buffer, counterBytes.buffer)
+  const hmac = await hmacSha1(keyBytes.buffer as ArrayBuffer, counterBytes.buffer as ArrayBuffer)
   const hmacArray = new Uint8Array(hmac)
 
   const offset = hmacArray[hmacArray.length - 1] & 0x0f

@@ -127,7 +127,7 @@ export class WebDavClient {
     }
 
     if (body !== undefined) {
-      init.body = body
+      init.body = typeof body === "string" ? body : new Uint8Array(body)
     }
 
     // Cloudflare Workers fetch doesn't support tlsOptions directly.

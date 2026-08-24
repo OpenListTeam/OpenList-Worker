@@ -11,7 +11,7 @@ async function hmacSha256(
       ? key
       : await crypto.subtle.importKey(
           "raw",
-          key,
+          key as BufferSource,
           { name: "HMAC", hash: "SHA-256" },
           false,
           ["sign"],
@@ -20,7 +20,7 @@ async function hmacSha256(
 }
 
 async function sha256(data: ArrayBuffer | Uint8Array): Promise<string> {
-  const hash = await crypto.subtle.digest("SHA-256", data)
+  const hash = await crypto.subtle.digest("SHA-256", data as BufferSource)
   return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("")
 }
 
@@ -33,7 +33,14 @@ async function getSignatureKey(
   const kDate = await hmacSha256(encoder.encode(`AWS4${secretKey}`), dateStamp)
   const kRegion = await hmacSha256(kDate, region)
   const kService = await hmacSha256(kRegion, service)
-  return (await hmacSha256(kService, "aws4_request")) as CryptoKey
+  const kFinal = await hmacSha256(kService, "aws4_request")
+  return await crypto.subtle.importKey(
+    "raw",
+    kFinal as BufferSource,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  )
 }
 
 function formatDate(date: Date): { dateStamp: string; amzDate: string } {
@@ -340,7 +347,7 @@ export class S3Client {
 
   async putObject(
     key: string,
-    body: Buffer | ArrayBuffer,
+    body: Buffer | ArrayBuffer | Uint8Array,
     contentType: string = "application/octet-stream",
   ): Promise<void> {
     const url = this.keyUrl(key)

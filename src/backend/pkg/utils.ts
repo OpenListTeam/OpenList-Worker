@@ -54,7 +54,7 @@ export async function ensureJwtSecret(env?: any): Promise<string> {
     const db = await getDb(env)
     const existing = (db.settings || []).find((s: any) => s.key === "jwt_secret")
     if (existing?.value) {
-      _generatedSecret = existing.value
+      _generatedSecret = existing.value as string
       return _generatedSecret
     }
     // Generate 256-bit random secret
