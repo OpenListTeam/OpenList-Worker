@@ -96,6 +96,11 @@ export class S3Driver implements StorageDriver {
         if (obj.Key.endsWith("/")) continue // Skip directory markers
         const name = s3KeyToName(obj.Key, this.rootPrefix)
         if (!name) continue
+        // Hide placeholder files (e.g. ".openlist") that mark empty directories
+        const placeholder = (this.addition.placeholder || "").trim()
+        if (name === ".openlist" || (placeholder && name === placeholder)) {
+          continue
+        }
         const isDir = isDirectoryKey(obj.Key)
         allItems.push({
           name,

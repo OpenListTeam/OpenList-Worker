@@ -14,6 +14,8 @@ export interface S3Addition {
   user_agent?: string
   list_object_version?: "v1" | "v2"
   add_filename_to_disposition?: boolean
+  /** Placeholder file used to mark empty directories (e.g. ".openlist"). Hidden from listings. */
+  placeholder?: string
 }
 
 export interface S3Object {
