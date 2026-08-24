@@ -34,6 +34,9 @@ export class LanzouClient {
    *  求解后持久化，后续请求都携带对应域名的值；
    *  数据中心 IP（CF Workers）不带此 cookie 会被蓝奏云 CDN WAF 403。 */
   private acwMap = new Map<string, string>()
+  /** 故障转移后成功的工作域名（如 lanzouw.com）。
+   *  记录后后续分享域请求优先使用它，避免分享页与 ajaxfile.php 跨域导致 sign 失效。 */
+  private workingShareHost: string = ""
 
   constructor(
     addition: LanzouAddition,
@@ -227,39 +230,54 @@ export class LanzouClient {
     body?: Record<string, string>,
     customReferer?: string,
   ): Promise<string> {
+    // 若已记录工作域名，且当前 URL 属于分享域（getShareUrl 或其候选域），
+    // 则优先把 URL 切换到工作域名，确保分享页与 ajaxfile.php 同域（sign 绑定域名）。
+    let effectiveUrl = url
+    const urlHost = safeHost(url)
+    const isShareHost =
+      urlHost === this.shareHost() ||
+      LANZOU_SHARE_DOMAINS.includes(urlHost)
+    if (isShareHost && this.workingShareHost && urlHost !== this.workingShareHost) {
+      effectiveUrl = targetUrlWithDomain(url, this.workingShareHost)
+    }
+
     // 分享页请求 403/405 时自动切换候选域名重试（数据中心 IP 被单域名 WAF 拦截时有用）
-    const isShareDomainReq = url.startsWith(this.getShareUrl())
+    const isShareDomainReq = isShareHost
     const shareCandidates = isShareDomainReq
       ? LANZOU_SHARE_DOMAINS.filter((d) => !url.includes(d))
       : []
 
     const tryUrl = (targetUrl: string): Promise<string> => {
-      const targetHost = (() => {
-        try {
-          return new URL(targetUrl).host
-        } catch {
-          return ""
+      const targetHost = safeHost(targetUrl)
+      const targetIsShareDomain =
+        targetHost === this.shareHost() ||
+        LANZOU_SHARE_DOMAINS.includes(targetHost)
+      // referer 必须与目标 URL 同域（蓝奏云对跨域 AJAX 返回 zt=0/403）
+      let referer: string
+      if (targetIsShareDomain) {
+        // 分享域请求：referer 用目标域名自身（优先）或重写后的 customReferer
+        if (customReferer && LANZOU_SHARE_DOMAINS.includes(safeHost(customReferer))) {
+          referer = targetUrlWithDomain(customReferer, targetHost)
+        } else if (customReferer && safeHost(customReferer) === this.shareHost()) {
+          referer = targetUrlWithDomain(customReferer, targetHost)
+        } else {
+          referer = `${new URL(targetUrl).origin}/`
         }
-      })()
-      const defaultReferer =
-        targetUrl.startsWith(this.getShareUrl()) ||
-        targetUrl.includes("ajaxfile.php") ||
-        targetUrl.includes("ajaxm.php") ||
-        targetUrl.includes("filemoreajax.php")
-          ? this.getShareUrl()
-          : this.getBaseUrl()
+      } else {
+        referer = customReferer || this.getBaseUrl()
+      }
 
       return this.requestOnce(
         targetUrl,
         method,
         body,
-        customReferer || defaultReferer,
+        referer,
         targetHost,
       )
     }
 
     try {
-      return await tryUrl(url)
+      return await tryUrl(effectiveUrl)
     } catch (err: any) {
       // 仅在分享页请求（非 baseUrl API）且确实被 WAF/403/405 拒绝时换域名重试
       const blocked =
@@ -267,9 +285,12 @@ export class LanzouClient {
         (err?.status === 403 || err?.status === 405 || /403|405/.test(err?.message || ""))
       if (!blocked) throw err
       for (const domain of shareCandidates) {
-        const altUrl = targetUrlWithDomain(url, domain)
+        const altUrl = targetUrlWithDomain(effectiveUrl, domain)
         try {
-          return await tryUrl(altUrl)
+          const result = await tryUrl(altUrl)
+          // 记录成功的工作域名，后续分享域请求优先使用
+          this.workingShareHost = domain
+          return result
         } catch (e2: any) {
           const stillBlocked =
             e2?.status === 403 || e2?.status === 405 || /403|405/.test(e2?.message || "")
@@ -341,13 +362,15 @@ export class LanzouClient {
         body: reqBody,
       })
 
+      // 先处理 set-cookie（403 时 WAF 也可能下发 acw_sc__v2，必须缓存）
+      this.updateCookie(res.headers.get("set-cookie"), host)
+
       if (res.status === 403 || res.status === 405) {
         const err: any = new Error(`[Lanzou] ${url} 返回 HTTP ${res.status}`)
         err.status = res.status
         throw err
       }
 
-      this.updateCookie(res.headers.get("set-cookie"), host)
       const bodyStr = await res.text()
 
       if (bodyStr.includes("acw_sc__v2")) {
@@ -844,5 +867,14 @@ function targetUrlWithDomain(url: string, domain: string): string {
     return u.toString()
   } catch {
     return url
+  }
+}
+
+/** 安全提取 URL 主机名 */
+function safeHost(url: string): string {
+  try {
+    return new URL(url).host
+  } catch {
+    return ""
   }
 }
