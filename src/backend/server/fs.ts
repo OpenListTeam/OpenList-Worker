@@ -221,7 +221,7 @@ fsRouter.post("/list", fsReadAuthMiddleware, async (c) => {
     })
   } catch (err: any) {
     console.error("[fs/list] Error:", err.message || err)
-    return c.json({ code: 500, message: "操作失败", data: null })
+    return c.json({ code: 500, message: `操作失败: ${err.message || err}`, data: null })
   }
 })
 

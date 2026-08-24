@@ -120,6 +120,15 @@ export class S3Driver implements StorageDriver {
     return sortFileItems(allItems, "name", "asc")
   }
 
+  async getFileStream(
+    _virtualPath: string,
+    physicalPath: string,
+    range?: string,
+  ): Promise<{ body: ReadableStream; headers: Record<string, string> } | null> {
+    const s3Key = this.resolveS3Path(physicalPath).replace(/\/$/, "")
+    return this.client.getObjectStream(s3Key, range)
+  }
+
   async get(_virtualPath: string, physicalPath: string): Promise<FileItem> {
     const s3Key = this.resolveS3Path(physicalPath)
     const name = s3KeyToName(s3Key, this.rootPrefix)

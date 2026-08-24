@@ -214,7 +214,8 @@ rawRouter.get("/*", fsReadAuthMiddleware, async (c) => {
 
           // Fallback: stream directly from driver (for drivers without pre-signed URLs, e.g. WebDAV)
           if (driver.getFileStream) {
-            const stream = await driver.getFileStream(reqPath, resolved.physical)
+            const rangeReq = c.req.header("Range")
+            const stream = await driver.getFileStream(reqPath, resolved.physical, rangeReq)
             if (stream) {
               console.log(
                 `[rawRouter] Streaming download for '${reqPath}' via ${resolved.storage.driver}, content-type=${stream.headers["content-type"]}, content-length=${stream.headers["content-length"]}`,
@@ -228,6 +229,8 @@ rawRouter.get("/*", fsReadAuthMiddleware, async (c) => {
                 : (stream.headers["content-type"] || "application/octet-stream")
               c.header("Content-Type", contentType)
               if (stream.headers["content-length"]) c.header("Content-Length", stream.headers["content-length"])
+              const contentRange = stream.headers["content-range"]
+              if (contentRange) c.header("Content-Range", contentRange)
               c.header("Accept-Ranges", stream.headers["accept-ranges"] || "bytes")
               if (stream.headers["etag"]) c.header("ETag", stream.headers["etag"])
               if (stream.headers["last-modified"]) c.header("Last-Modified", stream.headers["last-modified"])
@@ -238,8 +241,9 @@ rawRouter.get("/*", fsReadAuthMiddleware, async (c) => {
             }
             console.warn(`[rawRouter] getFileStream returned null for '${reqPath}'`)
           }
-        } catch {
-          return c.text("下载失败", 500)
+        } catch (e: any) {
+          console.error(`[rawRouter] Download error for '${reqPath}':`, e.message || e)
+          return c.text(`下载失败: ${e.message || e}`, 500)
         }
       }
     }

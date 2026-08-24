@@ -156,5 +156,6 @@ export interface StorageDriver {
   getFileStream?(
     virtualPath: string,
     physicalPath: string,
+    range?: string,
   ): Promise<{ body: ReadableStream; headers: Record<string, string> } | null>
 }

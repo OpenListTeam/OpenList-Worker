@@ -335,6 +335,29 @@ export class S3Client {
     }
   }
 
+  async getObjectStream(
+    key: string,
+    range?: string,
+  ): Promise<{ body: ReadableStream; headers: Record<string, string> } | null> {
+    const url = this.keyUrl(key)
+    const extraHeaders: Record<string, string> = {}
+    if (range) extraHeaders["range"] = range
+    const authHeaders = await this.signRequest("GET", this.canonicalPath(key), "", extraHeaders)
+    const resp = await fetch(url, {
+      method: "GET",
+      headers: { ...authHeaders, ...extraHeaders },
+    })
+
+    if (!resp.ok || !resp.body) return null
+
+    const respHeaders: Record<string, string> = {}
+    resp.headers.forEach((v, k) => {
+      respHeaders[k.toLowerCase()] = v
+    })
+
+    return { body: resp.body as ReadableStream, headers: respHeaders }
+  }
+
   async getObjectBuffer(key: string): Promise<Buffer> {
     const url = this.keyUrl(key)
     const authHeaders = await this.signRequest("GET", this.canonicalPath(key))
