@@ -1,7 +1,10 @@
 import { Hono } from "hono"
 import { handleMcpJsonRpc } from "../internal/mcp/mcp"
+import { fsWriteAuthMiddleware } from "./middlewares"
 
 export const mcpRouter = new Hono()
+
+mcpRouter.use("*", fsWriteAuthMiddleware)
 
 mcpRouter.get("/sse", (c) => {
   c.header("Content-Type", "text/event-stream")
@@ -18,7 +21,7 @@ mcpRouter.post("/messages", async (c) => {
   if (!method) {
     return c.json({
       jsonrpc: "2.0",
-      error: { code: -32600, message: "Invalid Request" },
+      error: { code: -32600, message: "无效的请求" },
       id: id || null,
     }, 400)
   }

@@ -10,11 +10,27 @@ import {
   putItem,
 } from "../internal/op/storage"
 import { resolveShare } from "../internal/op/share"
+import {
+  fsReadAuthMiddleware,
+  fsWriteAuthMiddleware,
+} from "./middlewares"
+
+const MAX_UPLOAD_SIZE = 10 * 1024 * 1024 * 1024 // 10 GB
+
+function isInvalidFilename(name: string): boolean {
+  return (
+    !name ||
+    name === "." ||
+    name === ".." ||
+    /[/\\]/.test(name) ||
+    /\x00/.test(name)
+  )
+}
 
 export const fsRouter = new Hono()
 
 // GET sub-directories of a path (used by FolderTree in metas/storages editors)
-fsRouter.post("/dirs", async (c) => {
+fsRouter.post("/dirs", fsReadAuthMiddleware, async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const reqPath = body.path || "/"
   try {
@@ -76,11 +92,11 @@ fsRouter.post("/dirs", async (c) => {
       }))
     return c.json({ code: 200, message: "success", data: dirs })
   } catch (err: any) {
-    return c.json({ code: 500, message: err.message, data: null })
+    return c.json({ code: 500, message: "操作失败", data: null })
   }
 })
 
-fsRouter.post("/list", async (c) => {
+fsRouter.post("/list", fsReadAuthMiddleware, async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const reqPath = body.path || "/"
 
@@ -203,11 +219,11 @@ fsRouter.post("/list", async (c) => {
       },
     })
   } catch (err: any) {
-    return c.json({ code: 500, message: err.message, data: null })
+    return c.json({ code: 500, message: "操作失败", data: null })
   }
 })
 
-fsRouter.post("/get", async (c) => {
+fsRouter.post("/get", fsReadAuthMiddleware, async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const reqPath = body.path || "/"
   try {
@@ -295,76 +311,93 @@ fsRouter.post("/get", async (c) => {
       },
     })
   } catch (err: any) {
-    return c.json({ code: 500, message: err.message, data: null })
+    return c.json({ code: 500, message: "操作失败", data: null })
   }
 })
 
-fsRouter.post("/mkdir", async (c) => {
+fsRouter.post("/mkdir", fsWriteAuthMiddleware, async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const reqPath = body.path || "/"
   try {
     await makeDirectory(reqPath)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
-    return c.json({ code: 500, message: e.message, data: null })
+    return c.json({ code: 500, message: "操作失败", data: null })
   }
 })
 
-fsRouter.post("/rename", async (c) => {
+fsRouter.post("/rename", fsWriteAuthMiddleware, async (c) => {
   const { path: oldPath, name: newName } = await c.req.json().catch(() => ({}))
+  if (isInvalidFilename(newName)) {
+    return c.json({ code: 400, message: "无效的文件名", data: null }, 400)
+  }
   try {
     await renameItem(oldPath, newName)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
-    return c.json({ code: 500, message: e.message, data: null })
+    return c.json({ code: 500, message: "重命名失败", data: null })
   }
 })
 
-fsRouter.post("/remove", async (c) => {
+fsRouter.post("/remove", fsWriteAuthMiddleware, async (c) => {
   const { dir, names } = await c.req.json().catch(() => ({}))
+  if (Array.isArray(names)) {
+    for (const n of names) {
+      if (isInvalidFilename(n)) {
+        return c.json({ code: 400, message: `无效的名称: ${n}`, data: null }, 400)
+      }
+    }
+  }
   try {
     await removeItems(dir, names)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
-    return c.json({ code: 500, message: e.message, data: null })
+    return c.json({ code: 500, message: "删除失败", data: null })
   }
 })
 
-fsRouter.post("/move", async (c) => {
+fsRouter.post("/move", fsWriteAuthMiddleware, async (c) => {
   const { src_dir, dst_dir, names } = await c.req.json().catch(() => ({}))
   try {
     await moveItems(src_dir, dst_dir, names)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
-    return c.json({ code: 500, message: e.message, data: null })
+    return c.json({ code: 500, message: "操作失败", data: null })
   }
 })
 
-fsRouter.post("/copy", async (c) => {
+fsRouter.post("/copy", fsWriteAuthMiddleware, async (c) => {
   const { src_dir, dst_dir, names } = await c.req.json().catch(() => ({}))
   try {
     await copyItems(src_dir, dst_dir, names)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
-    return c.json({ code: 500, message: e.message, data: null })
+    return c.json({ code: 500, message: "操作失败", data: null })
   }
 })
 
-fsRouter.put("/put", async (c) => {
+fsRouter.put("/put", fsWriteAuthMiddleware, async (c) => {
   const reqPath = decodeURIComponent(c.req.header("File-Path") || "")
+  const contentLength = parseInt(c.req.header("Content-Length") || "0", 10)
+  if (contentLength > MAX_UPLOAD_SIZE) {
+    return c.json({ code: 413, message: "文件过大（最大 10 GB）", data: null }, 413)
+  }
   try {
     const buffer = await c.req.arrayBuffer()
+    if (buffer.byteLength > MAX_UPLOAD_SIZE) {
+      return c.json({ code: 413, message: "文件过大（最大 10 GB）", data: null }, 413)
+    }
     await putItem(reqPath, Buffer.from(buffer))
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
-    return c.json({ code: 500, message: e.message, data: null })
+    return c.json({ code: 500, message: "上传失败", data: null })
   }
 })
 
-fsRouter.post("/add_offline_download", async (c) => {
+fsRouter.post("/add_offline_download", fsWriteAuthMiddleware, async (c) => {
   const { path: reqPath, urls } = await c.req.json().catch(() => ({}))
   if (!urls || urls.length === 0) {
-    return c.json({ code: 400, message: "No URLs provided" })
+    return c.json({ code: 400, message: "未提供下载链接" })
   }
 
   /* 
@@ -377,7 +410,7 @@ fsRouter.post("/add_offline_download", async (c) => {
   return c.json({
     code: 200,
     message:
-      "Offline download task received (Note: background processing limited in Serverless mode)",
+      "离线下载任务已接收（注意：无服务器模式下后台处理受限）",
     data: null,
   })
 })

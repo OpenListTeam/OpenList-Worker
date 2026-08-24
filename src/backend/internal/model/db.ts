@@ -968,7 +968,11 @@ export async function getKvStatus(envCtx?: any) {
 export async function resolvePath(virtualPath: string) {
   const db = await getDb()
 
-  let cleanPath = "/" + virtualPath.split("/").filter(Boolean).join("/")
+  const segments = virtualPath.split("/").filter(Boolean)
+  if (segments.includes("..")) {
+    throw new Error("无效路径: 不允许 '..' 路径段")
+  }
+  let cleanPath = "/" + segments.join("/")
   if (cleanPath === "") {
     cleanPath = "/"
   }
@@ -977,7 +981,7 @@ export async function resolvePath(virtualPath: string) {
 
   if (activeStorages.length === 0) {
     throw new Error(
-      "failed get storage: storage not found; please add a storage first",
+      "获取存储失败: 未找到存储；请先添加一个存储",
     )
   }
 
@@ -1054,7 +1058,7 @@ export async function resolvePath(virtualPath: string) {
     }
   }
 
-  throw new Error("failed get storage: storage not found")
+  throw new Error("获取存储失败: 未找到存储")
 }
 
 export async function getSettings() {

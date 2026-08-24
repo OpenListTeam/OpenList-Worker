@@ -11,7 +11,7 @@ const Index = () => {
       <ErrorBoundary
         fallback={(err) => {
           console.error("error", err)
-          return <Error msg={`System error: ${err}`} h="100vh" />
+          return <Error msg={`系统错误：${err}`} h="100vh" />
         }}
       >
         <NotificationsProvider duration={3000}>

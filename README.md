@@ -124,24 +124,58 @@ npm run start
 
 ### 方式二：Cloudflare Workers（推荐，免费边缘部署）
 
-项目内置 [wrangler.toml](wrangler.toml) 与 [部署指南](docs/deploy-cloudflare-workers.md)。
+#### GitHub Action 自动部署（推荐）
 
-```bash
-# 一键部署（自动检测/创建 KV namespace 并写入 wrangler.toml，无需手动填 id）
-npm run deploy
+推送代码到 `main` 分支后自动构建并部署到 Cloudflare Workers。
 
-# 或分步执行：
-# 1) 登录 Cloudflare
-npx wrangler login
-# 2) 确保 KV 绑定（自动检测/创建，无需手动编辑 wrangler.toml）
-node scripts/deploy.js --kv
-# 3) 部署
-npm run deploy:worker
-# 本地预览
-npm run dev:worker   # wrangler dev
+**1. Fork 项目到你的 GitHub 账号**
+
+**2. 配置 GitHub Secrets**
+
+进入仓库 → Settings → Secrets and variables → Actions → New repository secret，添加：
+
+| Secret 名称             | 说明                                                              |
+| ----------------------- | ----------------------------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`  | Cloudflare API 令牌（[创建地址](https://dash.cloudflare.com/profile/api-tokens)） |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID（[查看地址](https://dash.cloudflare.com/）右下角）          |
+
+> API Token 权限：选择 "Edit Cloudflare Workers" 模板，包含 Workers 和 KV 命名空间权限即可。
+
+**3. 配置环境变量（可选）**
+
+在 `wrangler.toml` 中修改 `[vars]` 下的默认凭据：
+
+```toml
+[vars]
+ENVIRONMENT = "production"
+ADMIN_USERNAME = "admin"    # 修改为你的管理员用户名
+ADMIN_PASSWORD = "admin"    # 修改为你的管理员密码
 ```
 
-`npm run deploy` 会自动完成：检测 `OPENLISTNEXT_KV` namespace（不存在则自动创建）→ 构建前端 → `wrangler deploy`。`wrangler.toml` 只声明绑定、**不存储 KV id**，由 wrangler 4.x 的 Automatic provisioning 在部署时自动创建/关联同名 namespace——全程无需手动填写 KV id。
+或在 Cloudflare Dashboard → Workers → 你的 Worker → Settings → Variables 中设置加密环境变量。
+
+**4. 推送触发部署**
+
+```bash
+git push origin main
+```
+
+查看部署状态：仓库 → Actions → "Deploy to Cloudflare Workers" 工作流。
+
+#### 手动部署
+
+```bash
+# 登录 Cloudflare
+npx wrangler login
+
+# 一键部署（自动检测/创建 KV namespace + 构建 + 部署）
+npm run deploy
+
+# 本地预览
+npm run dev:worker
+```
+
+> `wrangler.toml` 只声明 KV 绑定，由 wrangler 4.x 自动创建/关联 KV namespace，无需手动填写 id。
 
 部署完成后静态资源由 Workers 的 `ASSETS` binding 托管，API 由 Hono 后端处理，配置数据持久化在 KV 中。
 

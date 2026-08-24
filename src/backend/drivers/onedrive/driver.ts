@@ -32,7 +32,18 @@ export class Onedrive implements StorageDriver {
     onTokenUpdate?: (token: string) => void,
   ) {
     if (addition) {
-      Object.assign(this, addition)
+      // Whitelist keys to prevent prototype pollution
+      const allowedKeys: (keyof Addition)[] = [
+        "root_folder_path", "region", "is_sharepoint", "use_online_api",
+        "api_url_address", "client_id", "client_secret", "redirect_uri",
+        "refresh_token", "site_id", "chunk_size", "custom_host",
+        "disable_disk_usage", "enable_direct_upload", "order_by", "order_direction",
+      ]
+      for (const key of allowedKeys) {
+        if (key in addition) {
+          ;(this as any)[key] = (addition as any)[key]
+        }
+      }
     }
     this.onTokenUpdate = onTokenUpdate
   }

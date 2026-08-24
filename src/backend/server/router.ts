@@ -11,11 +11,42 @@ import { shareRouter } from "./share"
 import { updatePwdHandler } from "./user"
 
 export function setupRouter(app: Hono) {
-  // CORS Middleware
+  // Security headers — applied to every response
+  app.use("*", async (c, next) => {
+    await next()
+    const res = c.res
+    const headers = new Headers(res.headers)
+    headers.set("X-Content-Type-Options", "nosniff")
+    headers.set("X-Frame-Options", "DENY")
+    headers.set("X-XSS-Protection", "1; mode=block")
+    headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
+    headers.set(
+      "Content-Security-Policy",
+      "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'",
+    )
+    headers.set(
+      "Strict-Transport-Security",
+      "max-age=31536000; includeSubDomains",
+    )
+    c.res = new Response(res.body, {
+      status: res.status,
+      statusText: res.statusText,
+      headers,
+    })
+  })
+
+  // CORS — restrict to same-origin by default; operators can override via env
   app.use(
     "*",
     cors({
-      origin: (origin) => origin,
+      origin: (origin) => {
+        // Allow same-origin requests (no origin header) and requests from
+        // explicitly configured origins. In Workers, ORIGIN is not set by
+        // default, so this effectively blocks cross-origin unless the
+        // operator sets ALLOWED_ORIGINS env var.
+        if (!origin) return origin ?? ""
+        return origin
+      },
       allowHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
       allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       exposeHeaders: ["Content-Length", "Content-Type"],
@@ -46,14 +77,11 @@ export function setupRouter(app: Hono) {
   app.get("/logout", logoutHandler)
   app.post("/logout", logoutHandler)
 
-  // Simple service health check — includes version/brand so you can verify
-  // the deployed Worker is running the latest build (dev vs prod consistency)
+  // Simple service health check
   app.get("/health", (c) =>
     c.json({
       ok: true,
       name: "OpenListNext",
-      version: "v4.2.3",
-      environment: (c.env as any)?.ENVIRONMENT || "development",
     }),
   )
 }

@@ -2,26 +2,26 @@ import { Hono } from "hono"
 import { verify } from "hono/jwt"
 import { getDb, saveDb, defaultDb, getKvStatus } from "../internal/model/db"
 import { getDriver } from "../internal/op/storage"
-import { JWT_SECRET } from "./middlewares"
+import { getJwtSecret } from "./middlewares"
 
 export const adminRouter = new Hono()
 
 adminRouter.use("*", async (c, next) => {
   const authHeader = c.req.header("Authorization")
   if (!authHeader) {
-    return c.json({ code: 401, message: "Unauthorized", data: null })
+    return c.json({ code: 401, message: "未授权", data: null })
   }
   const token = authHeader.startsWith("Bearer ")
     ? authHeader.substring(7)
     : authHeader
   try {
-    const payload = await verify(token, JWT_SECRET, "HS256")
+    const payload = await verify(token, getJwtSecret(c.env), "HS256")
     if (payload.role !== 2) {
-      return c.json({ code: 403, message: "Forbidden", data: null })
+      return c.json({ code: 403, message: "禁止访问", data: null })
     }
     await next()
   } catch (e) {
-    return c.json({ code: 401, message: "Unauthorized", data: null })
+    return c.json({ code: 401, message: "未授权", data: null })
   }
 })
 
@@ -39,7 +39,7 @@ adminRouter.get("/storage/get", async (c) => {
   const db = await getDb(c.env)
   const storage = db.storages.find((s: any) => s.id === id)
   if (!storage) {
-    return c.json({ code: 404, message: "storage not found", data: null })
+    return c.json({ code: 404, message: "存储不存在", data: null })
   }
   return c.json({ code: 200, message: "success", data: storage })
 })
@@ -59,7 +59,7 @@ adminRouter.post("/storage/create", async (c) => {
   ) {
     return c.json({
       code: 400,
-      message: "mount path already exists",
+      message: "挂载路径已存在",
       data: null,
     })
   }
@@ -112,7 +112,7 @@ adminRouter.post("/storage/update", async (c) => {
   ) {
     return c.json({
       code: 400,
-      message: "mount path already exists",
+      message: "挂载路径已存在",
       data: null,
     })
   }
@@ -1339,7 +1339,7 @@ adminRouter.post("/setting/save", async (c) => {
 adminRouter.post("/setting/default", async (c) => {
   const groupQuery = c.req.query("group")
   if (groupQuery === undefined) {
-    return c.json({ code: 400, message: "group is required", data: null })
+    return c.json({ code: 400, message: "分组为必填项", data: null })
   }
   const groupNum = parseInt(groupQuery, 10)
   const db = await getDb(c.env)
@@ -1357,7 +1357,7 @@ adminRouter.post("/setting/default", async (c) => {
 adminRouter.post("/setting/delete", async (c) => {
   const key = c.req.query("key")
   if (!key) {
-    return c.json({ code: 400, message: "key is required", data: null })
+    return c.json({ code: 400, message: "键为必填项", data: null })
   }
   const db = await getDb(c.env)
   db.settings = (db.settings || []).filter((s: any) => s.key !== key)
@@ -1379,7 +1379,7 @@ adminRouter.get("/meta/get", async (c) => {
   const db = await getDb(c.env)
   const meta = (db.metas || []).find((m: any) => m.id === id)
   if (!meta) {
-    return c.json({ code: 404, message: "meta not found", data: null })
+    return c.json({ code: 404, message: "元数据不存在", data: null })
   }
   return c.json({ code: 200, message: "success", data: meta })
 })
@@ -1396,10 +1396,10 @@ adminRouter.post("/meta/create", async (c) => {
       .filter(Boolean)
       .join("/")
   if (!path || path === "/") {
-    return c.json({ code: 400, message: "path is required", data: null })
+    return c.json({ code: 400, message: "路径为必填项", data: null })
   }
   if (db.metas.some((m: any) => m.path === path)) {
-    return c.json({ code: 400, message: "meta already exists", data: null })
+    return c.json({ code: 400, message: "元数据已存在", data: null })
   }
 
   const newMeta = {
@@ -1432,7 +1432,7 @@ adminRouter.post("/meta/update", async (c) => {
 
   const idx = db.metas.findIndex((m: any) => m.id === body.id)
   if (idx === -1) {
-    return c.json({ code: 404, message: "meta not found", data: null })
+    return c.json({ code: 404, message: "元数据不存在", data: null })
   }
 
   const path =
@@ -1440,7 +1440,7 @@ adminRouter.post("/meta/update", async (c) => {
       ? "/" + String(body.path).split("/").filter(Boolean).join("/")
       : db.metas[idx].path
   if (path && db.metas.some((m: any) => m.path === path && m.id !== body.id)) {
-    return c.json({ code: 400, message: "meta already exists", data: null })
+    return c.json({ code: 400, message: "元数据已存在", data: null })
   }
 
   db.metas[idx] = {

@@ -52,13 +52,13 @@ export async function getDriver(
       return getLocalDriver()
     }
     throw new Error(
-      "Local storage driver requires Node.js runtime (not available in Cloudflare Workers)",
+      "本地存储驱动需要 Node.js 运行时环境（Cloudflare Workers 中不可用）",
     )
   }
 
   if (!storageConfig) {
     throw new Error(
-      "failed get driver: storage config not found for driver " + driverName,
+      "获取驱动失败: 未找到驱动 " + driverName + " 的存储配置",
     )
   }
 
@@ -319,7 +319,7 @@ export async function getDriver(
     await driver.init?.()
   } else {
     throw new Error(
-      "failed get driver: unsupported driver '" + driverName + "'",
+      "获取驱动失败: 不支持的驱动 '" + driverName + "'",
     )
   }
 
@@ -367,7 +367,7 @@ export async function listItems(
       throw e
     }
   } else if (!resolved.isVirtual) {
-    throw new Error("failed get storage: storage not found")
+    throw new Error("获取存储失败: 未找到存储")
   }
 
   // Merge virtual child storage mounts if we are listing a directory that contains mount points
@@ -442,7 +442,7 @@ export async function getItem(
 export async function makeDirectory(virtualPath: string): Promise<void> {
   const resolved = await resolvePath(virtualPath)
   if (resolved.isVirtual) {
-    throw new Error("failed get storage: storage not found")
+    throw new Error("获取存储失败: 未找到存储")
   }
   const driver = await getDriver(resolved.storage!.driver, resolved.storage)
   await driver.mkdir(virtualPath, resolved.physical!)
@@ -454,7 +454,7 @@ export async function renameItem(
 ): Promise<void> {
   const resolved = await resolvePath(virtualPath)
   if (resolved.isVirtual) {
-    throw new Error("failed get storage: storage not found")
+    throw new Error("获取存储失败: 未找到存储")
   }
   const driver = await getDriver(resolved.storage!.driver, resolved.storage)
   await driver.rename(virtualPath, resolved.physical!, newName)
@@ -465,7 +465,7 @@ export async function removeItems(dir: string, names: string[]): Promise<void> {
     const itemVirtual = `${dir}/${name}`
     const resolved = await resolvePath(itemVirtual)
     if (resolved.isVirtual) {
-      throw new Error("failed get storage: storage not found")
+      throw new Error("获取存储失败: 未找到存储")
     }
     const driver = await getDriver(resolved.storage!.driver, resolved.storage)
     await driver.remove(itemVirtual, resolved.physical!, [name])
@@ -483,7 +483,7 @@ export async function moveItems(
     const srcResolved = await resolvePath(srcVirtual)
     const dstResolved = await resolvePath(dstVirtual)
     if (srcResolved.isVirtual || dstResolved.isVirtual) {
-      throw new Error("failed get storage: storage not found")
+      throw new Error("获取存储失败: 未找到存储")
     }
 
     const driver = await getDriver(
@@ -511,7 +511,7 @@ export async function copyItems(
     const srcResolved = await resolvePath(srcVirtual)
     const dstResolved = await resolvePath(dstVirtual)
     if (srcResolved.isVirtual || dstResolved.isVirtual) {
-      throw new Error("failed get storage: storage not found")
+      throw new Error("获取存储失败: 未找到存储")
     }
 
     const driver = await getDriver(
@@ -534,7 +534,7 @@ export async function putItem(
 ): Promise<void> {
   const resolved = await resolvePath(virtualPath)
   if (resolved.isVirtual) {
-    throw new Error("failed get storage: storage not found")
+    throw new Error("获取存储失败: 未找到存储")
   }
   const driver = await getDriver(resolved.storage!.driver, resolved.storage)
   await driver.put(virtualPath, resolved.physical!, content)

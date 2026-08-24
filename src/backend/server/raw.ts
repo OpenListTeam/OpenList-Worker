@@ -3,6 +3,35 @@ import { resolvePath } from "../internal/model/db"
 import { parseRangeHeader } from "../internal/stream/stream"
 import { getDriver } from "../internal/op/storage"
 import { resolveShare } from "../internal/op/share"
+import { fsReadAuthMiddleware } from "./middlewares"
+
+// SSRF protection: block requests to private/internal network ranges
+function isPrivateUrl(url: string): boolean {
+  try {
+    const u = new URL(url)
+    if (u.protocol !== "https:" && u.protocol !== "http:") return true
+    const host = u.hostname
+    if (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "::1" ||
+      host === "0.0.0.0" ||
+      host.endsWith(".internal") ||
+      host.endsWith(".local") ||
+      /^10\./.test(host) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+      /^192\.168\./.test(host) ||
+      /^169\.254\./.test(host) ||
+      /^fc00:/i.test(host) ||
+      /^fd[0-9a-f]{2}:/i.test(host)
+    ) {
+      return true
+    }
+    return false
+  } catch {
+    return true
+  }
+}
 
 let fsPromises: any = null
 let createReadStream: any = null
@@ -22,7 +51,7 @@ async function initNodeModules() {
 
 export const rawRouter = new Hono()
 
-rawRouter.get("/*", async (c) => {
+rawRouter.get("/*", fsReadAuthMiddleware, async (c) => {
   await initNodeModules()
 
   const isProxy =
@@ -56,10 +85,10 @@ rawRouter.get("/*", async (c) => {
         c.env,
       )
       if (!shareRes.ok) {
-        return c.text(shareRes.error || "Share not found", 404)
+        return c.text(shareRes.error || "分享不存在", 404)
       }
       if (shareRes.virtualList || !shareRes.realPath) {
-        return c.text("Cannot download share root", 400)
+        return c.text("无法下载分享根目录", 400)
       }
       reqPath = shareRes.realPath
     }
@@ -67,7 +96,7 @@ rawRouter.get("/*", async (c) => {
     const resolved = await resolvePath(reqPath)
 
     if (resolved.isVirtual || !resolved.physical) {
-      return c.text("Cannot download virtual directory path", 400)
+      return c.text("无法下载虚拟目录路径", 400)
     }
 
     if (resolved.storage) {
@@ -102,6 +131,11 @@ rawRouter.get("/*", async (c) => {
               const rangeReq = c.req.header("Range")
               if (rangeReq) headers["Range"] = rangeReq
 
+              // SSRF protection: block requests to private/internal IPs
+              if (isPrivateUrl(fileItem.raw_url)) {
+                return c.text("上游 URL 被阻止（私有网络）", 403)
+              }
+
               let upstreamRes = await fetch(fileItem.raw_url, { headers })
 
               // If upstream returns 412 Precondition Failed (e.g. strict OSS check), retry with plain GET without Range
@@ -113,8 +147,7 @@ rawRouter.get("/*", async (c) => {
                 upstreamRes = await fetch(fileItem.raw_url, { headers })
               }
 
-              // CORS headers
-              c.header("Access-Control-Allow-Origin", "*")
+              // CORS headers — same-origin only (no wildcard)
               c.header("Access-Control-Allow-Methods", "GET, OPTIONS, HEAD")
               c.header(
                 "Access-Control-Expose-Headers",
@@ -178,27 +211,23 @@ rawRouter.get("/*", async (c) => {
               return c.redirect(fileItem.raw_url, 302)
             }
           }
-        } catch (e: any) {
-          console.error(
-            `[rawRouter] Driver get failed for '${reqPath}':`,
-            e.message,
-          )
-          return c.text(`Download failed: ${e.message}`, 500)
+        } catch {
+          return c.text("下载失败", 500)
         }
       }
     }
 
     // Fallback: Local file system streaming
     if (!fsPromises || !createReadStream) {
-      return c.text("Local file streaming not supported in Edge Runtime", 500)
+      return c.text("边缘运行时环境不支持本地文件流式传输", 500)
     }
 
     const stat = await fsPromises.stat(resolved.physical)
     if (stat.isDirectory()) {
-      return c.text("Cannot download directory", 400)
+      return c.text("无法下载目录", 400)
     }
 
-    c.header("Access-Control-Allow-Origin", "*")
+    c.header("Accept-Ranges", "bytes")
     const rangeHeader = c.req.header("Range")
     if (rangeHeader) {
       const { start, end, chunksize } = parseRangeHeader(rangeHeader, stat.size)
@@ -217,6 +246,6 @@ rawRouter.get("/*", async (c) => {
     }
   } catch (err: any) {
     console.error(`[rawRouter] Download 404 for '${reqPath0}':`, err.message)
-    return c.text(`Not found: ${err.message || err}`, 404)
+    return c.text(`未找到: ${err.message || err}`, 404)
   }
 })

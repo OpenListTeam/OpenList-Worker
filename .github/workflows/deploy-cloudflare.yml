@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Setup Node 22
         uses: actions/setup-node@v4
@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build frontend
+      - name: Build
         run: pnpm run build
 
       - name: Deploy to Cloudflare Workers

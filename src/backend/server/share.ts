@@ -1,35 +1,47 @@
 import { Hono } from "hono"
 import { getDb, saveDb } from "../internal/model/db"
+import {
+  fsReadAuthMiddleware,
+  fsWriteAuthMiddleware,
+} from "./middlewares"
 
 export const shareRouter = new Hono()
 
-// List all shares
-shareRouter.get("/list", async (c) => {
+// List all shares (admin or logged-in user)
+shareRouter.get("/list", fsReadAuthMiddleware, async (c) => {
   const db = await getDb(c.env)
+  // Strip sensitive fields from response
+  const shares = (db.shares || []).map((s: any) => ({
+    ...s,
+    pwd: s.pwd ? "****" : "",
+  }))
   return c.json({
     code: 200,
     message: "success",
-    data: { content: db.shares || [], total: (db.shares || []).length },
+    data: { content: shares, total: shares.length },
   })
 })
 
 // Get a single share
-shareRouter.get("/get", async (c) => {
+shareRouter.get("/get", fsReadAuthMiddleware, async (c) => {
   const id = c.req.query("id") || ""
   const db = await getDb(c.env)
   const share = (db.shares || []).find((s: any) => s.id === id)
   if (!share) {
-    return c.json({ code: 404, message: "share not found", data: null })
+    return c.json({ code: 404, message: "分享不存在", data: null })
   }
-  return c.json({ code: 200, message: "success", data: share })
+  return c.json({
+    code: 200,
+    message: "success",
+    data: { ...share, pwd: share.pwd ? "****" : "" },
+  })
 })
 
 // Create a new share
-shareRouter.post("/create", async (c) => {
+shareRouter.post("/create", fsWriteAuthMiddleware, async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const db = await getDb(c.env)
 
-  // Auto-generate a random share id when the client leaves it empty
   const shareId =
     body.id && String(body.id).trim() !== ""
       ? String(body.id).trim()
@@ -38,7 +50,7 @@ shareRouter.post("/create", async (c) => {
   if ((db.shares || []).some((s: any) => s.id === shareId)) {
     return c.json({
       code: 400,
-      message: "share id already exists",
+      message: "分享 ID 已存在",
       data: null,
     })
   }
@@ -68,27 +80,25 @@ shareRouter.post("/create", async (c) => {
   return c.json({ code: 200, message: "success", data: newShare })
 })
 
-/** Generate a random 16-char share id using Web Crypto (Workers-compatible) */
 function generateShareId(): string {
   const uuid = crypto.randomUUID().replace(/-/g, "")
   return uuid.slice(0, 16)
 }
 
 // Update an existing share
-shareRouter.post("/update", async (c) => {
+shareRouter.post("/update", fsWriteAuthMiddleware, async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const db = await getDb(c.env)
 
   if (!body.id) {
-    return c.json({ code: 400, message: "share id is required", data: null })
+    return c.json({ code: 400, message: "分享 ID 为必填项", data: null })
   }
 
   const idx = (db.shares || []).findIndex((s: any) => s.id === body.id)
   if (idx === -1) {
-    return c.json({ code: 404, message: "share not found", data: null })
+    return c.json({ code: 404, message: "分享不存在", data: null })
   }
 
-  // Support renaming via new_id (must not collide with another share)
   const newId =
     body.new_id && String(body.new_id).trim() !== ""
       ? String(body.new_id).trim()
@@ -100,7 +110,7 @@ shareRouter.post("/update", async (c) => {
     if (collision) {
       return c.json({
         code: 400,
-        message: "share id already exists",
+        message: "分享 ID 已存在",
         data: null,
       })
     }
@@ -138,7 +148,7 @@ shareRouter.post("/update", async (c) => {
 })
 
 // Delete a share
-shareRouter.post("/delete", async (c) => {
+shareRouter.post("/delete", fsWriteAuthMiddleware, async (c) => {
   const id = c.req.query("id") || ""
   const db = await getDb(c.env)
   if (!db.shares) db.shares = []
@@ -148,7 +158,7 @@ shareRouter.post("/delete", async (c) => {
 })
 
 // Enable a share
-shareRouter.post("/enable", async (c) => {
+shareRouter.post("/enable", fsWriteAuthMiddleware, async (c) => {
   const id = c.req.query("id") || ""
   const db = await getDb(c.env)
   const s = (db.shares || []).find((s: any) => s.id === id)
@@ -160,7 +170,7 @@ shareRouter.post("/enable", async (c) => {
 })
 
 // Disable a share
-shareRouter.post("/disable", async (c) => {
+shareRouter.post("/disable", fsWriteAuthMiddleware, async (c) => {
   const id = c.req.query("id") || ""
   const db = await getDb(c.env)
   const s = (db.shares || []).find((s: any) => s.id === id)
