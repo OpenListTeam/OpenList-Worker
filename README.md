@@ -182,6 +182,15 @@ npm run build
 
 ---
 
+### 方式五：阿里云ESA边缘安全加速
+
+1. **创建KV存储**：在阿里云ESA边缘安全加速(https://esa.console.aliyun.com/)主页/边缘计算和 AI/KV 存储中创建存储空间名称随意例如`openlistnext`。
+2. **导入项目**：在阿里云ESA边缘安全加速(https://esa.console.aliyun.com/)主页/边缘计算和 AI/函数和 Pages中创建导入GitHub仓库。
+3. **构建配置**：
+   - 安装命令：`npm install` 默认即可。
+   - 构建命令：`npm run build` 默认即可。
+   - 高级配置/环境变量：`KV_NAMESPACE` 你KV存储的名称 `JWT_SECRET` 随机英文字符20位左右即可。
+
 ## 🔗 原版项目
 
 OpenListNext 是以下项目的分支 / 衍生实现：
