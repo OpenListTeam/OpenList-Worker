@@ -31,6 +31,16 @@ import { YandexDriver } from "../../drivers/yandex/driver"
 import { TeraboxDriver } from "../../drivers/terabox/driver"
 import { MediatrackDriver } from "../../drivers/mediatrack/driver"
 import { AliasDriver } from "../../drivers/alias/driver"
+import { DropboxDriver } from "../../drivers/dropbox/driver"
+import { WpsDriver } from "../../drivers/wps/driver"
+import { Yun139Driver } from "../../drivers/139/driver"
+import { MegaDriver } from "../../drivers/mega/driver"
+import { Pan115ShareDriver } from "../../drivers/115_share/driver"
+import { Pan123ShareDriver } from "../../drivers/123_share/driver"
+import { AliyundriveShareDriver } from "../../drivers/aliyundrive_share/driver"
+import { OnedriveSharelinkDriver } from "../../drivers/onedrive_sharelink/driver"
+import { PikPakShareDriver } from "../../drivers/pikpak_share/driver"
+import { SMBDriver } from "../../drivers/smb/driver"
 
 // LocalDriver is not available in Cloudflare Workers (no fs module).
 // When running in Node.js container mode, import dynamically on first use.
@@ -580,6 +590,105 @@ async function createDriver(
   } else if (normDriver === "alias" || normDriver.includes("alias")) {
     const addition = parseAddition(storageConfig)
     driver = new AliasDriver(addition)
+    await driver.init?.()
+  } else if (normDriver === "dropbox" || normDriver.includes("dropbox")) {
+    const addition = parseAddition(storageConfig)
+    driver = new DropboxDriver(addition, async (tokens) => {
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        stAddition.access_token = tokens.accessToken
+        stAddition.refresh_token = tokens.refreshToken
+        st.addition = JSON.stringify(stAddition)
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[Dropbox] failed to persist token:", e)
+      }
+    })
+    await driver.init?.()
+  } else if (
+    normDriver === "wps" ||
+    normDriver.includes("wps") ||
+    normDriver.includes("kdocs")
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new WpsDriver(addition)
+    await driver.init?.()
+  } else if (
+    normDriver === "139" ||
+    normDriver === "139yun" ||
+    normDriver === "caiyun" ||
+    normDriver === "hecaiyun" ||
+    normDriver.includes("139")
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new Yun139Driver(addition)
+    await driver.init?.()
+  } else if (
+    normDriver === "mega" ||
+    normDriver === "meganz" ||
+    normDriver.includes("mega")
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new MegaDriver(addition)
+    await driver.init?.()
+  } else if (
+    normDriver === "115share" ||
+    normDriver === "115sharelink" ||
+    (normDriver.includes("115") && normDriver.includes("share"))
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new Pan115ShareDriver(addition)
+    await driver.init?.()
+  } else if (
+    normDriver === "123share" ||
+    normDriver === "123panshare" ||
+    normDriver === "123link" ||
+    (normDriver.includes("123") && normDriver.includes("share"))
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new Pan123ShareDriver(addition)
+    await driver.init?.()
+  } else if (
+    normDriver === "aliyundriveshare" ||
+    normDriver === "aliyunshare" ||
+    normDriver === "alishare" ||
+    (normDriver.includes("ali") && normDriver.includes("share"))
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new AliyundriveShareDriver(addition)
+    await driver.init?.()
+  } else if (
+    normDriver === "onedrivesharelink" ||
+    normDriver === "onedriveshare" ||
+    normDriver === "sharepointshare" ||
+    (normDriver.includes("onedrive") && normDriver.includes("share"))
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new OnedriveSharelinkDriver(addition)
+    await driver.init?.()
+  } else if (
+    normDriver === "pikpakshare" ||
+    (normDriver.includes("pikpak") && normDriver.includes("share"))
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new PikPakShareDriver(addition)
+    await driver.init?.()
+  } else if (
+    normDriver === "smb" ||
+    normDriver === "samba" ||
+    normDriver === "cifs" ||
+    normDriver.includes("smb")
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new SMBDriver(addition)
     await driver.init?.()
   } else {
     throw new Error(
