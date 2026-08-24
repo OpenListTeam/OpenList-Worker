@@ -644,7 +644,7 @@ export const defaultDb = {
       role: 1,
       permission: 0,
       base_path: "/",
-      disabled: false,
+      disabled: true,
       sso_id: "",
       allow_ldap: false,
       pwd_update_at: new Date().toISOString(),
@@ -861,7 +861,7 @@ const ensureDefaultUsers = (db: any) => {
   if (!db.users) {
     db.users = []
   }
-  // Ensure guest user always exists and is enabled
+  // Ensure guest user always exists (disabled by default for security)
   const guest = db.users.find((u: any) => u.username === "guest")
   if (!guest) {
     db.users.push({
@@ -873,16 +873,15 @@ const ensureDefaultUsers = (db: any) => {
       role: 1,
       permission: 0,
       base_path: "/",
-      disabled: false,
+      disabled: true,
       sso_id: "",
       allow_ldap: false,
       pwd_update_at: new Date().toISOString(),
       otp_secret: "",
       otp_enabled: false,
     })
-  } else if (guest.disabled) {
-    guest.disabled = false
   }
+  // Do NOT re-enable guest if admin disabled it — this is intentional
 }
 
 export const getDb = async (envCtx?: any) => {
