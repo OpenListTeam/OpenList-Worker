@@ -18,15 +18,30 @@ async function test(name: string, fn: () => Promise<void>) {
   }
 }
 
-async function req(method: string, path: string, body?: any) {
+let authToken = ""
+
+async function req(method: string, path: string, body?: any, withAuth = false) {
+  const headers: Record<string, string> = {}
+  if (body !== undefined) headers["Content-Type"] = "application/json"
+  if (withAuth && authToken) headers["Authorization"] = authToken
+
   const res = await app.request(path, {
     method,
-    headers: body !== undefined ? { "Content-Type": "application/json" } : {},
+    headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
   const json = await res.json().catch(() => null)
   return { status: res.status, json }
 }
+
+await test("登录 /api/auth/login", async () => {
+  const { status, json } = await req("POST", "/api/auth/login", {
+    username: "admin",
+    password: "admin",
+  })
+  if (status !== 200 || json.code !== 200) throw new Error(`status ${status} code ${json.code}`)
+  authToken = json.data?.token || ""
+})
 
 await test("健康检查 /api/health", async () => {
   const { status } = await req("GET", "/api/health")
@@ -34,17 +49,17 @@ await test("健康检查 /api/health", async () => {
 })
 
 await test("任务列表 /api/task/upload/undone", async () => {
-  const { status, json } = await req("GET", "/api/task/upload/undone")
+  const { status, json } = await req("GET", "/api/task/upload/undone", undefined, true)
   if (status !== 200 || json.code !== 200) throw new Error(`status ${status}`)
 })
 
 await test("任务操作 /api/task/upload/clear_done", async () => {
-  const { status, json } = await req("POST", "/api/task/upload/clear_done")
+  const { status, json } = await req("POST", "/api/task/upload/clear_done", undefined, true)
   if (status !== 200 || json.code !== 200) throw new Error(`status ${status}`)
 })
 
 await test("分享列表 /api/share/list", async () => {
-  const { status, json } = await req("GET", "/api/share/list")
+  const { status, json } = await req("GET", "/api/share/list", undefined, true)
   if (status !== 200 || json.code !== 200) throw new Error(`status ${status}`)
 })
 
@@ -77,12 +92,12 @@ await test("raw 下载（无存储时404）", async () => {
   if (status === 500) throw new Error("server error, should be 4xx")
 })
 
-await test("登录 /api/auth/login", async () => {
-  const { status, json } = await req("POST", "/api/auth/login", {
-    username: "admin",
-    password: "admin",
-  })
-  if (status !== 200 || json.code !== 200) throw new Error(`status ${status} code ${json.code}`)
+await test("驱动列表 /api/admin/driver/names", async () => {
+  const { status, json } = await req("GET", "/api/admin/driver/names", undefined, true)
+  if (status !== 200 || json.code !== 200) throw new Error(`status ${status}`)
+  if (!json.data.includes("PikPak") || !json.data.includes("Seafile") || !json.data.includes("YandexDisk")) {
+    throw new Error("Missing newly added drivers in /driver/names")
+  }
 })
 
 await test("debug 信息 /api/debug/info", async () => {

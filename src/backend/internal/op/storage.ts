@@ -25,6 +25,12 @@ import {
   WeiyunDriver,
   normalizeWeiyunAddition,
 } from "../../drivers/weiyun/driver"
+import { PikPakDriver } from "../../drivers/pikpak/driver"
+import { SeafileDriver } from "../../drivers/seafile/driver"
+import { YandexDriver } from "../../drivers/yandex/driver"
+import { TeraboxDriver } from "../../drivers/terabox/driver"
+import { MediatrackDriver } from "../../drivers/mediatrack/driver"
+import { AliasDriver } from "../../drivers/alias/driver"
 
 // LocalDriver is not available in Cloudflare Workers (no fs module).
 // When running in Node.js container mode, import dynamically on first use.
@@ -479,6 +485,101 @@ async function createDriver(
         console.warn("[WeiYun] failed to persist cookies:", e)
       }
     })
+    await driver.init?.()
+  } else if (
+    normDriver === "pikpak" ||
+    normDriver === "pikpakshare" ||
+    normDriver.includes("pikpak")
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new PikPakDriver(addition, async (tokens) => {
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        stAddition.refresh_token = tokens.refreshToken
+        if (tokens.captchaToken) {
+          stAddition.captcha_token = tokens.captchaToken
+        }
+        st.addition = JSON.stringify(stAddition)
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[PikPak] failed to persist tokens:", e)
+      }
+    })
+    await driver.init?.()
+  } else if (normDriver === "seafile" || normDriver.includes("seafile")) {
+    const addition = parseAddition(storageConfig)
+    driver = new SeafileDriver(addition, async (token) => {
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        stAddition.token = token
+        st.addition = JSON.stringify(stAddition)
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[Seafile] failed to persist token:", e)
+      }
+    })
+    await driver.init?.()
+  } else if (
+    normDriver === "yandex" ||
+    normDriver === "yandexdisk" ||
+    normDriver === "yandexdrive" ||
+    normDriver.includes("yandex")
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new YandexDriver(addition, async (tokens) => {
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        stAddition.refresh_token = tokens.refreshToken
+        st.addition = JSON.stringify(stAddition)
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[Yandex] failed to persist token:", e)
+      }
+    })
+    await driver.init?.()
+  } else if (
+    normDriver === "terabox" ||
+    normDriver === "dubox" ||
+    normDriver.includes("terabox")
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new TeraboxDriver(addition)
+    await driver.init?.()
+  } else if (
+    normDriver === "mediatrack" ||
+    normDriver === "fenmiao" ||
+    normDriver.includes("mediatrack")
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new MediatrackDriver(addition)
+    await driver.init?.()
+  } else if (normDriver === "alias" || normDriver.includes("alias")) {
+    const addition = parseAddition(storageConfig)
+    driver = new AliasDriver(addition)
     await driver.init?.()
   } else {
     throw new Error(

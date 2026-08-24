@@ -123,6 +123,13 @@ export const normalizeDriver = (driverName: string): string => {
     return "S3"
   if (norm.startsWith("github")) return "Github"
   if (norm === "local") return "Local"
+  if (norm.includes("pikpak")) return "PikPak"
+  if (norm.includes("seafile")) return "Seafile"
+  if (norm.includes("yandex")) return "YandexDisk"
+  if (norm.includes("terabox") || norm.includes("dubox")) return "Terabox"
+  if (norm.includes("mediatrack") || norm.includes("fenmiao"))
+    return "MediaTrack"
+  if (norm.includes("alias")) return "Alias"
   return driverName || ""
 }
 
@@ -392,6 +399,12 @@ adminRouter.get("/driver/names", (c) => {
       "WebDav",
       "S3",
       "Doge",
+      "PikPak",
+      "Seafile",
+      "YandexDisk",
+      "Terabox",
+      "MediaTrack",
+      "Alias",
     ],
   })
 })
@@ -2120,6 +2133,385 @@ const driverConfigs: Record<string, any> = {
       default_root: "/",
       check_status: true,
       no_link_url: true,
+    },
+  },
+  PikPak: {
+    name: "PikPak",
+    default_mount_path: "/pikpak",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "root_folder_id",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "username",
+        type: "string",
+        default: "",
+        required: true,
+      },
+      {
+        name: "password",
+        type: "string",
+        default: "",
+        required: true,
+      },
+      {
+        name: "platform",
+        type: "select",
+        options: "web,android,pc",
+        default: "web",
+        required: true,
+      },
+      {
+        name: "refresh_token",
+        type: "text",
+        default: "",
+        required: false,
+      },
+      {
+        name: "captcha_token",
+        type: "text",
+        default: "",
+        required: false,
+      },
+      {
+        name: "device_id",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "disable_media_link",
+        type: "bool",
+        default: "true",
+        required: false,
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "name,size,modified",
+        default: "name",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "asc,desc",
+        default: "asc",
+        required: false,
+      },
+    ],
+    config: {
+      name: "PikPak",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "",
+    },
+  },
+  Seafile: {
+    name: "Seafile",
+    default_mount_path: "/seafile",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "address",
+        type: "string",
+        default: "",
+        required: true,
+      },
+      {
+        name: "username",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "password",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "token",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "repo_id",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "repo_pwd",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "root_folder_path",
+        type: "string",
+        default: "/",
+        required: false,
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "name,size,modified",
+        default: "name",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "asc,desc",
+        default: "asc",
+        required: false,
+      },
+    ],
+    config: {
+      name: "Seafile",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "/",
+    },
+  },
+  YandexDisk: {
+    name: "YandexDisk",
+    default_mount_path: "/yandex",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "refresh_token",
+        type: "text",
+        default: "",
+        required: true,
+      },
+      {
+        name: "root_folder_path",
+        type: "string",
+        default: "/",
+        required: false,
+      },
+      {
+        name: "use_online_api",
+        type: "bool",
+        default: "true",
+        required: false,
+      },
+      {
+        name: "api_url_address",
+        type: "string",
+        default: "https://api.oplist.org/yandexui/renewapi",
+        required: false,
+      },
+      {
+        name: "client_id",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "client_secret",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "name,path,created,modified,size",
+        default: "name",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "asc,desc",
+        default: "asc",
+        required: false,
+      },
+    ],
+    config: {
+      name: "YandexDisk",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "/",
+    },
+  },
+  Terabox: {
+    name: "Terabox",
+    default_mount_path: "/terabox",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "cookie",
+        type: "text",
+        default: "",
+        required: true,
+      },
+      {
+        name: "download_api",
+        type: "select",
+        options: "official,crack",
+        default: "official",
+        required: false,
+      },
+      {
+        name: "root_folder_path",
+        type: "string",
+        default: "/",
+        required: false,
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "name,time,size",
+        default: "name",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "asc,desc",
+        default: "asc",
+        required: false,
+      },
+    ],
+    config: {
+      name: "Terabox",
+      local_sort: true,
+      only_local: false,
+      only_proxy: true,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "/",
+    },
+  },
+  MediaTrack: {
+    name: "MediaTrack",
+    default_mount_path: "/mediatrack",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "access_token",
+        type: "text",
+        default: "",
+        required: true,
+      },
+      {
+        name: "project_id",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "root_folder_id",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "updated_at,title,size",
+        default: "title",
+        required: false,
+      },
+      {
+        name: "order_desc",
+        type: "bool",
+        default: "false",
+        required: false,
+      },
+    ],
+    config: {
+      name: "MediaTrack",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "",
+    },
+  },
+  Alias: {
+    name: "Alias",
+    default_mount_path: "/alias",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "paths",
+        type: "text",
+        default: "",
+        required: true,
+        help: "Newline-separated list of paths, e.g. /local or sub:/target",
+      },
+      {
+        name: "read_conflict_policy",
+        type: "select",
+        options: "first,random,all",
+        default: "first",
+        required: false,
+      },
+      {
+        name: "write_conflict_policy",
+        type: "select",
+        options:
+          "disabled,first,deterministic,deterministic_or_all,all,all_strict",
+        default: "disabled",
+        required: false,
+      },
+      {
+        name: "put_conflict_policy",
+        type: "select",
+        options:
+          "disabled,first,deterministic,deterministic_or_all,all,all_strict,random,quota,quota_strict",
+        default: "disabled",
+        required: false,
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "name,size,modified",
+        default: "name",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "asc,desc",
+        default: "asc",
+        required: false,
+      },
+    ],
+    config: {
+      name: "Alias",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: true,
+      no_upload: false,
+      need_ms: false,
+      default_root: "/",
     },
   },
 }
