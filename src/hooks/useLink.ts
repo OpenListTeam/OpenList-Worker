@@ -11,10 +11,10 @@ import {
 import { useRouter, useUtil } from "."
 import { cookieStorage } from "@solid-primitives/storage"
 
-// 获取 localStorage 中的 JWT token
+// 获取 JWT token（token 存储在 sessionStorage 中，与 request.ts 的 _store 一致）
 function getAuthToken(): string {
   try {
-    return localStorage.getItem("token") || ""
+    return sessionStorage.getItem("token") || localStorage.getItem("token") || ""
   } catch {
     return ""
   }
