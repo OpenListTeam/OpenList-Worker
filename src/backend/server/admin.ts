@@ -1969,6 +1969,57 @@ const driverConfigs: Record<string, any> = {
       check_status: true,
     },
   },
+  WeiYun: {
+    name: "WeiYun",
+    default_mount_path: "/weiyun",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "root_folder_id",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "cookies",
+        type: "text",
+        default: "",
+        required: true,
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "name,size,updated_at",
+        default: "name",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "asc,desc",
+        default: "asc",
+        required: false,
+      },
+      {
+        name: "upload_thread",
+        type: "string",
+        default: "4",
+        required: false,
+        help: "4<=thread<=32",
+      },
+    ],
+    config: {
+      name: "WeiYun",
+      local_sort: false,
+      only_local: false,
+      only_proxy: true,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "",
+      check_status: true,
+    },
+  },
 }
 
 adminRouter.get("/driver/list", (c) => {
