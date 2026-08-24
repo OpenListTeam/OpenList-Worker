@@ -385,7 +385,10 @@ export const getPreviews = (
     return [downloadComponent]
   }
 
-  // Condition for the new requirement: a large text file.
+  // Condition for the new requirement: txt files (any size) and large text files.
+  // txt 文件默认直接下载，Markdown 渲染等文本预览排在下载之后（第二项起）。
+  const isTxtFile =
+    file.type === ObjType.TEXT && ext(file.name).toLowerCase() === "txt"
   const isLargeTextFile =
     file.type === ObjType.TEXT && file.size >= 1 * 1024 * 1024
 
@@ -393,8 +396,8 @@ export const getPreviews = (
   const noPreviewsFound = res.length === 0 && subsequent.length === 0
   const isSmallFile = file.size < 1 * 1024 * 1024
 
-  if (isLargeTextFile) {
-    // Case 1: Large text file. Place "Download" at the very beginning.
+  if (isTxtFile || isLargeTextFile) {
+    // Case 1: txt file or large text file. Place "Download" at the very beginning.
     // The standard text previews (Markdown, etc.) are already in `res` and will appear after it.
     res.unshift(downloadComponent)
   } else if (noPreviewsFound && isSmallFile) {
