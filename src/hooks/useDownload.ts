@@ -4,6 +4,7 @@ import { fsList, notify, pathBase, pathJoin } from "~/utils"
 import { getLinkByDirAndObj, useRouter, useT } from "~/hooks"
 import { useSelectedLink } from "~/hooks"
 import { Obj } from "~/types"
+import { changeToken } from "~/utils"
 
 interface File {
   path: string
@@ -42,11 +43,34 @@ export const useDownload = () => {
   const t = useT()
   const { pathname, isShare } = useRouter()
   return {
-    batchDownloadSelected: () => {
+    batchDownloadSelected: async () => {
       const urls = rawLinks(true)
-      urls.forEach((url) => {
-        window.open(url, "_blank")
-      })
+      const token = localStorage.getItem("token") || ""
+      for (const url of urls) {
+        try {
+          const resp = await fetch(url, {
+            headers: token ? { Authorization: token } : {},
+          })
+          if (!resp.ok) {
+            notify.error(`Download failed: ${resp.status} ${resp.statusText}`)
+            continue
+          }
+          const blob = await resp.blob()
+          // Extract filename from URL path
+          const urlPath = new URL(url, location.origin).pathname
+          const fileName = decodeURIComponent(urlPath.split("/").pop() || "download")
+          const a = document.createElement("a")
+          a.href = URL.createObjectURL(blob)
+          a.download = fileName
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          URL.revokeObjectURL(a.href)
+        } catch (e) {
+          console.error("Download error:", e)
+          notify.error(`Download failed: ${e}`)
+        }
+      }
     },
     sendToAria2: async () => {
       const selectedObjs = _selectedObjs()

@@ -217,9 +217,16 @@ rawRouter.get("/*", fsReadAuthMiddleware, async (c) => {
             const stream = await driver.getFileStream(reqPath, resolved.physical)
             if (stream) {
               console.log(
-                `[rawRouter] Streaming download for '${reqPath}' via ${resolved.storage.driver}`,
+                `[rawRouter] Streaming download for '${reqPath}' via ${resolved.storage.driver}, content-type=${stream.headers["content-type"]}, content-length=${stream.headers["content-length"]}`,
               )
-              c.header("Content-Type", stream.headers["content-type"] || "application/octet-stream")
+              const fileExt = reqPath.split(".").pop()?.toLowerCase() || ""
+              // For text-like types, force application/octet-stream to ensure download
+              const inlineTypes = ["json", "xml", "html", "htm", "txt", "js", "css", "csv", "md"]
+              const isInline = inlineTypes.includes(fileExt)
+              const contentType = isInline
+                ? "application/octet-stream"
+                : (stream.headers["content-type"] || "application/octet-stream")
+              c.header("Content-Type", contentType)
               if (stream.headers["content-length"]) c.header("Content-Length", stream.headers["content-length"])
               c.header("Accept-Ranges", stream.headers["accept-ranges"] || "bytes")
               if (stream.headers["etag"]) c.header("ETag", stream.headers["etag"])
@@ -229,6 +236,7 @@ rawRouter.get("/*", fsReadAuthMiddleware, async (c) => {
               c.header("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`)
               return c.body(stream.body as any)
             }
+            console.warn(`[rawRouter] getFileStream returned null for '${reqPath}'`)
           }
         } catch {
           return c.text("下载失败", 500)

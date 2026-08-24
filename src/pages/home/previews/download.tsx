@@ -27,13 +27,40 @@ export const Download = (props: { openWith?: boolean }) => {
   }).then((url) => setQrUrl(url))
   const [pinned, setPinned] = createSignal(false)
   const [hover, setHover] = createSignal(false)
+
+  const handleDownload = async () => {
+    const url = objStore.raw_url
+    if (!url) return
+    const token = localStorage.getItem("token") || ""
+    try {
+      const resp = await fetch(url, {
+        headers: token ? { Authorization: token } : {},
+      })
+      if (!resp.ok) {
+        console.error("Download failed:", resp.status, resp.statusText)
+        return
+      }
+      const blob = await resp.blob()
+      const fileName = objStore.obj?.name || "download"
+      const a = document.createElement("a")
+      a.href = URL.createObjectURL(blob)
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(a.href)
+    } catch (e) {
+      console.error("Download error:", e)
+    }
+  }
+
   return (
     <FileInfo>
       <HStack spacing="$2">
         <Button colorScheme="accent" onClick={() => copyCurrentRawLink(true)}>
           {t("home.toolbar.copy_link")}
         </Button>
-        <Button as="a" href={objStore.raw_url} target="_blank">
+        <Button colorScheme="accent" onClick={handleDownload}>
           {t("home.preview.download")}
         </Button>
         <Popover opened={pinned() || hover()} motionPreset="none">
