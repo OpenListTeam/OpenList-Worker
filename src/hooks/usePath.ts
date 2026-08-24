@@ -140,7 +140,7 @@ export const usePath = () => {
           let rawUrl = data.raw_url
           if (rawUrl) {
             try {
-              const token = localStorage.getItem("token") || ""
+              const token = sessionStorage.getItem("token") || localStorage.getItem("token") || ""
               if (token) {
                 rawUrl += (rawUrl.includes("?") ? "&" : "?") + `token=${encodeURIComponent(token)}`
               }
