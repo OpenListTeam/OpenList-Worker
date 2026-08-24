@@ -11,14 +11,14 @@
  * 3. ESA 不提供 ASSETS binding，前端 SPA 路由（如 /login、/@manage/*）
  *    无法通过静态资源回退；此处内联 dist/index.html 并通过 setSpaFallbackHtml
  *    注入，由 Hono 兜底直接返回 SPA 壳。
+ * 4.【请求级 KV 缓存】ESA 边缘函数每个请求最多 8 次 KV 子请求，
+ *    后端代码在单次请求中可能反复 getDb() 读取同一个 key，导致超限。
+ *    此处为每次请求创建独立缓存 Map，同 key 仅发起一次真实 KV 调用。
  */
-
 import app, { setSpaFallbackHtml } from "./src/backend/index"
 import INDEX_HTML from "./dist/index.html"
-
 // 构建期内联 dist/index.html 作为 SPA 兜底壳
 setSpaFallbackHtml(INDEX_HTML)
-
 // 模块级：探测 EdgeKV 全局构造器（ESA 运行时可能挂在不同的全局对象上）
 function detectEdgeKVCtor(): any {
   const candidates: any[] = []
@@ -38,16 +38,13 @@ function detectEdgeKVCtor(): any {
   }
   return candidates[0] || null
 }
-
 const MODULE_LEVEL_EDGE_KV = detectEdgeKVCtor()
-
 console.log(
   `[ESA/entry] module loaded, module-level EdgeKV: ${!!MODULE_LEVEL_EDGE_KV}, ` +
     `globalThis keys: ${Object.keys(globalThis as any)
       .filter((k) => /kv|edge|storage|env|alibaba|worker/i.test(k))
       .join(",") || "(none matched)"}`,
 )
-
 function getEdgeKVCtorAtRequestTime(): any {
   if (MODULE_LEVEL_EDGE_KV) return MODULE_LEVEL_EDGE_KV
   const g = globalThis as any
@@ -56,9 +53,18 @@ function getEdgeKVCtorAtRequestTime(): any {
   return null
 }
 
-function wrapEsaEdgeKV(edgeKv: any) {
+/**
+ * 包装 ESA EdgeKV 为项目通用的 { get, put, delete } 接口。
+ * @param edgeKv 原始 EdgeKV 实例
+ * @param cache  请求级缓存 Map（每次请求新建），同 key 仅发起一次真实 KV 调用
+ */
+function wrapEsaEdgeKV(edgeKv: any, cache?: Map<string, string | null>) {
   return {
     async get(key: string, _type?: string): Promise<string | null> {
+      // 1. 命中请求级缓存：直接返回，不发起 KV 子请求
+      if (cache && cache.has(key)) {
+        return cache.get(key) as string | null
+      }
       try {
         let val = await edgeKv.get(key)
         if (val != null && typeof val !== "string") {
@@ -68,31 +74,40 @@ function wrapEsaEdgeKV(edgeKv: any) {
             val = val.toString()
           }
         }
-        return val ?? null
+        const result = val ?? null
+        // 2. 写入请求级缓存（含 null，避免 404 反复重试）
+        if (cache) cache.set(key, result)
+        return result
       } catch (e) {
         console.error(`[ESA/KV] get failed key=${key}:`, e)
+        // 3. 失败也缓存 null，避免同一请求内反复重试耗尽配额
+        if (cache) cache.set(key, null)
         return null
       }
     },
     async put(key: string, value: string): Promise<void> {
       await edgeKv.put(key, value)
+      // put 成功后更新缓存，使后续同请求 get 能拿到新值
+      if (cache) cache.set(key, value)
     },
     async delete(key: string): Promise<void> {
       try {
         await edgeKv.delete(key)
       } catch {}
+      // delete 后使缓存失效
+      if (cache) cache.delete(key)
     },
   }
 }
-
 export default {
   async fetch(request: Request, context: any, env: any) {
     // ESA: (request, context, env)
     // Hono: (request, env, executionCtx)
-
     const url = new URL(request.url)
     const isApiRequest = url.pathname.startsWith("/api")
     const reqId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+    // 【关键】每次请求创建独立的 KV 缓存 Map，隔离不同请求，避免数据污染
+    const kvCache = new Map<string, string | null>()
 
     if (isApiRequest) {
       const envKeys = env ? Object.keys(env) : []
@@ -101,16 +116,14 @@ export default {
           `env keys=[${envKeys.join(",")}], context type=${typeof context}`,
       )
     }
-
     const edgeKvCtor = getEdgeKVCtorAtRequestTime()
-
     if (env && typeof env !== "undefined") {
       const namespace =
         env.KV_NAMESPACE || env.ESA_KV_NAMESPACE || env.EDGEONE_KV_NAME || "openlistnext"
-
       if (edgeKvCtor) {
         try {
           const edgeKv = new edgeKvCtor({ namespace })
+          // probe 本身也走缓存，避免和业务 get 争抢配额
           let kvTestOk = false
           let kvTestErr: string | null = null
           try {
@@ -119,8 +132,8 @@ export default {
           } catch (e: any) {
             kvTestErr = e?.message || String(e)
           }
-
-          const wrappedKv = wrapEsaEdgeKV(edgeKv)
+          // 传入请求级缓存
+          const wrappedKv = wrapEsaEdgeKV(edgeKv, kvCache)
           // 同时挂载到 env 和 globalThis：ESA 的 env 对象可能是 Proxy/frozen，
           // 直接属性赋值可能不生效；项目 getKvBinding 会同时检查 env[key] 和 globalThis[key]
           try {
@@ -129,7 +142,6 @@ export default {
             console.warn(`[ESA/req:${reqId}] env.OPENLISTNEXT_KV assign failed (env may be frozen):`, e)
           }
           ;(globalThis as any).OPENLISTNEXT_KV = wrappedKv
-
           if (isApiRequest) {
             const envHasKv = !!(env && env.OPENLISTNEXT_KV)
             const globalHasKv = !!(globalThis as any).OPENLISTNEXT_KV
@@ -158,7 +170,6 @@ export default {
     } else if (isApiRequest) {
       console.warn(`[ESA/req:${reqId}] env is undefined/null — fetch signature may be wrong`)
     }
-
     return app.fetch(request, env, context)
   },
 }
