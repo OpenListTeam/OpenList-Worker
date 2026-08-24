@@ -157,4 +157,12 @@ export class WebDavDriver implements StorageDriver {
     } catch {}
     await this.client.put(davPath, content)
   }
+
+  async getFileStream(
+    _virtualPath: string,
+    physicalPath: string,
+  ): Promise<{ body: ReadableStream; headers: Record<string, string> } | null> {
+    const davPath = this.client.resolvePath(physicalPath)
+    return this.client.getStream(davPath)
+  }
 }

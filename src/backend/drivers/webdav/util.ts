@@ -213,6 +213,26 @@ export class WebDavClient {
     return resources.length > 0 ? resources[0] : null
   }
 
+  async getStream(
+    path: string,
+  ): Promise<{ body: ReadableStream; headers: Record<string, string> } | null> {
+    const url = buildUrl(this.addition.address, path)
+    const headers: Record<string, string> = {
+      Authorization: this.authHeader,
+    }
+    const resp = await fetch(url, {
+      method: "GET",
+      headers,
+      redirect: "follow",
+    })
+    if (!resp.ok || !resp.body) return null
+    const respHeaders: Record<string, string> = {}
+    resp.headers.forEach((v, k) => {
+      respHeaders[k.toLowerCase()] = v
+    })
+    return { body: resp.body as ReadableStream, headers: respHeaders }
+  }
+
   /** Extract the path portion from the address URL, preserving leading slash.
    *  e.g. "https://dav.koofr.net/dav/Koofr" → "/dav/Koofr"
    *  Must keep leading slash because server PROPFIND hrefs always start with "/" */

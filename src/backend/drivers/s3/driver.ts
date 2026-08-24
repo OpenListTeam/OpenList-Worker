@@ -61,6 +61,8 @@ export class S3Driver implements StorageDriver {
     const s3Prefix = this.resolveS3Path(physicalPath)
     const useV2 = this.addition.list_object_version !== "v1"
 
+    console.log("[S3] list virtualPath:", _virtualPath, "physicalPath:", physicalPath, "s3Prefix:", s3Prefix, "rootPrefix:", this.rootPrefix)
+
     const allItems: FileItem[] = []
     let continuationToken: string | undefined
     let isTruncated = true

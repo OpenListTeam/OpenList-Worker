@@ -634,6 +634,8 @@ export const defaultDb = {
       sso_id: "",
       allow_ldap: false,
       pwd_update_at: new Date().toISOString(),
+      otp_secret: "",
+      otp_enabled: false,
     },
     {
       id: 2,
@@ -646,6 +648,8 @@ export const defaultDb = {
       sso_id: "",
       allow_ldap: false,
       pwd_update_at: new Date().toISOString(),
+      otp_secret: "",
+      otp_enabled: false,
     },
   ],
   metas: [],
@@ -852,6 +856,35 @@ const ensureDefaultShares = (db: any) => {
   }
 }
 
+const ensureDefaultUsers = (db: any) => {
+  if (!db) return
+  if (!db.users) {
+    db.users = []
+  }
+  // Ensure guest user always exists and is enabled
+  const guest = db.users.find((u: any) => u.username === "guest")
+  if (!guest) {
+    db.users.push({
+      id: db.users.length
+        ? Math.max(...db.users.map((u: any) => u.id || 0)) + 1
+        : 2,
+      username: "guest",
+      password: "",
+      role: 1,
+      permission: 0,
+      base_path: "/",
+      disabled: false,
+      sso_id: "",
+      allow_ldap: false,
+      pwd_update_at: new Date().toISOString(),
+      otp_secret: "",
+      otp_enabled: false,
+    })
+  } else if (guest.disabled) {
+    guest.disabled = false
+  }
+}
+
 export const getDb = async (envCtx?: any) => {
   if (envCtx) {
     globalEnvCtx = envCtx
@@ -867,6 +900,7 @@ export const getDb = async (envCtx?: any) => {
         ensureDefaultSettings(memoryDb)
         ensureDefaultStorages(memoryDb)
         ensureDefaultShares(memoryDb)
+        ensureDefaultUsers(memoryDb)
         return memoryDb
       }
     } catch (err) {
@@ -878,6 +912,7 @@ export const getDb = async (envCtx?: any) => {
     ensureDefaultSettings(memoryDb)
     ensureDefaultStorages(memoryDb)
     ensureDefaultShares(memoryDb)
+    ensureDefaultUsers(memoryDb)
     return memoryDb
   }
 
@@ -892,6 +927,7 @@ export const getDb = async (envCtx?: any) => {
       ensureDefaultSettings(memoryDb)
       ensureDefaultStorages(memoryDb)
       ensureDefaultShares(memoryDb)
+      ensureDefaultUsers(memoryDb)
       return memoryDb
     } catch (err) {
       console.error("Failed to parse DATABASE_JSON env variable:", err)
@@ -902,6 +938,7 @@ export const getDb = async (envCtx?: any) => {
   memoryDb = JSON.parse(JSON.stringify(defaultDb))
   ensureDefaultStorages(memoryDb)
   ensureDefaultShares(memoryDb)
+  ensureDefaultUsers(memoryDb)
   return memoryDb
 }
 

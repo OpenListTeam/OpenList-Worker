@@ -221,6 +221,8 @@ export class S3Client {
     const cleanPrefix = prefix.replace(/^\/+|\/+$/g, "")
     const queryPrefix = cleanPrefix ? `${cleanPrefix}/` : ""
 
+    console.log("[S3] listObjects queryPrefix:", JSON.stringify(queryPrefix))
+
     const params: Record<string, string> = {
       "list-type": "2",
       prefix: queryPrefix,
@@ -265,6 +267,8 @@ export class S3Client {
   ): Promise<S3ListResult> {
     const cleanPrefix = prefix.replace(/^\/+|\/+$/g, "")
     const queryPrefix = cleanPrefix ? `${cleanPrefix}/` : ""
+
+    console.log("[S3] listObjectsV1 queryPrefix:", JSON.stringify(queryPrefix))
 
     const params: Record<string, string> = {
       prefix: queryPrefix,

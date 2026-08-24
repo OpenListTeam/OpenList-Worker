@@ -135,6 +135,14 @@ userRouter.post("/update", async (c) => {
 
   const user = db.users[userIdx]
 
+  // Prevent disabling the guest user
+  if (user.id === 2 && body.disabled === true) {
+    return c.json(
+      { code: 400, message: "无法禁用访客账户", data: null },
+      400,
+    )
+  }
+
   if (body.username && body.username !== user.username) {
     const exists = db.users.some(
       (u: any) => u.id !== id && u.username === body.username,
@@ -183,6 +191,12 @@ const deleteUserHandler = async (c: any) => {
       400,
     )
   }
+  if (id === 2) {
+    return c.json(
+      { code: 400, message: "无法删除访客账户", data: null },
+      400,
+    )
+  }
 
   const db = await getDb(c.env)
   if (!db.users) db.users = []
@@ -195,6 +209,31 @@ const deleteUserHandler = async (c: any) => {
 
 userRouter.post("/delete", deleteUserHandler)
 userRouter.post("/cancel", deleteUserHandler)
+
+// POST /api/admin/user/cancel_2fa?id=...
+userRouter.post("/cancel_2fa", async (c) => {
+  const idQuery = c.req.query("id")
+  if (!idQuery) {
+    return c.json(
+      { code: 400, message: "缺少 ID 参数", data: null },
+      400,
+    )
+  }
+  const id = parseInt(idQuery, 10)
+  const db = await getDb(c.env)
+  if (!db.users) db.users = []
+
+  const userIdx = db.users.findIndex((u: any) => u.id === id)
+  if (userIdx === -1) {
+    return c.json({ code: 404, message: "用户不存在", data: null }, 404)
+  }
+
+  db.users[userIdx].otp_enabled = false
+  db.users[userIdx].otp_secret = ""
+  await saveDb(db, c.env)
+
+  return c.json({ code: 200, message: "success", data: null })
+})
 
 // POST /api/user/update_pwd
 export const updatePwdHandler = async (c: any) => {

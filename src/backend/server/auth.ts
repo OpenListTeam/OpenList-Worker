@@ -2,6 +2,24 @@ import { Hono } from "hono"
 import { sign, verify } from "hono/jwt"
 import { getDb, saveDb } from "../internal/model/db"
 import { getJwtSecret } from "../pkg/utils"
+import {
+  generateSecret,
+  generateTOTP,
+  verifyTOTP,
+  getTOTPUri,
+} from "../pkg/totp"
+
+// Helper: check OTP for login
+async function checkOtpForLogin(
+  user: any,
+  otpCode: string | undefined,
+): Promise<{ ok: boolean; needOtp?: boolean }> {
+  if (!user.otp_enabled) return { ok: true }
+  if (!otpCode) return { ok: false, needOtp: true }
+  const valid = await verifyTOTP(user.otp_secret || "", otpCode)
+  if (!valid) return { ok: false, needOtp: true }
+  return { ok: true }
+}
 
 export const authRouter = new Hono()
 
@@ -124,6 +142,8 @@ async function getOrInitUsers(envCtx: any) {
         sso_id: "",
         allow_ldap: false,
         pwd_update_at: new Date().toISOString(),
+        otp_secret: "",
+        otp_enabled: false,
       },
       {
         id: 2,
@@ -136,6 +156,8 @@ async function getOrInitUsers(envCtx: any) {
         sso_id: "",
         allow_ldap: false,
         pwd_update_at: new Date().toISOString(),
+        otp_secret: "",
+        otp_enabled: false,
       },
     ]
     changed = true
@@ -177,6 +199,7 @@ authRouter.post("/login", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const username = (body.username || "").trim()
   const rawPassword = body.password || ""
+  const otpCode = body.otp_code || ""
 
   const { users } = await getOrInitUsers(c.env)
 
@@ -212,6 +235,17 @@ authRouter.post("/login", async (c) => {
           }
         }
 
+        // Check 2FA if enabled
+        if (matchedUser.otp_enabled) {
+          const otpResult = await checkOtpForLogin(matchedUser, otpCode)
+          if (otpResult.needOtp) {
+            return c.json(
+              { code: 402, message: "需要双因素验证码", data: null },
+              402,
+            )
+          }
+        }
+
         const payload = {
           id: matchedUser.id,
           username: matchedUser.username,
@@ -241,6 +275,7 @@ authRouter.post("/login/hash", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const username = (body.username || "").trim()
   const inputHash = body.password || ""
+  const otpCode = body.otp_code || ""
 
   const { users } = await getOrInitUsers(c.env)
 
@@ -253,6 +288,17 @@ authRouter.post("/login/hash", async (c) => {
     // Accept if the client-sent hash matches the stored hash directly
     // (the frontend pre-hashes with the same legacy algorithm)
     if (inputHash === userPassHash) {
+      // Check 2FA if enabled
+      if (matchedUser.otp_enabled) {
+        const otpResult = await checkOtpForLogin(matchedUser, otpCode)
+        if (otpResult.needOtp) {
+          return c.json(
+            { code: 402, message: "需要双因素验证码", data: null },
+            402,
+          )
+        }
+      }
+
       const payload = {
         id: matchedUser.id,
         username: matchedUser.username,
@@ -369,6 +415,7 @@ export const meHandler = async (c: any) => {
         disabled: !!dbUser.disabled,
         sso_id: dbUser.sso_id || "",
         allow_ldap: !!dbUser.allow_ldap,
+        otp: !!dbUser.otp_enabled,
       },
     })
   } catch {
@@ -385,3 +432,117 @@ export const logoutHandler = (c: any) => {
 
 authRouter.get("/logout", logoutHandler)
 authRouter.post("/logout", logoutHandler)
+
+// ─── POST /api/auth/2fa/generate ─────────────────────────────────────────────
+
+authRouter.post("/2fa/generate", async (c) => {
+  const authHeader = c.req.header("Authorization")
+  if (!authHeader) {
+    return c.json({ code: 401, message: "未授权", data: null }, 401)
+  }
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.substring(7)
+    : authHeader
+  try {
+    const payload = await verify(token, getJwtSecret(c.env), "HS256")
+    const db = await getDb(c.env)
+    const user = (db.users || []).find(
+      (u: any) => u.id === payload.id || u.username === payload.username,
+    )
+    if (!user || user.disabled) {
+      return c.json({ code: 401, message: "未授权", data: null }, 401)
+    }
+    if (user.otp_enabled) {
+      return c.json(
+        { code: 400, message: "2FA 已经开启", data: null },
+        400,
+      )
+    }
+
+    const secret = generateSecret()
+    const uri = getTOTPUri(secret, user.username)
+
+    // Generate QR code as data URL using the qrcode library
+    let qr = ""
+    try {
+      const QRCode = await import("qrcode")
+      qr = await QRCode.toDataURL(uri, { width: 256 })
+    } catch {
+      // Fallback: return the URI for manual entry
+      qr = ""
+    }
+
+    // Store the secret temporarily (not yet verified)
+    user.otp_secret = secret
+    const userIdx = db.users.findIndex((u: any) => u.id === user.id)
+    if (userIdx !== -1) {
+      db.users[userIdx] = user
+      await saveDb(db, c.env)
+    }
+
+    return c.json({
+      code: 200,
+      message: "success",
+      data: { qr, secret },
+    })
+  } catch {
+    return c.json({ code: 401, message: "未授权", data: null }, 401)
+  }
+})
+
+// ─── POST /api/auth/2fa/verify ───────────────────────────────────────────────
+
+authRouter.post("/2fa/verify", async (c) => {
+  const authHeader = c.req.header("Authorization")
+  if (!authHeader) {
+    return c.json({ code: 401, message: "未授权", data: null }, 401)
+  }
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.substring(7)
+    : authHeader
+  try {
+    const payload = await verify(token, getJwtSecret(c.env), "HS256")
+    const body = await c.req.json().catch(() => ({}))
+    const code = body.code || ""
+    const secret = body.secret || ""
+
+    if (!code || !secret) {
+      return c.json(
+        { code: 400, message: "验证码和密钥为必填项", data: null },
+        400,
+      )
+    }
+
+    const db = await getDb(c.env)
+    const userIdx = db.users.findIndex(
+      (u: any) => u.id === payload.id || u.username === payload.username,
+    )
+    if (userIdx === -1) {
+      return c.json({ code: 401, message: "未授权", data: null }, 401)
+    }
+
+    const user = db.users[userIdx]
+    if (user.disabled) {
+      return c.json({ code: 403, message: "账户已被禁用", data: null }, 403)
+    }
+
+    // Verify the code against the secret
+    const valid = await verifyTOTP(secret, code)
+    if (!valid) {
+      return c.json(
+        { code: 400, message: "验证码无效", data: null },
+        400,
+      )
+    }
+
+    // Activate 2FA
+    user.otp_secret = secret
+    user.otp_enabled = true
+    db.users[userIdx] = user
+    await saveDb(db, c.env)
+
+    return c.json({ code: 200, message: "success", data: null })
+  } catch {
+    return c.json({ code: 401, message: "未授权", data: null }, 401)
+  }
+})

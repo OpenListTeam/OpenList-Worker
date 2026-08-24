@@ -21,7 +21,7 @@ OpenListNext 是 [OpenList](https://github.com/OpenListTeam/OpenList) 的定制�
 - 📥 上传 / 下载 / 删除 / 重命名 / 移动 / 复制，文件夹打包下载
 - 🔗 文件永久链接、直链下载、分享链接（含提取码）
 - 🌙 黑暗模式、国际化（中 / 英）
-- 🔐 JWT 认证、密码保护、后台管理
+- 🔐 JWT 认证、密码保护、后台管理、双因素验证（TOTP 2FA）
 - ☁️ 多网盘驱动：夸克网盘、阿里云盘、Google Drive、OneDrive、百度网盘、123 云盘、S3 兼容存储（AWS S3 / MinIO / R2 / OSS / COS）、WebDAV、本地文件系统
 - ⚡ 边缘部署：Cloudflare Workers / Vercel / Serverless 开箱即用
 
@@ -208,6 +208,22 @@ OpenListNext 是以下项目的分支 / 衍生实现：
 ## 📄 许可证
 
 [MIT](LICENSE)
+
+---
+
+## 📝 更新日志
+
+### v4.2.4
+
+- **修复**：S3 对象存储二级文件夹打开失败，添加详细错误日志
+- **修复**：WebDAV 下载返回 401 匿名访问错误，新增 `getFileStream` 流式传输支持
+- **修复**：Guest 用户可被管理员删除/禁用导致匿名访问永久失效，新增 `ensureDefaultUsers` 自动恢复机制
+- **新增**：双因素验证（TOTP 2FA）完整后端实现
+  - `POST /auth/2fa/generate` — 生成 QR 码和密钥
+  - `POST /auth/2fa/verify` — 验证并激活 2FA
+  - `POST /admin/user/cancel_2fa` — 管理员取消用户 2FA
+  - 登录流程支持 OTP 验证码输入
+- **优化**：所有 fs API 错误添加 console.error 日志，便于排查问题
 
 ---
 

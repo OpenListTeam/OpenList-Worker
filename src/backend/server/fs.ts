@@ -92,6 +92,7 @@ fsRouter.post("/dirs", fsReadAuthMiddleware, async (c) => {
       }))
     return c.json({ code: 200, message: "success", data: dirs })
   } catch (err: any) {
+    console.error("[fs/dirs] Error:", err.message || err)
     return c.json({ code: 500, message: "操作失败", data: null })
   }
 })
@@ -219,6 +220,7 @@ fsRouter.post("/list", fsReadAuthMiddleware, async (c) => {
       },
     })
   } catch (err: any) {
+    console.error("[fs/list] Error:", err.message || err)
     return c.json({ code: 500, message: "操作失败", data: null })
   }
 })
@@ -311,6 +313,7 @@ fsRouter.post("/get", fsReadAuthMiddleware, async (c) => {
       },
     })
   } catch (err: any) {
+    console.error("[fs/get] Error:", err.message || err)
     return c.json({ code: 500, message: "操作失败", data: null })
   }
 })

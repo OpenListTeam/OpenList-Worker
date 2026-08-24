@@ -211,6 +211,22 @@ rawRouter.get("/*", fsReadAuthMiddleware, async (c) => {
               return c.redirect(fileItem.raw_url, 302)
             }
           }
+
+          // Fallback: stream directly from driver (for drivers without pre-signed URLs, e.g. WebDAV)
+          if (driver.getFileStream) {
+            const stream = await driver.getFileStream(reqPath, resolved.physical)
+            if (stream) {
+              console.log(
+                `[rawRouter] Streaming download for '${reqPath}' via ${resolved.storage.driver}`,
+              )
+              c.header("Content-Type", stream.headers["content-type"] || "application/octet-stream")
+              if (stream.headers["content-length"]) c.header("Content-Length", stream.headers["content-length"])
+              c.header("Accept-Ranges", stream.headers["accept-ranges"] || "bytes")
+              if (stream.headers["etag"]) c.header("ETag", stream.headers["etag"])
+              if (stream.headers["last-modified"]) c.header("Last-Modified", stream.headers["last-modified"])
+              return c.body(stream.body as any)
+            }
+          }
         } catch {
           return c.text("下载失败", 500)
         }
