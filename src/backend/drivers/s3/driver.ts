@@ -160,6 +160,11 @@ export class S3Driver implements StorageDriver {
     // Try as file
     try {
       const head = await this.client.headObject(s3Key.replace(/\/$/, ""))
+      // Generate a presigned download URL so the client can fetch directly
+      const { url } = await this.client.getDownloadUrl(
+        s3Key.replace(/\/$/, ""),
+        name,
+      )
       return {
         name,
         size: head.contentLength,
@@ -168,7 +173,7 @@ export class S3Driver implements StorageDriver {
         sign: head.etag,
         type: calcFileType(name, false),
         thumb: "",
-        raw_url: "",
+        raw_url: url,
       }
     } catch (e: any) {
       throw new Error(`Object not found: ${physicalPath}`)

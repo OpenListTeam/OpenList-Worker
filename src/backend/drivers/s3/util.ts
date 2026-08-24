@@ -1,5 +1,5 @@
 import { S3Addition, S3HeadResult, S3ListResult } from "./types"
-import { rfc3986UriEncode, signS3Headers } from "./sigv4"
+import { rfc3986UriEncode, presignS3Url, signS3Headers } from "./sigv4"
 
 function parseXmlTag(xml: string, tag: string): string | null {
   const regex = new RegExp(`<${tag}[^>]*>([^<]*)<\\/${tag}>`, "i")
@@ -225,7 +225,15 @@ export class S3Client {
       headers: { ...authHeaders, ...extraHeaders },
     })
 
-    if (!resp.ok || !resp.body) return null
+    if (!resp.ok) {
+      const body = await resp.text()
+      console.error(`[S3] getObjectStream failed: ${resp.status} ${body} (key=${key}, url=${signedUrl})`)
+      return null
+    }
+    if (!resp.body) {
+      console.error(`[S3] getObjectStream no body for key=${key}`)
+      return null
+    }
 
     const respHeaders: Record<string, string> = {}
     resp.headers.forEach((v, k) => {
@@ -233,6 +241,29 @@ export class S3Client {
     })
 
     return { body: resp.body as ReadableStream, headers: respHeaders }
+  }
+
+  async getDownloadUrl(
+    key: string,
+    fileName?: string,
+  ): Promise<{ url: string; headers?: Record<string, string> }> {
+    const cleanKey = key.replace(/^\/+/, "")
+    const expire = Math.max(60, Math.floor((this.addition.sign_url_expire || 4) * 3600))
+    const customQueryParams: Record<string, string> = {}
+    if (fileName) {
+      customQueryParams["response-content-disposition"] = `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
+    }
+    const url = await presignS3Url({
+      method: "GET",
+      url: this.keyUrl(cleanKey),
+      region: this.region,
+      accessKeyId: this.addition.access_key_id,
+      secretAccessKey: this.addition.secret_access_key,
+      sessionToken: this.addition.session_token,
+      expiresInSeconds: expire,
+      customQueryParams,
+    })
+    return { url }
   }
 
   async getObjectBuffer(key: string): Promise<Buffer> {

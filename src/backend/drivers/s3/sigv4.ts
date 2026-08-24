@@ -191,3 +191,95 @@ export async function signS3Headers(
     url: parsedUrl.toString(),
   }
 }
+
+export interface PresignUrlOptions {
+  method?: string
+  url: string
+  region: string
+  accessKeyId: string
+  secretAccessKey: string
+  sessionToken?: string
+  expiresInSeconds?: number
+  service?: string
+  date?: Date
+  customQueryParams?: Record<string, string>
+}
+
+export async function presignS3Url(opts: PresignUrlOptions): Promise<string> {
+  const {
+    method = "GET",
+    url: rawUrl,
+    region,
+    accessKeyId,
+    secretAccessKey,
+    sessionToken,
+    expiresInSeconds = 14400,
+    service = "s3",
+    date = new Date(),
+    customQueryParams = {},
+  } = opts
+
+  const parsedUrl = new URL(rawUrl)
+  const { amzDate, dateStamp } = formatAmzDates(date)
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`
+
+  parsedUrl.searchParams.set("X-Amz-Algorithm", "AWS4-HMAC-SHA256")
+  parsedUrl.searchParams.set("X-Amz-Credential", `${accessKeyId}/${credentialScope}`)
+  parsedUrl.searchParams.set("X-Amz-Date", amzDate)
+  parsedUrl.searchParams.set("X-Amz-Expires", expiresInSeconds.toString())
+  parsedUrl.searchParams.set("X-Amz-SignedHeaders", "host")
+
+  if (sessionToken) {
+    parsedUrl.searchParams.set("X-Amz-Security-Token", sessionToken)
+  }
+
+  for (const [k, v] of Object.entries(customQueryParams)) {
+    parsedUrl.searchParams.set(k, v)
+  }
+
+  const pathname = parsedUrl.pathname || "/"
+  const canonicalUri = rfc3986UriEncode(pathname, false)
+
+  const queryParams: [string, string][] = []
+  parsedUrl.searchParams.forEach((val, key) => {
+    if (key.toLowerCase() !== "x-amz-signature") {
+      queryParams.push([key, val])
+    }
+  })
+  queryParams.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  const canonicalQueryString = queryParams
+    .map(([k, v]) => `${rfc3986UriEncode(k)}=${rfc3986UriEncode(v)}`)
+    .join("&")
+
+  const canonicalHeaders = `host:${parsedUrl.host}\n`
+  const signedHeaders = "host"
+  const payloadHash = "UNSIGNED-PAYLOAD"
+
+  const canonicalRequest = [
+    method.toUpperCase(),
+    canonicalUri,
+    canonicalQueryString,
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join("\n")
+
+  const canonicalRequestHash = await sha256Hex(canonicalRequest)
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    amzDate,
+    credentialScope,
+    canonicalRequestHash,
+  ].join("\n")
+
+  const signingKey = await getSigningKey(
+    secretAccessKey,
+    dateStamp,
+    region,
+    service,
+  )
+  const signature = await hmacSha256Hex(signingKey, stringToSign)
+
+  parsedUrl.searchParams.set("X-Amz-Signature", signature)
+  return parsedUrl.toString()
+}

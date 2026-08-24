@@ -240,6 +240,7 @@ rawRouter.get("/*", fsReadAuthMiddleware, async (c) => {
               return c.body(stream.body as any)
             }
             console.warn(`[rawRouter] getFileStream returned null for '${reqPath}'`)
+            return c.text("下载失败: 无法获取对象数据流", 500)
           }
         } catch (e: any) {
           console.error(`[rawRouter] Download error for '${reqPath}':`, e.message || e)
