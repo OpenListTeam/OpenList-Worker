@@ -172,31 +172,54 @@ export function calcAcwScV2(htmlContent: string): string {
 
 function findJSVarFunc(key: string, data: string): string {
   if (!key || !data) return ""
+  // 页面可能先 var key = '' 再 var key = '真实值'（覆盖式赋值），
+  // 必须取最后一个非空匹配，而不是第一个匹配
+  const takeLastNonEmpty = (
+    matches: RegExpMatchArray[],
+  ): string => {
+    for (let i = matches.length - 1; i >= 0; i--) {
+      const v = (matches[i][1] || "").trim().replace(/^['"]|['"]$/g, "")
+      if (v) return v
+    }
+    return ""
+  }
+
   if (key !== "sasign") {
     // 1. var key = 'val'; or let key = "val"; or const key = val;
-    const match = data.match(
-      new RegExp(
-        `(?:var|let|const)\\s+${key}\\s*=\\s*['"]?([\\s\\S]*?)['"]?;`,
-        "i",
+    const matches1 = Array.from(
+      data.matchAll(
+        new RegExp(
+          `(?:var|let|const)\\s+${key}\\s*=\\s*['"]?([\\s\\S]*?)['"]?;`,
+          "gi",
+        ),
       ),
     )
-    if (match) {
-      return match[1].trim().replace(/^['"]|['"]$/g, "")
+    if (matches1.length) {
+      const v = takeLastNonEmpty(matches1)
+      if (v) return v
     }
 
     // 2. key = 'val';
-    const match2 = data.match(
-      new RegExp(`(?:^|[;,\\s])${key}\\s*=\\s*['"]?([\\s\\S]*?)['"]?;`, "im"),
+    const matches2 = Array.from(
+      data.matchAll(
+        new RegExp(`(?:^|[;,\\s])${key}\\s*=\\s*['"]?([\\s\\S]*?)['"]?;`, "gim"),
+      ),
     )
-    if (match2) {
-      return match2[1].trim().replace(/^['"]|['"]$/g, "")
+    if (matches2.length) {
+      const v = takeLastNonEmpty(matches2)
+      if (v) return v
     }
 
     // 3. 'key' : 'val'
-    const match3 = data.match(
-      new RegExp(`['"]?${key}['"]?\\s*:\\s*['"]?([\\s\\S]*?)['"]?`, "i"),
+    const matches3 = Array.from(
+      data.matchAll(
+        new RegExp(`['"]?${key}['"]?\\s*:\\s*['"]?([\\s\\S]*?)['"]?`, "gi"),
+      ),
     )
-    return match3 ? match3[1].trim().replace(/^['"]|['"]$/g, "") : ""
+    if (matches3.length) {
+      const v = takeLastNonEmpty(matches3)
+      if (v) return v
+    }
   } else {
     const matches = Array.from(
       data.matchAll(
@@ -209,7 +232,7 @@ function findJSVarFunc(key: string, data: string): string {
     if (matches.length === 3) {
       return matches[1][1].trim().replace(/^['"]|['"]$/g, "")
     } else if (matches.length > 0) {
-      return matches[0][1].trim().replace(/^['"]|['"]$/g, "")
+      return takeLastNonEmpty(matches)
     }
   }
   return ""

@@ -26,6 +26,7 @@ interface DriverInfo {
   common: DriverItem[]
   additional: DriverItem[]
   config: DriverConfig
+  default_mount_path?: string
 }
 
 function generateDeviceId(): string {
@@ -152,10 +153,25 @@ const AddOrEdit = () => {
           options_prefix="drivers.drivers"
           driver="drivers"
           onChange={(value) => {
-            for (const item of drivers()[value].common) {
+            const driverInfo = drivers()[value]
+            for (const item of driverInfo.common) {
+              let defaultVal = GetDefaultValue(
+                item.type,
+                item.default,
+                item.name,
+              )
+              // mount_path 为空时使用驱动配置的 default_mount_path（如 /189、/lanzou），
+              // 避免提交空路径被后端规范化成 "/" 而与根挂载冲突
+              if (
+                item.name === "mount_path" &&
+                (defaultVal === "" || defaultVal == null) &&
+                driverInfo.default_mount_path
+              ) {
+                defaultVal = driverInfo.default_mount_path
+              }
               setStorage(
                 item.name as keyof Storage,
-                GetDefaultValue(item.type, item.default, item.name) as any,
+                defaultVal as any,
               )
             }
             // clear addition first
@@ -166,7 +182,7 @@ const AddOrEdit = () => {
                 }
               }),
             )
-            for (const item of drivers()[value].additional) {
+            for (const item of driverInfo.additional) {
               setAddition(
                 item.name,
                 GetDefaultValue(item.type, item.default, item.name) as any,

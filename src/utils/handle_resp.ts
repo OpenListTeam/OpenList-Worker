@@ -15,14 +15,11 @@ export const handleResp = <T>(
   } else {
     notify_error && notify.error(resp.message)
     if (auth && resp.code === 401) {
-      if (location.pathname === "/@manage") {
-        bus.emit("to", "/")
-      } else {
-        bus.emit(
-          "to",
-          `/@login?redirect=${encodeURIComponent(location.pathname)}`,
-        )
-      }
+      // 任何页面 401 都回登录页并携带原路径，刷新管理界面时不会丢回首页
+      bus.emit(
+        "to",
+        `/@login?redirect=${encodeURIComponent(location.pathname)}`,
+      )
       return
     }
     fail?.(resp.message, resp.code)

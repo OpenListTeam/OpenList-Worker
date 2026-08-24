@@ -184,29 +184,29 @@ adminRouter.post("/storage/create", async (c) => {
     )
   }
 
-  const rawMount = String(body.mount_path || "").trim()
-  if (rawMount === "") {
-    return c.json(
-      {
-        code: 400,
-        message: "Mount path is required",
-        data: null,
-      },
-      400,
-    )
+  // mount_path 为空时用驱动配置的 default_mount_path 兜底，
+  // 避免空路径被规范化成 "/" 而与根挂载冲突
+  let rawMount = body.mount_path
+  if (!rawMount || String(rawMount).trim() === "") {
+    const fallbackMount =
+      driverConfigs[body.driver as string]?.default_mount_path
+    if (fallbackMount) {
+      rawMount = fallbackMount
+    }
   }
-
-  const mountPath = "/" + rawMount.split("/").filter(Boolean).join("/")
+  const mountPath =
+    "/" + String(rawMount || "").split("/").filter(Boolean).join("/")
   if (
     db.storages.some(
       (s: any) =>
+        !s.disabled &&
         "/" + (s.mount_path || "").split("/").filter(Boolean).join("/") ===
-        mountPath,
+          mountPath,
     )
   ) {
     return c.json({
       code: 400,
-      message: "mount path already exists",
+      message: `mount path already exists: ${mountPath}`,
       data: null,
     })
   }
@@ -259,10 +259,18 @@ adminRouter.post("/storage/update", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const db = await getDb(c.env)
 
-  const rawMount = String(body.mount_path || "").trim()
+  // 与 create 保持一致：空路径用 default_mount_path 兜底
+  let rawMount = body.mount_path
+  if (!rawMount || String(rawMount).trim() === "") {
+    const fallbackMount =
+      driverConfigs[body.driver as string]?.default_mount_path
+    if (fallbackMount) {
+      rawMount = fallbackMount
+    }
+  }
   const mountPath =
-    rawMount !== ""
-      ? "/" + rawMount.split("/").filter(Boolean).join("/")
+    String(rawMount || "").trim() !== ""
+      ? "/" + String(rawMount || "").split("/").filter(Boolean).join("/")
       : undefined
 
   if (mountPath) {
@@ -270,13 +278,14 @@ adminRouter.post("/storage/update", async (c) => {
       db.storages.some(
         (s: any) =>
           s.id !== body.id &&
+          !s.disabled &&
           "/" + (s.mount_path || "").split("/").filter(Boolean).join("/") ===
             mountPath,
       )
     ) {
       return c.json({
         code: 400,
-        message: "mount path already exists",
+        message: `mount path already exists: ${mountPath}`,
         data: null,
       })
     }
@@ -341,20 +350,30 @@ adminRouter.post("/storage/enable", async (c) => {
   if (s) {
     s.disabled = false
     s.modified = new Date().toISOString()
-    try {
-      const driver = await getDriver(s.driver, s)
-      await driver.init?.()
-      s.status = "work"
-    } catch (e: any) {
-      s.status = e.message || String(e)
-      await saveDb(db, c.env)
-      return c.json({
-        code: 500,
-        message: e.message || String(e),
-        data: null,
-      })
-    }
     await saveDb(db, c.env)
+    // 异步初始化驱动（不阻塞响应）：启用多个云盘时立即返回，
+    // 初始化完成后更新状态；失败时把错误写入 status，下次访问或
+    // 重新加载时会再次尝试。
+    ;(async () => {
+      try {
+        const driver = await getDriver(s.driver, s)
+        await driver.init?.()
+        const db2 = await getDb(c.env)
+        const st = db2.storages.find((x: any) => x.id === id)
+        if (st && !st.disabled) {
+          st.status = "work"
+          st.modified = new Date().toISOString()
+          await saveDb(db2, c.env)
+        }
+      } catch (e: any) {
+        const db3 = await getDb(c.env)
+        const st = db3.storages.find((x: any) => x.id === id)
+        if (st && !st.disabled) {
+          st.status = e.message || String(e)
+          await saveDb(db3, c.env)
+        }
+      }
+    })()
   }
   return c.json({ code: 200, message: "success", data: null })
 })

@@ -32,7 +32,7 @@ import {
   Paginator,
   SelectWrapper,
 } from "~/components"
-import { useFetch, usePath, useRouter, useT } from "~/hooks"
+import { usePath, useRouter, useT } from "~/hooks"
 import { getMainColor, me, password } from "~/store"
 import { SearchNode } from "~/types"
 import {
@@ -40,7 +40,7 @@ import {
   encodePath,
   fsSearch,
   getFileSize,
-  handleResp,
+  handleRespWithoutAuthAndNotify,
   hoverColor,
   pathJoin,
 } from "~/utils"
@@ -201,7 +201,7 @@ const Search = () => {
   })
   const [keywords, setKeywords] = createSignal("")
   const { pathname } = useRouter()
-  const [loading, searchReq] = useFetch(fsSearch)
+  const [searching, setSearching] = createSignal(false)
   const [data, setData] = createSignal({
     content: [] as SearchNode[],
     total: 0,
@@ -209,22 +209,42 @@ const Search = () => {
   const [scope, setScope] = createSignal(0)
   const scopes = ["all", "folder", "file"]
   let resetPaginator: () => void
+  // 请求序号：实时输入时旧请求可能后到，只有最新一次的结果才允许渲染
+  let searchSeq = 0
+  // 防抖定时器：输入停止后再发起搜索
+  let debounceTimer: number | undefined
+
   const search = async (page = 1) => {
     page === 1 && resetPaginator?.()
-    if (loading()) return
-    setData({
-      content: [],
-      total: 0,
-    })
-    const resp = await searchReq(
-      pathname(),
-      keywords(),
-      password(),
-      scope(),
-      page,
-      pageSize,
-    )
-    handleResp(resp, (data) => {
+    const kw = keywords().trim()
+    if (!kw) {
+      // 关键字被删空：取消在途请求并清空结果
+      searchSeq++
+      setSearching(false)
+      setData({ content: [], total: 0 })
+      return
+    }
+    const seq = ++searchSeq
+    setSearching(true)
+    let resp: Awaited<ReturnType<typeof fsSearch>>
+    try {
+      resp = await fsSearch(
+        pathname(),
+        kw,
+        password(),
+        scope(),
+        page,
+        pageSize,
+      )
+    } catch {
+      // 网络异常：仅停止 loading，避免实时输入时卡死在加载态
+      if (seq === searchSeq) setSearching(false)
+      return
+    }
+    if (seq !== searchSeq) return // 过期响应，丢弃
+    setSearching(false)
+    handleRespWithoutAuthAndNotify(resp, (data) => {
+      if (seq !== searchSeq) return
       const content = data.content
       if (!content) {
         return
@@ -242,6 +262,21 @@ const Search = () => {
       setData(data)
     })
   }
+
+  // 输入实时匹配：停止输入 250ms 后自动搜索（添加/删除关键字都触发）
+  const scheduleSearch = () => {
+    clearTimeout(debounceTimer)
+    if (!keywords().trim()) {
+      search()
+      return
+    }
+    debounceTimer = window.setTimeout(() => search(), 250)
+  }
+
+  onCleanup(() => {
+    clearTimeout(debounceTimer)
+    searchSeq++ // 组件卸载后丢弃一切在途响应
+  })
   return (
     <Modal
       // blockScrollOnMount={false}
@@ -266,7 +301,11 @@ const Search = () => {
               <SelectWrapper
                 w="$32"
                 value={scope()}
-                onChange={(v) => setScope(v)}
+                onChange={(v) => {
+                  setScope(v)
+                  // 切换范围（全部/文件夹/文件）立即重新匹配
+                  scheduleSearch()
+                }}
                 options={scopes.map((v, i) => ({
                   value: i,
                   label: t(`home.search.scopes.${v}`),
@@ -277,9 +316,11 @@ const Search = () => {
                 value={keywords()}
                 onInput={(e) => {
                   setKeywords(e.currentTarget.value)
+                  scheduleSearch()
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && keywords().length !== 0) {
+                  if (e.key === "Enter" && keywords().trim().length !== 0) {
+                    clearTimeout(debounceTimer)
                     search()
                   }
                 }}
@@ -288,13 +329,16 @@ const Search = () => {
                 flexShrink={0}
                 aria-label="search"
                 icon={<BsSearch />}
-                onClick={() => search()}
-                loading={loading()}
-                disabled={keywords().length === 0}
+                onClick={() => {
+                  clearTimeout(debounceTimer)
+                  search()
+                }}
+                loading={searching()}
+                disabled={keywords().trim().length === 0}
               />
             </HStack>
             <Switch>
-              <Match when={loading()}>
+              <Match when={searching()}>
                 <FullLoading />
               </Match>
               <Match when={data().content.length === 0}>
