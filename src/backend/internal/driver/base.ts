@@ -154,10 +154,4 @@ export interface StorageDriver {
     dstPhys: string,
   ): Promise<void>
   put(virtualPath: string, physicalPath: string, content: Buffer): Promise<void>
-  /** Optional: stream file content for drivers that don't support pre-signed URLs */
-  getFileStream?(
-    virtualPath: string,
-    physicalPath: string,
-    range?: string,
-  ): Promise<{ body: ReadableStream; headers: Record<string, string> } | null>
 }

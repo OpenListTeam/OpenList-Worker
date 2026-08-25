@@ -4,6 +4,7 @@ import { getDb, saveDb } from "../internal/model/db"
 import { getJwtSecret, getUserFromContext } from "./middlewares"
 import {
   generateTotpSecret,
+  generateTotpCode,
   verifyTotpCode,
   buildOtpauthUrl,
   buildQrImageUrl,
@@ -18,6 +19,8 @@ export const authRouter = new Hono()
 export const meRouter = new Hono()
 
 // --- 登录防爆破（尽力而为，进程内计数）---
+// Cloudflare Workers 多实例下各隔离区独立计数，但能显著提高暴力破解成本，
+// 防止单实例上的无限制尝试。生产环境建议同时配置 IP 限流（ip_limit 设置项）。
 const LOGIN_MAX_FAILURES = 5
 const LOGIN_LOCK_MS = 15 * 60 * 1000
 const loginFailures = new Map<string, { count: number; lockedUntil: number }>()
@@ -36,6 +39,7 @@ function loginKey(c: Context, username: string): string {
 }
 
 function isLoginLocked(c: Context, username: string): boolean {
+  // 懒清理：Map 过大时清掉已过锁定期/无锁定的条目，防止无限增长
   if (loginFailures.size > 10000) {
     const now = Date.now()
     for (const [k, v] of loginFailures) {
@@ -50,7 +54,7 @@ function recordLoginFailure(c: Context, username: string) {
   const key = loginKey(c, username)
   const now = Date.now()
   const rec = loginFailures.get(key) || { count: 0, lockedUntil: 0 }
-  if (rec.lockedUntil > now) return
+  if (rec.lockedUntil > now) return // already locked
   rec.count += 1
   if (rec.count >= LOGIN_MAX_FAILURES) {
     rec.lockedUntil = now + LOGIN_LOCK_MS
@@ -63,96 +67,21 @@ function clearLoginFailures(c: Context, username: string) {
   loginFailures.delete(loginKey(c, username))
 }
 
-// ─── Password Hashing (PBKDF2-SHA256, 100 000 iterations) ───────────────────
-const PBKDF2_ITERATIONS = 100_000
-
+// Helper to hash password matching OpenListNext/AList specification
 export async function hashPassword(plainPassword: string): Promise<string> {
-  const salt = crypto.getRandomValues(new Uint8Array(16))
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(plainPassword),
-    "PBKDF2",
-    false,
-    ["deriveBits"],
-  )
-  const hashBuf = await crypto.subtle.deriveBits(
-    {
-      name: "PBKDF2",
-      salt: salt.buffer as ArrayBuffer,
-      iterations: PBKDF2_ITERATIONS,
-      hash: "SHA-256",
-    },
-    keyMaterial,
-    256,
-  )
-  const saltHex = hexEncode(salt)
-  const hashHex = hexEncode(new Uint8Array(hashBuf))
-  return `pbkdf2:${PBKDF2_ITERATIONS}:${saltHex}:${hashHex}`
-}
-
-export async function verifyPassword(
-  plainPassword: string,
-  storedHash: string,
-): Promise<boolean> {
-  if (!storedHash) return false
-  // New PBKDF2 format
-  if (storedHash.startsWith("pbkdf2:")) {
-    const [, iterStr, saltHex, expectedHash] = storedHash.split(":")
-    const iterations = parseInt(iterStr, 10)
-    const salt = fromHex(saltHex)
-    const keyMaterial = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(plainPassword),
-      "PBKDF2",
-      false,
-      ["deriveBits"],
-    )
-    const hashBuf = await crypto.subtle.deriveBits(
-      {
-        name: "PBKDF2",
-        salt: salt.buffer as ArrayBuffer,
-        iterations,
-        hash: "SHA-256",
-      },
-      keyMaterial,
-      256,
-    )
-    const hashHex = hexEncode(new Uint8Array(hashBuf))
-    return hashHex === expectedHash
-  }
-  // Legacy SHA-256 format (64 hex chars)
-  if (storedHash.length === 64 && /^[0-9a-f]{64}$/i.test(storedHash)) {
-    const hash_salt = "https://github.com/alist-org/alist"
-    const buf = await crypto.subtle.digest(
-      "SHA-256",
-      new TextEncoder().encode(`${plainPassword}-${hash_salt}`),
-    )
-    const computed = hexEncode(new Uint8Array(buf))
-    return computed.toLowerCase() === storedHash.toLowerCase()
-  }
-  return false
-}
-
-function hexEncode(buf: ArrayBuffer | Uint8Array): string {
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
-}
-
-function fromHex(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2)
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16)
-  }
-  return bytes
+  const hash_salt = "https://github.com/alist-org/alist"
+  const msgBuffer = new TextEncoder().encode(`${plainPassword}-${hash_salt}`)
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer)
+  const hashArray = Array.from(new Uint8Array(hashBuffer))
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
 }
 
 // Ensure admin user exists in DB KV space with a default password if unset
 export async function getOrInitUsers(envCtx: any) {
   const db = await getDb(envCtx)
-  let changed = false
-
   if (!db.users || db.users.length === 0) {
+    // 默认管理员密码：优先环境变量 ADMIN_PASSWORD（推荐 `wrangler secret put`），
+    // 未配置时使用默认 admin（AList 兼容），首次登录后应立即修改。
     const envPass =
       (envCtx && envCtx.ADMIN_PASSWORD) ||
       (typeof process !== "undefined" ? process.env?.ADMIN_PASSWORD : "") ||
@@ -170,8 +99,6 @@ export async function getOrInitUsers(envCtx: any) {
         sso_id: "",
         allow_ldap: false,
         pwd_update_at: new Date().toISOString(),
-        otp_secret: "",
-        otp_enabled: false,
       },
       {
         id: 2,
@@ -184,21 +111,8 @@ export async function getOrInitUsers(envCtx: any) {
         sso_id: "",
         allow_ldap: false,
         pwd_update_at: new Date().toISOString(),
-        otp_secret: "",
-        otp_enabled: false,
       },
     ]
-    changed = true
-  } else {
-    const admin = db.users.find((u: any) => u.username === "admin")
-    if (admin && !admin.password) {
-      admin.password = await hashPassword("admin")
-      admin.pwd_update_at = new Date().toISOString()
-      changed = true
-    }
-  }
-
-  if (changed) {
     await saveDb(db, envCtx)
   } else {
     const adminUser = db.users.find((u: any) => u.username === "admin")
@@ -227,13 +141,13 @@ export async function authUserFromReq(
     : authHeader
   try {
     const secret = await getJwtSecret(c)
-    const payload: any = await verify(token, secret, "HS256")
+    const payload = await verify(token, secret, "HS256")
     const db = await getDb(c.env)
     if (!db.users) db.users = []
     const user = db.users.find(
       (u: any) => u.id === payload.id || u.username === payload.username,
     )
-    if (!user || user.disabled) return null
+    if (!user) return null
     return { db, user }
   } catch {
     return null
@@ -241,11 +155,7 @@ export async function authUserFromReq(
 }
 
 async function checkUserOtp(matchedUser: any, body: any) {
-  if (!matchedUser.otp_secret && !matchedUser.otp_enabled) {
-    return { ok: true, code: 200, httpStatus: 200 as const, message: "ok" }
-  }
-  const secret = matchedUser.otp_secret
-  if (!secret) {
+  if (!matchedUser.otp_secret) {
     return { ok: true, code: 200, httpStatus: 200 as const, message: "ok" }
   }
   const otpCode = String(body.otp_code || body.code || "").trim()
@@ -254,22 +164,22 @@ async function checkUserOtp(matchedUser: any, body: any) {
       ok: false,
       code: 402,
       httpStatus: 200 as const,
-      message: "需要双因素验证码",
+      message: "OTP code required",
     }
   }
-  const valid = await verifyTotpCode(secret, otpCode)
+  const valid = await verifyTotpCode(matchedUser.otp_secret, otpCode)
   if (!valid) {
     return {
       ok: false,
       code: 401,
       httpStatus: 401 as const,
-      message: "双因素验证码错误",
+      message: "Invalid OTP code",
     }
   }
   return { ok: true, code: 200, httpStatus: 200 as const, message: "ok" }
 }
 
-// ─── POST /api/auth/login ───────────────────────────────────────────────────
+// POST /api/auth/login
 authRouter.post("/login", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const username = (body.username || "").trim()
@@ -280,26 +190,28 @@ authRouter.post("/login", async (c) => {
     return c.json(
       {
         code: 429,
-        message: "登录尝试次数过多，请稍后再试",
+        message:
+          "Too many failed login attempts for this account/IP, please try again later",
         data: null,
       },
       429,
     )
   }
 
+  const hashedPassword = await hashPassword(rawPassword)
+
   const { users } = await getOrInitUsers(c.env)
+
   const matchedUser = users.find(
     (u: any) => u.username === username && !u.disabled,
   )
 
-  if (matchedUser && matchedUser.password) {
-    const isPasswordValid = await verifyPassword(
-      rawPassword,
-      matchedUser.password,
-    )
+  if (matchedUser) {
+    const userPass = matchedUser.password || ""
+    const isPasswordValid =
+      userPass !== "" && userPass.length === 64 && userPass === hashedPassword
 
     if (isPasswordValid) {
-      // Check 2FA
       const otpCheck = await checkUserOtp(matchedUser, body)
       if (!otpCheck.ok) {
         return c.json(
@@ -307,23 +219,7 @@ authRouter.post("/login", async (c) => {
           otpCheck.httpStatus,
         )
       }
-
       clearLoginFailures(c, username)
-
-      // Migrate legacy SHA-256 hash to PBKDF2
-      if (
-        matchedUser.password.length === 64 &&
-        /^[0-9a-f]{64}$/i.test(matchedUser.password)
-      ) {
-        matchedUser.password = await hashPassword(rawPassword)
-        const db = await getDb(c.env)
-        const idx = db.users.findIndex((u: any) => u.id === matchedUser.id)
-        if (idx !== -1) {
-          db.users[idx].password = matchedUser.password
-          await saveDb(db, c.env)
-        }
-      }
-
       const payload = {
         id: matchedUser.id,
         username: matchedUser.username,
@@ -341,10 +237,10 @@ authRouter.post("/login", async (c) => {
   }
 
   recordLoginFailure(c, username)
-  return c.json({ code: 401, message: "用户名或密码错误", data: null }, 401)
+  return c.json({ code: 401, message: "Invalid credentials", data: null }, 401)
 })
 
-// ─── POST /api/auth/login/hash ──────────────────────────────────────────────
+// POST /api/auth/login/hash
 authRouter.post("/login/hash", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const username = (body.username || "").trim()
@@ -352,11 +248,13 @@ authRouter.post("/login/hash", async (c) => {
     .trim()
     .toLowerCase()
 
+  // 防爆破：与 /login 同一计数体系
   if (isLoginLocked(c, username)) {
     return c.json(
       {
         code: 429,
-        message: "登录尝试次数过多，请稍后再试",
+        message:
+          "Too many failed login attempts for this account/IP, please try again later",
         data: null,
       },
       429,
@@ -364,20 +262,16 @@ authRouter.post("/login/hash", async (c) => {
   }
 
   const { users } = await getOrInitUsers(c.env)
+
   const matchedUser = users.find(
     (u: any) => u.username === username && !u.disabled,
   )
 
-  if (matchedUser && matchedUser.password) {
-    const userPass = String(matchedUser.password).trim().toLowerCase()
-    let isHashValid = false
-    if (userPass.length === 64 && inputHash === userPass) {
-      isHashValid = true
-    } else if (userPass.startsWith("pbkdf2:")) {
-      // Cannot verify plain hash directly against PBKDF2 without plaintext,
-      // but if input is exact match
-      isHashValid = inputHash === userPass
-    }
+  if (matchedUser && inputHash.length === 64) {
+    const userPass = String(matchedUser.password || "")
+      .trim()
+      .toLowerCase()
+    const isHashValid = userPass.length === 64 && inputHash === userPass
 
     if (isHashValid) {
       const otpCheck = await checkUserOtp(matchedUser, body)
@@ -405,14 +299,14 @@ authRouter.post("/login/hash", async (c) => {
   }
 
   recordLoginFailure(c, username)
-  return c.json({ code: 401, message: "用户名或密码错误", data: null }, 401)
+  return c.json({ code: 401, message: "Invalid credentials", data: null }, 401)
 })
 
-// ─── POST /api/me/update ────────────────────────────────────────────────────
+// POST /api/me/update or /me/update
 export const meUpdateHandler = async (c: any) => {
   const auth = await authUserFromReq(c)
   if (!auth) {
-    return c.json({ code: 401, message: "未授权", data: null }, 401)
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
   }
   const { db, user } = auth
   const body = await c.req.json().catch(() => ({}))
@@ -423,7 +317,10 @@ export const meUpdateHandler = async (c: any) => {
       (u: any) => u.id !== user.id && u.username === newUsername,
     )
     if (exists) {
-      return c.json({ code: 400, message: "用户名已存在", data: null }, 400)
+      return c.json(
+        { code: 400, message: "Username already exists", data: null },
+        400,
+      )
     }
     user.username = newUsername
   }
@@ -437,14 +334,14 @@ export const meUpdateHandler = async (c: any) => {
   return c.json({ code: 200, message: "success", data: null })
 }
 
-// ─── GET /api/me ────────────────────────────────────────────────────────────
+// GET /api/me
 export const meHandler = async (c: any) => {
   const user = await getUserFromContext(c)
   if (!user || user.disabled) {
     return c.json(
       {
         code: 401,
-        message: "未授权",
+        message: "Unauthorized",
         data: null,
       },
       401,
@@ -472,53 +369,66 @@ authRouter.get("/me", meHandler)
 authRouter.post("/me/update", meUpdateHandler)
 
 export const logoutHandler = (c: any) => {
-  return c.json({ code: 200, message: "success", data: null })
+  return c.json({
+    code: 200,
+    message: "success",
+    data: null,
+  })
 }
 
 authRouter.get("/logout", logoutHandler)
 authRouter.post("/logout", logoutHandler)
 
-// ─── POST /api/auth/2fa/generate ─────────────────────────────────────────────
+// POST /api/auth/2fa/generate — returns a fresh TOTP secret + QR image
 authRouter.post("/2fa/generate", async (c) => {
   const auth = await authUserFromReq(c)
   if (!auth) {
-    return c.json({ code: 401, message: "未授权", data: null }, 401)
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
   }
   const { user } = auth
   if (user.otp_secret) {
-    return c.json({ code: 400, message: "2FA 已经开启", data: null }, 400)
+    return c.json(
+      { code: 400, message: "2FA already enabled", data: null },
+      400,
+    )
   }
   const secret = generateTotpSecret()
   const otpauth = buildOtpauthUrl(secret, user.username)
   return c.json({
     code: 200,
     message: "success",
-    data: { uri: otpauth, qr: buildQrImageUrl(otpauth), secret },
+    data: { qr: buildQrImageUrl(otpauth), secret },
   })
 })
 
-// ─── POST /api/auth/2fa/verify ───────────────────────────────────────────────
+// POST /api/auth/2fa/verify — validate a code against the generated secret,
+// then persist it on the user so future logins require the TOTP code.
 authRouter.post("/2fa/verify", async (c) => {
   const auth = await authUserFromReq(c)
   if (!auth) {
-    return c.json({ code: 401, message: "未授权", data: null }, 401)
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
   }
   const { db, user } = auth
   const body = await c.req.json().catch(() => ({}))
   const code = String(body.code || "").trim()
   const secret = String(body.secret || "").trim()
   if (!secret) {
-    return c.json({ code: 400, message: "缺少密钥参数", data: null }, 400)
+    return c.json(
+      { code: 400, message: "Missing secret parameter", data: null },
+      400,
+    )
   }
   if (!/^[A-Z2-7]+$/i.test(secret)) {
-    return c.json({ code: 400, message: "密钥格式不正确", data: null }, 400)
+    return c.json(
+      { code: 400, message: "Invalid secret format", data: null },
+      400,
+    )
   }
   const valid = await verifyTotpCode(secret, code)
   if (!valid) {
-    return c.json({ code: 400, message: "验证码无效", data: null }, 400)
+    return c.json({ code: 400, message: "Invalid code", data: null }, 400)
   }
   user.otp_secret = secret.toUpperCase()
-  user.otp_enabled = true
   await saveDb(db, c.env)
   return c.json({ code: 200, message: "success", data: null })
 })
@@ -527,7 +437,7 @@ authRouter.post("/2fa/verify", async (c) => {
 meRouter.get("/sshkey/list", async (c) => {
   const auth = await authUserFromReq(c)
   if (!auth) {
-    return c.json({ code: 401, message: "未授权", data: null }, 401)
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
   }
   const keys = await listUserSshKeys(auth.user.id, c.env)
   return c.json({
@@ -540,7 +450,7 @@ meRouter.get("/sshkey/list", async (c) => {
 meRouter.post("/sshkey/add", async (c) => {
   const auth = await authUserFromReq(c)
   if (!auth) {
-    return c.json({ code: 401, message: "未授权", data: null }, 401)
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
   }
   const body = await c.req.json().catch(() => ({}))
   try {
@@ -570,11 +480,14 @@ meRouter.post("/sshkey/add", async (c) => {
 meRouter.post("/sshkey/delete", async (c) => {
   const auth = await authUserFromReq(c)
   if (!auth) {
-    return c.json({ code: 401, message: "未授权", data: null }, 401)
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
   }
   const id = c.req.query("id")
   if (!id) {
-    return c.json({ code: 400, message: "缺少 ID 参数", data: null }, 400)
+    return c.json(
+      { code: 400, message: "Missing id parameter", data: null },
+      400,
+    )
   }
   const removed = await deleteUserSshKey(auth.user.id, id, c.env)
   if (!removed) {

@@ -1,0 +1,35 @@
+name: Sync i18n to Crowdin
+
+inputs:
+  crowdin_project_id:
+    required: true
+    description: "Crowdin Project ID"
+  crowdin_personal_token:
+    required: true
+    description: "Crowdin Personal Token"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Node
+      uses: actions/setup-node@v6
+      with:
+        node-version: "24.18.0"
+        registry-url: "https://registry.npmjs.org"
+
+    - name: Install pnpm
+      uses: pnpm/action-setup@v6
+      with:
+        run_install: false
+
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install
+
+    - name: Sync to Crowdin
+      shell: bash
+      run: |
+        pnpm crowdin:upload
+      env:
+        CROWDIN_PROJECT_ID: ${{ inputs.crowdin_project_id }}
+        CROWDIN_PERSONAL_TOKEN: ${{ inputs.crowdin_personal_token }}

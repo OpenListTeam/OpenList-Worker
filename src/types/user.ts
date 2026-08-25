@@ -14,7 +14,7 @@ export interface User {
   sso_id: string
   disabled: boolean
   allow_ldap: boolean
-  otp?: boolean
+  // otp: boolean;
 }
 
 export const UserPermissions = [

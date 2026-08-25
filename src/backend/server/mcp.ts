@@ -24,7 +24,7 @@ mcpRouter.post("/messages", async (c) => {
     return c.json(
       {
         jsonrpc: "2.0",
-        error: { code: -32600, message: "无效的请求" },
+        error: { code: -32600, message: "Invalid Request" },
         id: id || null,
       },
       400,

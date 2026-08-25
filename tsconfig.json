@@ -21,7 +21,5 @@
     },
     "skipLibCheck": true,
     "resolveJsonModule": true
-  },
-  "include": ["src/**/*", "esa-entry.ts"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "scripts"]
+  }
 }

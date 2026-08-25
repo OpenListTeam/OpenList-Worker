@@ -7,7 +7,10 @@ export interface RangeParams {
 }
 
 // Parses the standard Range header
-export function parseRangeHeader(rangeHeader: string, fileSize: number): RangeParams {
+export function parseRangeHeader(
+  rangeHeader: string,
+  fileSize: number,
+): RangeParams {
   const parts = rangeHeader.replace(/bytes=/, "").split("-")
   const start = parseInt(parts[0], 10)
   const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1
@@ -15,26 +18,33 @@ export function parseRangeHeader(rangeHeader: string, fileSize: number): RangePa
   return { start, end, chunksize }
 }
 
-let fs: any = null;
-let path: any = null;
+let fs: any = null
+let path: any = null
 
 async function initNodeModules() {
-  if (typeof process !== 'undefined' && process.release?.name === 'node' && !fs) {
+  if (
+    typeof process !== "undefined" &&
+    process.release?.name === "node" &&
+    !fs
+  ) {
     try {
-      fs = await import('fs/promises');
-      path = await import('path');
-    } catch(e) {}
+      fs = await import("fs/promises")
+      path = await import("path")
+    } catch (e) {}
   }
 }
 
 // Downloads background offline file stream downloads
-export async function downloadOfflineFile(urls: string[], virtualDir: string): Promise<void> {
-  await initNodeModules();
+export async function downloadOfflineFile(
+  urls: string[],
+  virtualDir: string,
+): Promise<void> {
+  await initNodeModules()
   if (!fs || !path) {
-    console.warn("downloadOfflineFile requires Node.js filesystem access");
-    return;
+    console.warn("downloadOfflineFile requires Node.js filesystem access")
+    return
   }
-  
+
   if (!urls || urls.length === 0) return
   for (const urlStr of urls) {
     try {
@@ -43,12 +53,12 @@ export async function downloadOfflineFile(urls: string[], virtualDir: string): P
       if (!filename) filename = "downloaded_file"
       const fileVirtualPath = path.join(virtualDir, filename)
       const resolved = await resolvePath(fileVirtualPath)
-      
+
       if (resolved.isVirtual || !resolved.physical) {
-        throw new Error("无法下载到虚拟路径")
+        throw new Error("Cannot download to a virtual path")
       }
       const targetPath = resolved.physical
-      
+
       const res = await fetch(urlStr)
       if (res.ok && res.body) {
         const buffer = await res.arrayBuffer()

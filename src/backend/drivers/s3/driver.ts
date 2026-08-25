@@ -1,398 +1,379 @@
+// Based on: https://github.com/OpenListTeam/OpenList/tree/main/drivers/s3
 import {
   StorageDriver,
   FileItem,
   calcFileType,
 } from "../../internal/driver/base"
 import { sortFileItems } from "../../internal/driver/sort"
-import { S3Addition } from "./types"
-import { S3Client } from "./util"
+import { S3Addition, S3File } from "./types"
+import {
+  S3Client,
+  joinPath,
+  getKey,
+  getPlaceholderName,
+  getBaseName,
+  getDirName,
+  isSubPath,
+} from "./util"
+import { getDogeCredentials } from "./sigv4"
 
-function s3KeyToName(key: string, prefix: string): string {
-  // Remove trailing slash for directories
-  let name = key
-  if (prefix) {
-    name = key.slice(prefix.length)
+export function normalizeS3Addition(a: any): S3Addition {
+  const norm = { ...(a || {}) } as any
+  norm.bucket = (norm.bucket || "").trim()
+  norm.endpoint = (norm.endpoint || "").trim()
+  norm.region = (norm.region || "").trim() || "openlist"
+  norm.access_key_id = (norm.access_key_id || "").trim()
+  norm.secret_access_key = (norm.secret_access_key || "").trim()
+  norm.session_token = (norm.session_token || "").trim()
+  norm.root_folder_path = (norm.root_folder_path || "/").trim()
+  if (!norm.root_folder_path.startsWith("/")) {
+    norm.root_folder_path = "/" + norm.root_folder_path
   }
-  name = name.replace(/^\/+|\/+$/g, "")
-  // Get last segment
-  const parts = name.split("/")
-  return parts[parts.length - 1] || name
-}
-
-function isDirectoryKey(key: string): boolean {
-  return key.endsWith("/")
-}
-
-export function normalizeS3Addition(addition: any): S3Addition {
-  if (!addition || typeof addition !== "object") {
-    return {} as S3Addition
-  }
-  return {
-    ...addition,
-    endpoint: String(addition.endpoint || ""),
-    region: String(addition.region || ""),
-    bucket: String(addition.bucket || ""),
-    access_key_id: String(addition.access_key_id || ""),
-    secret_access_key: String(addition.secret_access_key || ""),
-    session_token: addition.session_token
-      ? String(addition.session_token)
-      : undefined,
-    root_folder_path: String(addition.root_folder_path || "/"),
-    custom_host: addition.custom_host
-      ? String(addition.custom_host)
-      : undefined,
-    sign_url_expire: Number(addition.sign_url_expire) || 4,
-  }
+  norm.custom_host = (norm.custom_host || "").trim()
+  norm.enable_custom_host_presign = !!norm.enable_custom_host_presign
+  norm.sign_url_expire = Number(norm.sign_url_expire) || 4
+  norm.placeholder = (norm.placeholder || "").trim()
+  norm.force_path_style = !!norm.force_path_style
+  norm.list_object_version = (norm.list_object_version || "v1").toLowerCase()
+  norm.remove_bucket = !!norm.remove_bucket
+  norm.add_filename_to_disposition = !!norm.add_filename_to_disposition
+  norm.enable_direct_upload = !!norm.enable_direct_upload
+  norm.direct_upload_host = (norm.direct_upload_host || "").trim()
+  norm.user_agent = (norm.user_agent || "").trim()
+  norm.order_by = norm.order_by || "name"
+  norm.order_direction = norm.order_direction || "asc"
+  return norm as S3Addition
 }
 
 export class S3Driver implements StorageDriver {
-  private addition: S3Addition
   private client: S3Client
-  private driverType: string
+  private addition: S3Addition
+  private driverName: string
+  private dogeExpiredAt?: number
+  private dogeTimer?: any
 
-  constructor(addition: S3Addition, driverType: string = "S3") {
-    this.addition = addition
-    this.driverType = driverType
-    this.client = new S3Client(addition)
+  constructor(addition: S3Addition, driverName = "S3") {
+    this.addition = normalizeS3Addition(addition)
+    this.driverName = driverName
+    this.client = new S3Client(this.addition)
   }
 
   async init(): Promise<void> {
-    // Verify bucket access by attempting to list root.
-    // Non-fatal: log warning but allow mount even if check fails (e.g. SSL issues).
+    if (this.driverName.toLowerCase().includes("doge")) {
+      await this.refreshDogeToken()
+    }
+  }
+
+  private async refreshDogeToken(): Promise<void> {
     try {
-      const useV2 = this.addition.list_object_version !== "v1"
-      if (useV2) {
-        await this.client.listObjects("/", undefined, 1)
-      } else {
-        await this.client.listObjectsV1("/", undefined, 1)
-      }
-    } catch (e: any) {
-      console.warn("[S3] init warning (non-fatal):", e.message)
-    }
-  }
-
-  private get rootPrefix(): string {
-    const root = (this.addition.root_folder_path || "/").replace(
-      /^\/+|\/+$/g,
-      "",
-    )
-    return root ? `${root}/` : ""
-  }
-
-  private resolveS3Path(physicalPath: string): string {
-    const rel = physicalPath.replace(/^\/+|\/+$/g, "")
-    return rel ? `${this.rootPrefix}${rel}` : this.rootPrefix
-  }
-
-  async list(_virtualPath: string, physicalPath: string): Promise<FileItem[]> {
-    const s3Prefix = this.resolveS3Path(physicalPath)
-    const useV2 = this.addition.list_object_version !== "v1"
-
-    console.log(
-      "[S3] list virtualPath:",
-      _virtualPath,
-      "physicalPath:",
-      physicalPath,
-      "s3Prefix:",
-      s3Prefix,
-      "rootPrefix:",
-      this.rootPrefix,
-    )
-
-    const allItems: FileItem[] = []
-    let continuationToken: string | undefined
-    let isTruncated = true
-
-    while (isTruncated) {
-      let result
-      if (useV2) {
-        result = await this.client.listObjects(s3Prefix, continuationToken)
-      } else {
-        result = await this.client.listObjectsV1(s3Prefix, continuationToken)
-      }
-
-      // Process CommonPrefixes (directories)
-      for (const cp of result.CommonPrefixes) {
-        const name = s3KeyToName(cp.Prefix, this.rootPrefix)
-        if (!name) continue
-        allItems.push({
-          name,
-          size: 0,
-          is_dir: true,
-          modified: new Date().toISOString(),
-          sign: "",
-          type: 1,
-          thumb: "",
-          raw_url: "",
-        })
-      }
-
-      // Process Contents (files)
-      for (const obj of result.Contents) {
-        if (obj.Key.endsWith("/")) continue // Skip directory markers
-        const name = s3KeyToName(obj.Key, this.rootPrefix)
-        if (!name) continue
-        // Hide placeholder files (e.g. ".openlist") that mark empty directories
-        const placeholder = (this.addition.placeholder || "").trim()
-        if (name === ".openlist" || (placeholder && name === placeholder)) {
-          continue
-        }
-        const isDir = isDirectoryKey(obj.Key)
-        allItems.push({
-          name,
-          size: isDir ? 0 : obj.Size || 0,
-          is_dir: isDir,
-          modified: obj.LastModified
-            ? new Date(obj.LastModified).toISOString()
-            : new Date().toISOString(),
-          sign: obj.ETag || "",
-          type: calcFileType(name, isDir),
-          thumb: "",
-          raw_url: "",
-        })
-      }
-
-      isTruncated = result.IsTruncated
-      continuationToken = useV2
-        ? result.NextContinuationToken
-        : result.NextContinuationToken
-    }
-
-    return sortFileItems(allItems, "name", "asc")
-  }
-
-  async getFileStream(
-    _virtualPath: string,
-    physicalPath: string,
-    range?: string,
-  ): Promise<{ body: ReadableStream; headers: Record<string, string> } | null> {
-    const s3Key = this.resolveS3Path(physicalPath).replace(/\/$/, "")
-    return this.client.getObjectStream(s3Key, range)
-  }
-
-  async get(_virtualPath: string, physicalPath: string): Promise<FileItem> {
-    const s3Key = this.resolveS3Path(physicalPath)
-    const name = s3KeyToName(s3Key, this.rootPrefix)
-
-    // Check if it's a directory (try listing)
-    if (!s3Key.endsWith("/")) {
-      try {
-        const dirResult = await this.client.listObjects(
-          `${s3Key}/`,
-          undefined,
-          1,
-        )
-        if (
-          dirResult.Contents.length > 0 ||
-          dirResult.CommonPrefixes.length > 0
-        ) {
-          return {
-            name,
-            size: 0,
-            is_dir: true,
-            modified: new Date().toISOString(),
-            sign: "",
-            type: 1,
-            thumb: "",
-            raw_url: "",
-          }
-        }
-      } catch {}
-    }
-
-    // Try as file
-    try {
-      const head = await this.client.headObject(s3Key.replace(/\/$/, ""))
-      // Generate a presigned download URL so the client can fetch directly
-      const { url } = await this.client.getDownloadUrl(
-        s3Key.replace(/\/$/, ""),
-        name,
+      const creds = await getDogeCredentials(
+        this.addition.access_key_id,
+        this.addition.secret_access_key,
       )
-      return {
-        name,
-        size: head.contentLength,
-        is_dir: false,
-        modified: new Date(head.lastModified).toISOString(),
-        sign: head.etag,
-        type: calcFileType(name, false),
-        thumb: "",
-        raw_url: url,
-      }
-    } catch (e: any) {
-      console.error(`[S3] get() failed for key=${s3Key}:`, e?.message || e)
-      throw new Error(`Object not found: ${physicalPath} (${e?.message || e})`)
+      this.dogeExpiredAt = creds.expiredAt
+      this.client.updateCredentials({
+        accessKeyId: creds.accessKeyId,
+        secretAccessKey: creds.secretAccessKey,
+        sessionToken: creds.sessionToken,
+      })
+    } catch (e) {
+      console.error("[S3Driver] DogeCloud init/refresh session error:", e)
+      throw e
     }
   }
 
-  async mkdir(_virtualPath: string, physicalPath: string): Promise<void> {
-    const s3Key = this.resolveS3Path(physicalPath)
-    // S3 doesn't have real directories; create a 0-byte object with trailing /
-    await this.client.putObject(
-      s3Key.endsWith("/") ? s3Key : `${s3Key}/`,
-      new Uint8Array(0),
-      "application/x-directory",
+  private async checkDogeToken(): Promise<void> {
+    if (this.driverName.toLowerCase().includes("doge")) {
+      const nowSec = Math.floor(Date.now() / 1000)
+      if (!this.dogeExpiredAt || this.dogeExpiredAt - nowSec < 120) {
+        await this.refreshDogeToken()
+      }
+    }
+  }
+
+  drop(): void {
+    if (this.dogeTimer) {
+      clearInterval(this.dogeTimer)
+      this.dogeTimer = undefined
+    }
+  }
+
+  private getRemotePath(physicalPath: string): string {
+    const root = this.addition.root_folder_path || "/"
+    let combined = physicalPath || "/"
+    if (root !== "/" && !isSubPath(root, combined)) {
+      combined = joinPath(root, combined)
+    }
+    return getKey(combined, false)
+  }
+
+  private async fileItemFromS3(
+    file: S3File,
+    remotePath: string,
+  ): Promise<FileItem> {
+    let rawUrl: string | undefined
+    let rawUrlHeaders: Record<string, string> | undefined
+
+    if (!file.isFolder) {
+      const linkRes = await this.client.getLink(
+        remotePath,
+        file.name,
+        Number(this.addition.sign_url_expire) || 4,
+        this.addition.custom_host,
+        this.addition.enable_custom_host_presign,
+        this.addition.remove_bucket,
+        this.addition.add_filename_to_disposition,
+      )
+      rawUrl = linkRes.url
+      rawUrlHeaders = linkRes.headers
+    }
+
+    return {
+      name: file.name,
+      size: file.size,
+      is_dir: file.isFolder,
+      modified: file.modified,
+      sign: file.etag || remotePath,
+      type: calcFileType(file.name, file.isFolder),
+      thumb: "",
+      raw_url: rawUrl,
+      raw_url_headers: rawUrlHeaders,
+    }
+  }
+
+  async list(virtualPath: string, physicalPath: string): Promise<FileItem[]> {
+    await this.checkDogeToken()
+    const remotePath = this.getRemotePath(physicalPath)
+    const version = this.addition.list_object_version === "v2" ? "v2" : "v1"
+    const rawFiles = await this.client.listObjects(remotePath, version, false)
+
+    const items: FileItem[] = []
+    for (const file of rawFiles) {
+      const itemRemotePath = joinPath(remotePath, file.name)
+      const item = await this.fileItemFromS3(file, itemRemotePath)
+      items.push(item)
+    }
+
+    return sortFileItems(
+      items,
+      this.addition.order_by || "name",
+      this.addition.order_direction || "asc",
     )
+  }
+
+  async get(virtualPath: string, physicalPath: string): Promise<FileItem> {
+    await this.checkDogeToken()
+    const remotePath = this.getRemotePath(physicalPath)
+    const head = await this.client.headObject(remotePath)
+
+    if (head) {
+      const fileName = getBaseName(remotePath)
+      return this.fileItemFromS3(
+        {
+          name: fileName,
+          size: head.size,
+          isFolder: false,
+          modified: head.modified,
+          path: remotePath,
+          etag: head.etag,
+        },
+        remotePath,
+      )
+    }
+
+    // Check if it's a directory
+    const version = this.addition.list_object_version === "v2" ? "v2" : "v1"
+    const isDir = await this.client.listPrefixProbe(remotePath, version)
+    if (isDir || remotePath === "" || remotePath === "/") {
+      const dirName = getBaseName(remotePath)
+      return {
+        name: dirName,
+        size: 0,
+        is_dir: true,
+        modified: new Date().toISOString(),
+        sign: remotePath,
+        type: 1,
+      }
+    }
+
+    throw new Error(`Object not found: ${physicalPath}`)
+  }
+
+  async mkdir(virtualPath: string, physicalPath: string): Promise<void> {
+    await this.checkDogeToken()
+    const remotePath = this.getRemotePath(physicalPath)
+    const placeholderName = getPlaceholderName(this.addition.placeholder)
+    const placeholderKey = joinPath(remotePath, placeholderName)
+    await this.client.putObject(placeholderKey, new Uint8Array(0))
   }
 
   async rename(
-    _virtualPath: string,
+    virtualPath: string,
     physicalPath: string,
     newName: string,
   ): Promise<void> {
-    const srcKey = this.resolveS3Path(physicalPath)
-    const parentDir = srcKey.split("/").slice(0, -1).join("/")
-    const dstKey = parentDir ? `${parentDir}/${newName}` : newName
+    await this.checkDogeToken()
+    const oldPath = this.getRemotePath(physicalPath)
+    const parentDir = getDirName(oldPath)
+    const newPath = joinPath(parentDir, newName)
 
-    // Check if source is directory
-    if (srcKey.endsWith("/") || (await this.isDir(srcKey))) {
-      // Copy all objects with new prefix
-      await this.copyDirRecursive(srcKey, dstKey)
-      await this.deleteDirRecursive(srcKey)
+    const head = await this.client.headObject(oldPath)
+    if (head) {
+      // File rename
+      await this.client.copyObject(oldPath, newPath, head.size)
+      await this.client.deleteObject(oldPath)
     } else {
-      await this.client.copyObject(srcKey, dstKey)
-      await this.client.deleteObject(srcKey)
-    }
-  }
-
-  private async isDir(key: string): Promise<boolean> {
-    try {
-      const result = await this.client.listObjects(`${key}/`, undefined, 1)
-      return result.Contents.length > 0 || result.CommonPrefixes.length > 0
-    } catch {
-      return false
-    }
-  }
-
-  private async copyDirRecursive(
-    srcPrefix: string,
-    dstPrefix: string,
-  ): Promise<void> {
-    const src = srcPrefix.endsWith("/") ? srcPrefix : `${srcPrefix}/`
-    const dst = dstPrefix.endsWith("/") ? dstPrefix : `${dstPrefix}/`
-
-    let continuationToken: string | undefined
-    let isTruncated = true
-
-    while (isTruncated) {
-      const result = await this.client.listObjects(src, continuationToken)
-
-      for (const obj of result.Contents) {
-        const relativeKey = obj.Key.slice(src.length)
-        await this.client.copyObject(obj.Key, `${dst}${relativeKey}`)
-      }
-
-      isTruncated = result.IsTruncated
-      continuationToken = result.NextContinuationToken
-    }
-  }
-
-  private async deleteDirRecursive(key: string): Promise<void> {
-    const prefix = key.endsWith("/") ? key : `${key}/`
-    let continuationToken: string | undefined
-    let isTruncated = true
-    const keysToDelete: string[] = []
-
-    while (isTruncated) {
-      const result = await this.client.listObjects(prefix, continuationToken)
-
-      for (const obj of result.Contents) {
-        keysToDelete.push(obj.Key)
-        if (keysToDelete.length >= 1000) {
-          await this.client.deleteObjects(keysToDelete)
-          keysToDelete.length = 0
-        }
-      }
-
-      isTruncated = result.IsTruncated
-      continuationToken = result.NextContinuationToken
-    }
-
-    if (keysToDelete.length > 0) {
-      await this.client.deleteObjects(keysToDelete)
-    }
-
-    // Also delete the directory marker
-    await this.client.deleteObject(prefix)
-  }
-
-  async remove(
-    _virtualPath: string,
-    physicalPath: string,
-    _names: string[],
-  ): Promise<void> {
-    const s3Key = this.resolveS3Path(physicalPath)
-
-    // Check if it's a directory
-    if (s3Key.endsWith("/") || (await this.isDir(s3Key))) {
-      await this.deleteDirRecursive(s3Key)
-    } else {
-      await this.client.deleteObject(s3Key)
+      // Directory rename
+      await this.copyDirRecursive(oldPath, newPath)
+      await this.removeDirRecursive(oldPath)
     }
   }
 
   async move(
-    _srcDir: string,
+    srcDir: string,
     dstDir: string,
-    _names: string[],
-    srcPhysical: string,
-    _dstPhysical: string,
+    names: string[],
+    srcPhys: string,
+    dstPhys: string,
   ): Promise<void> {
-    const srcKey = this.resolveS3Path(srcPhysical)
-    const name = srcPhysical.split("/").filter(Boolean).pop() || ""
-    const dstBase = this.resolveS3Path(dstDir)
-    const dstKey = dstBase.endsWith("/")
-      ? `${dstBase}${name}`
-      : `${dstBase}/${name}`
+    await this.checkDogeToken()
+    const srcBase = this.getRemotePath(srcPhys)
+    const dstBase = this.getRemotePath(dstPhys)
 
-    // Check if source is directory
-    if (srcKey.endsWith("/") || (await this.isDir(srcKey))) {
-      await this.copyDirRecursive(srcKey, dstKey)
-      await this.deleteDirRecursive(srcKey)
-    } else {
-      await this.client.copyObject(srcKey, dstKey)
-      await this.client.deleteObject(srcKey)
+    for (const name of names) {
+      const srcPath = joinPath(srcBase, name)
+      const dstPath = joinPath(dstBase, name)
+      const head = await this.client.headObject(srcPath)
+      if (head) {
+        await this.client.copyObject(srcPath, dstPath, head.size)
+        await this.client.deleteObject(srcPath)
+      } else {
+        await this.copyDirRecursive(srcPath, dstPath)
+        await this.removeDirRecursive(srcPath)
+      }
     }
   }
 
   async copy(
-    _srcDir: string,
+    srcDir: string,
     dstDir: string,
-    _names: string[],
-    srcPhysical: string,
-    _dstPhysical: string,
+    names: string[],
+    srcPhys: string,
+    dstPhys: string,
   ): Promise<void> {
-    const srcKey = this.resolveS3Path(srcPhysical)
-    const name = srcPhysical.split("/").filter(Boolean).pop() || ""
-    const dstBase = this.resolveS3Path(dstDir)
-    const dstKey = dstBase.endsWith("/")
-      ? `${dstBase}${name}`
-      : `${dstBase}/${name}`
+    await this.checkDogeToken()
+    const srcBase = this.getRemotePath(srcPhys)
+    const dstBase = this.getRemotePath(dstPhys)
 
-    // Check if source is directory
-    if (srcKey.endsWith("/") || (await this.isDir(srcKey))) {
-      await this.copyDirRecursive(srcKey, dstKey)
+    for (const name of names) {
+      const srcPath = joinPath(srcBase, name)
+      const dstPath = joinPath(dstBase, name)
+      const head = await this.client.headObject(srcPath)
+      if (head) {
+        await this.client.copyObject(srcPath, dstPath, head.size)
+      } else {
+        await this.copyDirRecursive(srcPath, dstPath)
+      }
+    }
+  }
+
+  private async copyDirRecursive(src: string, dst: string): Promise<void> {
+    const version = this.addition.list_object_version === "v2" ? "v2" : "v1"
+    const rawFiles = await this.client.listObjects(src, version, true)
+    for (const file of rawFiles) {
+      const childSrc = joinPath(src, file.name)
+      const childDst = joinPath(dst, file.name)
+      if (file.isFolder) {
+        await this.copyDirRecursive(childSrc, childDst)
+      } else {
+        await this.client.copyObject(childSrc, childDst, file.size)
+      }
+    }
+  }
+
+  async remove(
+    virtualPath: string,
+    physicalPath: string,
+    names: string[],
+  ): Promise<void> {
+    await this.checkDogeToken()
+    const basePath = this.getRemotePath(physicalPath)
+
+    if (names && names.length > 0) {
+      for (const name of names) {
+        const targetPath = joinPath(basePath, name)
+        const head = await this.client.headObject(targetPath)
+        if (head) {
+          await this.client.deleteObject(targetPath)
+        } else {
+          await this.removeDirRecursive(targetPath)
+        }
+      }
     } else {
-      await this.client.copyObject(srcKey, dstKey)
+      const head = await this.client.headObject(basePath)
+      if (head) {
+        await this.client.deleteObject(basePath)
+      } else {
+        await this.removeDirRecursive(basePath)
+      }
+    }
+  }
+
+  private async removeDirRecursive(dirPath: string): Promise<void> {
+    const version = this.addition.list_object_version === "v2" ? "v2" : "v1"
+    const rawFiles = await this.client.listObjects(dirPath, version, true)
+    for (const file of rawFiles) {
+      const childPath = joinPath(dirPath, file.name)
+      if (file.isFolder) {
+        await this.removeDirRecursive(childPath)
+      } else {
+        await this.client.deleteObject(childPath)
+      }
+    }
+    const placeholderName = getPlaceholderName(this.addition.placeholder)
+    await this.client
+      .deleteObject(joinPath(dirPath, placeholderName))
+      .catch(() => {})
+    if (this.addition.placeholder) {
+      await this.client
+        .deleteObject(joinPath(dirPath, this.addition.placeholder))
+        .catch(() => {})
     }
   }
 
   async put(
-    _virtualPath: string,
+    virtualPath: string,
     physicalPath: string,
-    content: Buffer,
+    content: Buffer | Uint8Array,
   ): Promise<void> {
-    const s3Key = this.resolveS3Path(physicalPath)
-    // Ensure parent directory marker exists
-    const parentDir = s3Key.split("/").slice(0, -1).join("/")
-    if (parentDir) {
-      try {
-        await this.client.putObject(
-          `${parentDir}/`,
-          new Uint8Array(0),
-          "application/x-directory",
-        )
-      } catch {}
+    await this.checkDogeToken()
+    const remotePath = this.getRemotePath(physicalPath)
+    await this.client.putObject(remotePath, content)
+  }
+
+  async getDirectUploadInfo(
+    dstDir: string,
+    fileName: string,
+  ): Promise<{ upload_url: string; method: string }> {
+    if (!this.addition.enable_direct_upload) {
+      throw new Error("Direct upload is not enabled")
     }
-    await this.client.putObject(s3Key, content)
+    await this.checkDogeToken()
+    const remoteDir = this.getRemotePath(dstDir)
+    return await this.client.getDirectUploadInfo(
+      remoteDir,
+      fileName,
+      Number(this.addition.sign_url_expire) || 4,
+      this.addition.direct_upload_host,
+    )
+  }
+
+  async other(method: string, path: string, body?: any): Promise<any> {
+    if (method === "direct_upload" || method === "get_direct_upload_info") {
+      const fileName = body?.name || body?.fileName || getBaseName(path)
+      const dstDir = getDirName(path)
+      return await this.getDirectUploadInfo(dstDir, fileName)
+    }
+    throw new Error(`Unsupported method ${method}`)
   }
 }

@@ -169,12 +169,14 @@ async function renderMarkdown(
     const { default: remarkMath } = await import("remark-math")
     processor.use(remarkMath)
     await loadCSS(katexCSSPath(), "katex").catch(() =>
-      notify.error("加载 KaTeX CSS 失败，数学公式将不会渲染"),
+      notify.error(
+        "Failed to load KaTeX CSS, math formulas will not be rendered",
+      ),
     )
   }
   if (hasMermaid) {
     await loadScriptIIFE(mermaidJSPath(), "mermaid").catch(() =>
-      notify.error("加载 Mermaid JS 失败，图表将不会渲染"),
+      notify.error("Failed to load Mermaid JS, diagrams will not be rendered"),
     )
   }
 

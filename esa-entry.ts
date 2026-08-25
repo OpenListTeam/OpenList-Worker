@@ -17,8 +17,6 @@
  */
 import app, { setSpaFallbackHtml } from "./src/backend/index"
 import INDEX_HTML from "./dist/index.html"
-
-declare const EdgeKV: any
 // 构建期内联 dist/index.html 作为 SPA 兜底壳
 setSpaFallbackHtml(INDEX_HTML)
 // 模块级：探测 EdgeKV 全局构造器（ESA 运行时可能挂在不同的全局对象上）

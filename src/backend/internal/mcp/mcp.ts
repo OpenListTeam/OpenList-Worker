@@ -89,7 +89,7 @@ export function handleMcpJsonRpc(method: string, id: any, params: any): any {
     default:
       return {
         jsonrpc: "2.0",
-        error: { code: -32601, message: "方法未找到" },
+        error: { code: -32601, message: "Method not found" },
         id,
       }
   }

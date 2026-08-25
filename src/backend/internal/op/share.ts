@@ -15,15 +15,12 @@ export interface ShareResolveResult {
   virtualList?: boolean
 }
 
-const normalize = (p: string) => {
-  const segments = String(p || "")
+const normalize = (p: string) =>
+  "/" +
+  String(p || "")
     .split("/")
     .filter(Boolean)
-  if (segments.includes("..")) {
-    throw new Error("无效路径: 不允许 '..' 路径段")
-  }
-  return "/" + segments.join("/")
-}
+    .join("/")
 
 /**
  * Resolve a share request path.
@@ -38,14 +35,14 @@ export async function resolveShare(
   const clean = normalize(reqPath)
   const parts = clean.split("/").filter(Boolean)
   if (parts.length < 1) {
-    return { ok: false, error: "无效的分享路径" }
+    return { ok: false, error: "Invalid share path" }
   }
 
   // Strip leading "@s" segment if present
   let shareId: string
   let rest: string[]
   if (parts[0] === "@s") {
-    if (parts.length < 2) return { ok: false, error: "无效的分享路径" }
+    if (parts.length < 2) return { ok: false, error: "Invalid share path" }
     shareId = parts[1]
     rest = parts.slice(2)
   } else {
@@ -55,23 +52,23 @@ export async function resolveShare(
 
   const db = await getDb(envCtx)
   const share = (db.shares || []).find((s: any) => s.id === shareId)
-  if (!share) return { ok: false, error: "分享不存在" }
-  if (share.disabled) return { ok: false, error: "分享已被禁用" }
+  if (!share) return { ok: false, error: "share not found" }
+  if (share.disabled) return { ok: false, error: "share has been disabled" }
   if (share.expires && new Date(share.expires) < new Date()) {
-    return { ok: false, error: "分享已过期" }
+    return { ok: false, error: "share has expired" }
   }
   if (
     share.max_accessed > 0 &&
     share.accessed !== undefined &&
     share.accessed >= share.max_accessed
   ) {
-    return { ok: false, error: "分享访问次数已超出限制" }
+    return { ok: false, error: "share access count exceeded" }
   }
   if (share.pwd && share.pwd !== password) {
-    return { ok: false, error: "密码错误" }
+    return { ok: false, error: "wrong password" }
   }
   if (!share.files || share.files.length === 0) {
-    return { ok: false, error: "分享内容为空" }
+    return { ok: false, error: "share is empty" }
   }
 
   // Count this access
@@ -96,7 +93,7 @@ export async function resolveShare(
     const segs = String(f).split("/").filter(Boolean)
     return segs[segs.length - 1] === subName
   })
-  if (!match) return { ok: false, error: "分享中未找到该路径" }
+  if (!match) return { ok: false, error: "path not found in share" }
   const real = normalize([normalize(match), ...rest.slice(1)].join("/"))
   return { ok: true, share, realPath: real }
 }

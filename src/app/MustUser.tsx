@@ -3,7 +3,7 @@ import { Error, FullScreenLoading } from "~/components"
 import { useFetch, useT, useRouter } from "~/hooks"
 import { Me, setMe } from "~/store"
 import { PResp, UserMethods } from "~/types"
-import { r, handleResp } from "~/utils"
+import { r, handleResp, handleRespWithoutAuthAndNotify } from "~/utils"
 
 const MustUser = (props: { children: JSXElement }) => {
   const t = useT()
@@ -41,10 +41,12 @@ const UserOrGuest = (props: { children: JSXElement }) => {
   const { to, isShare, pathname } = useRouter()
   // 将loading默认设置为true，修复children被提前渲染，明显症状：两个公告
   const [loading, data] = useFetch((): PResp<Me> => r.get("/me"), true)
+  const [skipLogin, setSkipLogin] = createSignal(false)
   onMount(async () => {
     const res = await data()
     if (res && res.code === 200 && res.data && !res.data.disabled) {
       setMe(res.data)
+      setSkipLogin(true)
     } else {
       // 访客账号被删除或禁用，且当前未登录
       if (isShare()) {
@@ -61,6 +63,7 @@ const UserOrGuest = (props: { children: JSXElement }) => {
           otp: false,
           allow_ldap: false,
         })
+        setSkipLogin(true)
       } else {
         // 非分享页一律重定向至登录页
         const redirectPath = pathname()
@@ -78,7 +81,7 @@ const UserOrGuest = (props: { children: JSXElement }) => {
   })
   return (
     <Switch fallback={props.children}>
-      <Match when={loading()}>
+      <Match when={!skipLogin() && loading()}>
         <FullScreenLoading />
       </Match>
     </Switch>

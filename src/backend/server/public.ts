@@ -94,20 +94,10 @@ publicRouter.get("/settings", async (c) => {
   }
 
   // Override with user-configured settings from database
-  const sensitiveKeys = new Set([
-    "token",
-    "jwt_secret",
-    "sso_client_secret",
-    "sso_client_secret",
-    "aria2_secret",
-    "qbittorrent_password",
-    "password",
-    "ldap_bind_password",
-    "ldap_bind_dn",
-  ])
   db.settings.forEach((s: any) => {
-    if (s.key && s.value !== undefined && !sensitiveKeys.has(s.key)) {
+    if (s.key && s.value !== undefined) {
       settingsObj[s.key] = s.value
+      // Handle legacy key alias
       if (s.key === "site_title") {
         settingsObj["title"] = s.value
       }

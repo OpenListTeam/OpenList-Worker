@@ -197,11 +197,14 @@ export function setupRouter(app: Hono) {
   app.get("/logout", logoutHandler)
   app.post("/logout", logoutHandler)
 
-  // Simple service health check
+  // Simple service health check — includes version/brand so you can verify
+  // the deployed Worker is running the latest build (dev vs prod consistency)
   app.get("/health", (c) =>
     c.json({
       ok: true,
       name: "OpenListNext",
+      version: "v4.2.3",
+      environment: (c.env as any)?.ENVIRONMENT || "development",
     }),
   )
 }

@@ -74,10 +74,10 @@ rawRouter.get("/*", async (c) => {
         c.env,
       )
       if (!shareRes.ok) {
-        return c.text(shareRes.error || "分享不存在", 404)
+        return c.text(shareRes.error || "Share not found", 404)
       }
       if (shareRes.virtualList || !shareRes.realPath) {
-        return c.text("无法下载分享根目录", 400)
+        return c.text("Cannot download share root", 400)
       }
       reqPath = shareRes.realPath
     } else {
@@ -103,7 +103,7 @@ rawRouter.get("/*", async (c) => {
     const resolved = await resolvePath(reqPath)
 
     if (resolved.isVirtual || !resolved.physical) {
-      return c.text("无法下载虚拟目录路径", 400)
+      return c.text("Cannot download virtual directory path", 400)
     }
 
     if (resolved.storage) {
@@ -174,7 +174,8 @@ rawRouter.get("/*", async (c) => {
                 upstreamRes = await fetch(fileItem.raw_url, { headers })
               }
 
-              // CORS headers — same-origin only (no wildcard)
+              // CORS headers
+              c.header("Access-Control-Allow-Origin", "*")
               c.header("Access-Control-Allow-Methods", "GET, OPTIONS, HEAD")
               c.header(
                 "Access-Control-Expose-Headers",
@@ -273,59 +274,6 @@ rawRouter.get("/*", async (c) => {
               )
               return c.body(stream as any)
             }
-          } else if (typeof (driver as any).getFileStream === "function") {
-            const rangeReq = c.req.header("Range")
-            const stream = await (driver as any).getFileStream(
-              reqPath,
-              resolved.physical,
-              rangeReq,
-            )
-            if (stream) {
-              console.log(
-                `[rawRouter] Streaming download for '${reqPath}' via ${resolved.storage.driver}, content-type=${stream.headers["content-type"]}, content-length=${stream.headers["content-length"]}`,
-              )
-              const fileExt = reqPath.split(".").pop()?.toLowerCase() || ""
-              // For text-like types, force application/octet-stream to ensure download
-              const inlineTypes = [
-                "json",
-                "xml",
-                "html",
-                "htm",
-                "txt",
-                "js",
-                "css",
-                "csv",
-                "md",
-              ]
-              const isInline = inlineTypes.includes(fileExt)
-              const contentType = isInline
-                ? "application/octet-stream"
-                : stream.headers["content-type"] || "application/octet-stream"
-              c.header("Content-Type", contentType)
-              if (stream.headers["content-length"])
-                c.header("Content-Length", stream.headers["content-length"])
-              const contentRange = stream.headers["content-range"]
-              if (contentRange) c.header("Content-Range", contentRange)
-              c.header(
-                "Accept-Ranges",
-                stream.headers["accept-ranges"] || "bytes",
-              )
-              if (stream.headers["etag"])
-                c.header("ETag", stream.headers["etag"])
-              if (stream.headers["last-modified"])
-                c.header("Last-Modified", stream.headers["last-modified"])
-              // Force download — prevent browser from rendering JSON/XML/HTML inline
-              const fileName = reqPath.split("/").pop() || "download"
-              c.header(
-                "Content-Disposition",
-                `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
-              )
-              return c.body(stream.body as any)
-            }
-            console.warn(
-              `[rawRouter] getFileStream returned null for '${reqPath}'`,
-            )
-            return c.text("下载失败: 无法获取对象数据流", 500)
           } else {
             const detail =
               fileItem?.raw_url_error ||
@@ -349,15 +297,15 @@ rawRouter.get("/*", async (c) => {
 
     // Fallback: Local file system streaming
     if (!fsPromises || !createReadStream) {
-      return c.text("边缘运行时环境不支持本地文件流式传输", 500)
+      return c.text("Local file streaming not supported in Edge Runtime", 500)
     }
 
     const stat = await fsPromises.stat(resolved.physical)
     if (stat.isDirectory()) {
-      return c.text("无法下载目录", 400)
+      return c.text("Cannot download directory", 400)
     }
 
-    c.header("Accept-Ranges", "bytes")
+    c.header("Access-Control-Allow-Origin", "*")
     const rangeHeader = c.req.header("Range")
     if (rangeHeader) {
       const { start, end, chunksize } = parseRangeHeader(rangeHeader, stat.size)
