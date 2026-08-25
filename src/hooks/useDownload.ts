@@ -4,7 +4,6 @@ import { fsList, notify, pathBase, pathJoin } from "~/utils"
 import { getLinkByDirAndObj, useRouter, useT } from "~/hooks"
 import { useSelectedLink } from "~/hooks"
 import { Obj } from "~/types"
-import { changeToken } from "~/utils"
 
 interface File {
   path: string
@@ -39,39 +38,18 @@ async function getSaveDir(rpc_url: string, rpc_secret: string) {
   return save_dir
 }
 export const useDownload = () => {
-  const { proxyLinks } = useSelectedLink()
+  const { rawLinks } = useSelectedLink()
   const t = useT()
   const { pathname, isShare } = useRouter()
   return {
-    batchDownloadSelected: async () => {
-      // Use proxy links (/p/) so the backend streams S3 content (no CORS issue)
-      const urls = proxyLinks(true)
-      const token = localStorage.getItem("token") || ""
-      for (const url of urls) {
-        try {
-          const resp = await fetch(url, {
-            headers: token ? { Authorization: token } : {},
-          })
-          if (!resp.ok) {
-            notify.error(`Download failed: ${resp.status} ${resp.statusText}`)
-            continue
-          }
-          const blob = await resp.blob()
-          // Extract filename from URL path
-          const urlPath = new URL(url, location.origin).pathname
-          const fileName = decodeURIComponent(urlPath.split("/").pop() || "download")
-          const a = document.createElement("a")
-          a.href = URL.createObjectURL(blob)
-          a.download = fileName
-          document.body.appendChild(a)
-          a.click()
-          document.body.removeChild(a)
-          URL.revokeObjectURL(a.href)
-        } catch (e) {
-          console.error("Download error:", e)
-          notify.error(`Download failed: ${e}`)
-        }
-      }
+    batchDownloadSelected: () => {
+      // Download URLs now carry the JWT as a query param (?token=...), so a
+      // native window.open works: backend authenticates from the query param,
+      // then 302-redirects to the S3 pre-signed URL (no CORS issue).
+      const urls = rawLinks(true)
+      urls.forEach((url) => {
+        window.open(url, "_blank")
+      })
     },
     sendToAria2: async () => {
       const selectedObjs = _selectedObjs()

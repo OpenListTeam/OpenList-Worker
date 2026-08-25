@@ -34,7 +34,15 @@ export interface AuthResult {
 }
 
 function extractToken(c: Context): string | null {
-  const authHeader = c.req.header("Authorization")
+  let authHeader = c.req.header("Authorization")
+  if (!authHeader) {
+    // Also accept the JWT as a query parameter (e.g. direct download links:
+    // window.open('/d/path?token=xxx') can't send Authorization headers).
+    const queryToken = c.req.query("token") || c.req.query("access_token")
+    if (queryToken) {
+      authHeader = `Bearer ${queryToken}`
+    }
+  }
   if (!authHeader) return null
   const token = authHeader.startsWith("Bearer ")
     ? authHeader.substring(7)

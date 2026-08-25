@@ -13,6 +13,16 @@ import { cookieStorage } from "@solid-primitives/storage"
 
 type URLType = "preview" | "direct" | "proxy"
 
+// Get the JWT token for direct/proxy download links (window.open can't send
+// Authorization headers, so we pass the token as a query parameter instead).
+function getAuthToken(): string {
+  try {
+    return localStorage.getItem("token") || sessionStorage.getItem("token") || ""
+  } catch {
+    return ""
+  }
+}
+
 // get download url by dir and obj
 export const getLinkByDirAndObj = (
   dir: string,
@@ -59,6 +69,14 @@ export const getLinkByDirAndObj = (
   if (archive) {
     let inner = `${inner_path}/${obj.name}`
     ans += `${QP()}inner=${encodePath(inner, encodeAll)}${archive_pass ? `&pass=${encodeURIComponent(archive_pass)}` : ""}`
+  }
+  // 非分享且非预览的下载链接，附带 JWT token 作为查询参数，
+  // 后端 authenticate 支持从 query 参数 token/access_token 读取。
+  if (type !== "preview" && !isShare) {
+    const token = getAuthToken()
+    if (token) {
+      ans += `${QP()}token=${encodeURIComponent(token)}`
+    }
   }
   return ans
 }
