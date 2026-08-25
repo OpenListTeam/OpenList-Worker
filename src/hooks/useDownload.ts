@@ -39,12 +39,13 @@ async function getSaveDir(rpc_url: string, rpc_secret: string) {
   return save_dir
 }
 export const useDownload = () => {
-  const { rawLinks } = useSelectedLink()
+  const { proxyLinks } = useSelectedLink()
   const t = useT()
   const { pathname, isShare } = useRouter()
   return {
     batchDownloadSelected: async () => {
-      const urls = rawLinks(true)
+      // Use proxy links (/p/) so the backend streams S3 content (no CORS issue)
+      const urls = proxyLinks(true)
       const token = localStorage.getItem("token") || ""
       for (const url of urls) {
         try {

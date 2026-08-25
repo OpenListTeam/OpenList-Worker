@@ -176,7 +176,8 @@ export class S3Driver implements StorageDriver {
         raw_url: url,
       }
     } catch (e: any) {
-      throw new Error(`Object not found: ${physicalPath}`)
+      console.error(`[S3] get() failed for key=${s3Key}:`, e?.message || e)
+      throw new Error(`Object not found: ${physicalPath} (${e?.message || e})`)
     }
   }
 

@@ -98,14 +98,20 @@ export const useLink = () => {
 }
 
 export const useSelectedLink = () => {
-  const { previewPage, rawLink: rawUrl } = useLink()
+  const { previewPage, rawLink: rawUrl, proxyLink } = useLink()
   const rawLinks = (encodeAll?: boolean) => {
     return selectedObjs()
       .filter((obj) => !obj.is_dir)
       .map((obj) => rawUrl(obj, encodeAll))
   }
+  const proxyLinks = (encodeAll?: boolean) => {
+    return selectedObjs()
+      .filter((obj) => !obj.is_dir)
+      .map((obj) => proxyLink(obj, encodeAll))
+  }
   return {
     rawLinks: rawLinks,
+    proxyLinks: proxyLinks,
     previewPagesText: () => {
       return selectedObjs()
         .map((obj) => previewPage(obj, true))
