@@ -145,7 +145,9 @@ export async function signS3Headers(
   const signedHeaders = sortedHeaderKeys.join(";")
 
   const pathname = parsedUrl.pathname || "/"
-  const canonicalUri = rfc3986UriEncode(pathname, false)
+  // parsedUrl.pathname is already percent-encoded; decode first so we don't
+  // double-encode non-ASCII chars (e.g. Chinese filenames) in the signature.
+  const canonicalUri = rfc3986UriEncode(decodeURIComponent(pathname), false)
 
   const queryParams: [string, string][] = []
   parsedUrl.searchParams.forEach((val, key) => {
@@ -238,7 +240,8 @@ export async function presignS3Url(opts: PresignUrlOptions): Promise<string> {
   }
 
   const pathname = parsedUrl.pathname || "/"
-  const canonicalUri = rfc3986UriEncode(pathname, false)
+  // Decode first to avoid double-encoding non-ASCII chars in the signature.
+  const canonicalUri = rfc3986UriEncode(decodeURIComponent(pathname), false)
 
   const queryParams: [string, string][] = []
   parsedUrl.searchParams.forEach((val, key) => {
