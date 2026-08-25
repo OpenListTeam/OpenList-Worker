@@ -122,5 +122,23 @@ export async function isStaticApiToken(c: Context): Promise<boolean> {
     : authHeader
   const db = await getDb(c.env)
   const tokenSetting = db.settings.find((s: any) => s.key === "token")
-  return !!(tokenSetting && tokenSetting.value && token === tokenSetting.value)
+  if (!tokenSetting || !tokenSetting.value) return false
+  // Constant-time comparison to prevent timing attacks
+  const tokenBytes = new TextEncoder().encode(token)
+  const expectedBytes = new TextEncoder().encode(String(tokenSetting.value))
+  if (tokenBytes.length !== expectedBytes.length) return false
+  try {
+    if (typeof (crypto.subtle as any)?.timingSafeEqual === "function") {
+      return (crypto.subtle as any).timingSafeEqual(
+        tokenBytes.buffer,
+        expectedBytes.buffer,
+      )
+    }
+  } catch {}
+  // Constant-time fallback comparison
+  let match = 0
+  for (let i = 0; i < tokenBytes.length; i++) {
+    match |= tokenBytes[i] ^ expectedBytes[i]
+  }
+  return match === 0
 }
