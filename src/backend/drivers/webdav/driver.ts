@@ -4,151 +4,168 @@ import {
   calcFileType,
 } from "../../internal/driver/base"
 import { sortFileItems } from "../../internal/driver/sort"
-import { WebdavAddition, WebdavFile } from "./types"
-import { WebdavClient, joinPath } from "./util"
+import { WebDavAddition, WebDavResource } from "./types"
+import { WebDavClient, cleanPath, dirname, basename } from "./util"
 
-export function normalizeWebdavAddition(a: any): WebdavAddition {
-  const norm = { ...(a || {}) } as any
-  norm.vendor = norm.vendor || "other"
-  norm.address = (norm.address || "").trim()
-  norm.username = (norm.username || "").trim()
-  norm.password = norm.password || ""
-  norm.root_folder_path = (norm.root_folder_path || "/").trim()
-  if (!norm.root_folder_path.startsWith("/")) {
-    norm.root_folder_path = "/" + norm.root_folder_path
+function resourceToFileItem(r: WebDavResource): FileItem {
+  const isDir = r.resourceType === "collection"
+  const name = r.displayName || basename(decodeURIComponent(r.href))
+  let modified = new Date().toISOString()
+  if (r.lastModified) {
+    try {
+      modified = new Date(r.lastModified).toISOString()
+    } catch {}
   }
-  norm.tls_insecure_skip_verify = !!norm.tls_insecure_skip_verify
-  norm.order_by = norm.order_by || "name"
-  norm.order_direction = norm.order_direction || "asc"
-  return norm as WebdavAddition
+  return {
+    name,
+    size: isDir ? 0 : r.contentLength,
+    is_dir: isDir,
+    modified,
+    sign: r.etag || "",
+    type: calcFileType(name, isDir),
+    thumb: "",
+    raw_url: "",
+  }
 }
 
-export class WebdavDriver implements StorageDriver {
-  private client: WebdavClient
-  private addition: WebdavAddition
+export class WebDavDriver implements StorageDriver {
+  private addition: WebDavAddition
+  private client: WebDavClient
 
-  constructor(addition: WebdavAddition) {
-    this.addition = normalizeWebdavAddition(addition)
-    this.client = new WebdavClient(this.addition)
+  constructor(addition: WebDavAddition) {
+    this.addition = addition
+    this.client = new WebDavClient(addition)
   }
 
   async init(): Promise<void> {
-    await this.client.init()
-  }
-
-  private getRemotePath(physicalPath: string): string {
-    const root = this.addition.root_folder_path || "/"
-    return joinPath(root, physicalPath || "/")
-  }
-
-  private fileItemFromWebdav(item: WebdavFile, remotePath: string): FileItem {
-    const link = this.client.getLink(remotePath)
-    return {
-      name: item.name,
-      size: item.size,
-      is_dir: item.isFolder,
-      modified: item.modified,
-      sign: item.path || remotePath,
-      type: calcFileType(item.name, item.isFolder),
-      thumb: "",
-      raw_url: item.isFolder ? undefined : link.url,
-      raw_url_headers: item.isFolder ? undefined : link.headers,
+    // Test connectivity by listing root
+    try {
+      await this.client.propfind(this.client.resolvePath("/"), 0)
+    } catch (e: any) {
+      throw new Error(`WebDAV connection failed: ${e.message}`)
     }
   }
 
-  async list(virtualPath: string, physicalPath: string): Promise<FileItem[]> {
-    const remotePath = this.getRemotePath(physicalPath)
-    const rawFiles = await this.client.readDir(remotePath)
+  async list(_virtualPath: string, physicalPath: string): Promise<FileItem[]> {
+    const davPath = this.client.resolvePath(physicalPath)
+    const resources = await this.client.propfind(davPath, 1)
 
-    const items: FileItem[] = rawFiles.map((file) => {
-      const itemRemotePath = joinPath(remotePath, file.name)
-      return this.fileItemFromWebdav(file, itemRemotePath)
-    })
+    // The server returns the requested directory itself + its children.
+    // Self entry href = addressPath + davPath (e.g. "/dav/Koofr/" + "" = "/dav/Koofr/")
+    // Children hrefs have one more segment (e.g. "/dav/Koofr/ioir-nav/")
+    // Strip the addressPath prefix from hrefs, then compare remaining path to davPath
+    // to identify the self entry.
+    const addressPath = this.client.addressPath
+    const items: WebDavResource[] = []
+
+    for (const r of resources) {
+      const decodedHref = decodeURIComponent(r.href).replace(/\/+$/, "")
+      // Get the path relative to the address
+      const relativePath = decodedHref.startsWith(addressPath)
+        ? decodedHref.slice(addressPath.length)
+        : decodedHref
+      const normalizedRelative = relativePath.replace(/^\/+|\/+$/g, "")
+      const normalizedDav = davPath.replace(/^\/+|\/+$/g, "")
+
+      // Skip the directory itself
+      if (normalizedRelative === normalizedDav) continue
+
+      items.push(r)
+    }
 
     return sortFileItems(
-      items,
-      this.addition.order_by || "name",
-      this.addition.order_direction || "asc",
+      items.map((r) => resourceToFileItem(r)),
+      "name",
+      "asc",
     )
   }
 
-  async get(virtualPath: string, physicalPath: string): Promise<FileItem> {
-    const remotePath = this.getRemotePath(physicalPath)
-    const file = await this.client.stat(remotePath)
-    return this.fileItemFromWebdav(file, remotePath)
+  async get(_virtualPath: string, physicalPath: string): Promise<FileItem> {
+    const davPath = this.client.resolvePath(physicalPath)
+    const resources = await this.client.propfind(davPath, 0)
+
+    if (resources.length === 0) {
+      throw new Error(`Resource not found: ${physicalPath}`)
+    }
+
+    return resourceToFileItem(resources[0])
   }
 
-  async mkdir(virtualPath: string, physicalPath: string): Promise<void> {
-    const remotePath = this.getRemotePath(physicalPath)
-    await this.client.mkdirAll(remotePath)
+  async mkdir(_virtualPath: string, physicalPath: string): Promise<void> {
+    const davPath = this.client.resolvePath(physicalPath)
+    await this.client.mkdir(davPath)
   }
 
   async rename(
-    virtualPath: string,
+    _virtualPath: string,
     physicalPath: string,
     newName: string,
   ): Promise<void> {
-    const oldPath = this.getRemotePath(physicalPath)
-    const lastSlash = oldPath.lastIndexOf("/")
-    const parentDir = lastSlash >= 0 ? oldPath.substring(0, lastSlash) : "/"
-    const newPath = joinPath(parentDir, newName)
-    await this.client.move(oldPath, newPath, true)
-  }
-
-  async move(
-    srcDir: string,
-    dstDir: string,
-    names: string[],
-    srcPhys: string,
-    dstPhys: string,
-  ): Promise<void> {
-    const srcBasePath = this.getRemotePath(srcPhys)
-    const dstBasePath = this.getRemotePath(dstPhys)
-    for (const name of names) {
-      const srcPath = joinPath(srcBasePath, name)
-      const dstPath = joinPath(dstBasePath, name)
-      await this.client.move(srcPath, dstPath, true)
-    }
-  }
-
-  async copy(
-    srcDir: string,
-    dstDir: string,
-    names: string[],
-    srcPhys: string,
-    dstPhys: string,
-  ): Promise<void> {
-    const srcBasePath = this.getRemotePath(srcPhys)
-    const dstBasePath = this.getRemotePath(dstPhys)
-    for (const name of names) {
-      const srcPath = joinPath(srcBasePath, name)
-      const dstPath = joinPath(dstBasePath, name)
-      await this.client.copy(srcPath, dstPath, true)
-    }
+    const davPath = this.client.resolvePath(physicalPath)
+    const parentDir = dirname(davPath)
+    const destPath =
+      parentDir === "/" ? `/${newName}` : `${parentDir}/${newName}`
+    await this.client.move(davPath, destPath)
   }
 
   async remove(
-    virtualPath: string,
+    _virtualPath: string,
     physicalPath: string,
-    names: string[],
+    _names: string[],
   ): Promise<void> {
-    const basePath = this.getRemotePath(physicalPath)
-    if (names && names.length > 0) {
-      for (const name of names) {
-        const targetPath = joinPath(basePath, name)
-        await this.client.remove(targetPath)
-      }
-    } else {
-      await this.client.remove(basePath)
-    }
+    const davPath = this.client.resolvePath(physicalPath)
+    await this.client.remove(davPath)
+  }
+
+  async move(
+    _srcDir: string,
+    dstDir: string,
+    _names: string[],
+    srcPhysical: string,
+    _dstPhysical: string,
+  ): Promise<void> {
+    const srcDavPath = this.client.resolvePath(srcPhysical)
+    const dstDavBase = this.client.resolvePath(dstDir)
+    const name = basename(srcPhysical)
+    const dstDavPath = dstDavBase === "/" ? `/${name}` : `${dstDavBase}/${name}`
+    await this.client.move(srcDavPath, dstDavPath)
+  }
+
+  async copy(
+    _srcDir: string,
+    dstDir: string,
+    _names: string[],
+    srcPhysical: string,
+    _dstPhysical: string,
+  ): Promise<void> {
+    const srcDavPath = this.client.resolvePath(srcPhysical)
+    const dstDavBase = this.client.resolvePath(dstDir)
+    const name = basename(srcPhysical)
+    const dstDavPath = dstDavBase === "/" ? `/${name}` : `${dstDavBase}/${name}`
+    await this.client.copy(srcDavPath, dstDavPath)
   }
 
   async put(
-    virtualPath: string,
+    _virtualPath: string,
     physicalPath: string,
     content: Buffer,
   ): Promise<void> {
-    const remotePath = this.getRemotePath(physicalPath)
-    await this.client.put(remotePath, content)
+    const davPath = this.client.resolvePath(physicalPath)
+    // Ensure parent directory exists
+    const parentDir = dirname(davPath)
+    try {
+      await this.client.mkdir(parentDir)
+    } catch {}
+    await this.client.put(davPath, content)
+  }
+
+  async getFileStream(
+    _virtualPath: string,
+    physicalPath: string,
+  ): Promise<{ body: ReadableStream; headers: Record<string, string> } | null> {
+    const davPath = this.client.resolvePath(physicalPath)
+    return this.client.getStream(davPath)
   }
 }
+
+export { WebDavDriver as WebdavDriver }

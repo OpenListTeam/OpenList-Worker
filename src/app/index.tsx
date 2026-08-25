@@ -49,7 +49,7 @@ const Index = () => {
             }, 300)
             return <FullScreenLoading />
           }
-          return <Error msg={`System error: ${err}`} h="100vh" />
+          return <Error msg={`系统错误：${err}`} h="100vh" />
         }}
       >
         <NotificationsProvider duration={3000}>

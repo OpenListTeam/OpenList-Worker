@@ -1,9 +1,6 @@
-// Based on: https://github.com/OpenListTeam/OpenList/tree/main/drivers/s3
-import { DogeCredentials } from "./types"
-
 const encoder = new TextEncoder()
 
-function toBytes(data: string | Uint8Array): any {
+function toBytes(data: string | Uint8Array): Uint8Array {
   if (typeof data === "string") return encoder.encode(data)
   return data
 }
@@ -18,7 +15,11 @@ function hexEncode(buf: ArrayBuffer | Uint8Array): string {
 }
 
 export async function sha256Hex(data: string | Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", toBytes(data))
+  const bytes = toBytes(data)
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    bytes.buffer as ArrayBuffer,
+  )
   return hexEncode(digest)
 }
 
@@ -26,14 +27,20 @@ export async function hmacSha256Raw(
   key: string | Uint8Array,
   data: string | Uint8Array,
 ): Promise<Uint8Array> {
+  const keyBytes = toBytes(key)
+  const dataBytes = toBytes(data)
   const cryptoKey = await crypto.subtle.importKey(
     "raw",
-    toBytes(key),
+    keyBytes.buffer as ArrayBuffer,
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
   )
-  const sig = await crypto.subtle.sign("HMAC", cryptoKey, toBytes(data))
+  const sig = await crypto.subtle.sign(
+    "HMAC",
+    cryptoKey,
+    dataBytes.buffer as ArrayBuffer,
+  )
   return new Uint8Array(sig)
 }
 
@@ -43,21 +50,6 @@ export async function hmacSha256Hex(
 ): Promise<string> {
   const raw = await hmacSha256Raw(key, data)
   return hexEncode(raw)
-}
-
-export async function hmacSha1Hex(
-  key: string | Uint8Array,
-  data: string | Uint8Array,
-): Promise<string> {
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    toBytes(key),
-    { name: "HMAC", hash: "SHA-1" },
-    false,
-    ["sign"],
-  )
-  const sig = await crypto.subtle.sign("HMAC", cryptoKey, toBytes(data))
-  return hexEncode(sig)
 }
 
 export function rfc3986UriEncode(str: string, encodeSlash = true): string {
@@ -147,7 +139,6 @@ export async function signS3Headers(
     finalHeaders["x-amz-security-token"] = sessionToken
   }
 
-  // Canonical headers
   const sortedHeaderKeys = Object.keys(finalHeaders)
     .map((k) => k.toLowerCase())
     .sort()
@@ -163,11 +154,11 @@ export async function signS3Headers(
 
   const signedHeaders = sortedHeaderKeys.join(";")
 
-  // Canonical URI
   const pathname = parsedUrl.pathname || "/"
-  const canonicalUri = rfc3986UriEncode(pathname, false)
+  // parsedUrl.pathname is already percent-encoded; decode first so we don't
+  // double-encode non-ASCII chars (e.g. Chinese filenames) in the signature.
+  const canonicalUri = rfc3986UriEncode(decodeURIComponent(pathname), false)
 
-  // Canonical Query String
   const queryParams: [string, string][] = []
   parsedUrl.searchParams.forEach((val, key) => {
     queryParams.push([key, val])
@@ -234,7 +225,7 @@ export async function presignS3Url(opts: PresignUrlOptions): Promise<string> {
     accessKeyId,
     secretAccessKey,
     sessionToken,
-    expiresInSeconds = 14400, // 4 hours default
+    expiresInSeconds = 14400,
     service = "s3",
     date = new Date(),
     customQueryParams = {},
@@ -244,7 +235,6 @@ export async function presignS3Url(opts: PresignUrlOptions): Promise<string> {
   const { amzDate, dateStamp } = formatAmzDates(date)
   const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`
 
-  // Base query params for presigned URL
   parsedUrl.searchParams.set("X-Amz-Algorithm", "AWS4-HMAC-SHA256")
   parsedUrl.searchParams.set(
     "X-Amz-Credential",
@@ -263,7 +253,8 @@ export async function presignS3Url(opts: PresignUrlOptions): Promise<string> {
   }
 
   const pathname = parsedUrl.pathname || "/"
-  const canonicalUri = rfc3986UriEncode(pathname, false)
+  // Decode first to avoid double-encoding non-ASCII chars in the signature.
+  const canonicalUri = rfc3986UriEncode(decodeURIComponent(pathname), false)
 
   const queryParams: [string, string][] = []
   parsedUrl.searchParams.forEach((val, key) => {
@@ -276,8 +267,7 @@ export async function presignS3Url(opts: PresignUrlOptions): Promise<string> {
     .map(([k, v]) => `${rfc3986UriEncode(k)}=${rfc3986UriEncode(v)}`)
     .join("&")
 
-  const hostHeader = parsedUrl.host
-  const canonicalHeaders = `host:${hostHeader}\n`
+  const canonicalHeaders = `host:${parsedUrl.host}\n`
   const signedHeaders = "host"
   const payloadHash = "UNSIGNED-PAYLOAD"
 
@@ -308,52 +298,4 @@ export async function presignS3Url(opts: PresignUrlOptions): Promise<string> {
 
   parsedUrl.searchParams.set("X-Amz-Signature", signature)
   return parsedUrl.toString()
-}
-
-/**
- * DogeCloud temporary token generator
- * Endpoint: https://api.dogecloud.com/auth/tmp_token.json
- */
-export async function getDogeCredentials(
-  accessKey: string,
-  secretKey: string,
-): Promise<DogeCredentials> {
-  const apiPath = "/auth/tmp_token.json"
-  const reqBody = JSON.stringify({
-    channel: "OSS_FULL",
-    scopes: ["*"],
-  })
-
-  const signStr = apiPath + "\n" + reqBody
-  const sign = await hmacSha1Hex(secretKey, signStr)
-  const authorization = `TOKEN ${accessKey}:${sign}`
-
-  const resp = await fetch("https://api.dogecloud.com" + apiPath, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: authorization,
-    },
-    body: reqBody,
-  })
-
-  if (!resp.ok) {
-    throw new Error(
-      `DogeCloud tmp_token request failed with HTTP ${resp.status}`,
-    )
-  }
-
-  const json: any = await resp.json()
-  if (json.code !== 200 || !json.data || !json.data.Credentials) {
-    throw new Error(
-      `DogeCloud tmp_token error (${json.code}): ${json.msg || "unknown"}`,
-    )
-  }
-
-  return {
-    accessKeyId: json.data.Credentials.accessKeyId,
-    secretAccessKey: json.data.Credentials.secretAccessKey,
-    sessionToken: json.data.Credentials.sessionToken,
-    expiredAt: json.data.ExpiredAt,
-  }
 }

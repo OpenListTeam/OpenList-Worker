@@ -45,7 +45,7 @@ export async function downloadOfflineFile(urls: string[], virtualDir: string): P
       const resolved = await resolvePath(fileVirtualPath)
       
       if (resolved.isVirtual || !resolved.physical) {
-        throw new Error("Cannot download to a virtual path")
+        throw new Error("无法下载到虚拟路径")
       }
       const targetPath = resolved.physical
       

@@ -20,7 +20,7 @@ userRouter.get("/list", async (c) => {
     sso_id: u.sso_id || "",
     allow_ldap: !!u.allow_ldap,
     pwd_update_at: u.pwd_update_at || "",
-    otp: !!u.otp_secret,
+    otp: !!(u.otp_secret || u.otp_enabled),
   }))
   return c.json({
     code: 200,
@@ -36,17 +36,14 @@ userRouter.get("/list", async (c) => {
 userRouter.get("/get", async (c) => {
   const idQuery = c.req.query("id")
   if (!idQuery) {
-    return c.json(
-      { code: 400, message: "Missing id parameter", data: null },
-      400,
-    )
+    return c.json({ code: 400, message: "缺少 ID 参数", data: null }, 400)
   }
   const id = parseInt(idQuery, 10)
   const db = await getDb(c.env)
   const user = (db.users || []).find((u: any) => u.id === id)
 
   if (!user) {
-    return c.json({ code: 404, message: "User not found", data: null }, 404)
+    return c.json({ code: 404, message: "用户不存在", data: null }, 404)
   }
 
   return c.json({
@@ -62,7 +59,7 @@ userRouter.get("/get", async (c) => {
       disabled: !!user.disabled,
       sso_id: user.sso_id || "",
       allow_ldap: !!user.allow_ldap,
-      otp: !!user.otp_secret,
+      otp: !!(user.otp_secret || user.otp_enabled),
     },
   })
 })
@@ -71,10 +68,7 @@ userRouter.get("/get", async (c) => {
 userRouter.post("/create", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   if (!body.username) {
-    return c.json(
-      { code: 400, message: "Username is required", data: null },
-      400,
-    )
+    return c.json({ code: 400, message: "用户名为必填项", data: null }, 400)
   }
 
   const db = await getDb(c.env)
@@ -82,10 +76,7 @@ userRouter.post("/create", async (c) => {
 
   const exists = db.users.some((u: any) => u.username === body.username)
   if (exists) {
-    return c.json(
-      { code: 400, message: "Username already exists", data: null },
-      400,
-    )
+    return c.json({ code: 400, message: "用户名已存在", data: null }, 400)
   }
 
   const maxId = db.users.reduce(
@@ -109,6 +100,8 @@ userRouter.post("/create", async (c) => {
     sso_id: body.sso_id || "",
     allow_ldap: !!body.allow_ldap,
     pwd_update_at: new Date().toISOString(),
+    otp_secret: "",
+    otp_enabled: false,
   }
 
   db.users.push(newUser)
@@ -121,10 +114,7 @@ userRouter.post("/create", async (c) => {
 userRouter.post("/update", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   if (!body.id) {
-    return c.json(
-      { code: 400, message: "User ID is required", data: null },
-      400,
-    )
+    return c.json({ code: 400, message: "用户 ID 为必填项", data: null }, 400)
   }
 
   const id = parseInt(body.id, 10)
@@ -133,20 +123,22 @@ userRouter.post("/update", async (c) => {
 
   const userIdx = db.users.findIndex((u: any) => u.id === id)
   if (userIdx === -1) {
-    return c.json({ code: 404, message: "User not found", data: null }, 404)
+    return c.json({ code: 404, message: "用户不存在", data: null }, 404)
   }
 
   const user = db.users[userIdx]
+
+  // Prevent disabling the guest user
+  if (user.id === 2 && body.disabled === true) {
+    return c.json({ code: 400, message: "无法禁用访客账户", data: null }, 400)
+  }
 
   if (body.username && body.username !== user.username) {
     const exists = db.users.some(
       (u: any) => u.id !== id && u.username === body.username,
     )
     if (exists) {
-      return c.json(
-        { code: 400, message: "Username already in use", data: null },
-        400,
-      )
+      return c.json({ code: 400, message: "用户名已被使用", data: null }, 400)
     }
     user.username = body.username
   }
@@ -174,17 +166,17 @@ userRouter.post("/update", async (c) => {
 const deleteUserHandler = async (c: any) => {
   const idQuery = c.req.query("id")
   if (!idQuery) {
-    return c.json(
-      { code: 400, message: "Missing id parameter", data: null },
-      400,
-    )
+    return c.json({ code: 400, message: "缺少 ID 参数", data: null }, 400)
   }
   const id = parseInt(idQuery, 10)
   if (id === 1) {
     return c.json(
-      { code: 400, message: "Cannot delete primary admin user", data: null },
+      { code: 400, message: "无法删除主管理员账户", data: null },
       400,
     )
+  }
+  if (id === 2) {
+    return c.json({ code: 400, message: "无法删除访客账户", data: null }, 400)
   }
 
   const db = await getDb(c.env)
@@ -234,20 +226,23 @@ userRouter.post("/sshkey/delete", async (c) => {
 
 // POST /api/admin/user/cancel_2fa?id=... — admin disables a user's 2FA
 userRouter.post("/cancel_2fa", async (c) => {
-  const id = parseInt(c.req.query("id") || "0", 10)
-  if (!id) {
-    return c.json(
-      { code: 400, message: "Missing id parameter", data: null },
-      400,
-    )
+  const idQuery = c.req.query("id")
+  if (!idQuery) {
+    return c.json({ code: 400, message: "缺少 ID 参数", data: null }, 400)
   }
+  const id = parseInt(idQuery, 10)
   const db = await getDb(c.env)
-  const user = (db.users || []).find((u: any) => u.id === id)
+  if (!db.users) db.users = []
+
+  const user = db.users.find((u: any) => u.id === id)
   if (!user) {
-    return c.json({ code: 404, message: "User not found", data: null }, 404)
+    return c.json({ code: 404, message: "用户不存在", data: null }, 404)
   }
-  delete user.otp_secret
+
+  user.otp_enabled = false
+  user.otp_secret = ""
   await saveDb(db, c.env)
+
   return c.json({ code: 200, message: "success", data: null })
 })
 
@@ -255,23 +250,20 @@ userRouter.post("/cancel_2fa", async (c) => {
 export const updatePwdHandler = async (c: any) => {
   const authHeader = c.req.header("Authorization")
   if (!authHeader) {
-    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+    return c.json({ code: 401, message: "未授权", data: null }, 401)
   }
   const token = authHeader.startsWith("Bearer ")
     ? authHeader.substring(7)
     : authHeader
   try {
     const secret = await getJwtSecret(c)
-    const payload = await verify(token, secret, "HS256")
+    const payload: any = await verify(token, secret, "HS256")
     const body = await c.req.json().catch(() => ({}))
     const oldPassword = body.old_password || ""
     const newPassword = body.new_password || ""
 
     if (!newPassword) {
-      return c.json(
-        { code: 400, message: "New password is required", data: null },
-        400,
-      )
+      return c.json({ code: 400, message: "新密码为必填项", data: null }, 400)
     }
 
     const db = await getDb(c.env)
@@ -281,21 +273,22 @@ export const updatePwdHandler = async (c: any) => {
       (u: any) => u.id === payload.id || u.username === payload.username,
     )
     if (userIdx === -1) {
-      return c.json({ code: 404, message: "User not found", data: null }, 404)
+      return c.json({ code: 404, message: "用户不存在", data: null }, 404)
     }
 
     const user = db.users[userIdx]
-    const oldHashed = await hashPassword(oldPassword)
 
-    if (
-      !user.password ||
-      user.password.length !== 64 ||
-      user.password !== oldHashed
-    ) {
-      return c.json(
-        { code: 400, message: "Incorrect old password", data: null },
-        400,
-      )
+    if (user.disabled) {
+      return c.json({ code: 403, message: "账户已被禁用", data: null }, 403)
+    }
+
+    if (oldPassword) {
+      const oldHashed = await hashPassword(oldPassword)
+      const passwordValid =
+        user.password === oldPassword || user.password === oldHashed
+      if (!passwordValid) {
+        return c.json({ code: 400, message: "旧密码不正确", data: null }, 400)
+      }
     }
 
     user.password = await hashPassword(newPassword)
@@ -304,14 +297,7 @@ export const updatePwdHandler = async (c: any) => {
     await saveDb(db, c.env)
 
     return c.json({ code: 200, message: "success", data: null })
-  } catch (e: any) {
-    return c.json(
-      {
-        code: 401,
-        message: `Unauthorized: ${e.message || "Invalid token"}`,
-        data: null,
-      },
-      401,
-    )
+  } catch {
+    return c.json({ code: 401, message: "未授权", data: null }, 401)
   }
 }

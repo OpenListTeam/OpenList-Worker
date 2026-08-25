@@ -616,6 +616,8 @@ export const defaultDb = {
       sso_id: "",
       allow_ldap: false,
       pwd_update_at: new Date().toISOString(),
+      otp_secret: "",
+      otp_enabled: false,
     },
     {
       id: 2,
@@ -624,10 +626,12 @@ export const defaultDb = {
       role: 1,
       permission: 0,
       base_path: "/",
-      disabled: false,
+      disabled: true,
       sso_id: "",
       allow_ldap: false,
       pwd_update_at: new Date().toISOString(),
+      otp_secret: "",
+      otp_enabled: false,
     },
   ],
   metas: [],
@@ -1023,6 +1027,34 @@ const ensureDefaultPlugins = (db: any) => {
   }
 }
 
+const ensureDefaultUsers = (db: any) => {
+  if (!db) return
+  if (!db.users) {
+    db.users = []
+  }
+  // Ensure guest user always exists (disabled by default for security)
+  const guest = db.users.find((u: any) => u.username === "guest")
+  if (!guest) {
+    db.users.push({
+      id: db.users.length
+        ? Math.max(...db.users.map((u: any) => u.id || 0)) + 1
+        : 2,
+      username: "guest",
+      password: "",
+      role: 1,
+      permission: 0,
+      base_path: "/",
+      disabled: true,
+      sso_id: "",
+      allow_ldap: false,
+      pwd_update_at: new Date().toISOString(),
+      otp_secret: "",
+      otp_enabled: false,
+    })
+  }
+  // Do NOT re-enable guest if admin disabled it — this is intentional
+}
+
 export const getDb = async (envCtx?: any) => {
   if (envCtx) {
     globalEnvCtx = envCtx
@@ -1039,6 +1071,7 @@ export const getDb = async (envCtx?: any) => {
         ensureDefaultStorages(memoryDb)
         ensureDefaultShares(memoryDb)
         ensureDefaultPlugins(memoryDb)
+        ensureDefaultUsers(memoryDb)
         return memoryDb
       }
     } catch (err) {
@@ -1051,6 +1084,7 @@ export const getDb = async (envCtx?: any) => {
     ensureDefaultStorages(memoryDb)
     ensureDefaultShares(memoryDb)
     ensureDefaultPlugins(memoryDb)
+    ensureDefaultUsers(memoryDb)
     return memoryDb
   }
 
@@ -1066,6 +1100,7 @@ export const getDb = async (envCtx?: any) => {
       ensureDefaultStorages(memoryDb)
       ensureDefaultShares(memoryDb)
       ensureDefaultPlugins(memoryDb)
+      ensureDefaultUsers(memoryDb)
       return memoryDb
     } catch (err) {
       console.error("Failed to parse DATABASE_JSON env variable:", err)
@@ -1077,6 +1112,7 @@ export const getDb = async (envCtx?: any) => {
   ensureDefaultStorages(memoryDb)
   ensureDefaultShares(memoryDb)
   ensureDefaultPlugins(memoryDb)
+  ensureDefaultUsers(memoryDb)
   return memoryDb
 }
 
@@ -1172,9 +1208,7 @@ export async function resolvePath(virtualPath: string) {
   )
 
   if (activeStorages.length === 0) {
-    throw new Error(
-      "failed get storage: storage not found; please add a storage first",
-    )
+    throw new Error("获取存储失败: 未找到存储；请先添加一个存储")
   }
 
   const sortedStorages = [...activeStorages].sort((a: any, b: any) => {
@@ -1258,7 +1292,7 @@ export async function resolvePath(virtualPath: string) {
     }
   }
 
-  throw new Error("failed get storage: storage not found")
+  throw new Error("获取存储失败: 未找到存储")
 }
 
 export async function getSettings() {

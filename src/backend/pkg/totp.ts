@@ -9,7 +9,7 @@
 
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
 
-export function base32Decode(input: string): Uint8Array<ArrayBuffer> {
+export function base32Decode(input: string): Uint8Array {
   const clean = String(input).toUpperCase().replace(/[\s=]/g, "")
   if (!clean) throw new Error("Empty base32 secret")
   const bytes: number[] = []
@@ -17,7 +17,7 @@ export function base32Decode(input: string): Uint8Array<ArrayBuffer> {
   let bitsLeft = 0
   for (const ch of clean) {
     const idx = BASE32_ALPHABET.indexOf(ch)
-    if (idx === -1) throw new Error(`Invalid base32 character: ${ch}`)
+    if (idx === -1) continue
     buffer = (buffer << 5) | idx
     bitsLeft += 5
     if (bitsLeft >= 8) {
@@ -28,7 +28,7 @@ export function base32Decode(input: string): Uint8Array<ArrayBuffer> {
   return new Uint8Array(bytes)
 }
 
-export function base32Encode(data: Uint8Array<ArrayBuffer>): string {
+export function base32Encode(data: Uint8Array): string {
   let value = 0
   let bits = 0
   let out = ""
@@ -53,18 +53,21 @@ export function generateTotpSecret(bytes = 20): string {
   return base32Encode(buf)
 }
 
-async function hmacSha1(
-  key: Uint8Array<ArrayBuffer>,
-  msg: Uint8Array<ArrayBuffer>,
-): Promise<Uint8Array<ArrayBuffer>> {
+export const generateSecret = generateTotpSecret
+
+async function hmacSha1(key: Uint8Array, msg: Uint8Array): Promise<Uint8Array> {
   const cryptoKey = await crypto.subtle.importKey(
     "raw",
-    key,
+    key.buffer as ArrayBuffer,
     { name: "HMAC", hash: "SHA-1" },
     false,
     ["sign"],
   )
-  const sig = await crypto.subtle.sign("HMAC", cryptoKey, msg)
+  const sig = await crypto.subtle.sign(
+    "HMAC",
+    cryptoKey,
+    msg.buffer as ArrayBuffer,
+  )
   return new Uint8Array(sig)
 }
 
@@ -94,6 +97,14 @@ export async function generateTotpCode(
   return String(code).padStart(digits, "0")
 }
 
+export async function generateTOTP(
+  secret: string,
+  timeStep = 30,
+  digits = 6,
+): Promise<string> {
+  return generateTotpCode(secret, Date.now(), timeStep, digits)
+}
+
 /**
  * Verify a 6-digit TOTP token against a secret, allowing `window`
  * time-steps of skew in either direction (default ±1 × 30s).
@@ -114,6 +125,16 @@ export async function verifyTotpCode(
   return false
 }
 
+export async function verifyTOTP(
+  secret: string,
+  code: string,
+  window = 1,
+  timeStep = 30,
+  digits = 6,
+): Promise<boolean> {
+  return verifyTotpCode(secret, code, window, Date.now())
+}
+
 /** Build a standard otpauth:// URI for authenticator apps. */
 export function buildOtpauthUrl(
   secret: string,
@@ -130,6 +151,8 @@ export function buildOtpauthUrl(
   })
   return `otpauth://totp/${label}?${params.toString()}`
 }
+
+export const getTOTPUri = buildOtpauthUrl
 
 /**
  * Render the otpauth URI as a QR code image via a public QR service.

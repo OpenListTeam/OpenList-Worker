@@ -1,30 +1,24 @@
 import { Hono } from "hono"
 import { getDb } from "../internal/model/db"
-import { checkAdminAuth } from "../pkg/utils"
+import { adminAuthMiddleware } from "./middlewares"
 
 export const debugRouter = new Hono()
 
-debugRouter.get("/info", async (c) => {
-  const isAdmin = await checkAdminAuth(c)
+// Admin-only debug info
+debugRouter.get("/info", adminAuthMiddleware, async (c) => {
   const db = await getDb(c.env)
-
-  const responseData: any = {
-    runtime: "Cloudflare Workers / Edge",
-    timestamp: new Date().toISOString(),
-  }
-
-  if (isAdmin) {
-    responseData.db_state = {
-      storages_count: db.storages?.length || 0,
-      users_count: db.users?.length || 0,
-      metas_count: db.metas?.length || 0,
-      settings_count: db.settings?.length || 0,
-    }
-  }
-
   return c.json({
     code: 200,
-    message: "OpenListNext debug profile generated",
-    data: responseData,
+    message: "success",
+    data: {
+      runtime: "Cloudflare Workers / Edge",
+      timestamp: new Date().toISOString(),
+      db_state: {
+        storages_count: db.storages?.length || 0,
+        users_count: db.users?.length || 0,
+        metas_count: db.metas?.length || 0,
+        settings_count: db.settings?.length || 0,
+      },
+    },
   })
 })

@@ -9,7 +9,6 @@ preview_urls = false
 directory = "./dist"
 binding = "ASSETS"
 
-
 [vars]
 ENVIRONMENT = "production"
 # 注意：不要在这里硬编码管理员密码！部署时请通过
@@ -20,7 +19,4 @@ VITE_API_URL = "/api"
 
 [[kv_namespaces]]
 binding = "OPENLISTNEXT_KV"
-
-
-
-
+# id 由 Cloudflare 自动填充，或通过 `wrangler kv namespace create OPENLISTNEXT_KV` 获取后填入

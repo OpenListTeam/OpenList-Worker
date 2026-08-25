@@ -34,8 +34,8 @@ OpenListNext 是 [OpenList](https://github.com/OpenListTeam/OpenList) 的定制�
 - 📥 上传 / 下载 / 删除 / 重命名 / 移动 / 复制，文件夹打包下载
 - 🔗 文件永久链接、直链下载、分享链接（含提取码）
 - 🌙 黑暗模式、国际化（中 / 英）
-- 🔐 JWT 认证、密码保护、后台管理
-- ☁️ 多网盘驱动：夸克网盘、阿里云盘、Google Drive、OneDrive、百度网盘、123 云盘、本地文件系统
+- 🔐 JWT 认证、密码保护、后台管理、双因素验证（TOTP 2FA）
+- ☁️ 多网盘驱动：夸克网盘、阿里云盘、Google Drive、OneDrive、百度网盘、123 云盘、S3 兼容存储（AWS S3 / MinIO / R2 / OSS / COS）、WebDAV、本地文件系统
 - ⚡ 边缘部署：Cloudflare Workers / Vercel / Serverless 开箱即用
 
 ---
@@ -63,7 +63,7 @@ OpenListNext 是 [OpenList](https://github.com/OpenListTeam/OpenList) 的定制�
 ┌──────────────────────▼──────────────────────────────┐
 │     存储驱动层：Local · Quark · AliyundriveOpen ·    │
 │           GoogleDrive · Onedrive · BaiduNetdisk      │
-│                   · 123Pan                           │
+│          · 123Pan · S3 · WebDAV                      │
 └──────────────────────┬──────────────────────────────┘
                        │ 持久化
         ┌──────────────┴───────────────┐
@@ -137,24 +137,58 @@ npm run start
 
 ### 方式二：Cloudflare Workers（推荐，免费边缘部署）
 
-项目内置 [wrangler.toml](wrangler.toml) 与 [部署指南](docs/deploy-cloudflare-workers.md)。
+#### GitHub Action 自动部署（推荐）
 
-```bash
-# 一键部署（自动检测/创建 KV namespace 并写入 wrangler.toml，无需手动填 id）
-npm run deploy
+推送代码到 `main` 分支后自动构建并部署到 Cloudflare Workers。
 
-# 或分步执行：
-# 1) 登录 Cloudflare
-npx wrangler login
-# 2) 确保 KV 绑定（自动检测/创建，无需手动编辑 wrangler.toml）
-node scripts/deploy.js --kv
-# 3) 部署
-npm run deploy:worker
-# 本地预览
-npm run dev:worker   # wrangler dev
+**1. Fork 项目到你的 GitHub 账号**
+
+**2. 配置 GitHub Secrets**
+
+进入仓库 → Settings → Secrets and variables → Actions → New repository secret，添加：
+
+| Secret 名称             | 说明                                                                              |
+| ----------------------- | --------------------------------------------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`  | Cloudflare API 令牌（[创建地址](https://dash.cloudflare.com/profile/api-tokens)） |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID（[查看地址](https://dash.cloudflare.com/）右下角）             |
+
+> API Token 权限：选择 "Edit Cloudflare Workers" 模板，包含 Workers 和 KV 命名空间权限即可。
+
+**3. 配置环境变量（可选）**
+
+在 `wrangler.toml` 中修改 `[vars]` 下的默认凭据：
+
+```toml
+[vars]
+ENVIRONMENT = "production"
+ADMIN_USERNAME = "admin"    # 修改为你的管理员用户名
+ADMIN_PASSWORD = "admin"    # 修改为你的管理员密码
 ```
 
-`npm run deploy` 会自动完成：检测 `OPENLISTNEXT_KV` namespace（不存在则自动创建）→ 构建前端 → `wrangler deploy`。`wrangler.toml` 只声明绑定、**不存储 KV id**，由 wrangler 4.x 的 Automatic provisioning 在部署时自动创建/关联同名 namespace——全程无需手动填写 KV id。
+或在 Cloudflare Dashboard → Workers → 你的 Worker → Settings → Variables 中设置加密环境变量。
+
+**4. 推送触发部署**
+
+```bash
+git push origin main
+```
+
+查看部署状态：仓库 → Actions → "Deploy to Cloudflare Workers" 工作流。
+
+#### 手动部署
+
+```bash
+# 登录 Cloudflare
+npx wrangler login
+
+# 一键部署（自动检测/创建 KV namespace + 构建 + 部署）
+npm run deploy
+
+# 本地预览
+npm run dev:worker
+```
+
+> `wrangler.toml` 只声明 KV 绑定，由 wrangler 4.x 自动创建/关联 KV namespace，无需手动填写 id。
 
 部署完成后静态资源由 Workers 的 `ASSETS` binding 托管，API 由 Hono 后端处理，配置数据持久化在 KV 中。
 
@@ -207,6 +241,22 @@ OpenListNext 是以下项目的分支 / 衍生实现：
 ## 📄 许可证
 
 [AGPL-3.0 License](LICENSE)
+
+---
+
+## 📝 更新日志
+
+### v4.2.4
+
+- **修复**：S3 对象存储二级文件夹打开失败，添加详细错误日志
+- **修复**：WebDAV 下载返回 401 匿名访问错误，新增 `getFileStream` 流式传输支持
+- **修复**：Guest 用户可被管理员删除/禁用导致匿名访问永久失效，新增 `ensureDefaultUsers` 自动恢复机制
+- **新增**：双因素验证（TOTP 2FA）完整后端实现
+  - `POST /auth/2fa/generate` — 生成 QR 码和密钥
+  - `POST /auth/2fa/verify` — 验证并激活 2FA
+  - `POST /admin/user/cancel_2fa` — 管理员取消用户 2FA
+  - 登录流程支持 OTP 验证码输入
+- **优化**：所有 fs API 错误添加 console.error 日志，便于排查问题
 
 ---
 

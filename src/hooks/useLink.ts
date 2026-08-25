@@ -11,10 +11,12 @@ import {
 import { useRouter, useUtil } from "."
 import { cookieStorage } from "@solid-primitives/storage"
 
-// 获取 JWT token（token 存储在 sessionStorage 中，与 request.ts 的 _store 一致）
+// 获取 JWT token（token 存储在 sessionStorage/localStorage 中）
 function getAuthToken(): string {
   try {
-    return sessionStorage.getItem("token") || localStorage.getItem("token") || ""
+    return (
+      sessionStorage.getItem("token") || localStorage.getItem("token") || ""
+    )
   } catch {
     return ""
   }
@@ -70,7 +72,6 @@ export const getLinkByDirAndObj = (
     ans += `${QP()}inner=${encodePath(inner, encodeAll)}${archive_pass ? `&pass=${encodeURIComponent(archive_pass)}` : ""}`
   }
   // 非分享链接且非预览链接时，添加 JWT token 作为 query parameter
-  // 后端 getUserFromContext 支持从 query parameter token 或 access_token 获取 JWT
   if (type !== "preview" && !isShare) {
     const token = getAuthToken()
     if (token) {
@@ -115,14 +116,20 @@ export const useLink = () => {
 }
 
 export const useSelectedLink = () => {
-  const { previewPage, rawLink: rawUrl } = useLink()
+  const { previewPage, rawLink: rawUrl, proxyLink } = useLink()
   const rawLinks = (encodeAll?: boolean) => {
     return selectedObjs()
       .filter((obj) => !obj.is_dir)
       .map((obj) => rawUrl(obj, encodeAll))
   }
+  const proxyLinks = (encodeAll?: boolean) => {
+    return selectedObjs()
+      .filter((obj) => !obj.is_dir)
+      .map((obj) => proxyLink(obj, encodeAll))
+  }
   return {
     rawLinks: rawLinks,
+    proxyLinks: proxyLinks,
     previewPagesText: () => {
       return selectedObjs()
         .map((obj) => previewPage(obj, true))

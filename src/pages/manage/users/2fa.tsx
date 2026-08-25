@@ -1,5 +1,6 @@
 import { Button, Heading, Image, Input, Text, VStack } from "@hope-ui/solid"
-import { createSignal, Show } from "solid-js"
+import { createSignal, onMount, Show } from "solid-js"
+import QRCode from "qrcode"
 import { MaybeLoading } from "~/components"
 import { useRouter, useFetch, useT } from "~/hooks"
 import { setMe, me, getMainColor } from "~/store"
@@ -7,7 +8,7 @@ import { PEmptyResp, PResp } from "~/types"
 import { handleResp, handleRespWithNotifySuccess, notify, r } from "~/utils"
 
 interface Generate2FA {
-  qr: string
+  uri: string
   secret: string
 }
 
@@ -18,6 +19,7 @@ const TwoFA = () => {
   )
   const t = useT()
   const [otpData, setOtpData] = createSignal<Generate2FA>()
+  const [qrUrl, setQrUrl] = createSignal("")
   const init = async () => {
     if (me().otp) {
       notify.warning(t("users.2fa_already_enabled"))
@@ -25,7 +27,16 @@ const TwoFA = () => {
       return
     }
     const resp = await generate()
-    handleResp(resp, setOtpData)
+    handleResp(resp, (data) => {
+      setOtpData(data)
+      // Render the QR client-side with the frontend qrcode lib (the backend
+      // can't run qrcode on Cloudflare Workers).
+      if (data.uri) {
+        QRCode.toDataURL(data.uri, { width: 256, margin: 2 })
+          .then(setQrUrl)
+          .catch(() => setQrUrl(""))
+      }
+    })
   }
   const [code, setCode] = createSignal("")
   init()
@@ -48,7 +59,11 @@ const TwoFA = () => {
       <Show when={otpData()}>
         <VStack spacing="$2" alignItems="start">
           <Heading>{t("users.scan_qr")}</Heading>
-          <Image boxSize="$xs" rounded="$lg" src={otpData()?.qr} />
+          {qrUrl() ? (
+            <Image boxSize="$xs" rounded="$lg" src={qrUrl()} />
+          ) : (
+            <Text color="$neutral9">{t("users.or_manual")}: {otpData()?.secret}</Text>
+          )}
           <Heading>
             {t("users.or_manual")}:{" "}
             <Text color={getMainColor()}>{otpData()?.secret}</Text>

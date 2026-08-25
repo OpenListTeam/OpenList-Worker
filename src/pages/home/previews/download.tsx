@@ -28,6 +28,7 @@ export const Download = (props: { openWith?: boolean }) => {
   }).then((url) => setQrUrl(url))
   const [pinned, setPinned] = createSignal(false)
   const [hover, setHover] = createSignal(false)
+
   return (
     <FileInfo>
       <HStack spacing="$2">

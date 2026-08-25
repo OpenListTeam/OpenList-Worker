@@ -12,7 +12,7 @@ mcpRouter.get("/sse", (c) => {
   c.header("Content-Type", "text/event-stream")
   c.header("Cache-Control", "no-cache")
   c.header("Connection", "keep-alive")
-  
+
   return c.text(`event: endpoint\ndata: /api/mcp/messages\n\n`)
 })
 
@@ -21,11 +21,14 @@ mcpRouter.post("/messages", async (c) => {
   const { method, id, params } = body
 
   if (!method) {
-    return c.json({
-      jsonrpc: "2.0",
-      error: { code: -32600, message: "Invalid Request" },
-      id: id || null,
-    }, 400)
+    return c.json(
+      {
+        jsonrpc: "2.0",
+        error: { code: -32600, message: "无效的请求" },
+        id: id || null,
+      },
+      400,
+    )
   }
 
   const responseRpc = handleMcpJsonRpc(method, id, params)

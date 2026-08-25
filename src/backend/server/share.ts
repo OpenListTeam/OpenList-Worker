@@ -43,9 +43,13 @@ shareRouter.get("/get", async (c) => {
   const db = await getDb(c.env)
   const share = (db.shares || []).find((s: any) => s.id === id)
   if (!share) {
-    return c.json({ code: 404, message: "share not found", data: null })
+    return c.json({ code: 404, message: "分享不存在", data: null })
   }
-  return c.json({ code: 200, message: "success", data: share })
+  return c.json({
+    code: 200,
+    message: "success",
+    data: { ...share, pwd: share.pwd ? "****" : "" },
+  })
 })
 
 // Create a new share (requires logged-in user with SHARE permission; admins always allowed)
@@ -131,7 +135,6 @@ shareRouter.post("/create", async (c) => {
   return c.json({ code: 200, message: "success", data: newShare })
 })
 
-/** Generate a random 16-char share id using Web Crypto (Workers-compatible) */
 function generateShareId(): string {
   const uuid = crypto.randomUUID().replace(/-/g, "")
   return uuid.slice(0, 16)
@@ -143,15 +146,14 @@ shareRouter.post("/update", async (c) => {
   const db = await getDb(c.env)
 
   if (!body.id) {
-    return c.json({ code: 400, message: "share id is required", data: null })
+    return c.json({ code: 400, message: "分享 ID 为必填项", data: null }, 400)
   }
 
   const idx = (db.shares || []).findIndex((s: any) => s.id === body.id)
   if (idx === -1) {
-    return c.json({ code: 404, message: "share not found", data: null })
+    return c.json({ code: 404, message: "分享不存在", data: null }, 404)
   }
 
-  // Support renaming via new_id (must not collide with another share)
   const newId =
     body.new_id && String(body.new_id).trim() !== ""
       ? String(body.new_id).trim()
@@ -161,11 +163,14 @@ shareRouter.post("/update", async (c) => {
       (s: any) => s.id === newId && s.id !== body.id,
     )
     if (collision) {
-      return c.json({
-        code: 400,
-        message: "share id already exists",
-        data: null,
-      })
+      return c.json(
+        {
+          code: 400,
+          message: "分享 ID 已存在",
+          data: null,
+        },
+        400,
+      )
     }
   }
 

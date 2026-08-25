@@ -19,7 +19,7 @@
   },
   "remark": "备注",
   "readme": "描述",
-  "header": "Header 说明",
+  "header": "页头描述",
   "order_by": "排序字段",
   "order_bys": {
     "name": "名称",

@@ -100,7 +100,7 @@ export async function adminAuthMiddleware(
     return c.json(
       {
         code: 401,
-        message: "Unauthorized admin privilege required",
+        message: "未授权，需要管理员权限",
         data: null,
       },
       401,

@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { setupRouter } from "./server/router"
 import { rawRouter } from "./server/raw"
 import { setEnvCtx } from "./internal/model/db"
+import { ensureJwtSecret } from "./pkg/utils"
 
 const app = new Hono()
 
@@ -10,6 +11,7 @@ app.use("*", async (c, next) => {
   // 模块级 globalEnvCtx 为 null，会导致 getDb()/saveDb() 退回内存模式，
   // 网盘账号密码与 access_token 无法从 KV 持久化读取）
   setEnvCtx(c.env)
+  await ensureJwtSecret(c.env)
   await next()
 })
 
