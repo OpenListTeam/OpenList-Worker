@@ -41,7 +41,7 @@ app.all("*", async (c) => {
   if (env && env.ASSETS && typeof env.ASSETS.fetch === "function") {
     const url = new URL(c.req.url)
     const res = await env.ASSETS.fetch(c.req.raw)
-    if (res.status !== 404) {
+    if (res.status >= 200 && res.status < 300) {
       // 修复「部署新版本后生产环境仍是旧界面」：index.html 若不设缓存头，
       // 会被 Cloudflare 边缘/浏览器长期缓存，导致旧 HTML 引用旧 hash 的 JS/CSS。
       // 只对 HTML 入口 no-cache（JS/CSS 带 hash 可安全长期缓存）。
@@ -53,8 +53,9 @@ app.all("*", async (c) => {
       return res
     }
     // SPA fallback: return index.html for non-asset routes (e.g. /login, /manage)
-    const indexReq = new Request(`${url.origin}/index.html`, c.req.raw)
-    return env.ASSETS.fetch(indexReq)
+    // 注意：ASSETS.fetch 对 /index.html 也可能返回 307，直接 fetch "/" 获取实际 HTML
+    const rootReq = new Request(`${url.origin}/`, c.req.raw)
+    return env.ASSETS.fetch(rootReq)
   }
   // EdgeOne 等 ASSETS 缺席的环境：直接返回构建期内联的 SPA 壳，
   // 避免前端路由（/add、/@manage/* 等）落到 404 文本导致整站不可达
