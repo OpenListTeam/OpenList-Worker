@@ -462,16 +462,6 @@ authRouter.post("/2fa/generate", async (c) => {
     const secret = generateSecret()
     const uri = getTOTPUri(secret, user.username)
 
-    // Generate QR code as data URL using the qrcode library
-    let qr = ""
-    try {
-      const QRCode = await import("qrcode")
-      qr = await QRCode.toDataURL(uri, { width: 256 })
-    } catch {
-      // Fallback: return the URI for manual entry
-      qr = ""
-    }
-
     // Store the secret temporarily (not yet verified)
     user.otp_secret = secret
     const userIdx = db.users.findIndex((u: any) => u.id === user.id)
@@ -480,10 +470,13 @@ authRouter.post("/2fa/generate", async (c) => {
       await saveDb(db, c.env)
     }
 
+    // Return the otpauth URI (no QR data URL): the frontend renders the QR
+    // with its own qrcode lib, which works in the browser where dynamic
+    // import("qrcode") on Cloudflare Workers does not.
     return c.json({
       code: 200,
       message: "success",
-      data: { qr, secret },
+      data: { uri, secret },
     })
   } catch {
     return c.json({ code: 401, message: "未授权", data: null }, 401)
