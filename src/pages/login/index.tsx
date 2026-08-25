@@ -17,6 +17,7 @@ import { SwitchColorMode, SwitchLanguageWhite } from "~/components"
 import { useFetch, useLoading, useT, useTitle, useRouter } from "~/hooks"
 import {
   changeToken,
+  clearPersistedToken,
   r,
   notify,
   handleRespWithoutAuthAndNotify,
@@ -43,10 +44,14 @@ const Login = () => {
   useTitle(title)
   const bgColor = useColorModeValue("white", "$neutral1")
   const [username, setUsername] = createSignal(
-    (typeof sessionStorage !== "undefined" ? sessionStorage.getItem("username") : localStorage.getItem("username")) || "",
+    sessionStorage.getItem("username") ||
+      localStorage.getItem("username") ||
+      "",
   )
   const [password, setPassword] = createSignal(
-    (typeof sessionStorage !== "undefined" ? sessionStorage.getItem("password") : localStorage.getItem("password")) || "",
+    sessionStorage.getItem("password") ||
+      localStorage.getItem("password") ||
+      "",
   )
   const [opt, setOpt] = createSignal("")
   const [useauthn, setuseauthn] = createSignal(false)
@@ -128,11 +133,13 @@ const Login = () => {
     AuthnSignal = controller
     const username_login: string = conditional ? "" : username()
     if (!conditional && remember() === "true") {
-      const _store = typeof sessionStorage !== "undefined" ? sessionStorage : localStorage
+      const _store =
+        typeof sessionStorage !== "undefined" ? sessionStorage : localStorage
       _store.setItem("username", username())
     } else {
       localStorage.removeItem("username")
-      if (typeof sessionStorage !== "undefined") sessionStorage.removeItem("username")
+      if (typeof sessionStorage !== "undefined")
+        sessionStorage.removeItem("username")
     }
     const resp = await getauthntemp(username_login, controller.signal)
     handleResp(resp, async (data) => {
@@ -159,7 +166,7 @@ const Login = () => {
           resp,
           (data) => {
             notify.success(t("login.success"))
-            changeToken(data.token)
+            changeToken(data.token, remember() === "true")
             to(
               decodeURIComponent(searchParams.redirect || base_path || "/"),
               true,
@@ -190,10 +197,8 @@ const Login = () => {
   const Login = async () => {
     if (!useauthn()) {
       if (remember() === "true") {
-        // Use sessionStorage for password (cleared on tab close), localStorage only for username
-        const _store = typeof sessionStorage !== "undefined" ? sessionStorage : localStorage
-        _store.setItem("username", username())
-        _store.setItem("password", password())
+        localStorage.setItem("username", username())
+        localStorage.setItem("password", password())
       } else {
         localStorage.removeItem("username")
         localStorage.removeItem("password")
@@ -207,7 +212,7 @@ const Login = () => {
         resp,
         (data) => {
           notify.success(t("login.success"))
-          changeToken(data.token)
+          changeToken(data.token, remember() === "true")
           to(
             decodeURIComponent(searchParams.redirect || base_path || "/"),
             true,
@@ -344,6 +349,7 @@ const Login = () => {
             colorScheme="accent"
             onClick={() => {
               changeToken()
+              clearPersistedToken()
               // 游客登录一律跳转到首页：忽略 redirect 参数，
               // 避免退出登录后带着 /@manage 之类的 redirect 进入管理后台触发 401 循环
               to(base_path || "/", true)
