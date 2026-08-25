@@ -233,6 +233,11 @@ rawRouter.get("/*", async (c) => {
 
               return c.body(upstreamRes.body as any, upstreamRes.status as any)
             } else {
+              try {
+                assertSafeUrl(fileItem.raw_url, "Redirect download")
+              } catch (ssrfErr: any) {
+                return c.text(ssrfErr.message || "SSRF blocked", 403)
+              }
               console.log(
                 `[rawRouter] Redirecting download for '${reqPath}' via ${resolved.storage.driver}`,
               )
