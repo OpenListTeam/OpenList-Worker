@@ -23,6 +23,38 @@
         main_color: undefined,
       }
     </script>
+    <script>
+      // 自愈：部署新版本后，旧缓存用户可能加载旧入口 JS，动态 import 新哈希
+      // 的 chunk 时失败（Failed to fetch dynamically imported module）。
+      // 捕获后自动带参数刷新，强制浏览器拉取最新 HTML 与资源。
+      ;(function () {
+        var KEY = "openlistnext_reload_on_module_error"
+        var MAX = 2
+        function shouldReload() {
+          var n = parseInt(sessionStorage.getItem(KEY) || "0", 10)
+          return n < MAX
+        }
+        function reload() {
+          var n = parseInt(sessionStorage.getItem(KEY) || "0", 10) + 1
+          sessionStorage.setItem(KEY, String(n))
+          var url = window.location.href
+          var sep = url.indexOf("?") >= 0 ? "&" : "?"
+          window.location.replace(url + sep + "v=" + Date.now())
+        }
+        function isModuleError(e) {
+          var msg = ""
+          if (e && e.message) msg = String(e.message)
+          else if (e && e.reason && e.reason.message) msg = String(e.reason.message)
+          return /Failed to fetch dynamically imported module/.test(msg)
+        }
+        window.addEventListener("error", function (e) {
+          if (isModuleError(e) && shouldReload()) reload()
+        })
+        window.addEventListener("unhandledrejection", function (e) {
+          if (isModuleError(e) && shouldReload()) reload()
+        })
+      })()
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

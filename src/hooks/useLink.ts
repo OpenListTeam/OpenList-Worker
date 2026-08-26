@@ -31,6 +31,7 @@ export const getLinkByDirAndObj = (
   type: URLType = "direct",
   isShare: boolean,
   encodeAll?: boolean,
+  includePwd?: boolean,
 ) => {
   if (type !== "preview")
     dir = isShare
@@ -61,10 +62,13 @@ export const getLinkByDirAndObj = (
   if (type !== "preview" && !isShare && obj.sign) {
     ans += `${QP()}sign=${obj.sign}`
   }
-  if (type !== "preview" && isShare) {
+  // 分享下载密码默认不拼进 URL（避免泄露在浏览器历史/服务器日志/复制的链接中），
+  // 密码已在 setPassword 时写入 browser-password cookie（path=/），同源 /sd 请求会自动携带。
+  // 仅 aria2 等无法携带 cookie 的第三方下载工具场景（includePwd=true）才拼接 pwd。
+  if (type !== "preview" && isShare && includePwd) {
     const pwd = cookieStorage.getItem("browser-password") || ""
     if (pwd) {
-      ans += `${QP()}pwd=${pwd}`
+      ans += `${QP()}pwd=${encodeURIComponent(pwd)}`
     }
   }
   if (archive) {

@@ -217,13 +217,27 @@ export const toggleCheckbox = () => {
 
 export { objStore }
 // browser password
+// 注：cookie 值统一 encodeURIComponent 存储（见 setPassword），读取时需解码还原
 const [_password, _setPassword] = createSignal<string>(
-  cookieStorage.getItem("browser-password") || "",
+  (() => {
+    try {
+      const raw = cookieStorage.getItem("browser-password") || ""
+      return raw ? decodeURIComponent(raw) : ""
+    } catch {
+      return cookieStorage.getItem("browser-password") || ""
+    }
+  })(),
 )
 export { _password as password }
 export const setPassword = (password: string) => {
   _setPassword(password)
-  cookieStorage.setItem("browser-password", password)
+  // 必须显式 path=/，否则 cookie 仅对设置时所在路径生效（如 /@s/xxx 分享页），
+  // 下载请求打到 /sd/xxx 时不会携带，导致分享密码校验失败。
+  // 用原生 document.cookie 写入（cookieStorage 无法传 path 选项）。
+  if (typeof document !== "undefined") {
+    const safe = encodeURIComponent(password)
+    document.cookie = `browser-password=${safe}; path=/; SameSite=Lax`
+  }
 }
 
 const getCountStr = (

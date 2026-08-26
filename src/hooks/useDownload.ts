@@ -65,6 +65,7 @@ export const useDownload = () => {
                 "direct",
                 isShare(),
                 true,
+                true, // aria2 无法携带 cookie，需在 URL 中带分享密码
               ),
               name: obj.name,
             },

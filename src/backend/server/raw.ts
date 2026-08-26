@@ -68,11 +68,23 @@ rawRouter.get("/*", async (c) => {
     const isSharePath =
       c.req.path.startsWith("/api/sd") || c.req.path.startsWith("/sd")
     if (isSharePath) {
-      const shareRes = await resolveShare(
-        reqPath,
-        c.req.query("pwd") || "",
-        c.env,
-      )
+      // 分享密码优先从 cookie（browser-password）读取，避免密码出现在 URL 中；
+      // 兼容旧版 ?pwd= 参数（已有分享链接/收藏夹里的旧链接仍可用）。
+      const cookieHeader = c.req.header("Cookie") || ""
+      const cookiePwdRaw =
+        cookieHeader
+          .split(";")
+          .map((s) => s.trim())
+          .find((s) => s.startsWith("browser-password="))
+          ?.split("=").slice(1).join("=") || ""
+      let cookiePwd = ""
+      try {
+        cookiePwd = cookiePwdRaw ? decodeURIComponent(cookiePwdRaw) : ""
+      } catch {
+        cookiePwd = cookiePwdRaw
+      }
+      const sharePwd = c.req.query("pwd") || cookiePwd
+      const shareRes = await resolveShare(reqPath, sharePwd, c.env)
       if (!shareRes.ok) {
         return c.text(shareRes.error || "Share not found", 404)
       }
