@@ -73,4 +73,16 @@ edgeone makers deploy
 
 两者匹配即可触发；未设置 `CRON_SECRET` 时该接口仍仅接受管理员凭证。除 payload 外也支持 `X-Cron-Secret` 请求头携带密钥（适用于可自定义请求头的调度系统）。
 
+> ⚠️ **公开仓库勿提交真实密钥**：本仓库是开源项目，`edgeone.json` 中的占位值 `"cron_secret": ""` 请保持为空直接部署——此时定时任务会触发但因鉴权失败被拒绝（无害，网盘 Token 由请求时按需刷新兜底）。若要真正启用自动刷新，请只在**你自己控制的私有配置/私有 fork** 中填入真实值；公开仓库中提交真实密钥等于向所有人公开该接口的触发凭证。
+
+**验证方法**：手动模拟一次调度请求（与平台调度器行为一致）：
+
+```bash
+curl -X POST "https://你的域名/api/task/refresh" \
+  -H "Content-Type: application/json" \
+  -d '{"cron_secret":"<你设置的值>"}'
+```
+
+返回 `{"code":200,"message":"token refresh executed",...}` 即配置成功；也可次日到控制台「可观测性 → 日志分析」查看凌晨 2:00 的触发记录。
+
 > 💡 **免费版配额说明**：EdgeOne Makers 免费版定时任务最小执行间隔为 1 天（86400 秒），故配置为每天凌晨 2:00（`0 2 * * *`）执行一次。OpenListNext 网盘驱动均支持在请求时自动按需换新 Access Token，双重保障网盘连接永不断流。
