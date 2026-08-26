@@ -45,12 +45,13 @@ const permissionDenied = (c: any) =>
 // 分享请求错误统一出口：
 // - 密码错误 → 403，前端据此弹出提取码输入框（State.NeedPassword）
 // - 其他（不存在/禁用/过期/超次数/为空）→ 400，前端显示友好提示
-const shareErrorResponse = (c: any, error: string) => {
+const shareErrorResponse = (c: any, error?: string) => {
   const isWrongPassword = error === "wrong password"
+  const msg = error || "share error"
   return c.json(
     {
       code: isWrongPassword ? 403 : 400,
-      message: error,
+      message: msg,
       data: null,
     },
     isWrongPassword ? 403 : 400,
