@@ -289,7 +289,14 @@ export const Share = () => {
                       getSetting("share_summary_content"),
                       templateData,
                     )
-                    setLink(msg)
+                    // share_summary_content 未配置（空模板）时，回退到标准分享链接，
+                    // 否则 setLink("") 会让模态框停留在表单页，看起来像"没动静"
+                    const pwd = data.pwd
+                      ? `?pwd=${encodeURIComponent(data.pwd)}`
+                      : ""
+                    setLink(
+                      msg || `${templateData.base_url}/@s/${data.id}${pwd}`,
+                    )
                   })
                 }}
               >

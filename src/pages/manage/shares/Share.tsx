@@ -151,7 +151,14 @@ export function ShareListItem(props: ShareProps) {
                 getSetting("share_summary_content"),
                 templateData,
               )
-              copy(msg)
+              // share_summary_content 未配置（空模板）时，回退到标准分享链接
+              const pwd = props.share.pwd
+                ? `?pwd=${encodeURIComponent(props.share.pwd)}`
+                : ""
+              copy(
+                msg ||
+                  `${templateData.base_url}/@s/${props.share.id}${pwd}`,
+              )
             }}
           >
             {t("shares.copy_msg")}
