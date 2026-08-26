@@ -42,6 +42,21 @@ const getStorageRequestContext = (c: any) => {
 const permissionDenied = (c: any) =>
   c.json({ code: 403, message: "Permission denied", data: null }, 403)
 
+// 分享请求错误统一出口：
+// - 密码错误 → 403，前端据此弹出提取码输入框（State.NeedPassword）
+// - 其他（不存在/禁用/过期/超次数/为空）→ 400，前端显示友好提示
+const shareErrorResponse = (c: any, error: string) => {
+  const isWrongPassword = error === "wrong password"
+  return c.json(
+    {
+      code: isWrongPassword ? 403 : 400,
+      message: error,
+      data: null,
+    },
+    isWrongPassword ? 403 : 400,
+  )
+}
+
 // GET sub-directories of a path (used by FolderTree in metas/storages editors)
 fsRouter.post("/dirs", async (c) => {
   const body = await c.req.json().catch(() => ({}))
@@ -61,7 +76,7 @@ fsRouter.post("/dirs", async (c) => {
     if (reqPath.startsWith("/@s")) {
       const shareRes = await resolveShare(reqPath, body.password || "", c.env)
       if (!shareRes.ok) {
-        return c.json({ code: 400, message: shareRes.error, data: null })
+        return shareErrorResponse(c, shareRes.error)
       }
       if (shareRes.virtualList) {
         const dirs = []
@@ -150,7 +165,7 @@ fsRouter.post("/list", async (c) => {
     if (reqPath.startsWith("/@s")) {
       const shareRes = await resolveShare(reqPath, body.password || "", c.env)
       if (!shareRes.ok) {
-        return c.json({ code: 400, message: shareRes.error, data: null })
+        return shareErrorResponse(c, shareRes.error)
       }
 
       // Multi-file share root → virtual list of the shared items
@@ -338,7 +353,7 @@ fsRouter.post("/get", async (c) => {
     if (reqPath.startsWith("/@s")) {
       const shareRes = await resolveShare(reqPath, body.password || "", c.env)
       if (!shareRes.ok) {
-        return c.json({ code: 400, message: shareRes.error, data: null })
+        return shareErrorResponse(c, shareRes.error)
       }
 
       // Multi-file share root: report as a virtual folder so the frontend lists it

@@ -291,11 +291,9 @@ export const Share = () => {
                     )
                     // share_summary_content 未配置（空模板）时，回退到标准分享链接，
                     // 否则 setLink("") 会让模态框停留在表单页，看起来像"没动静"
-                    const pwd = data.pwd
-                      ? `?pwd=${encodeURIComponent(data.pwd)}`
-                      : ""
+                    // 链接不携带提取码，访问者打开分享页后自行输入提取码
                     setLink(
-                      msg || `${templateData.base_url}/@s/${data.id}${pwd}`,
+                      msg || `${templateData.base_url}/@s/${data.id}`,
                     )
                   })
                 }}

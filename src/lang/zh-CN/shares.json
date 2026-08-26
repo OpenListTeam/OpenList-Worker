@@ -37,6 +37,8 @@
     "back": "文件夹置底"
   },
   "input_password": "请输入分享码",
+  "wrong_password": "提取码错误，请重新输入",
+  "share_gone": "您来晚了，分享已经过期或取消了",
   "copy_msg": "复制链接",
   "copy_url": "复制 URL",
   "no_permission_tip": "创建分享需要“分享”权限。"
