@@ -52,7 +52,8 @@ export const Share = () => {
         const paths = selectedObjs().map((obj) => {
           const split =
             pathname().endsWith("/") || obj.name.startsWith("/") ? "" : "/"
-          return `${me().base_path}${pathname()}${split}${obj.name}`
+          const basePath = me().base_path || "/"
+          return `${basePath}${pathname()}${split}${obj.name}`
         })
         setShare({
           files: paths,
