@@ -1,4 +1,5 @@
 {
+  "breadcrumb": "Share",
   "expires": "Expiration time",
   "id": "ID",
   "id_placeholder": "Custom ID (optional, leave empty for random)",
@@ -37,6 +38,8 @@
     "back": "Folders at Bottom"
   },
   "input_password": "Please enter Share Code",
+  "wrong_password": "Incorrect share code, please try again",
+  "share_gone": "This share has expired or been cancelled",
   "copy_msg": "Copy link",
   "copy_url": "Copy URL",
   "no_permission_tip": "To create a share, you need \"Share\" permission."

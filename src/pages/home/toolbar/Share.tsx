@@ -52,7 +52,8 @@ export const Share = () => {
         const paths = selectedObjs().map((obj) => {
           const split =
             pathname().endsWith("/") || obj.name.startsWith("/") ? "" : "/"
-          return `${me().base_path}${pathname()}${split}${obj.name}`
+          const basePath = me().base_path || "/"
+          return `${basePath}${pathname()}${split}${obj.name}`
         })
         setShare({
           files: paths,
@@ -288,7 +289,12 @@ export const Share = () => {
                       getSetting("share_summary_content"),
                       templateData,
                     )
-                    setLink(msg)
+                    // share_summary_content 未配置（空模板）时，回退到标准分享链接，
+                    // 否则 setLink("") 会让模态框停留在表单页，看起来像"没动静"
+                    // 链接不携带提取码，访问者打开分享页后自行输入提取码
+                    setLink(
+                      msg || `${templateData.base_url}/@s/${data.id}`,
+                    )
                   })
                 }}
               >

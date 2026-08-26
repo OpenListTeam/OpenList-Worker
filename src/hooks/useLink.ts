@@ -1,4 +1,4 @@
-import { objStore, selectedObjs, State, me } from "~/store"
+import { objStore, selectedObjs, State, me, password } from "~/store"
 import { Obj, ArchiveObj } from "~/types"
 import {
   base_path,
@@ -9,7 +9,6 @@ import {
   standardizePath,
 } from "~/utils"
 import { useRouter, useUtil } from "."
-import { cookieStorage } from "@solid-primitives/storage"
 
 // 获取 JWT token（token 存储在 sessionStorage 中，与 request.ts 的 _store 一致）
 function getAuthToken(): string {
@@ -31,6 +30,7 @@ export const getLinkByDirAndObj = (
   type: URLType = "direct",
   isShare: boolean,
   encodeAll?: boolean,
+  includePwd?: boolean,
 ) => {
   if (type !== "preview")
     dir = isShare
@@ -61,10 +61,18 @@ export const getLinkByDirAndObj = (
   if (type !== "preview" && !isShare && obj.sign) {
     ans += `${QP()}sign=${obj.sign}`
   }
+  // 分享下载密码默认不拼进 URL（避免泄露在浏览器历史/服务器日志/复制的链接中），
+  // 密码通过 browser-password cookie（path=/）随同源 /sd 请求自动携带。
   if (type !== "preview" && isShare) {
-    const pwd = cookieStorage.getItem("browser-password") || ""
-    if (pwd) {
-      ans += `${QP()}pwd=${pwd}`
+    // 确保 cookie 一定是最新的：用户输入密码后可能没触发 setPassword（如历史遗留
+    // 的无 path cookie），这里从 password() signal 主动同步，保证 /sd 能收到密码。
+    const pwd = password()
+    if (pwd && typeof document !== "undefined") {
+      document.cookie = `browser-password=${encodeURIComponent(pwd)}; path=/; SameSite=Lax`
+    }
+    // 仅 aria2 等无法携带 cookie 的第三方下载工具场景（includePwd=true）才拼接 pwd。
+    if (includePwd && pwd) {
+      ans += `${QP()}pwd=${encodeURIComponent(pwd)}`
     }
   }
   if (archive) {

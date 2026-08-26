@@ -70,7 +70,8 @@ export const Nav = () => {
             text = () =>
               getSetting("site_title") || t("manage.sidemenu.home")
           } else if (isShare() && i() === 0) {
-            text = () => getSetting("share_icon") + t("manage.sidemenu.shares")
+            // 分享页面包屑用分享页专属文案，不复用管理后台的"分享管理"
+            text = () => getSetting("share_icon") + t("shares.breadcrumb")
           }
           return (
             <BreadcrumbItem class="nav-item">

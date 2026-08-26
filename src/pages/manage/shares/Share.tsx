@@ -151,7 +151,11 @@ export function ShareListItem(props: ShareProps) {
                 getSetting("share_summary_content"),
                 templateData,
               )
-              copy(msg)
+              // share_summary_content 未配置（空模板）时，回退到标准分享链接
+              // 链接不携带提取码，访问者打开分享页后自行输入提取码
+              copy(
+                msg || `${templateData.base_url}/@s/${props.share.id}`,
+              )
             }}
           >
             {t("shares.copy_msg")}
@@ -160,10 +164,7 @@ export function ShareListItem(props: ShareProps) {
             colorScheme="info"
             onClick={() => {
               const { base_url } = makeTemplateData(props.share)
-              const pwd = props.share.pwd
-                ? `?pwd=${encodeURIComponent(props.share.pwd)}`
-                : ""
-              copy(`${base_url}/@s/${props.share.id}${pwd}`)
+              copy(`${base_url}/@s/${props.share.id}`)
             }}
           >
             {t("shares.copy_url")}

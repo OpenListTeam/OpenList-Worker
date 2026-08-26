@@ -32,12 +32,14 @@ import {
 import { AiOutlineFullscreen, AiOutlineFullscreenExit } from "solid-icons/ai"
 import { BsFullscreen, BsFullscreenExit } from "solid-icons/bs"
 import { useT } from "~/hooks"
+import { Face404 } from "./Face404"
 
 export const Error = (props: {
   msg: string
   disableColor?: boolean
   h?: string
   actions?: JSXElement
+  show404Face?: boolean
 }) => {
   const merged = mergeProps(
     {
@@ -52,7 +54,16 @@ export const Error = (props: {
         px="$4"
         py="$6"
         bgColor={useColorModeValue("white", "$neutral3")()}
+        css={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: "$4",
+        }}
       >
+        <Show when={props.show404Face}>
+          <Face404 />
+        </Show>
         <Heading
           css={{
             wordBreak: "break-all",
