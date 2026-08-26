@@ -116,15 +116,18 @@ export async function getOrInitUsers(envCtx: any) {
     await saveDb(db, envCtx)
   } else {
     const adminUser = db.users.find((u: any) => u.username === "admin")
-    if (
-      adminUser &&
-      (!adminUser.password || String(adminUser.password).trim() === "")
-    ) {
+    // 密码为空，或不是当前 64 位 hex SHA-256 格式（例如上一个版本遗留的
+    // PBKDF2 哈希 `pbkdf2:100000:...`，当前校验无法验证）时，重置为默认密码，
+    // 使新部署/旧版本残留都能用默认凭据登录。正常 64 位 hex 密码不受影响。
+    const adminPass = adminUser ? String(adminUser.password || "").trim() : ""
+    const isValidFormat = /^[0-9a-f]{64}$/i.test(adminPass)
+    if (adminUser && (!adminPass || !isValidFormat)) {
       const envPass =
         (envCtx && envCtx.ADMIN_PASSWORD) ||
         (typeof process !== "undefined" ? process.env?.ADMIN_PASSWORD : "") ||
         ""
       adminUser.password = await hashPassword(envPass || "admin")
+      adminUser.pwd_update_at = new Date().toISOString()
       await saveDb(db, envCtx)
     }
   }
