@@ -49,7 +49,9 @@ async function build() {
     entryPoints: ["api/[...route].ts"],
     bundle: true,
     platform: "neutral",
-    outfile: "dist/api/[...route].js",
+    // 输出到 dist-server（dist 是 EdgeOne/Vercel 的静态发布目录，
+    // 后端 bundle 不应作为静态资源被发布出去）
+    outfile: "dist-server/api/[...route].js",
     minify: true,
     format: "esm",
     external: ["ssh2", "cpu-features", "iconv-lite"],
@@ -87,7 +89,7 @@ async function build() {
   }
 
   console.log(
-    "✓ Edge build complete -> dist/api/[...route].js & cloud-functions/[[default]].js",
+    "✓ Edge build complete -> dist-server/api/[...route].js & cloud-functions/[[default]].js",
   )
 }
 

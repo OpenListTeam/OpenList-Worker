@@ -4,7 +4,6 @@
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist",
   "nodeVersion": "22.11.0",
-  "cleanUrls": true,
   "rewrites": [
     {
       "source": "/*",
@@ -32,10 +31,7 @@
     }
   ],
   "cloudFunctions": {
-    "maxDuration": 120,
-    "includeFiles": [
-      "public_data/**"
-    ]
+    "maxDuration": 120
   },
   "schedules": [
     {
@@ -43,6 +39,7 @@
       "cron": "0 2 * * *",
       "path": "/api/task/refresh",
       "method": "POST",
+      "payload": { "cron_secret": "" },
       "timezone": "Asia/Shanghai"
     }
   ]

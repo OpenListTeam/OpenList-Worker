@@ -12,7 +12,7 @@
 - **配置持久化**：
   - **Blob 存储**（推荐）：自动使用 `@edgeone/pages-blob` SDK（HTTP API），无需手动配置，避免 Redis RESP 协议崩溃。
   - **KV 存储**（兼容）：自动适配 `OPENLISTNEXT_KV` / `EDGEONE_KV` / `EO_KV` 命名空间（仅 Cloudflare 环境）。
-- **定时任务 (Schedules)**：已内置 `/api/task/refresh` 定时调度（每天凌晨 2:00 自动刷新一次已启用的网盘 Token，完全兼容 EdgeOne 免费版定时任务规则；并在每次实际请求时结合按需检测保障 Token 实时有效）。
+- **定时任务 (Schedules)**：已内置 `/api/task/refresh` 定时调度（每天凌晨 2:00 自动刷新一次已启用的网盘 Token，完全兼容 EdgeOne 免费版定时任务规则；并在每次实际请求时结合按需检测保障 Token 实时有效）。调度请求需通过 `CRON_SECRET` 环境变量鉴权，配置方法见下文「定时任务与长时任务」。
 
 ---
 
@@ -60,9 +60,17 @@ edgeone makers deploy
     "cron": "0 2 * * *",
     "path": "/api/task/refresh",
     "method": "POST",
+    "payload": { "cron_secret": "<与 CRON_SECRET 环境变量一致的值>" },
     "timezone": "Asia/Shanghai"
   }
 ]
 ```
+
+**鉴权说明**：`/api/task/refresh` 受管理员鉴权保护，而 EdgeOne Schedules 只能携带 `path/method/payload`，无法附加 `Authorization` 头。因此需要：
+
+1. 在 Makers 控制台 **项目设置 - 环境变量** 中添加 `CRON_SECRET`（自定义随机长字符串）；
+2. 将相同值填入上方 `payload.cron_secret`（或改用路径参数 `/api/task/refresh?cron_secret=<值>`）。
+
+两者匹配即可触发；未设置 `CRON_SECRET` 时该接口仍仅接受管理员凭证。除 payload 外也支持 `X-Cron-Secret` 请求头携带密钥（适用于可自定义请求头的调度系统）。
 
 > 💡 **免费版配额说明**：EdgeOne Makers 免费版定时任务最小执行间隔为 1 天（86400 秒），故配置为每天凌晨 2:00（`0 2 * * *`）执行一次。OpenListNext 网盘驱动均支持在请求时自动按需换新 Access Token，双重保障网盘连接永不断流。

@@ -172,7 +172,7 @@ npm run dev:worker   # wrangler dev
 ### 方式四：Vercel / 边缘 Serverless
 
 ```bash
-# 构建（输出 dist/api/[...route].js Serverless 入口）
+# 构建（输出 dist-server/api/[...route].js Serverless 入口）
 npm run build
 
 # 由 Vercel 识别 vercel.json 自动部署

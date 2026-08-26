@@ -109,6 +109,47 @@ export async function adminAuthMiddleware(
   await next()
 }
 
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
+/**
+ * 定时调度鉴权通道：EdgeOne Schedules 只能携带 path/method/payload，
+ * 无法附加 Authorization 头。当环境变量 CRON_SECRET 已设置时，
+ * 允许请求通过 query（?cron_secret=）、JSON body { cron_secret }
+ * 或 X-Cron-Secret 头携带匹配值触发受保护的任务接口。
+ */
+export async function matchCronSecret(c: Context): Promise<boolean> {
+  const env = (c as any)?.env || {}
+  const secret =
+    env.CRON_SECRET ||
+    (typeof process !== "undefined" ? process.env?.CRON_SECRET : "")
+  if (!secret || typeof secret !== "string") return false
+
+  const header = c.req.header("x-cron-secret")
+  if (header && timingSafeEqual(header, secret)) return true
+
+  const query = c.req.query("cron_secret")
+  if (query && timingSafeEqual(query, secret)) return true
+
+  try {
+    const body = await c.req.json()
+    const provided = body?.cron_secret
+    if (
+      typeof provided === "string" &&
+      provided.length > 0 &&
+      timingSafeEqual(provided, secret)
+    ) {
+      return true
+    }
+  } catch {}
+
+  return false
+}
+
 /**
  * 从请求上下文解析当前用户：
  * - 静态 API Token（与 adminAuthMiddleware 同源）→ 视为管理员

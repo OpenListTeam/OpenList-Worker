@@ -24,7 +24,7 @@
     "crowdin": "npm run crowdin:upload && npm run crowdin:download",
     "i18n:build": "npm run crowdin && node ./scripts/i18n.mjs",
     "i18n:release": "npm run crowdin:download && node ./scripts/i18n.mjs",
-    "start": "node dist/api/[...route].js",
+    "start": "node dist-server/api/[...route].js",
     "dev": "vite --port 3000 --host 0.0.0.0",
     "build": "vite build && node scripts/build-edge.mjs",
     "build:edge": "node scripts/build-edge.mjs",

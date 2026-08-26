@@ -24,3 +24,9 @@ export function middleware(context) {
 
   return context.next()
 }
+
+// 显式声明匹配所有路由（后端路径在 middleware 内部放行），
+// 避免构建时出现 "Could not find config in middleware file" 警告
+export const config = {
+  matcher: ["/:path*"],
+}

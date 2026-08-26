@@ -1,4 +1,6 @@
 dist/
+dist-server/
+cloud-functions/
 solid-router/
 pnpm-lock.yaml
 .husky
