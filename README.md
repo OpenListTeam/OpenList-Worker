@@ -168,6 +168,7 @@ npm run dev:worker   # wrangler dev
    - 输出目录：`dist`
    - 安装命令：`pnpm install --no-frozen-lockfile`（EdgeOne 会自动读取 `edgeone.json`）。
 3. **存储配置**：无需手动配置。后端使用 `@edgeone/pages-blob` SDK（HTTP API）自动持久化配置数据，避免 KV 命名空间绑定的 Redis RESP 协议崩溃问题。详见 [docs/edgeone.md](docs/edgeone.md)。
+4. **定时任务（可选）**：已内置每天凌晨 2:00 自动刷新网盘 Token 的调度，需在控制台设置 `CRON_SECRET` 环境变量并在 `edgeone.json` 中填入相同值才会生效；不配置则该接口仅接受管理员手动触发。⚠️ 公开 fork 请勿把真实密钥提交进仓库。详见 [docs/edgeone.md · 定时任务](docs/edgeone.md#定时任务与长时任务-schedules)。
 
 ### 方式四：Vercel / 边缘 Serverless
 
