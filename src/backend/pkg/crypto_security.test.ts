@@ -66,6 +66,9 @@ test("Password hashing produces consistent 64-char sha256 output", async () => {
 
 test("getOrInitUsers resets legacy PBKDF2 admin hash so default admin/admin login works", async () => {
   const env: any = {}
+  // 隔离 CI 环境变量：若 CI 设置了 ADMIN_PASSWORD，getOrInitUsers 会优先取
+  // process.env.ADMIN_PASSWORD 而非默认 admin，导致断言失败
+  delete process.env.ADMIN_PASSWORD
   // Simulate leftover from the PBKDF2 build (PR #33 era): stored hash is
   // `pbkdf2:100000:<salt>:<hash>`, unverifiable by the current SHA-256 scheme.
   const fakePdkdf2Hash = `pbkdf2:100000:${"a".repeat(64)}:${"b".repeat(64)}`
