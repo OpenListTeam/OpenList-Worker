@@ -16,7 +16,7 @@ const Index = () => {
   if (announcement && !announcementShown) {
     announcementShown = true
     // 公告弹窗:图标(左) + 公告文字(右,垂直居中),合并为一个 toast
-    // 有公告才弹(图标跟随公告);duration=3000 表示 3 秒后自动收回
+    // 有公告才弹(图标跟随公告);duration=2000 表示 2 秒后自动收回
     // 换行符转为硬换行保持后台换行一致
     notify.render(
       <div style={{ display: "flex", "align-items": "center", gap: "12px" }}>
@@ -29,7 +29,7 @@ const Index = () => {
           <Markdown children={announcement.replace(/\n/g, "  \n")} />
         </div>
       </div>,
-      { duration: 3000 },
+      { duration: 2000 },
     )
   }
   return (
