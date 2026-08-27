@@ -52,9 +52,8 @@ const Index = () => {
           return <Error msg={`System error: ${err}`} h="100vh" />
         }}
       >
-        {/* 通知/公告统一从右下角弹出:右上角(top-end)会遮挡 header 右侧的搜索框(Ctrl K),
-            改为 bottom-end 与搜索框彻底无交集 */}
-        <NotificationsProvider duration={3000} placement="bottom-end">
+        {/* 通知默认右上角;搜索框已通过 header-right z-index(1810) 提层,公告弹出不遮挡 */}
+        <NotificationsProvider duration={3000}>
           <Suspense fallback={<FullScreenLoading />}>
             <App />
           </Suspense>
