@@ -32,9 +32,6 @@ const notify = {
               boxShadow: "$md",
               borderRadius: "$lg",
               padding: "$3",
-              // 默认通知容器在右上角(top-end, top=16px),会挡住 header 右侧的搜索框
-              // 公告 toast 往下推 48px:顶部恰好贴 header 下缘(60px),上移避开搜索框
-              marginTop: "$12",
             }}
           >
             <div

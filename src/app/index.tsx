@@ -52,7 +52,9 @@ const Index = () => {
           return <Error msg={`System error: ${err}`} h="100vh" />
         }}
       >
-        <NotificationsProvider duration={3000}>
+        {/* 通知/公告统一从右下角弹出:右上角(top-end)会遮挡 header 右侧的搜索框(Ctrl K),
+            改为 bottom-end 与搜索框彻底无交集 */}
+        <NotificationsProvider duration={3000} placement="bottom-end">
           <Suspense fallback={<FullScreenLoading />}>
             <App />
           </Suspense>
