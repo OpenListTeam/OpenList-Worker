@@ -33,6 +33,12 @@ const notify = {
               borderRadius: "$lg",
               padding: "$3",
             }}
+            // HopeUI 通知容器在鼠标进入时清除自动关闭定时器(clearCloseDelay),
+            // 鼠标移出才重新计时(closeWithDelay)。公告 toast 与搜索框位置重叠,
+            // 点击搜索框时鼠标停留在 toast 上,导致定时器被清后不再恢复,公告永不关闭。
+            // 这里阻止 mouseenter/mouseleave 冒泡,让公告始终按 duration 自动关闭。
+            onMouseEnter={(e) => e.stopPropagation()}
+            onMouseLeave={(e) => e.stopPropagation()}
           >
             <div
               style={{
