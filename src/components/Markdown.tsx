@@ -190,6 +190,14 @@ async function renderMarkdown(
         code: [
           ["className", /^language-[\w-]+$/, "math-inline", "math-display"],
         ],
+        img: [
+          ...(defaultSchema.attributes?.img || []),
+          "style",
+          "class",
+          "className",
+          "width",
+          "height",
+        ],
       },
     })
 

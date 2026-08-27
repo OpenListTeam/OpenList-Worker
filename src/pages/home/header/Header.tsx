@@ -24,6 +24,8 @@ export const Header = () => {
   const stickyProps = createMemo<CenterProps>(() => {
     switch (local["position_of_header_navbar"]) {
       case "sticky":
+        // 公告 toast 已下移到 header 下方(顶部 64px),header 吸顶时保持常规层级即可,
+        // 不需要高于通知层(1800),避免反向挡住公告的关闭按钮
         return { position: "sticky", zIndex: "$sticky", top: 0 }
       default:
         return { position: undefined, zIndex: undefined, top: undefined }
