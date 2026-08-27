@@ -32,6 +32,9 @@ const notify = {
               boxShadow: "$md",
               borderRadius: "$lg",
               padding: "$3",
+              // 公告 toast 下移 48px:顶部从 16px 移到 64px,低于 header(60px),
+              // 与右上角搜索框零重叠,关闭按钮和搜索框都能正常点击
+              marginTop: "$12",
             }}
             // HopeUI 通知容器在鼠标进入时清除自动关闭定时器(clearCloseDelay),
             // 鼠标移出才重新计时(closeWithDelay)。公告 toast 与搜索框位置重叠,

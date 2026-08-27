@@ -24,9 +24,9 @@ export const Header = () => {
   const stickyProps = createMemo<CenterProps>(() => {
     switch (local["position_of_header_navbar"]) {
       case "sticky":
-        // header 吸顶时需自身 z-index 高于通知层(1800),否则 header 创建低层叠上下文,
-        // 内部 header-right 的 1810 会被限制,无法浮到公告之上
-        return { position: "sticky", zIndex: 1810, top: 0 }
+        // 公告 toast 已下移到 header 下方(顶部 64px),header 吸顶时保持常规层级即可,
+        // 不需要高于通知层(1800),避免反向挡住公告的关闭按钮
+        return { position: "sticky", zIndex: "$sticky", top: 0 }
       default:
         return { position: undefined, zIndex: undefined, top: undefined }
     }
@@ -55,13 +55,7 @@ export const Header = () => {
               fallback={<CenterLoading />}
             />
           </HStack>
-          {/* header-right 提层(z-index 1810 > 通知层 1800):公告 toast 弹出时搜索框仍可点击 */}
-          <HStack
-            class="header-right"
-            spacing="$2"
-            position="relative"
-            zIndex={1810}
-          >
+          <HStack class="header-right" spacing="$2">
             <Show when={objStore.state === State.Folder}>
               <Show when={getSetting("search_index") !== "none"}>
                 <HStack
