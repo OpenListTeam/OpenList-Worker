@@ -657,26 +657,19 @@ export class S3Client {
     const expireSeconds = Math.max(60, Math.floor(signUrlExpireHours * 3600))
     const rawS3Url = this.getUrl(cleanKey)
 
-    // Build custom query params (e.g. response-content-disposition)
-    const customQueryParams: Record<string, string> = {}
-    if (!customHost) {
-      let disposition = `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
-      if (addFilenameToDisposition) {
-        disposition = `attachment; filename="${encodeURIComponent(fileName)}"; filename*=UTF-8''${encodeURIComponent(fileName)}`
-      }
-      customQueryParams["response-content-disposition"] = disposition
-    }
-
     if (customHost) {
       if (enableCustomHostPresign) {
-        let presigned = await presignS3Url({
+        // Presign using the original S3 URL, then replace host.
+        // Do NOT include response-content-disposition in presigned URLs:
+        // many S3-compatible services (Cloudflare R2, etc.) reject such
+        // parameters with HTTP 403.
+        const presigned = await presignS3Url({
           url: rawS3Url,
           region: this.region,
           accessKeyId: this.accessKeyId,
           secretAccessKey: this.secretAccessKey,
           sessionToken: this.sessionToken,
           expiresInSeconds: expireSeconds,
-          customQueryParams,
         })
 
         const presignedUrl = new URL(presigned)
@@ -728,7 +721,17 @@ export class S3Client {
       }
     }
 
-    // Default presigned URL
+    // Default presigned URL.
+    // Only add response-content-disposition when there is no custom host,
+    // as many S3-compatible services return HTTP 403 when this parameter is
+    // present in a presigned URL.
+    const customQueryParams: Record<string, string> = {}
+    if (addFilenameToDisposition) {
+      const encoded = encodeURIComponent(fileName)
+      customQueryParams["response-content-disposition"] =
+        `attachment; filename="${encoded}"; filename*=UTF-8''${encoded}`
+    }
+
     const presigned = await presignS3Url({
       url: rawS3Url,
       region: this.region,
@@ -736,7 +739,9 @@ export class S3Client {
       secretAccessKey: this.secretAccessKey,
       sessionToken: this.sessionToken,
       expiresInSeconds: expireSeconds,
-      customQueryParams,
+      customQueryParams: Object.keys(customQueryParams).length
+        ? customQueryParams
+        : undefined,
     })
 
     return { url: presigned }

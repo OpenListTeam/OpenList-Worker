@@ -164,8 +164,17 @@ export async function signS3Headers(
   const signedHeaders = sortedHeaderKeys.join(";")
 
   // Canonical URI
-  const pathname = parsedUrl.pathname || "/"
-  const canonicalUri = rfc3986UriEncode(pathname, false)
+  // parsedUrl.pathname is already percent-encoded by the URL constructor
+  // (e.g. Chinese characters → %E5%B1%8F…). We must decode it first to
+  // avoid double-encoding (%→%25) which would produce a wrong signature.
+  const rawPathname = parsedUrl.pathname || "/"
+  let decodedPathname: string
+  try {
+    decodedPathname = decodeURIComponent(rawPathname)
+  } catch {
+    decodedPathname = rawPathname
+  }
+  const canonicalUri = rfc3986UriEncode(decodedPathname, false)
 
   // Canonical Query String
   const queryParams: [string, string][] = []
@@ -262,8 +271,15 @@ export async function presignS3Url(opts: PresignUrlOptions): Promise<string> {
     parsedUrl.searchParams.set(k, v)
   }
 
-  const pathname = parsedUrl.pathname || "/"
-  const canonicalUri = rfc3986UriEncode(pathname, false)
+  // Same double-encoding fix as in signS3Headers: decode first.
+  const rawPathname2 = parsedUrl.pathname || "/"
+  let decodedPathname2: string
+  try {
+    decodedPathname2 = decodeURIComponent(rawPathname2)
+  } catch {
+    decodedPathname2 = rawPathname2
+  }
+  const canonicalUri = rfc3986UriEncode(decodedPathname2, false)
 
   const queryParams: [string, string][] = []
   parsedUrl.searchParams.forEach((val, key) => {
