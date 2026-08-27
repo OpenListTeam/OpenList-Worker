@@ -11,8 +11,16 @@ import {
 import { JSXElement } from "solid-js"
 import { alphaBgColor, firstUpperCase } from "."
 
+// 轻量配置类型:仅暴露 render 用到的可选项
+type NotifyConfig = {
+  duration?: number
+  persistent?: boolean
+  closable?: boolean
+  onClose?: (id: string) => void
+}
+
 const notify = {
-  render: (element: JSXElement) => {
+  render: (element: JSXElement, config?: NotifyConfig) => {
     notificationService.show({
       render: (props) => {
         return (
@@ -49,6 +57,7 @@ const notify = {
           </Box>
         )
       },
+      ...config,
     })
   },
   success: (message: string) => {
