@@ -198,6 +198,15 @@ export const globalStyles = globalCss({
       },
     },
   },
+  // 通知列表容器(fixed 定位)从 top:16px 延伸到 toast 底部,透明但拦截点击,
+  // 会吃掉 header 右侧搜索框区域的点击。容器 pointer-events:none,
+  // 仅 toast 内容(含关闭按钮)可交互,透明区域不再挡搜索框。
+  ".hope-notification__list": {
+    pointerEvents: "none",
+    "& > *": {
+      pointerEvents: "auto",
+    },
+  },
 })
 
 export { theme }
