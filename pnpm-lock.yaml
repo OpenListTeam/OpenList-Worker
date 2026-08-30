@@ -17,9 +17,6 @@ importers:
       '@embedpdf/snippet':
         specifier: ^2.14.4
         version: 2.14.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(svelte@5.56.8)(vue@3.5.40(typescript@5.9.3))
-      '@hono/node-server':
-        specifier: ^2.0.8
-        version: 2.1.0(hono@4.13.0)
       '@hono/vite-dev-server':
         specifier: ^0.26.1
         version: 0.26.1(hono@4.13.0)(miniflare@3.20250718.3)(wrangler@4.118.0)
@@ -89,9 +86,6 @@ importers:
       docx-preview:
         specifier: ^0.3.7
         version: 0.3.7
-      dotenv:
-        specifier: ^17.4.2
-        version: 17.4.2
       handlebars:
         specifier: ^4.7.9
         version: 4.7.9
@@ -1436,12 +1430,6 @@ packages:
     peerDependencies:
       hono: ^4
 
-  '@hono/node-server@2.1.0':
-    resolution: {integrity: sha512-XovyyCCnBzW+zKu+z/zq8hwNs4KOR5rEMAOxo2f40Q5xoOI37IMm6MIg2COOUtUApo0i6850MTBKH2u4QLGIqg==}
-    engines: {node: '>=20'}
-    peerDependencies:
-      hono: ^4
-
   '@hono/vite-dev-server@0.26.1':
     resolution: {integrity: sha512-OlcWoXjNogKiJhVwV/ftMK87UcsJmIBfmImSdI4e8to/ZdwNHrW9ddKw2OGHjXI5/uS2RaZr+2y+l8T9VFbCmw==}
     engines: {node: '>=18.14.1'}
@@ -2673,10 +2661,6 @@ packages:
 
   domutils@2.8.0:
     resolution: {integrity: sha512-w96Cjofp72M5IIhpjgobBimYEfoPjx1Vx0BSX9P30WBdZW2WIKU0T1Bd0kz2eNZ9ikjKgHbEyKx8BB6H1L3h3A==}
-
-  dotenv@17.4.2:
-    resolution: {integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==}
-    engines: {node: '>=12'}
 
   dunder-proto@1.0.1:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
@@ -5465,10 +5449,6 @@ snapshots:
     dependencies:
       hono: 4.13.0
 
-  '@hono/node-server@2.1.0(hono@4.13.0)':
-    dependencies:
-      hono: 4.13.0
-
   '@hono/vite-dev-server@0.26.1(hono@4.13.0)(miniflare@3.20250718.3)(wrangler@4.118.0)':
     dependencies:
       '@hono/node-server': 1.19.17(hono@4.13.0)
@@ -6698,8 +6678,6 @@ snapshots:
       dom-serializer: 1.4.1
       domelementtype: 2.3.0
       domhandler: 4.3.1
-
-  dotenv@17.4.2: {}
 
   dunder-proto@1.0.1:
     dependencies:
