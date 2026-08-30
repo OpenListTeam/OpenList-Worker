@@ -14,7 +14,7 @@ OpenListNext 是一个基于 **SolidJS** + **Hono** + **TypeScript** 的现代�
   - [快速起步](#快速起步)
   - [常用脚本](#常用脚本)
 - [核心架构与开发规范](#-核心架构与开发规范)
-  - [全栈纯 Web 标准与边缘兼容（重要）](#全栈纯-web-标准与边缘兼容重要)
+  - [全栈 Web 标准优先与边缘兼容（重要）](#全栈-web-标准优先与边缘兼容重要)
   - [添加新的存储驱动 (Storage Driver)](#添加新的存储驱动-storage-driver)
   - [前端开发规范 (SolidJS)](#前端开发规范-solidjs)
   - [国际化翻译 (i18n)](#国际化翻译-i18n)
@@ -123,7 +123,7 @@ openlistnext/
 │   └── utils/             # 前端工具函数
 ```
 
-### 全栈纯 Web 标准与边缘兼容（重要）
+### 全栈 Web 标准优先与边缘兼容（重要）
 
 OpenListNext 的后端设计目标是**跨平台与边缘原生**（既能在 Node.js 容器运行，也能部署在 Cloudflare Workers、Vercel、AWS Lambda 等边缘无服务器环境）：
 
@@ -132,6 +132,7 @@ OpenListNext 的后端设计目标是**跨平台与边缘原生**（既能在 No
 2. **禁止在通用后端直接引入 Node.js 独占模块**：
    - 禁止在 `src/backend/server/` 或通用驱动中静态引入 `fs`、`path`、`net`、`child_process` 等 Node 原生包。
    - 如需仅限 Node.js 容器的功能（如本地文件系统驱动 `LocalDriver`），必须使用动态导入 `await import(...)` 并做好运行环境检测隔离。
+   - 依赖 Node 原生二进制的驱动（当前为 `sftp` / `ftp`）会在边缘构建阶段被 [`scripts/build-edge.mjs`](../scripts/build-edge.mjs) 的 `emptyNodeDriverPlugin` 替换为空实现（构造时抛错）。**新增此类驱动时，必须同步把驱动目录与相关原生包加入该插件的依赖过滤规则**，否则边缘平台会因缺少 `.node` 文件 loader 而打包失败。
 3. **数据持久化适配**：
    - 核心数据操作通过模型层抽象，支持 **Cloudflare KV**（边缘环境）与 **JSON 文件**（Node.js 容器环境）无缝适配。
 

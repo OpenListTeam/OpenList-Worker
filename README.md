@@ -36,7 +36,7 @@ OpenListNext 是 [OpenList](https://github.com/OpenListTeam/OpenList) 的定制�
 - 🌙 黑暗模式、国际化（中 / 英）
 - 🔐 JWT 认证、密码保护、后台管理
 - ☁️ 多网盘驱动：夸克网盘、阿里云盘、Google Drive、OneDrive、百度网盘、123 云盘、本地文件系统
-- ⚡ 边缘部署：Cloudflare Workers / Vercel / Serverless 开箱即用
+- ⚡ 边缘部署：Cloudflare Workers / Vercel / Serverless 开箱即用（SFTP / FTP 等 Node 专属驱动除外，见 [核心设计](#核心设计)）
 
 ---
 
@@ -50,7 +50,7 @@ OpenListNext 是 [OpenList](https://github.com/OpenListTeam/OpenList) 的定制�
                        │ HTTP /api
 ┌──────────────────────▼──────────────────────────────┐
 │                    后端 (Hono)                       │
-│  Hono 4 · TypeScript · 无 Node.js 依赖（纯 Web 标准）│
+│  Hono 4 · TypeScript · Web 标准优先（fetch / Streams）│
 │  ├── /api/fs     文件操作（列表/上传/下载/管理）      │
 │  ├── /api/auth   JWT 认证                            │
 │  ├── /api/admin  后台管理（存储/用户/元数据/分享）    │
@@ -76,7 +76,8 @@ OpenListNext 是 [OpenList](https://github.com/OpenListTeam/OpenList) 的定制�
 | 设计点               | 说明                                                                                            |
 | -------------------- | ----------------------------------------------------------------------------------------------- |
 | **全栈 TypeScript**  | 前端与后端同语言，类型共享，无 Go 编译链                                                        |
-| **纯 Web 标准**      | 后端只用 `fetch` / `Web Crypto` / `ReadableStream`，无 `fs` / `http` 等 Node.js 模块            |
+| **Web 标准优先**     | 后端主体只用 `fetch` / `Web Crypto` / `ReadableStream`，不依赖 `fs` / `http` 等 Node.js 模块    |
+| **Node 专属驱动**    | SFTP / FTP 依赖 `ssh2`、`node:net` 等 Node 模块，边缘构建时替换为空实现，仅完整 Node 环境可用   |
 | **驱动抽象**         | 统一的 `StorageDriver` 接口（list/get/mkdir/rename/remove/move/copy），接入新网盘只需实现一个类 |
 | **多平台运行**       | 同一套代码可部署到 Node.js 容器、Cloudflare Workers、Vercel、AWS Lambda                         |
 | **JSON / KV 持久化** | 配置、存储、用户、分享、任务全部存 JSON（容器）或 KV（边缘），无数据库依赖                      |
