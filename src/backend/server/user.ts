@@ -1,6 +1,6 @@
 import { Hono } from "hono"
 import { getDb, saveDb } from "../internal/model/db"
-import { hashPassword } from "./auth"
+import { hashPassword, generateRandomPassword } from "./auth"
 import { verify } from "hono/jwt"
 import { getJwtSecret } from "./middlewares"
 import { listUserSshKeys, deleteUserSshKey } from "../internal/op/sshkey"
@@ -94,7 +94,16 @@ userRouter.post("/create", async (c) => {
   )
   const newId = maxId + 1
 
-  const plainPassword = body.password || "123456"
+  // FIX(F-11): "123456" as a silent fallback meant every user created without
+  // an explicit password shipped with a guessable one. When no password is
+  // given, generate a random one and hand it back to the admin caller once —
+  // it is never stored or logged in plaintext.
+  let plainPassword: string = body.password || ""
+  let generatedPassword: string | null = null
+  if (!plainPassword) {
+    generatedPassword = generateRandomPassword()
+    plainPassword = generatedPassword
+  }
   const hashedPassword = await hashPassword(plainPassword)
 
   const newUser = {
@@ -114,7 +123,13 @@ userRouter.post("/create", async (c) => {
   db.users.push(newUser)
   await saveDb(db, c.env)
 
-  return c.json({ code: 200, message: "success", data: null })
+  return c.json({
+    code: 200,
+    message: generatedPassword
+      ? "success (a random password was generated — pass one explicitly to choose your own)"
+      : "success",
+    data: generatedPassword ? { password: generatedPassword } : null,
+  })
 })
 
 // POST /api/admin/user/update

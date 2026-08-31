@@ -15,12 +15,24 @@ export interface ShareResolveResult {
   virtualList?: boolean
 }
 
-const normalize = (p: string) =>
-  "/" +
-  String(p || "")
-    .split("/")
-    .filter(Boolean)
-    .join("/")
+// FIX(C-3): the old implementation only did filter(Boolean), so ".." segments
+// survived verbatim and `/@s/{id}/../../../` escalated a single-file share
+// into browsing the entire storage root (verified at runtime).
+// Backslashes are normalized first for the same reason as resolvePath (C-2).
+const normalize = (p: string) => {
+  const stack: string[] = []
+  for (const seg of String(p || "")
+    .replace(/\\/g, "/")
+    .split("/")) {
+    if (seg === "" || seg === ".") continue
+    if (seg === "..") {
+      stack.pop() // clamp at the share root instead of escaping upward
+      continue
+    }
+    stack.push(seg)
+  }
+  return "/" + stack.join("/")
+}
 
 /**
  * Resolve a share request path.
@@ -80,11 +92,19 @@ export async function resolveShare(
     return { ok: true, share, virtualList: true }
   }
 
-  // Single-file share
+  // FIX(C-3): containment check. Whatever normalize() produces, the result
+  // must stay inside one of the explicitly shared paths.
+  const allowedRoots: string[] = (share.files || []).map((f: string) =>
+    normalize(f),
+  )
+  const withinShare = (p: string) =>
+    allowedRoots.some((a) => p === a || p.startsWith(a === "/" ? "/" : a + "/"))
+
+  // Single-file share: one file has no sub-paths, so trailing segments are
+  // always suspicious — reject instead of concatenating them.
   if (share.files.length === 1) {
-    const base = normalize(share.files[0])
-    const real = normalize([base, ...rest].join("/"))
-    return { ok: true, share, realPath: real }
+    if (rest.length > 0) return { ok: false, error: "path not found in share" }
+    return { ok: true, share, realPath: normalize(share.files[0]) }
   }
 
   // Multi-file share, sub-path: match by basename
@@ -95,6 +115,7 @@ export async function resolveShare(
   })
   if (!match) return { ok: false, error: "path not found in share" }
   const real = normalize([normalize(match), ...rest.slice(1)].join("/"))
+  if (!withinShare(real)) return { ok: false, error: "path not found in share" }
   return { ok: true, share, realPath: real }
 }
 

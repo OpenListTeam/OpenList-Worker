@@ -93,9 +93,45 @@ publicRouter.get("/settings", async (c) => {
     non_efs_zip_encoding: "UTF-8",
   }
 
+  // FIX(C-1 / F-14): explicit allowlist — this endpoint is unauthenticated.
+  //
+  // History: the handler used to echo every settings key, which leaked the
+  // admin static API token (a match in isStaticApiToken() grants FULL admin).
+  // An interim fix blocked credential-shaped keys with a regex; this upgrade
+  // inverts the default so unknown keys fail closed: only keys listed here
+  // are ever public. The list = the display defaults above + every key the
+  // frontend actually reads (verified by scanning src/ for getSetting() /
+  // settings["..."] usage — no dynamic key access exists; plugins read
+  // settings through the admin endpoint instead).
+  //
+  // To publish a new setting, add its key here deliberately. Note the legacy
+  // `Flag.PUBLIC/PRIVATE` field on setting items is NOT used as the boundary:
+  // the `token` item carries flag:0 (it was meant as the 115/PikPak/Thunder
+  // driver token, which collides with the admin API token key) — so that
+  // field cannot be trusted as a security signal.
+  const PUBLIC_SETTING_KEYS = new Set([
+    ...Object.keys(settingsObj),
+    // Keys read by the frontend beyond the defaults above:
+    "audio_cover",
+    "home_container",
+    "ldap_login_tips",
+    "search_index",
+    "settings_layout",
+    "share_icon",
+    "share_summary_content",
+    "sso_login_platform",
+  ])
+
+  // Second line of defense: even if a credential-shaped key is ever added to
+  // the allowlist above by mistake, still refuse to echo it.
+  const SENSITIVE_KEY =
+    /(secret|password|passwd|pwd|cookie|token|credential|private[_-]?key|api[_-]?key|access[_-]?key|jwt|salt|signature|webhook)/i
+
   // Override with user-configured settings from database
   db.settings.forEach((s: any) => {
     if (s.key && s.value !== undefined) {
+      if (!PUBLIC_SETTING_KEYS.has(s.key)) return
+      if (SENSITIVE_KEY.test(s.key)) return
       settingsObj[s.key] = s.value
       // Handle legacy key alias
       if (s.key === "site_title") {

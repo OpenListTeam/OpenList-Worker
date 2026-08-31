@@ -76,17 +76,41 @@ export async function hashPassword(plainPassword: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
 }
 
+/**
+ * 16 random bytes as hex — used whenever a password must exist but no
+ * explicit one was provided. Never use a constant fallback instead.
+ */
+export function generateRandomPassword(): string {
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+}
+
 // Ensure admin user exists in DB KV space with a default password if unset
 export async function getOrInitUsers(envCtx: any) {
   const db = await getDb(envCtx)
   if (!db.users || db.users.length === 0) {
-    // 默认管理员密码：优先环境变量 ADMIN_PASSWORD（推荐 `wrangler secret put`），
-    // 未配置时使用默认 admin（AList 兼容），首次登录后应立即修改。
+    // FIX(F-11): a fresh deployment must never start with a well-known
+    // password. ADMIN_PASSWORD (wrangler secret / platform env) takes
+    // precedence; without it a random password is generated and printed to
+    // the startup log once — the same pattern Jenkins/GitLab use for their
+    // initial admin credentials.
     const envPass =
       (envCtx && envCtx.ADMIN_PASSWORD) ||
       (typeof process !== "undefined" ? process.env?.ADMIN_PASSWORD : "") ||
       ""
-    const defaultAdminHash = await hashPassword(envPass || "admin")
+    let initialPassword = envPass
+    if (!initialPassword) {
+      initialPassword = generateRandomPassword()
+      console.warn(
+        "[SECURITY] No ADMIN_PASSWORD configured — generated a random initial admin password. " +
+          "Copy it from the next log line, log in, and change it immediately. It is not printed again.",
+      )
+      console.log(`[SECURITY] Initial admin password: ${initialPassword}`)
+    }
+    const defaultAdminHash = await hashPassword(initialPassword)
     db.users = [
       {
         id: 1,
@@ -116,19 +140,42 @@ export async function getOrInitUsers(envCtx: any) {
     await saveDb(db, envCtx)
   } else {
     const adminUser = db.users.find((u: any) => u.username === "admin")
-    // 密码为空，或不是当前 64 位 hex SHA-256 格式（例如上一个版本遗留的
-    // PBKDF2 哈希 `pbkdf2:100000:...`，当前校验无法验证）时，重置为默认密码，
-    // 使新部署/旧版本残留都能用默认凭据登录。正常 64 位 hex 密码不受影响。
+    // FIX(F-11): the old logic silently reset any non-64-hex password (e.g. a
+    // legacy PBKDF2 hash) back to admin/admin — meaning a routine upgrade
+    // could quietly reopen the admin account to the world. New behavior:
+    //   ADMIN_PASSWORD set -> explicit reset to that value (operator intent)
+    //   password empty    -> random password, printed once to the log
+    //   legacy-format     -> LEFT UNTOUCHED, only a warning is logged, so an
+    //                        existing deployment is never locked out nor
+    //                        silently reset by upgrading.
     const adminPass = adminUser ? String(adminUser.password || "").trim() : ""
     const isValidFormat = /^[0-9a-f]{64}$/i.test(adminPass)
-    if (adminUser && (!adminPass || !isValidFormat)) {
+    if (adminUser && !isValidFormat) {
       const envPass =
         (envCtx && envCtx.ADMIN_PASSWORD) ||
         (typeof process !== "undefined" ? process.env?.ADMIN_PASSWORD : "") ||
         ""
-      adminUser.password = await hashPassword(envPass || "admin")
-      adminUser.pwd_update_at = new Date().toISOString()
-      await saveDb(db, envCtx)
+      if (envPass) {
+        adminUser.password = await hashPassword(envPass)
+        adminUser.pwd_update_at = new Date().toISOString()
+        await saveDb(db, envCtx)
+      } else if (!adminPass) {
+        const random = generateRandomPassword()
+        console.warn(
+          "[SECURITY] Admin password is empty and no ADMIN_PASSWORD is set — generated a random one. " +
+            "Copy it from the next log line and change it after login. It is not printed again.",
+        )
+        console.log(`[SECURITY] New admin password: ${random}`)
+        adminUser.password = await hashPassword(random)
+        adminUser.pwd_update_at = new Date().toISOString()
+        await saveDb(db, envCtx)
+      } else {
+        console.warn(
+          "[SECURITY] Admin password uses a legacy hash format this build cannot verify; " +
+            "it has been left untouched. Log in with your existing password and re-set it, " +
+            "or set ADMIN_PASSWORD to force a reset. It will NOT be reset to a default value.",
+        )
+      }
     }
   }
   return { db, users: db.users }

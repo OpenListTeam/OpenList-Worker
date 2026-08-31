@@ -878,6 +878,11 @@ fsRouter.post("/other", async (c) => {
       400,
     )
   }
+  // FIX(H-8): `other` is a driver-specific privileged entry point. S3 uses it
+  // to mint presigned direct-upload URLs (s3/driver.ts:371-378), which is a
+  // write — it must obey the same gate as /fs/put. Without this, a guest could
+  // obtain a direct-upload URL and bypass the upload permission check.
+  if (!canWrite(user)) return permissionDenied(c)
   try {
     const resolved = await resolvePath(reqPath)
     if (resolved.isVirtual || !resolved.storage) {

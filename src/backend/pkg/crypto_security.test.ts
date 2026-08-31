@@ -64,10 +64,10 @@ test("Password hashing produces consistent 64-char sha256 output", async () => {
   assert.equal(hash.length, 64)
 })
 
-test("getOrInitUsers resets legacy PBKDF2 admin hash so default admin/admin login works", async () => {
+test("getOrInitUsers preserves a legacy PBKDF2 admin hash instead of silently resetting to admin/admin", async () => {
   const env: any = {}
   // 隔离 CI 环境变量：若 CI 设置了 ADMIN_PASSWORD，getOrInitUsers 会优先取
-  // process.env.ADMIN_PASSWORD 而非默认 admin，导致断言失败
+  // process.env.ADMIN_PASSWORD，导致断言失败
   delete process.env.ADMIN_PASSWORD
   // Simulate leftover from the PBKDF2 build (PR #33 era): stored hash is
   // `pbkdf2:100000:<salt>:<hash>`, unverifiable by the current SHA-256 scheme.
@@ -101,10 +101,19 @@ test("getOrInitUsers resets legacy PBKDF2 admin hash so default admin/admin logi
     env,
   )
 
+  // FIX(F-11): this test used to assert the OPPOSITE — that the legacy hash
+  // was reset so that admin/admin could log in. That "upgrade reopens the
+  // admin account to a well-known password" behavior was itself a
+  // vulnerability; the fix deliberately preserves an unverifiable legacy
+  // hash (with a warning logged) and never falls back to a default.
   const { users } = await getOrInitUsers(env)
   const admin = users.find((u: any) => u.username === "admin")
-  assert.match(admin.password, /^[0-9a-f]{64}$/i)
-  assert.equal(admin.password, await hashPassword("admin"))
+  assert.equal(
+    admin.password,
+    fakePdkdf2Hash,
+    "a legacy-format hash must be preserved, never silently reset",
+  )
+  assert.notEqual(admin.password, await hashPassword("admin"))
 
   const app = new Hono()
   app.route("/api/auth", authRouter)
@@ -113,12 +122,9 @@ test("getOrInitUsers resets legacy PBKDF2 admin hash so default admin/admin logi
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username: "admin", password: "admin" }),
   })
-  assert.equal(res.status, 200, "admin/admin should log in after hash reset")
-  const json: any = await res.json()
-  assert.equal(json.code, 200)
-  assert.ok(json.data?.token, "login should return a JWT token")
-
-  const db = await getDb()
-  const storedAdmin = (db.users || []).find((u: any) => u.username === "admin")
-  assert.equal(storedAdmin.password, await hashPassword("admin"))
+  assert.notEqual(
+    res.status,
+    200,
+    "admin/admin must NOT log in against a preserved legacy hash",
+  )
 })
