@@ -35,7 +35,7 @@ OpenListNext 是 [OpenList](https://github.com/OpenListTeam/OpenList) 的定制�
 - 🔗 文件永久链接、直链下载、分享链接（含提取码）
 - 🌙 黑暗模式、国际化（中 / 英）
 - 🔐 JWT 认证、密码保护、后台管理
-- ☁️ 多网盘驱动：夸克网盘、阿里云盘、Google Drive、OneDrive、百度网盘、123 云盘、本地文件系统
+- ☁️ 34 种网盘驱动：夸克网盘、阿里云盘、百度网盘、123 云盘、天翼云盘、OneDrive、Google Drive、Dropbox、115 网盘、PikPak、迅雷、腾讯微云、189 云盘、又拍云、S3、WebDAV、SMB、FTP、SFTP、GitHub、本地文件系统等
 - ⚡ 边缘部署：Cloudflare Workers / Vercel / Serverless 开箱即用（SFTP / FTP 等 Node 专属驱动除外，见 [核心设计](#核心设计)）
 
 ---
@@ -57,13 +57,14 @@ OpenListNext 是 [OpenList](https://github.com/OpenListTeam/OpenList) 的定制�
 │  ├── /api/share  分享管理                            │
 │  ├── /api/task   任务管理                            │
 │  ├── /api/raw · /d · /p · /sd  下载与代理            │
-│  └── /api/mcp    MCP 协议支持                        │
+│  ├── /api/mcp    MCP 协议支持                        │
+│  └── /healthz    就绪探针（检查 KV 持久化状态）      │
 └──────────────────────┬──────────────────────────────┘
                        │ 存储驱动接口 (StorageDriver)
 ┌──────────────────────▼──────────────────────────────┐
-│     存储驱动层：Local · Quark · AliyundriveOpen ·    │
-│           GoogleDrive · Onedrive · BaiduNetdisk      │
-│                   · 123Pan                           │
+│     存储驱动层：Local · Quark · Aliyundrive · OneDrive ·    │
+│           GoogleDrive · BaiduNetdisk · 123Pan · S3 ·       │
+│        WebDAV · SFTP · FTP · SMB · PikPak · 189 · ...     │
 └──────────────────────┬──────────────────────────────┘
                        │ 持久化
         ┌──────────────┴───────────────┐
@@ -80,7 +81,7 @@ OpenListNext 是 [OpenList](https://github.com/OpenListTeam/OpenList) 的定制�
 | **Node 专属驱动**    | SFTP / FTP 依赖 `ssh2`、`node:net` 等 Node 模块，边缘构建时替换为空实现，仅完整 Node 环境可用   |
 | **驱动抽象**         | 统一的 `StorageDriver` 接口（list/get/mkdir/rename/remove/move/copy），接入新网盘只需实现一个类 |
 | **多平台运行**       | 同一套代码可部署到 Node.js 容器、Cloudflare Workers、Vercel、AWS Lambda                         |
-| **JSON / KV 持久化** | 配置、存储、用户、分享、任务全部存 JSON（容器）或 KV（边缘），无数据库依赖                      |
+| **JSON / KV 持久化** | 配置、存储、用户、分享、任务全部存 JSON（本地）或 KV（边缘），无数据库依赖                      |
 
 ---
 
@@ -88,7 +89,7 @@ OpenListNext 是 [OpenList](https://github.com/OpenListTeam/OpenList) 的定制�
 
 ### 环境要求
 
-- Node.js 18+（推荐 20+）
+- Node.js 18+（推荐 22+）
 - 包管理器：`pnpm`（推荐）或 `npm`
 
 ### 安装依赖
@@ -107,14 +108,23 @@ npm run dev
 
 同时启动后端 API 与 Vite 前端开发服务器，访问 `http://localhost:3000`。
 
-### 管理凭据（默认）
+### 管理凭据
 
-| 项     | 值      |
-| ------ | ------- |
-| 用户名 | `admin` |
-| 密码   | `admin` |
+| 项     | 值       |
+| ------ | -------- |
+| 用户名 | `admin`  |
+| 密码   | 随机生成 |
 
-> ⚠️ 首次部署后请务必在「用户管理」中修改默认密码。
+首次启动时，如果没有配置 `ADMIN_PASSWORD` 环境变量，系统会生成一个随机密码并打印到启动日志。请查看日志获取初始密码，登录后立即修改。
+
+可通过环境变量预设密码（推荐）：
+
+```bash
+# Cloudflare Workers
+npx wrangler secret put ADMIN_PASSWORD
+
+# EdgeOne：在控制台环境变量中设置 ADMIN_PASSWORD
+```
 
 ### 本地文件系统（Mock / Local FS）
 
@@ -124,19 +134,7 @@ npm run dev
 
 ## 📦 部署方法
 
-### 方式一：Node.js 容器（Docker / 裸机）
-
-```bash
-# 生产构建（前端静态资源 + 后端 Serverless 入口）
-npm run build
-
-# 启动生产服务（内置 Hono 后端 + 静态资源）
-npm run start
-```
-
-容器内将 `public_data/` 挂载为数据卷即可持久化。
-
-### 方式二：Cloudflare Workers（推荐，免费边缘部署）
+### 方式一：Cloudflare Workers（推荐，免费边缘部署）
 
 项目内置 [wrangler.toml](wrangler.toml) 与 [部署指南](docs/deploy-cloudflare-workers.md)。
 
@@ -159,19 +157,13 @@ npm run dev:worker   # wrangler dev
 
 部署完成后静态资源由 Workers 的 `ASSETS` binding 托管，API 由 Hono 后端处理，配置数据持久化在 KV 中。
 
-### 方式三：腾讯云 EdgeOne Makers / EdgeOne Pages
+### 方式二：腾讯云 EdgeOne Makers / EdgeOne Pages
 
-项目原生内置 `edgeone.json` 与 EdgeOne 边缘函数适配器：
+1. **导入项目**：在 [EdgeOne Makers 控制台](https://edgeone.ai/) 新建项目，关联 GitHub 仓库。控制台会自动读取项目根目录的 `edgeone.json`，无需手动配置构建命令。
+2. **存储配置**：无需手动配置。后端使用 `@edgeone/pages-blob` SDK 自动持久化。详见 [docs/edgeone.md](docs/edgeone.md)。
+3. **定时任务（可选）**：已内置每天凌晨 2:00 自动刷新网盘 Token，需在控制台设置 `CRON_SECRET` 环境变量。⚠️ 公开 fork 请勿提交真实密钥。详见 [docs/edgeone.md](docs/edgeone.md#定时任务与长时任务-schedules)。
 
-1. **导入项目**：在腾讯云 [EdgeOne Makers 控制台](https://edgeone.ai/) 新建项目，关联 GitHub 仓库或直接上传项目代码。
-2. **构建配置**：
-   - 构建命令：`pnpm run build` 或 `npm run build`
-   - 输出目录：`dist`
-   - 安装命令：`pnpm install --no-frozen-lockfile`（EdgeOne 会自动读取 `edgeone.json`）。
-3. **存储配置**：无需手动配置。后端使用 `@edgeone/pages-blob` SDK（HTTP API）自动持久化配置数据，避免 KV 命名空间绑定的 Redis RESP 协议崩溃问题。详见 [docs/edgeone.md](docs/edgeone.md)。
-4. **定时任务（可选）**：已内置每天凌晨 2:00 自动刷新网盘 Token 的调度，需在控制台设置 `CRON_SECRET` 环境变量并在 `edgeone.json` 中填入相同值才会生效；不配置则该接口仅接受管理员手动触发。⚠️ 公开 fork 请勿把真实密钥提交进仓库。详见 [docs/edgeone.md · 定时任务](docs/edgeone.md#定时任务与长时任务-schedules)。
-
-### 方式四：Vercel / 边缘 Serverless
+### 方式三：Vercel / 边缘 Serverless
 
 ```bash
 # 构建（输出 dist-server/api/[...route].js Serverless 入口）
@@ -180,11 +172,9 @@ npm run build
 # 由 Vercel 识别 vercel.json 自动部署
 ```
 
-`api/[...route].ts` 导出 Vercel 规范句柄（`GET/POST/...`）与 EdgeOne `onRequest` 句柄，`edge-functions/[[default]].ts` 导出 EdgeOne Makers 边缘函数，`handler.ts` 导出 AWS Lambda 句柄，`wrangler.toml` 配置 Cloudflare Workers。
+`api/[...route].ts` 导出 Vercel Serverless 句柄（`GET/POST/...`）、EdgeOne `onRequest` 句柄与 Cloudflare Workers 原生 `fetch` 句柄，`handler.ts` 导出 AWS Lambda 句柄，`wrangler.toml` 配置 Cloudflare Workers。
 
----
-
-### 方式五：阿里云ESA边缘安全加速
+### 方式四：阿里云 ESA 边缘安全加速
 
 1. **创建KV存储**：在阿里云ESA边缘安全加速(https://esa.console.aliyun.com/)主页/边缘计算和 AI/KV 存储中创建存储空间名称随意例如`openlistnext`。
 2. **导入项目**：在阿里云ESA边缘安全加速(https://esa.console.aliyun.com/)主页/边缘计算和 AI/函数和 Pages中创建导入GitHub仓库。

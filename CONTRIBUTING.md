@@ -61,7 +61,7 @@ OpenListNext 是一个基于 **SolidJS** + **Hono** + **TypeScript** 的现代�
 
 ### 环境要求
 
-- **Node.js**：`>= 18.0.0`（推荐 `20.x` 或 `24.x`）
+- **Node.js**：`>= 18.0.0`（推荐 `22.x`）
 - **包管理器**：推荐使用 **`pnpm`**（`>= 9.0.0`）
 
 ### 快速起步
@@ -101,6 +101,7 @@ OpenListNext 是一个基于 **SolidJS** + **Hono** + **TypeScript** 的现代�
 | `pnpm run format`     | 使用 Prettier 格式化源码                         |
 | `pnpm run build`      | 构建完整生产产物（前端静态资源 + Edge 后端脚本） |
 | `pnpm run build:edge` | 使用 esbuild 单独打包无服务器/边缘后端脚本       |
+| `pnpm run test:189`   | 运行 189Cloud 驱动单元测试                       |
 | `pnpm run crowdin`    | 上传并下载 Crowdin 国际化翻译资源                |
 | `pnpm run i18n:build` | 更新并编译国际化语言包                           |
 

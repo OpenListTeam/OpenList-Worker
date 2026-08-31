@@ -37,31 +37,46 @@ OpenListNext 基于 [Hono](https://hono.dev/) 框架构建后端 API，天然支
 
 ## 配置文件说明
 
-项目根目录下的 [wrangler.toml](file:///c:/Users/aaajn/Documents/GitHub/openlistnext/wrangler.toml) 是 Cloudflare Workers 的核心配置文件：
+项目根目录下的 [wrangler.toml](../wrangler.toml) 是 Cloudflare Workers 的核心配置文件：
 
 ```toml
 name = "openlistnext"
 main = "src/backend/worker.ts"
-compatibility_date = "2024-01-01"
+compatibility_date = "2026-08-04"
 compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+preview_urls = false
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
 
 [vars]
 ENVIRONMENT = "production"
+VITE_API_URL = "/api"
 
 [[kv_namespaces]]
 binding = "OPENLISTNEXT_KV"
-id = "OPENLISTNEXT_KV_ID"
 ```
 
-- **`main`**: 指定 Worker 入口文件，OpenListNext 导出 Worker 标准 `fetch` 接口的入口为 [src/backend/worker.ts](file:///c:/Users/aaajn/Documents/GitHub/openlistnext/src/backend/worker.ts)。
+- **`main`**: 指定 Worker 入口文件，OpenListNext 导出 Worker 标准 `fetch` 接口的入口为 [src/backend/worker.ts](../src/backend/worker.ts)。
 - **`compatibility_flags = ["nodejs_compat"]`**: 开启 Node.js 兼容层（必需）。
+- **`workers_dev = false`**: 禁用默认的 `*.workers.dev` 子域名，仅通过自定义域名访问。
+- **`[assets]`**: 配置前端静态资源托管，构建产物从 `dist/` 目录提供。
 - **`[[kv_namespaces]]`**: 用于数据库与配置在边缘侧的持久化存储。
 
-若要同时托管前端静态资源，可以在 `wrangler.toml` 中开启静态资源配置：
+### 关于 KV 命名空间绑定
 
-```toml
-assets = { directory = "./dist" }
+wrangler.toml 中的 `[[kv_namespaces]]` **不需要填写 `id`**。Wrangler 4.x 支持 Automatic Provisioning——部署时会自动检测或创建名为 `OPENLISTNEXT_KV` 的命名空间并关联绑定。你只需在 Makers 控制台或 Cloudflare Dashboard 中确保该命名空间存在，或让 Wrangler 自动处理。
+
+若需手动创建命名空间（可选）：
+
+```bash
+npx wrangler kv:namespace create OPENLISTNEXT_KV
 ```
+
+> [!NOTE]
+> 即使手动创建了命名空间，wrangler.toml 中也无需填入 `id`，Wrangler 会根据名称自动关联。
 
 ---
 
@@ -69,27 +84,30 @@ assets = { directory = "./dist" }
 
 OpenListNext 在 Serverless 环境中使用 Cloudflare KV 来存储配置数据和数据库记录（替代本地 `public_data/db.json` 文件）。
 
-1. **创建生产环境 KV 命名空间**：
-   运行以下命令创建用于 OpenListNext 的 KV 空间：
+**推荐方式：Automatic Provisioning（无需手动配置）**
 
-   ```bash
-   npx wrangler kv:namespace create OPENLISTNEXT_KV
-   ```
+Wrangler 4.x 支持自动配置——部署时会自动检测或创建名为 `OPENLISTNEXT_KV` 的命名空间并关联绑定。你只需：
 
-   命令行将输出类似以下的信息：
+1. 确保 wrangler.toml 中有 `[[kv_namespaces]]` 配置（已内置）
+2. 直接运行 `npx wrangler deploy`，Wrangler 会自动处理命名空间创建和关联
 
-   ```text
-   🌀 Creating namespace with title "openlistnext-OPENLISTNEXT_KV"
-   ✨ Success! Created namespace openlistnext-OPENLISTNEXT_KV with ID "a1b2c3d4e5f67890abcdef1234567890"
-   ```
+**可选方式：手动创建命名空间**
 
-2. **更新 `wrangler.toml`**：
-   将获取到的 `ID` 填入 [wrangler.toml](file:///c:/Users/aaajn/Documents/GitHub/openlistnext/wrangler.toml) 文件中：
-   ```toml
-   [[kv_namespaces]]
-   binding = "OPENLISTNEXT_KV"
-   id = "a1b2c3d4e5f67890abcdef1234567890" # 替换为你自己的 KV Namespace ID
-   ```
+如果你想手动控制命名空间的创建：
+
+```bash
+npx wrangler kv:namespace create OPENLISTNEXT_KV
+```
+
+命令行将输出类似以下的信息：
+
+```text
+🌀 Creating namespace with title "openlistnext-OPENLISTNEXT_KV"
+✨ Success! Created namespace openlistnext-OPENLISTNEXT_KV with ID "a1b2c3d4e5f67890abcdef1234567890"
+```
+
+> [!NOTE]
+> 即使手动创建了命名空间，wrangler.toml 中也无需填入 `id`。Wrangler 4.x 会根据绑定名称 `OPENLISTNEXT_KV` 自动关联正确的命名空间。
 
 ---
 
@@ -141,13 +159,20 @@ npx wrangler deploy
 
 ### 1. 配置自定义环境变量 / Secrets
 
-生产环境敏感配置（如 JWT 签名私钥等）推荐使用 Secrets 安全存储：
+生产环境敏感配置推荐使用 Secrets 安全存储：
 
 ```bash
+# 设置管理员密码（首次部署必须，否则系统生成随机密码并打印到日志）
+npx wrangler secret put ADMIN_PASSWORD
+
+# 设置 JWT 签名密钥
 npx wrangler secret put JWT_SECRET
 ```
 
 系统会提示你输入 Secret 值。
+
+> [!IMPORTANT]
+> 如果不设置 `ADMIN_PASSWORD`，系统会在首次启动时生成一个随机密码并打印到启动日志。请务必查看日志获取初始密码，登录后立即修改。
 
 ### 2. 绑定自定义域名
 
