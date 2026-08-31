@@ -32,7 +32,6 @@ export default defineConfig({
     }),
     process.env.VITE_LITE !== "true"
       ? viteStaticCopy({
-          overwrite: false,
           targets: [
             {
               src: "node_modules/monaco-editor/min/*",

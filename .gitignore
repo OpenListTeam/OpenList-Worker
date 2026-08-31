@@ -1,6 +1,11 @@
 node_modules
 dist
 dist-server
+
+# 本地运行时数据：含网盘凭据（refresh_token / cookie / 密码），禁止入库。
+# public_data/db.json 曾提交过一枚真实的 OneDrive refresh_token。
+public_data/
+
 /src/lang/*
 !/src/lang/en/
 !/src/lang/zh/

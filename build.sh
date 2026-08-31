@@ -144,7 +144,10 @@ update_package_version() {
 # Build the project
 build_project() {
     log_step "==== Installing dependencies ===="
-    pnpm install --no-frozen-lockfile
+    # FIX(F-12): --no-frozen-lockfile silently tolerated lockfile drift — the
+    # exact condition that produced the dual-lockfile divergence. Install
+    # must be reproducible; if the lockfile is out of sync, fail loudly.
+    pnpm install --frozen-lockfile
 
     log_step "==== Building i18n ===="
     if [[ "$SKIP_I18N" == "false" ]]; then
