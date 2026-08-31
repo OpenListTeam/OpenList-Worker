@@ -68,6 +68,23 @@ taskRouter.all(
     }
 
     await saveDb(db, c.env)
+
+    // FIX: this handler used to answer 200 even when every single refresh
+    // failed. A scheduled job that silently 401s every night therefore looked
+    // perfectly healthy — that is exactly how the SEV1 in the incident report
+    // stayed invisible for 14 days. Returning non-2xx is what lets the
+    // scheduler, an uptime probe, or a log-based alert actually fire.
+    if (failed > 0) {
+      return c.json(
+        {
+          code: 500,
+          message: `token refresh failed: ${failed}/${refreshed + failed} storage(s) failed`,
+          data: { refreshed, failed, total: db.storages?.length || 0, results },
+        },
+        500,
+      )
+    }
+
     return c.json({
       code: 200,
       message: "token refresh executed",

@@ -1,6 +1,6 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
-import { getDb } from "../internal/model/db"
+import { getDb, getKvStatus } from "../internal/model/db"
 import { fsRouter } from "./fs"
 import {
   authRouter,
@@ -207,4 +207,75 @@ export function setupRouter(app: Hono) {
       environment: (c.env as any)?.ENVIRONMENT || "development",
     }),
   )
+
+  // Real readiness probe.
+  //
+  // /health above is a liveness marker only — it answers ok:true unconditionally
+  // and proves nothing about whether this deployment can actually serve files.
+  // It is kept unchanged because external monitors may already depend on it,
+  // but it must never be treated as a health signal.
+  //
+  // /healthz exercises the state layer for real: it reads the config through
+  // the same KV path a request would and answers 503 when a configured
+  // persistence layer is failing. "No KV configured" is reported as healthy
+  // with mode="memory" — this covers Vercel, Lambda, and Docker-in-memory
+  // deployments where persistence is intentionally absent.
+  app.get("/healthz", async (c) => {
+    const checks: Record<string, any> = {}
+    let healthy = true
+
+    try {
+      const db = await getDb(c.env)
+      checks.config = {
+        ok: true,
+        storages: db?.storages?.length ?? 0,
+        users: db?.users?.length ?? 0,
+      }
+    } catch (err: any) {
+      healthy = false
+      checks.config = { ok: false, error: err?.message || String(err) }
+    }
+
+    let kv: any
+    try {
+      kv = await getKvStatus(c.env)
+    } catch (err: any) {
+      healthy = false
+      kv = {
+        configured: false,
+        connected: false,
+        error: err?.message || String(err),
+      }
+    }
+
+    checks.persistence = {
+      configured: !!kv?.configured,
+      connected: !!kv?.connected,
+      platform: kv?.platform ?? null,
+      error: kv?.error ?? null,
+    }
+    // If no KV is configured, this is a memory-only deployment (Vercel,
+    // Lambda, Docker). Return 200 with a warning so monitors don't alarm,
+    // but surface the mode clearly in the response body.
+    if (!kv?.configured) {
+      checks.persistence.mode = "memory"
+      checks.persistence.note =
+        "No persistence configured — changes are ephemeral"
+    }
+    // If KV is configured but failing, that's a real outage.
+    if (kv?.configured && !kv?.connected) {
+      healthy = false
+    }
+
+    return c.json(
+      {
+        ok: healthy,
+        name: "OpenListNext",
+        version: "v4.2.3",
+        environment: (c.env as any)?.ENVIRONMENT || "development",
+        checks,
+      },
+      healthy ? 200 : 503,
+    )
+  })
 }

@@ -27,7 +27,7 @@
    - **构建命令**：`pnpm run build`
    - **输出目录**：`dist`
 3. **存储配置**：无需手动配置。Blob 存储会自动初始化（使用 `@edgeone/pages-blob` SDK），配置数据持久化在 `openlistnext_db` 命名空间中。
-4. **点击部署**：构建完成后即可通过 EdgeOne 分配的 `*.edgeone.cool` 域名直接访问，默认管理账号为 `admin` / `admin`。
+4. **点击部署**：构建完成后即可通过 EdgeOne 分配的 `*.edgeone.cool` 域名直接访问。首次启动会生成随机管理密码，请查看部署日志获取初始密码，登录后立即修改。也可在环境变量中设置 `ADMIN_PASSWORD` 预设密码。
 
 ---
 
