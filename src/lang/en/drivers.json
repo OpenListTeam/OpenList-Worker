@@ -68,6 +68,30 @@
     "share_code": "Share code",
     "share_code-tips": "share code of 115 share link"
   },
+  "115Open": {
+    "access_token": "Access Token",
+    "access_token-tips": "Required. Get it from 115 Open Platform; auto-refreshed via refresh_token when expired.",
+    "limit_rate": "Request Rate Limit",
+    "limit_rate-tips": "Limit all API request rate ([limit]r/1s), 0 = unlimited",
+    "order_by": "Order by",
+    "order_bys": {
+      "file_name": "File name",
+      "file_size": "File size",
+      "file_type": "File type",
+      "user_utime": "Modified time"
+    },
+    "order_direction": "Order direction",
+    "order_directions": {
+      "asc": "Asc",
+      "desc": "Desc"
+    },
+    "page_size": "Page Size",
+    "page_size-tips": "List API per page size (1~1150)",
+    "refresh_token": "Refresh Token",
+    "refresh_token-tips": "Required. Get it from 115 Open Platform; used to auto-refresh access_token.",
+    "root_id": "Root Folder ID",
+    "root_id-tips": "Default 0 (root)"
+  },
   "123 Open": {
     "AccessToken": "AccessToken",
     "ClientID": "ClientID",
@@ -88,13 +112,13 @@
   "123Pan": {
     "UploadThread": "UploadThread",
     "UploadThread-tips": "the threads of upload",
+    "access_token": "Access Token",
+    "access_token-tips": "Optional — auto-persisted, no need to fill in. Just fill in the 123 Cloud Drive phone number and password above; the token is fetched and saved after login, skipping repeated logins to avoid overseas-IP risk control.",
     "password": "Password",
     "platform": "Platform",
     "platform-tips": "the platform header value, sent with API requests",
     "root_folder_id": "Root folder id",
-    "username": "Username",
-    "access_token": "Access Token",
-    "access_token-tips": "Optional — auto-persisted, no need to fill in. Just fill in the 123 Cloud Drive phone number and password above; the token is fetched and saved after login, skipping repeated logins to avoid overseas-IP risk control."
+    "username": "Username"
   },
   "123PanLink": {
     "origin_urls": "Origin urls",
@@ -112,6 +136,7 @@
   },
   "139Yun": {
     "authorization": "Authorization",
+    "authorization-tips": "Authorization can be used alone. If empty, use mail_cookies alone for fast login, or mail_cookies + username + password for full login fallback.",
     "cloud_id": "Cloud id",
     "custom_upload_part_size": "Custom upload part size",
     "custom_upload_part_size-tips": "0 for auto",
@@ -120,9 +145,12 @@
     "mail_cookies": "Mail cookies",
     "mail_cookies-tips": "Cookies from mail.139.com used for login authentication.",
     "password": "Password",
+    "password-tips": "Required only when using password login fallback with mail_cookies.",
     "report_real_size": "Report real size",
     "report_real_size-tips": "Enable to report the real file size during upload",
     "root_folder_id": "Root folder id",
+    "sms_code": "Sms code",
+    "sms_code-tips": "Fill this only after OpenList reports that a 139 Mail SMS verification code was sent, then save the storage again.",
     "type": "Type",
     "types": {
       "family": "Family",
@@ -137,26 +165,27 @@
     "use_old_stream_upload-tips": "Enable to use old stream upload method (not support rapid upload)",
     "user_domain_id": "User domain id",
     "user_domain_id-tips": "ud_id in Cookie, fill in to show disk usage",
-    "username": "Username"
+    "username": "Username",
+    "username-tips": "Required only when using password login fallback with mail_cookies."
   },
   "189Cloud": {
     "cookie": "Cookie",
     "cookie-tips": "Fill in the cookie if need captcha or device lock verification",
-    "password": "Password",
-    "root_folder_id": "Root folder id",
-    "root_folder_id-tips": "Default is -11 (Personal cloud root directory)",
-    "username": "Username",
     "order_by": "Order by",
     "order_bys": {
-      "lastOpTime": "Last Op Time",
+      "fileSize": "File size",
       "filename": "File name",
-      "fileSize": "File size"
+      "lastOpTime": "Last Op Time"
     },
     "order_direction": "Order direction",
     "order_directions": {
       "asc": "Asc",
       "desc": "Desc"
-    }
+    },
+    "password": "Password",
+    "root_folder_id": "Root folder id",
+    "root_folder_id-tips": "Default is -11 (Personal cloud root directory)",
+    "username": "Username"
   },
   "189CloudPC": {
     "access_token": "Access token",
@@ -198,7 +227,7 @@
       "stream": "Stream"
     },
     "upload_thread": "Upload thread",
-    "upload_thread-tips": "1<=thread<=32",
+    "upload_thread-tips": "1\u003c=thread\u003c=32",
     "username": "Username",
     "validate_code": "Validate code"
   },
@@ -224,7 +253,7 @@
       "personal": "Personal"
     },
     "upload_thread": "Upload thread",
-    "upload_thread-tips": "1<=thread<=32"
+    "upload_thread-tips": "1\u003c=thread\u003c=32"
   },
   "AList V3": {
     "forward_archive_requests": "Forward archive requests",
@@ -385,6 +414,58 @@
     "sign_url_expire": "Sign url expire",
     "sign_url_expire-tips": "The expiration time for SAS URLs, in hours."
   },
+  "BaiduNetdisk": {
+    "access_token": "Access Token",
+    "access_token-tips": "Required. Get it at https://api.oplist.org/. If it expires, the driver refreshes it automatically from refresh_token via the online API.",
+    "api_url_address": "API Address",
+    "client_id": "Client ID",
+    "client_secret": "Client Secret",
+    "custom_crack_ua": "Custom Crack UA",
+    "custom_upload_part_size": "Custom Upload Part Size",
+    "custom_upload_part_size-tips": "0 for auto",
+    "download_api": "Download API",
+    "download_apis": {
+      "crack": "Crack download",
+      "crack_video": "Crack video download",
+      "official": "Official download"
+    },
+    "low_bandwith_upload_mode": "Low Bandwidth Upload Mode",
+    "only_list_video_file": "Only list video file",
+    "order_by": "Order by",
+    "order_bys": {
+      "name": "Name",
+      "size": "Size",
+      "time": "Time"
+    },
+    "order_direction": "Order direction",
+    "order_directions": {
+      "asc": "Asc",
+      "desc": "Desc"
+    },
+    "refresh_token": "Refresh Token",
+    "root_folder_path": "Root folder path",
+    "upload_api": "Upload API",
+    "upload_thread": "Upload Threads",
+    "upload_thread-tips": "1\u003c=thread\u003c=32",
+    "upload_timeout": "Slice Upload Timeout (s)",
+    "upload_timeout-tips": "per-slice upload timeout in seconds",
+    "use_dynamic_upload_api": "Dynamically Get Upload API",
+    "use_dynamic_upload_api-tips": "dynamically get upload api domain, when enabled, the 'Upload API' setting will be used as a fallback if failed to get",
+    "use_online_api": "Use Online API to Refresh Token"
+  },
+  "BaiduPhoto": {
+    "album_id": "Album id",
+    "cookie": "Cookie",
+    "delete_origin": "Delete origin",
+    "show_type": "Show type",
+    "show_types": {
+      "root": "Root",
+      "root_only_album": "Root only album",
+      "root_only_file": "Root only file"
+    },
+    "upload_thread": "Upload thread",
+    "upload_thread-tips": "1\u003c=thread\u003c=32"
+  },
   "Bunny Storage": {
     "access_key": "Access key",
     "cdn_base_url": "Cdn base url",
@@ -419,7 +500,7 @@
   },
   "Chunk": {
     "chunk_large_file_only": "Chunk large file only",
-    "chunk_large_file_only-tips": "chunk only if file size > part_size",
+    "chunk_large_file_only-tips": "chunk only if file size \u003e part_size",
     "chunk_prefix": "Chunk prefix",
     "chunk_prefix-tips": "the prefix of chunk folder",
     "custom_ext": "Custom ext",
@@ -602,13 +683,18 @@
     "username": "Username"
   },
   "FTP": {
-    "address": "Address",
-    "cwd_list": "Use Cwd to list",
-    "cwd_list-tips": "Enter directory before listing",
+    "address": "FTP Address",
+    "address-tips": "FTP server address and port (e.g. 127.0.0.1:21)",
+    "cwd_list": "CWD Before List",
+    "cwd_list-tips": "Enter directory using CWD before listing contents",
     "encoding": "Encoding",
+    "encoding-tips": "Character encoding, typically utf-8 or gbk / gb2312",
     "password": "Password",
-    "root_folder_path": "Root folder path",
-    "username": "Username"
+    "password-tips": "FTP login password",
+    "root_folder_path": "Root Folder Path",
+    "root_folder_path-tips": "Root directory path to mount (default /)",
+    "username": "Username",
+    "username-tips": "FTP login username"
   },
   "FebBox": {
     "client_id": "Client id",
@@ -637,6 +723,8 @@
     "username": "Username"
   },
   "GitHub API": {
+    "accurate_modified_time": "Accurate modified time",
+    "accurate_modified_time-tips": "Best-effort accurate modified time for small directory listings. Default disabled. Adds one GitHub GraphQL request and falls back to legacy zero-time values on failure.",
     "author_email": "Author email",
     "author_name": "Author name",
     "committer_email": "Committer email",
@@ -702,6 +790,35 @@
     "root_folder_id": "Root folder id",
     "show_archive": "Show archive"
   },
+  "GuangYaPan": {
+    "access_token": "Access token",
+    "access_token-tips": "Bearer access token (optional if refresh_token is provided)",
+    "captcha_token": "Captcha token",
+    "captcha_token-tips": "Captcha token required by /v1/auth/verification",
+    "client_id": "Client id",
+    "client_id-tips": "Client ID for GuangYaPan API, must be provided",
+    "device_id": "Device id",
+    "device_id-tips": "Optional custom device id (32 hex chars), auto-generated when empty",
+    "device_sign": "Device sign",
+    "device_sign-tips": "Optional custom X-Device-Sign header (generated from device_id when empty)",
+    "order_by": "Order by",
+    "order_by-tips": "Sort field used by the file list",
+    "page_size": "Page size",
+    "phone_number": "Phone number",
+    "phone_number-tips": "Phone number for SMS login, e.g. +86 13800000000",
+    "refresh_token": "Refresh token",
+    "refresh_token-tips": "Refresh token for auto-login/auto-refresh",
+    "root_path": "Root path",
+    "root_path-tips": "Full path in GuangYaPan cloud drive",
+    "send_code": "Send code",
+    "send_code-tips": "Set true and save to send SMS code, it auto-resets to false after sending",
+    "sort_type": "Sort type",
+    "sort_type-tips": "Sort direction used by the file list",
+    "verification_id": "Verification id",
+    "verification_id-tips": "Auto-generated after sending SMS code; do not edit manually",
+    "verify_code": "Verify code",
+    "verify_code-tips": "SMS verification code used with phone_number; fill then save to finish login"
+  },
   "HalalCloud": {
     "app_id": "App id",
     "app_secret": "App secret",
@@ -710,7 +827,7 @@
     "refresh_token-tips": "login type is refresh_token,this is required",
     "root_folder_path": "Root folder path",
     "upload_thread": "Upload thread",
-    "upload_thread-tips": "1 <= thread <= 32"
+    "upload_thread-tips": "1 \u003c= thread \u003c= 32"
   },
   "HalalCloudOpen": {
     "client_id": "Client id",
@@ -722,7 +839,7 @@
     "timeout": "Timeout",
     "timeout-tips": "timeout in seconds",
     "upload_thread": "Upload thread",
-    "upload_thread-tips": "1 <= thread <= 32"
+    "upload_thread-tips": "1 \u003c= thread \u003c= 32"
   },
   "ILanZou": {
     "ip": "Ip",
@@ -754,6 +871,17 @@
     "baseUrl-tips": "basic URL for file operation",
     "cookie": "Cookie",
     "cookie-tips": "about 15 days valid, ignore if shareUrl is used",
+    "order_by": "Order by",
+    "order_bys": {
+      "name": "File name",
+      "size": "File size",
+      "time": "Modified time"
+    },
+    "order_direction": "Order direction",
+    "order_directions": {
+      "asc": "Asc",
+      "desc": "Desc"
+    },
     "password": "Password",
     "password-tips": "Login password, only required in account mode",
     "repair_file_info": "Repair file info",
@@ -766,20 +894,9 @@
     "share_password-tips": "Password for accessing the shared link or folder",
     "type": "Mount Type",
     "types": {
+      "account": "Account \u0026 Password",
       "cookie": "Cookie (Recommended)",
-      "account": "Account & Password",
       "url": "Public Share URL"
-    },
-    "order_by": "Order by",
-    "order_bys": {
-      "name": "File name",
-      "size": "File size",
-      "time": "Modified time"
-    },
-    "order_direction": "Order direction",
-    "order_directions": {
-      "asc": "Asc",
-      "desc": "Desc"
     },
     "user_agent": "User agent",
     "user_agent-tips": "User-Agent sent with API and download requests"
@@ -881,7 +998,7 @@
     "sms_code": "Sms code",
     "sms_code-tips": "input 'send' send sms ",
     "upload_thread": "Upload thread",
-    "upload_thread-tips": "1<=thread<=32"
+    "upload_thread-tips": "1\u003c=thread\u003c=32"
   },
   "NeteaseMusic": {
     "cookie": "Cookie",
@@ -1090,13 +1207,20 @@
     "user_agent-tips": "Custom User-Agent for S3 requests."
   },
   "SFTP": {
-    "address": "Address",
-    "ignore_symlink_error": "Ignore symlink error",
+    "address": "SSH Address",
+    "address-tips": "SSH host and port (e.g. 127.0.0.1:22)",
+    "ignore_symlink_error": "Ignore Symlink Error",
+    "ignore_symlink_error-tips": "Ignore broken symlink errors and keep entries",
     "passphrase": "Passphrase",
+    "passphrase-tips": "Passphrase for encrypted private key",
     "password": "Password",
-    "private_key": "Private key",
-    "root_folder_path": "Root folder path",
-    "username": "Username"
+    "password-tips": "SSH login password (leave empty if using private key)",
+    "private_key": "Private Key",
+    "private_key-tips": "SSH private key for public-key authentication",
+    "root_folder_path": "Root Folder Path",
+    "root_folder_path-tips": "Root directory path to mount (default /)",
+    "username": "Username",
+    "username-tips": "SSH login username"
   },
   "SMB": {
     "address": "Address",
@@ -1136,6 +1260,8 @@
     "encodePath-tips": "encode the path in the strm file",
     "filterFileTypes": "FilterFileTypes",
     "filterFileTypes-tips": "Supports suffix name of strm file",
+    "minFileSize": "MinFileSize",
+    "minFileSize-tips": "Filter out files smaller than this size (unit: MB, 0 to disable)",
     "paths": "Paths",
     "siteUrl": "SiteUrl",
     "siteUrl-tips": "The prefix URL of the strm file",
@@ -1429,6 +1555,17 @@
   },
   "WebDav": {
     "address": "Address",
+    "order_by": "Order by",
+    "order_bys": {
+      "modified": "Modified",
+      "name": "Name",
+      "size": "Size"
+    },
+    "order_direction": "Order direction",
+    "order_directions": {
+      "asc": "Asc",
+      "desc": "Desc"
+    },
     "password": "Password",
     "root_folder_path": "Root folder path",
     "tls_insecure_skip_verify": "Tls insecure skip verify",
@@ -1437,35 +1574,26 @@
     "vendors": {
       "other": "Other",
       "sharepoint": "Sharepoint"
-    },
-    "order_by": "Order by",
-    "order_bys": {
-      "name": "Name",
-      "size": "Size",
-      "modified": "Modified"
-    },
-    "order_direction": "Order direction",
-    "order_directions": {
-      "asc": "Asc",
-      "desc": "Desc"
     }
   },
   "WeiYun": {
-    "cookies": "Cookies",
-    "order_by": "Order by",
+    "cookies": "Cookie",
+    "cookies-tips": "Cookie from Weiyun web console (WeChat login recommended)",
+    "order_by": "Order By",
     "order_bys": {
       "name": "Name",
       "size": "Size",
-      "updated_at": "Updated at"
+      "updated_at": "Updated At"
     },
-    "order_direction": "Order direction",
+    "order_direction": "Order Direction",
     "order_directions": {
-      "asc": "Asc",
-      "desc": "Desc"
+      "asc": "Ascending",
+      "desc": "Descending"
     },
-    "root_folder_id": "Root folder id",
-    "upload_thread": "Upload thread",
-    "upload_thread-tips": "4<=thread<=32"
+    "root_folder_id": "Root Folder ID",
+    "root_folder_id-tips": "Leave blank to display the root directory; or specify a subfolder ID",
+    "upload_thread": "Upload Threads",
+    "upload_thread-tips": "Concurrent upload threads (4\u003c=thread\u003c=32, default 4)"
   },
   "WoPan": {
     "access_token": "Access token",
@@ -1521,7 +1649,7 @@
     },
     "root_folder_path": "Root folder path",
     "smallChannelName": "SmallChannelName",
-    "smallChannelName-tips": "Channel name for regular files (typically <20MB)",
+    "smallChannelName-tips": "Channel name for regular files (typically \u003c20MB)",
     "token": "Token",
     "token-tips": "Authentication Token",
     "uploadThread": "UploadThread",
@@ -1553,6 +1681,8 @@
     "AliyundriveShare": {},
     "AutoIndex": {},
     "Azure Blob Storage": {},
+    "BaiduNetdisk": {},
+    "BaiduPhoto": {},
     "Bunny Storage": {},
     "CNB Releases": {},
     "ChaoXingGroupDrive": {},
@@ -1576,6 +1706,9 @@
     "GitHub Releases": {},
     "GoogleDrive": {},
     "GooglePhoto": {},
+    "GuangYaPan": {
+      "alert": "Two-stage SMS login: (1) fill phone_number (+ captcha_token if needed), set send_code=true and save; (2) fill verify_code and save to finish login and auto-save access_token/refresh_token."
+    },
     "HalalCloud": {},
     "HalalCloudOpen": {},
     "ILanZou": {},
@@ -1633,6 +1766,7 @@
     "115 Cloud": "115 Cloud",
     "115 Open": "115 Open",
     "115 Share": "115 Share",
+    "115Open": "115Open",
     "123 Open": "123 Open",
     "123Pan": "123Pan",
     "123PanLink": "123PanLink",
@@ -1644,12 +1778,14 @@
     "AList V3": "AList V3",
     "AliDoc": "AliDoc",
     "Alias": "Alias",
+    "AliyunDriveOpen": "Aliyun Drive OpenAPI",
     "Aliyundrive": "Aliyundrive",
     "AliyundriveOpen": "AliyundriveOpen",
-    "AliyunDriveOpen": "Aliyun Drive OpenAPI",
     "AliyundriveShare": "AliyundriveShare",
     "AutoIndex": "AutoIndex",
     "Azure Blob Storage": "Azure Blob Storage",
+    "BaiduNetdisk": "BaiduNetdisk",
+    "BaiduPhoto": "BaiduPhoto",
     "Bunny Storage": "Bunny Storage",
     "CNB Releases": "CNB Releases",
     "ChaoXingGroupDrive": "ChaoXingGroupDrive",
@@ -1671,6 +1807,7 @@
     "GitHub Releases": "GitHub Releases",
     "GoogleDrive": "GoogleDrive",
     "GooglePhoto": "GooglePhoto",
+    "GuangYaPan": "GuangYaPan",
     "HalalCloud": "HalalCloud",
     "HalalCloudOpen": "HalalCloudOpen",
     "ILanZou": "ILanZou",
@@ -1720,115 +1857,6 @@
     "WeiYun": "WeiYun",
     "WoPan": "WoPan",
     "YandexDisk": "YandexDisk",
-    "cloudflare_imgbed": "Cloudflare imgbed",
-    "BaiduNetdisk": "BaiduNetdisk",
-    "115Open": "115Open"
-  },
-  "BaiduNetdisk": {
-    "access_token": "Access Token",
-    "access_token-tips": "Required. Get it at https://api.oplist.org/. If it expires, the driver refreshes it automatically from refresh_token via the online API.",
-    "api_url_address": "API Address",
-    "client_id": "Client ID",
-    "client_secret": "Client Secret",
-    "custom_crack_ua": "Custom Crack UA",
-    "custom_upload_part_size": "Custom Upload Part Size",
-    "download_api": "Download API",
-    "download_apis": {
-      "crack": "Crack download",
-      "crack_video": "Crack video download",
-      "official": "Official download"
-    },
-    "low_bandwith_upload_mode": "Low Bandwidth Upload Mode",
-    "only_list_video_file": "Only list video file",
-    "order_by": "Order by",
-    "order_bys": {
-      "name": "Name",
-      "size": "Size",
-      "time": "Time"
-    },
-    "order_direction": "Order direction",
-    "order_directions": {
-      "asc": "Asc",
-      "desc": "Desc"
-    },
-    "refresh_token": "Refresh Token",
-    "upload_api": "Upload API",
-    "upload_thread": "Upload Threads",
-    "upload_timeout": "Slice Upload Timeout (s)",
-    "use_dynamic_upload_api": "Dynamically Get Upload API",
-    "use_online_api": "Use Online API to Refresh Token"
-  },
-  "115Open": {
-    "access_token": "Access Token",
-    "access_token-tips": "Required. Get it from 115 Open Platform; auto-refreshed via refresh_token when expired.",
-    "refresh_token": "Refresh Token",
-    "refresh_token-tips": "Required. Get it from 115 Open Platform; used to auto-refresh access_token.",
-    "root_id": "Root Folder ID",
-    "root_id-tips": "Default 0 (root)",
-    "order_by": "Order by",
-    "order_bys": {
-      "file_name": "File name",
-      "file_size": "File size",
-      "file_type": "File type",
-      "user_utime": "Modified time"
-    },
-    "order_direction": "Order direction",
-    "order_directions": {
-      "asc": "Asc",
-      "desc": "Desc"
-    },
-    "page_size": "Page Size",
-    "page_size-tips": "List API per page size (1~1150)",
-    "limit_rate": "Request Rate Limit",
-    "limit_rate-tips": "Limit all API request rate ([limit]r/1s), 0 = unlimited"
-  },
-  "WeiYun": {
-    "root_folder_id": "Root Folder ID",
-    "root_folder_id-tips": "Leave blank to display the root directory; or specify a subfolder ID",
-    "cookies": "Cookie",
-    "cookies-tips": "Cookie from Weiyun web console (WeChat login recommended)",
-    "order_by": "Order By",
-    "order_bys": {
-      "name": "Name",
-      "size": "Size",
-      "updated_at": "Updated At"
-    },
-    "order_direction": "Order Direction",
-    "order_directions": {
-      "asc": "Ascending",
-      "desc": "Descending"
-    },
-    "upload_thread": "Upload Threads",
-    "upload_thread-tips": "Concurrent upload threads (4<=thread<=32, default 4)"
-  },
-  "SFTP": {
-    "address": "SSH Address",
-    "address-tips": "SSH host and port (e.g. 127.0.0.1:22)",
-    "username": "Username",
-    "username-tips": "SSH login username",
-    "password": "Password",
-    "password-tips": "SSH login password (leave empty if using private key)",
-    "private_key": "Private Key",
-    "private_key-tips": "SSH private key for public-key authentication",
-    "passphrase": "Passphrase",
-    "passphrase-tips": "Passphrase for encrypted private key",
-    "root_folder_path": "Root Folder Path",
-    "root_folder_path-tips": "Root directory path to mount (default /)",
-    "ignore_symlink_error": "Ignore Symlink Error",
-    "ignore_symlink_error-tips": "Ignore broken symlink errors and keep entries"
-  },
-  "FTP": {
-    "address": "FTP Address",
-    "address-tips": "FTP server address and port (e.g. 127.0.0.1:21)",
-    "username": "Username",
-    "username-tips": "FTP login username",
-    "password": "Password",
-    "password-tips": "FTP login password",
-    "encoding": "Encoding",
-    "encoding-tips": "Character encoding, typically utf-8 or gbk / gb2312",
-    "cwd_list": "CWD Before List",
-    "cwd_list-tips": "Enter directory using CWD before listing contents",
-    "root_folder_path": "Root Folder Path",
-    "root_folder_path-tips": "Root directory path to mount (default /)"
+    "cloudflare_imgbed": "Cloudflare imgbed"
   }
 }

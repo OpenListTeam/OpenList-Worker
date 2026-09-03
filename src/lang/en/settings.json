@@ -64,6 +64,10 @@
   "max_index_depth-tips": "max depth of index",
   "max_server_download_speed": "Max server download speed",
   "max_server_upload_speed": "Max server upload speed",
+  "move_task_threads_num": "Move task threads num",
+  "multipart_chunk_size": "Multipart chunk size",
+  "multipart_chunk_size-tips": "chunk size of multipart upload in MB (positive integer), keep it under your CDN's request body limit; each active session buffers up to 8 chunks on the server's disk",
+  "multipart_enabled": "Multipart enabled",
   "non_efs_zip_encoding": "Alternative encoding for ZIP Files",
   "ocr_api": "Ocr api",
   "offline_download_task_threads_num": "Offline download task threads num",
@@ -138,10 +142,10 @@
   "token": "Token",
   "transmission_seedtime": "Transmission seedtime",
   "transmission_uri": "Transmission uri",
+  "unknown_type": "Unknown type",
   "upload_task_threads_num": "Upload task threads num",
   "version": "Version",
   "video_autoplay": "Video autoplay",
   "video_types": "Video types",
-  "webauthn_login_enabled": "WebAuthn login enabled",
-  "unknown_type": "Unknown type"
+  "webauthn_login_enabled": "WebAuthn login enabled"
 }
