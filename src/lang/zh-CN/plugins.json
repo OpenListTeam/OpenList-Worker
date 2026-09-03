@@ -6,7 +6,7 @@
   "author": "作者",
   "status_col": "状态",
   "empty_desc": "暂无插件描述信息",
-  "subtitle": "管理与配置 OpenListNext 扩展插件，支持 ZIP 压缩包上传与第三方开源插件 URL 安装",
+  "subtitle": "管理与配置 OpenList 扩展插件，支持 ZIP 压缩包上传与第三方开源插件 URL 安装",
   "search_placeholder": "搜索插件名称、唯一标识、描述或权限...",
   "filter_type": "类型筛选",
   "types": {

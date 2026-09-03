@@ -118,7 +118,7 @@ export async function verifyTotpCode(
 export function buildOtpauthUrl(
   secret: string,
   username: string,
-  issuer = "OpenListNext",
+  issuer = "OpenList",
 ): string {
   const label = encodeURIComponent(`${issuer}:${username}`)
   const params = new URLSearchParams({

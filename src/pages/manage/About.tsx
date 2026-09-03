@@ -14,7 +14,7 @@ const About = () => {
     <>
       <HStack mb="$2" spacing="$2" alignItems="center">
         <Tag colorScheme="accent" rounded="$full">
-          <TagLabel>{version || "OpenListNext"}</TagLabel>
+          <TagLabel>{version || "OpenList"}</TagLabel>
         </Tag>
         <Text color="$neutral9" fontSize="$sm">
           {t("manage.sidemenu.about")}

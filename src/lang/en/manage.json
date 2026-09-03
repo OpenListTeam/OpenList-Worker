@@ -24,7 +24,7 @@
     "traffic": "Traffic",
     "plugins": "Plugins"
   },
-  "title": "OpenListNext Management",
+  "title": "OpenList Management",
   "not_admin": "You are not an admin user, please login with an admin account.",
   "logout_success": "Logout successful",
   "send": "Send",

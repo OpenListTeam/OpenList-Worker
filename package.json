@@ -1,23 +1,23 @@
 {
-  "name": "openlistnext",
+  "name": "openlist",
   "version": "4.2.3",
   "type": "module",
   "packageManager": "pnpm@9.15.4",
   "author": {
-    "name": "The OpenListNext Contributors"
+    "name": "The OpenListTeam Contributors"
   },
-  "description": "A new AList Fork",
+  "description": "A file list program that supports multiple storages, powered by OpenList (TypeScript / Cloudflare Workers port)",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/openlistnext/openlistnext.git"
+    "url": "git+https://github.com/OpenListTeam/OpenList.git"
   },
   "bugs": {
-    "url": "https://github.com/openlistnext/openlistnext/issues"
+    "url": "https://github.com/OpenListTeam/OpenList/issues"
   },
   "files": [
     "dist"
   ],
-  "homepage": "https://openlistnext.org/",
+  "homepage": "https://doc.oplist.org",
   "scripts": {
     "crowdin:upload": "crowdin upload sources --auto-update",
     "crowdin:download": "crowdin download --verbose",

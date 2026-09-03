@@ -916,7 +916,7 @@
   "Onedrive Sharelink": {
     "disable_disk_usage": "Disable disk usage",
     "enable_direct_upload": "Enable direct upload",
-    "enable_direct_upload-tips": "Allow uploading directly to OneDrive without going through OpenListNext",
+    "enable_direct_upload-tips": "Allow uploading directly to OneDrive without going through OpenList",
     "password": "Password",
     "root_folder_path": "Root folder path",
     "url": "Url"

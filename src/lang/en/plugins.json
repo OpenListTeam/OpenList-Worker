@@ -6,7 +6,7 @@
   "author": "Author",
   "status_col": "Status",
   "empty_desc": "No description provided",
-  "subtitle": "Manage and configure OpenListNext extensions with ZIP file upload and third-party URL installation",
+  "subtitle": "Manage and configure OpenList extensions with ZIP file upload and third-party URL installation",
   "search_placeholder": "Search plugins by name, ID, description, or permissions...",
   "filter_type": "Filter by type",
   "types": {

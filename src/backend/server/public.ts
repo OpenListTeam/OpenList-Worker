@@ -10,8 +10,8 @@ publicRouter.get("/settings", async (c) => {
   // Source: internal/bootstrap/data/setting.go + internal/conf/const.go
   const settingsObj: Record<string, string> = {
     // --- Site ---
-    title: "OpenListNext Serverless",
-    site_title: "OpenListNext Serverless",
+    title: "OpenList",
+    site_title: "OpenList",
     version: "v4.2.3",
     announcement: "",
     pagination_type: "pagination",
