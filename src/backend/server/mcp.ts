@@ -31,7 +31,7 @@ mcpRouter.post("/messages", async (c) => {
     )
   }
 
-  const responseRpc = handleMcpJsonRpc(method, id, params)
+  const responseRpc = await handleMcpJsonRpc(method, id, params, c.env)
   const status = responseRpc.error ? 404 : 200
   return c.json(responseRpc, status)
 })

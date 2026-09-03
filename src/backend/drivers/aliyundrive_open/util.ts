@@ -3,6 +3,7 @@ import {
   AliyunTokenResp,
   AliyunFileItem,
 } from "./types"
+import { assertSafeUrl } from "../../pkg/http"
 
 const ALI_OPEN_API = "https://openapi.aliyundrive.com/adrive/v1.0"
 
@@ -90,7 +91,18 @@ export class AliyunOpenClient {
     // 策略1: 通过在线 API 中转（GET + query params）
     const onlineApis: string[] = []
     if (this.addition.api_url_address && this.addition.api_url_address.trim()) {
-      onlineApis.push(this.addition.api_url_address.trim())
+      const customApi = this.addition.api_url_address.trim()
+      // FIX(H-2): api_url_address 是管理员可配置字段，会把用户 refresh_token
+      // 发给该 URL。必须先做 SSRF 校验，否则可被配置成内网/元数据地址导致
+      // token 外泄。不安全时跳过该自定义地址，继续使用内置受信地址。
+      try {
+        assertSafeUrl(customApi, "AliyundriveOpen api_url_address")
+        onlineApis.push(customApi)
+      } catch (e: any) {
+        console.warn(
+          `[AliyundriveOpen] Skipping unsafe api_url_address: ${e.message}`,
+        )
+      }
     }
     onlineApis.push(
       "https://api.oplist.org/alicloud/renewapi",
@@ -205,6 +217,12 @@ export class AliyunOpenClient {
   ): Promise<T> {
     await this.ensureToken()
     const url = path.startsWith("http") ? path : `${ALI_OPEN_API}${path}`
+    // FIX(H-2): path 以 http 开头时是调用方传入的绝对 URL，必须做 SSRF 校验
+    try {
+      assertSafeUrl(url, "AliyundriveOpen openApiRequest")
+    } catch (e: any) {
+      throw new Error(`[AliyundriveOpen] blocked unsafe URL: ${e.message}`)
+    }
     const res = await fetch(url, {
       method: "POST",
       headers: {

@@ -44,12 +44,6 @@ importers:
       '@stitches/core':
         specifier: ^1.2.8
         version: 1.2.8
-      '@types/ini':
-        specifier: ^4.1.1
-        version: 4.1.1
-      '@types/ssh2':
-        specifier: ^1.15.5
-        version: 1.15.5
       '@viselect/vanilla':
         specifier: ^3.9.0
         version: 3.9.0
@@ -170,9 +164,6 @@ importers:
       streamsaver:
         specifier: ^2.0.6
         version: 2.0.6
-      tsx:
-        specifier: ^4.23.0
-        version: 4.23.5
       typescript-natural-sort:
         specifier: ^0.7.2
         version: 0.7.2
@@ -195,6 +186,9 @@ importers:
       '@types/crypto-js':
         specifier: ^4.2.2
         version: 4.2.2
+      '@types/ini':
+        specifier: ^4.1.1
+        version: 4.1.1
       '@types/mark.js':
         specifier: ^8.11.12
         version: 8.11.12
@@ -207,6 +201,9 @@ importers:
       '@types/sha256':
         specifier: ^0.2.2
         version: 0.2.2
+      '@types/ssh2':
+        specifier: ^1.15.5
+        version: 1.15.5
       '@types/streamsaver':
         specifier: ^2.0.5
         version: 2.0.5
@@ -246,6 +243,9 @@ importers:
       terser:
         specifier: ^5.48.0
         version: 5.49.1
+      tsx:
+        specifier: ^4.23.0
+        version: 4.23.5
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

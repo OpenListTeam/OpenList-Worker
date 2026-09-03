@@ -155,6 +155,9 @@ export async function hmacSha1Base64(
 
 const PBKDF2_ITERATIONS = 100000
 
+// 仅提示一次的 legacy 弱 KDF 告警标记（M-4）
+let legacyKdfWarned = false
+
 async function deriveKey(
   password: string,
   salt: Uint8Array | string = "salt",
@@ -215,6 +218,13 @@ export async function decrypt(
     ivHex = parts[0]
     cipherHex = parts[1]
     iterations = 1
+    if (!legacyKdfWarned) {
+      legacyKdfWarned = true
+      console.warn(
+        "[Crypto] Decrypting legacy weak-KDF format. It will be re-encrypted " +
+          "with the strong PBKDF2 format on the next config save.",
+      )
+    }
   } else {
     throw new Error("Invalid encrypted data format")
   }

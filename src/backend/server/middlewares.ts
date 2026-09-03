@@ -91,6 +91,95 @@ export async function getJwtSecret(c?: Context | any): Promise<string> {
   return cachedJwtSecret
 }
 
+// ---- JWT 注销黑名单（尽力而为：进程内 Set + KV 持久化）----
+// 说明：Serverless 多实例下各实例独立缓存，KV 持久化仅在冷启动时加载一次，
+// 因此跨实例的「即时」失效不能保证精确，但能在单实例内立即生效，并随新实例
+// 冷启动逐步收敛。exp 过期后条目自动清理，不会无限增长。
+const REVOKED_KV_KEY = "openlistnext_revoked_tokens"
+const revokedJtis = new Set<string>()
+let revokedLoaded = false
+
+async function ensureRevokedLoaded(env: any): Promise<void> {
+  if (revokedLoaded) return
+  revokedLoaded = true
+  try {
+    const { getKvBinding } = await import("../internal/model/db")
+    const kvInfo = await getKvBinding(env)
+    if (kvInfo.mode === "none" || !kvInfo.binding) return
+    const { binding, mode } = kvInfo
+    let val: any = null
+    if (mode === "blob") {
+      val = await binding.get(REVOKED_KV_KEY)
+    } else {
+      try {
+        val = await binding.get(REVOKED_KV_KEY, "text")
+      } catch {
+        val = await binding.get(REVOKED_KV_KEY)
+      }
+    }
+    if (val && typeof val.text === "function") val = await val.text()
+    if (!val) return
+    const arr = JSON.parse(String(val))
+    const now = Math.floor(Date.now() / 1000)
+    for (const item of arr) {
+      if (item && item.jti && item.exp > now) revokedJtis.add(item.jti)
+    }
+  } catch {
+    // 黑名单加载失败时降级为不拦截（不影响登录）
+  }
+}
+
+export async function revokeToken(
+  jti: string,
+  exp: number,
+  env: any,
+): Promise<void> {
+  if (!jti) return
+  revokedJtis.add(jti)
+  try {
+    const { getKvBinding } = await import("../internal/model/db")
+    const kvInfo = await getKvBinding(env)
+    if (kvInfo.mode === "none" || !kvInfo.binding) return
+    const { binding, mode } = kvInfo
+    let arr: Array<{ jti: string; exp: number }> = []
+    if (mode === "blob") {
+      const val = await binding.get(REVOKED_KV_KEY)
+      if (val) arr = typeof val === "string" ? JSON.parse(val) : val
+    } else {
+      try {
+        const val = await binding.get(REVOKED_KV_KEY, "text")
+        if (val) arr = JSON.parse(String(val))
+      } catch {
+        const val = await binding.get(REVOKED_KV_KEY)
+        if (val) arr = typeof val === "string" ? JSON.parse(val) : val
+      }
+    }
+    const now = Math.floor(Date.now() / 1000)
+    arr = arr.filter((i) => i && i.exp > now)
+    arr.push({ jti, exp })
+    const payload = JSON.stringify(arr)
+    if (mode === "blob") {
+      if (typeof binding.set === "function")
+        await binding.set(REVOKED_KV_KEY, payload)
+      else if (typeof binding.put === "function")
+        await binding.put(REVOKED_KV_KEY, payload)
+    } else {
+      if (typeof binding.put === "function")
+        await binding.put(REVOKED_KV_KEY, payload)
+      else if (typeof binding.set === "function")
+        await binding.set(REVOKED_KV_KEY, payload)
+    }
+  } catch (e) {
+    console.warn("[JWT] Failed to persist revoked token to KV:", e)
+  }
+}
+
+export async function isTokenRevoked(jti: string, env: any): Promise<boolean> {
+  if (!jti) return false
+  await ensureRevokedLoaded(env)
+  return revokedJtis.has(jti)
+}
+
 export async function adminAuthMiddleware(
   c: Context,
   next: () => Promise<void>,
@@ -215,6 +304,7 @@ export async function getUserFromContext(c: Context): Promise<{
   try {
     const secret = await getJwtSecret(c)
     const payload: any = await verify(token, secret, "HS256")
+    if (await isTokenRevoked(payload?.jti, c.env)) return null
     const db = await getDb(c.env)
     const user = (db.users || []).find(
       (u: any) => u.id === payload.id || u.username === payload.username,

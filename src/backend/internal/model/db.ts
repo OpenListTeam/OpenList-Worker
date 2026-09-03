@@ -1,3 +1,5 @@
+import { encrypt, decrypt } from "../../pkg/crypto"
+
 // Global default configuration payload for Cloudflare Workers
 export const defaultDb = {
   settings: [
@@ -1058,6 +1060,7 @@ const loadDb = async (envCtx?: any) => {
     try {
       const kvConfig = await readFromKv(kvInfo, "openlistnext_config")
       if (kvConfig) {
+        await unsealDb(kvConfig, getEncryptionKey(envCtx))
         memoryDb = kvConfig
         ensureDefaultSettings(memoryDb)
         ensureDefaultStorages(memoryDb)
@@ -1143,6 +1146,107 @@ export const getDb = async (envCtx?: any) => {
  * configured at all (in-memory / container mode) this keeps the historical
  * warn-and-continue behavior, so unpersisted deployments are not broken by it.
  */
+// ============================================================
+// 静态加密（At-rest encryption）
+// 修复 H-1：网盘 token/secret/OTP 等敏感字段此前以明文 JSON 落 KV/Blob。
+// 这里在「持久化边界」做字段级加密（落盘前 seal、读盘后 unseal），内存中
+// 始终保持明文，因此 resolvePath / parseAddition / 各驱动 / admin 接口均无需
+// 改动。密钥优先取 ENCRYPTION_SECRET，回退 JWT_SECRET；两者皆无时跳过加密，
+// 保持既有部署（无密钥）向后兼容。已存在的明文数据不带前缀，unseal 时原样
+// 返回，不会因升级而丢失。
+// ============================================================
+const ENCRYPTION_PREFIX = "enc:v1:"
+
+const SENSITIVE_SETTING_KEYS = new Set(["token", "sso_client_secret"])
+
+function getEncryptionKey(envCtx?: any): string | null {
+  const env =
+    envCtx ||
+    globalEnvCtx ||
+    (typeof process !== "undefined" ? process.env : {})
+  const key =
+    env?.ENCRYPTION_SECRET ||
+    env?.JWT_SECRET ||
+    (typeof process !== "undefined" ? process.env?.ENCRYPTION_SECRET : "") ||
+    (typeof process !== "undefined" ? process.env?.JWT_SECRET : "")
+  return key && String(key).length >= 16 ? String(key) : null
+}
+
+async function sealValue(value: string, key: string): Promise<string> {
+  if (!value) return value
+  if (value.startsWith(ENCRYPTION_PREFIX)) return value // idempotent
+  return ENCRYPTION_PREFIX + (await encrypt(value, key))
+}
+
+async function unsealValue(value: string, key: string): Promise<string> {
+  if (!value || !value.startsWith(ENCRYPTION_PREFIX)) return value
+  try {
+    return await decrypt(value.slice(ENCRYPTION_PREFIX.length), key)
+  } catch (e) {
+    console.warn(
+      "[DB] Failed to decrypt a sealed secret (wrong ENCRYPTION_SECRET/JWT_SECRET?):",
+      e,
+    )
+    return value // keep raw value, never lose data
+  }
+}
+
+async function sealDb(data: any, key: string | null): Promise<any> {
+  if (!key || !data) return data
+  const copy = JSON.parse(JSON.stringify(data))
+  for (const s of copy.storages || []) {
+    if (!s || !s.addition) continue
+    const str =
+      typeof s.addition === "string" ? s.addition : JSON.stringify(s.addition)
+    if (str && str !== "{}") {
+      s.addition = await sealValue(str, key)
+    }
+  }
+  for (const st of copy.settings || []) {
+    if (st && SENSITIVE_SETTING_KEYS.has(st.key) && st.value) {
+      st.value = await sealValue(String(st.value), key)
+    }
+  }
+  for (const u of copy.users || []) {
+    if (u && u.otp_secret) {
+      u.otp_secret = await sealValue(String(u.otp_secret), key)
+    }
+  }
+  return copy
+}
+
+async function unsealDb(data: any, key: string | null): Promise<void> {
+  if (!key || !data) return
+  for (const s of data.storages || []) {
+    if (
+      s &&
+      typeof s.addition === "string" &&
+      s.addition.startsWith(ENCRYPTION_PREFIX)
+    ) {
+      s.addition = await unsealValue(s.addition, key)
+    }
+  }
+  for (const st of data.settings || []) {
+    if (
+      st &&
+      SENSITIVE_SETTING_KEYS.has(st.key) &&
+      typeof st.value === "string" &&
+      st.value.startsWith(ENCRYPTION_PREFIX)
+    ) {
+      st.value = await unsealValue(st.value, key)
+    }
+  }
+  for (const u of data.users || []) {
+    if (
+      u &&
+      typeof u.otp_secret === "string" &&
+      u.otp_secret.startsWith(ENCRYPTION_PREFIX)
+    ) {
+      u.otp_secret = await unsealValue(u.otp_secret, key)
+    }
+  }
+}
+
 export const saveDb = async (data: any, envCtx?: any): Promise<boolean> => {
   if (envCtx) {
     globalEnvCtx = envCtx
@@ -1164,7 +1268,9 @@ export const saveDb = async (data: any, envCtx?: any): Promise<boolean> => {
 
   let success = false
   try {
-    success = await saveToKv(kvInfo, "openlistnext_config", data)
+    // 落盘前对敏感字段做静态加密（H-1），内存中的 data 保持明文
+    const sealed = await sealDb(data, getEncryptionKey(envCtx))
+    success = await saveToKv(kvInfo, "openlistnext_config", sealed)
   } catch (err) {
     console.error("[DB] Failed to save to KV:", err)
     success = false
@@ -1321,6 +1427,13 @@ export async function resolvePath(virtualPath: string) {
         !physicalPath.startsWith(rootNorm + "/")
       ) {
         throw new Error("path traversal blocked: escapes storage root")
+      }
+
+      // FIX(H-4): 即使 rootFolder 为 "/"（无限制）从而跳过了上面的 containment
+      // 校验，最终物理路径也绝不允许出现 ".." 段。这堵住了「root 挂载的存储
+      // 依赖 cleanPath 钳制、而 root_folder_path 本身可能携带 .. 」的纵深缺口。
+      if (physicalPath.split("/").includes("..")) {
+        throw new Error("path traversal blocked: illegal '..' segment")
       }
 
       return {

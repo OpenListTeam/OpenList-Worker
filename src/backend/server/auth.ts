@@ -1,7 +1,12 @@
 import { Hono, type Context } from "hono"
 import { sign, verify } from "hono/jwt"
 import { getDb, saveDb } from "../internal/model/db"
-import { getJwtSecret, getUserFromContext } from "./middlewares"
+import {
+  getJwtSecret,
+  getUserFromContext,
+  revokeToken,
+  isTokenRevoked,
+} from "./middlewares"
 import {
   generateTotpSecret,
   generateTotpCode,
@@ -86,6 +91,19 @@ export function generateRandomPassword(): string {
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("")
+}
+
+/** 生成 JWT 唯一标识（jti），用于注销黑名单精确失效单个 token */
+function generateJti(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return crypto.randomUUID()
+  }
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")
 }
 
 // Ensure admin user exists in DB KV space with a default password if unset
@@ -192,6 +210,7 @@ export async function authUserFromReq(
   try {
     const secret = await getJwtSecret(c)
     const payload = await verify(token, secret, "HS256")
+    if (await isTokenRevoked(payload?.jti, c.env)) return null
     const db = await getDb(c.env)
     if (!db.users) db.users = []
     const user = db.users.find(
@@ -275,6 +294,7 @@ authRouter.post("/login", async (c) => {
         username: matchedUser.username,
         role: matchedUser.role,
         exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
+        jti: generateJti(),
       }
       const secret = await getJwtSecret(c)
       const token = await sign(payload, secret)
@@ -337,6 +357,7 @@ authRouter.post("/login/hash", async (c) => {
         username: matchedUser.username,
         role: matchedUser.role,
         exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
+        jti: generateJti(),
       }
       const secret = await getJwtSecret(c)
       const token = await sign(payload, secret)
@@ -418,7 +439,23 @@ export const meHandler = async (c: any) => {
 authRouter.get("/me", meHandler)
 authRouter.post("/me/update", meUpdateHandler)
 
-export const logoutHandler = (c: any) => {
+export const logoutHandler = async (c: any) => {
+  // 真正失效 token：解析 Authorization 头中的 JWT，将其 jti 加入注销黑名单
+  const authHeader = c.req.header("Authorization")
+  if (authHeader) {
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.substring(7)
+      : authHeader
+    try {
+      const secret = await getJwtSecret(c)
+      const payload: any = await verify(token, secret, "HS256")
+      if (payload?.jti) {
+        await revokeToken(payload.jti, payload.exp, c.env)
+      }
+    } catch {
+      // token 无效则无需注销
+    }
+  }
   return c.json({
     code: 200,
     message: "success",

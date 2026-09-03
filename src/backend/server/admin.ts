@@ -202,7 +202,11 @@ adminRouter.post("/storage/create", async (c) => {
     }
   }
   const mountPath =
-    "/" + String(rawMount || "").split("/").filter(Boolean).join("/")
+    "/" +
+    String(rawMount || "")
+      .split("/")
+      .filter(Boolean)
+      .join("/")
   if (
     db.storages.some(
       (s: any) =>
@@ -277,7 +281,11 @@ adminRouter.post("/storage/update", async (c) => {
   }
   const mountPath =
     String(rawMount || "").trim() !== ""
-      ? "/" + String(rawMount || "").split("/").filter(Boolean).join("/")
+      ? "/" +
+        String(rawMount || "")
+          .split("/")
+          .filter(Boolean)
+          .join("/")
       : undefined
 
   if (mountPath) {
@@ -434,6 +442,13 @@ adminRouter.get("/driver/names", (c) => {
       "OnedriveSharelink",
       "PikPakShare",
       "SMB",
+      "Crypt",
+      "Virtual",
+      "AListV3",
+      "UrlTree",
+      "Strm",
+      "AzureBlob",
+      "USS",
     ],
   })
 })
@@ -3126,6 +3141,363 @@ const driverConfigs: Record<string, any> = {
       default_root: "/",
     },
   },
+  Crypt: {
+    name: "Crypt",
+    default_mount_path: "/crypt",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "remote_path",
+        type: "string",
+        default: "",
+        required: true,
+        help: "加密数据实际存储的位置（另一个已挂载存储的路径，如 /aliyundrive/enc）",
+      },
+      {
+        name: "password",
+        type: "password",
+        default: "",
+        required: true,
+        help: "主密码（用于派生加密密钥）",
+      },
+      {
+        name: "salt",
+        type: "password",
+        default: "",
+        required: false,
+        help: "盐（第二密码）。可选但推荐，提高密钥强度",
+      },
+      {
+        name: "filename_encryption",
+        type: "select",
+        options: "off,standard,obfuscate",
+        default: "off",
+        required: true,
+        help: "文件名加密方式。当前仅支持 off（文件名不加密，仅内容加密）",
+      },
+      {
+        name: "directory_name_encryption",
+        type: "select",
+        options: "false,true",
+        default: "false",
+        required: true,
+      },
+      {
+        name: "encrypted_suffix",
+        type: "string",
+        default: ".bin",
+        required: true,
+        help: "加密文件的后缀（高级选项）",
+      },
+      {
+        name: "filename_encoding",
+        type: "select",
+        options: "base64,base32,base32768",
+        default: "base64",
+        required: true,
+      },
+      { name: "thumbnail", type: "bool", default: "false", required: false },
+      { name: "show_hidden", type: "bool", default: "true", required: false },
+    ],
+    config: {
+      name: "Crypt",
+      local_sort: true,
+      only_local: false,
+      only_proxy: true,
+      no_cache: true,
+      no_upload: false,
+      need_ms: false,
+      default_root: "/",
+      no_link_url: true,
+      check_status: true,
+    },
+  },
+  Virtual: {
+    name: "Virtual",
+    default_mount_path: "/virtual",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "num_file",
+        type: "number",
+        default: "30",
+        required: true,
+        help: "每个目录下生成的占位文件数量",
+      },
+      {
+        name: "num_folder",
+        type: "number",
+        default: "30",
+        required: true,
+        help: "每个目录下生成的占位目录数量",
+      },
+      {
+        name: "max_file_size",
+        type: "number",
+        default: "1073741824",
+        required: true,
+        help: "占位文件最大字节数",
+      },
+      {
+        name: "min_file_size",
+        type: "number",
+        default: "1048576",
+        required: true,
+        help: "占位文件最小字节数",
+      },
+    ],
+    config: {
+      name: "Virtual",
+      local_sort: true,
+      only_local: false,
+      only_proxy: true,
+      no_cache: false,
+      no_upload: false,
+      need_ms: true,
+      default_root: "/",
+      no_link_url: true,
+    },
+  },
+  AListV3: {
+    name: "AListV3",
+    default_mount_path: "/alist",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "url",
+        type: "string",
+        default: "",
+        required: true,
+        help: "另一个 OpenList / AList 实例的地址，如 https://example.com",
+      },
+      { name: "meta_password", type: "string", default: "", required: false },
+      { name: "username", type: "string", default: "", required: false },
+      { name: "password", type: "password", default: "", required: false },
+      {
+        name: "token",
+        type: "string",
+        default: "",
+        required: false,
+        help: "访问令牌（可选，自动持久化，无需手动填写）",
+      },
+      {
+        name: "pass_ip_to_upsteam",
+        type: "bool",
+        default: "true",
+        required: false,
+      },
+      {
+        name: "pass_ua_to_upsteam",
+        type: "bool",
+        default: "true",
+        required: false,
+      },
+      {
+        name: "forward_archive_requests",
+        type: "bool",
+        default: "true",
+        required: false,
+      },
+    ],
+    config: {
+      name: "AListV3",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "/",
+    },
+  },
+  UrlTree: {
+    name: "UrlTree",
+    default_mount_path: "/url_tree",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "url_structure",
+        type: "text",
+        default: "",
+        required: true,
+        help: "URL 树结构文本，每行缩进 2 空格表示一级。目录行以 : 结尾，文件行格式 [FileName:][FileSize:][Modified:]Url",
+      },
+      {
+        name: "head_size",
+        type: "bool",
+        default: "false",
+        required: false,
+        help: "用 HEAD 请求获取文件大小（可能失败）",
+      },
+      {
+        name: "writable",
+        type: "bool",
+        default: "false",
+        required: false,
+        help: "允许增删改文件树（会持久化回 url_structure）",
+      },
+    ],
+    config: {
+      name: "UrlTree",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: true,
+      no_upload: false,
+      need_ms: false,
+      default_root: "/",
+      check_status: true,
+    },
+  },
+  Strm: {
+    name: "Strm",
+    default_mount_path: "/strm",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "paths",
+        type: "text",
+        default: "",
+        required: true,
+        help: "路径映射，每行一个：虚拟名:底层路径（如 movies:/aliyundrive/movies），或直接底层路径",
+      },
+      {
+        name: "siteUrl",
+        type: "text",
+        default: "",
+        required: false,
+        help: "strm 文件内容的 URL 前缀（留空则用相对路径）",
+      },
+      {
+        name: "PathPrefix",
+        type: "text",
+        default: "/d",
+        required: false,
+        help: "下载路径前缀",
+      },
+      {
+        name: "downloadFileTypes",
+        type: "text",
+        default: "ass,srt,vtt,sub,strm",
+        required: false,
+        help: "需原样下载的文件扩展名（通常为字幕）",
+      },
+      {
+        name: "filterFileTypes",
+        type: "text",
+        default:
+          "mp4,mkv,flv,avi,wmv,ts,rmvb,webm,mp3,flac,aac,wav,ogg,m4a,wma,alac",
+        required: false,
+        help: "支持生成 strm 的文件扩展名（视频/音频）",
+      },
+      { name: "encodePath", type: "bool", default: "true", required: false },
+      { name: "withoutUrl", type: "bool", default: "false", required: false },
+      { name: "withSign", type: "bool", default: "false", required: false },
+    ],
+    config: {
+      name: "Strm",
+      local_sort: true,
+      only_local: false,
+      only_proxy: true,
+      no_cache: true,
+      no_upload: true,
+      need_ms: false,
+      default_root: "/",
+      no_link_url: true,
+    },
+  },
+  AzureBlob: {
+    name: "AzureBlob",
+    default_mount_path: "/azure",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "endpoint",
+        type: "string",
+        default: "",
+        required: true,
+        help: "Azure 存储端点，如 https://accountname.blob.core.windows.net/",
+      },
+      {
+        name: "access_key",
+        type: "string",
+        default: "",
+        required: true,
+        help: "Azure 存储访问密钥（Base64）",
+      },
+      {
+        name: "container_name",
+        type: "string",
+        default: "",
+        required: true,
+        help: "容器名称",
+      },
+      {
+        name: "sign_url_expire",
+        type: "number",
+        default: "4",
+        required: false,
+        help: "SAS URL 有效期（小时）",
+      },
+    ],
+    config: {
+      name: "AzureBlob",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "/",
+      check_status: true,
+    },
+  },
+  USS: {
+    name: "USS",
+    default_mount_path: "/uss",
+    common: COMMON_FIELDS,
+    additional: [
+      { name: "bucket", type: "string", default: "", required: true },
+      {
+        name: "endpoint",
+        type: "string",
+        default: "",
+        required: true,
+        help: "下载域名（可含协议头）",
+      },
+      { name: "operator_name", type: "string", default: "", required: true },
+      {
+        name: "operator_password",
+        type: "password",
+        default: "",
+        required: true,
+      },
+      {
+        name: "anti_theft_chain_token",
+        type: "string",
+        default: "",
+        required: false,
+        help: "防盗链 Token（留空则用操作员密码）",
+      },
+      {
+        name: "sign_url_expire",
+        type: "number",
+        default: "4",
+        required: false,
+        help: "链接有效期（小时）",
+      },
+    ],
+    config: {
+      name: "USS",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "/",
+    },
+  },
 }
 
 adminRouter.get("/driver/list", (c) => {
@@ -3777,4 +4149,30 @@ adminRouter.post("/plugin/batch_save", async (c) => {
       data: null,
     })
   }
+})
+
+// ---- Message（与 Go internal/message/http.go 对齐）----
+// 进程内消息队列：send 入队、get 出队。Serverless 多实例下队列不跨实例共享，
+// 属于「尽力而为」的实现，与 Go 的 channel 语义一致（无消息返回 404）。
+const messageQueue: string[] = []
+
+adminRouter.post("/message/send", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const message = body?.message
+  if (message === undefined || message === null || message === "") {
+    return c.json(
+      { code: 400, message: "message is required", data: null },
+      400,
+    )
+  }
+  messageQueue.push(String(message))
+  return c.json({ code: 200, message: "success", data: null })
+})
+
+adminRouter.post("/message/get", (c) => {
+  const message = messageQueue.shift()
+  if (message === undefined) {
+    return c.json({ code: 404, message: "no message", data: null }, 404)
+  }
+  return c.json({ code: 200, message: "success", data: message })
 })

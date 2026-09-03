@@ -41,6 +41,13 @@ import { AliyundriveShareDriver } from "../../drivers/aliyundrive_share/driver"
 import { OnedriveSharelinkDriver } from "../../drivers/onedrive_sharelink/driver"
 import { PikPakShareDriver } from "../../drivers/pikpak_share/driver"
 import { SMBDriver } from "../../drivers/smb/driver"
+import { CryptDriver } from "../../drivers/crypt/driver"
+import { VirtualDriver } from "../../drivers/virtual/driver"
+import { AListV3Driver } from "../../drivers/alist_v3/driver"
+import { UrlTreeDriver } from "../../drivers/url_tree/driver"
+import { StrmDriver } from "../../drivers/strm/driver"
+import { AzureBlobDriver } from "../../drivers/azure_blob/driver"
+import { UssDriver } from "../../drivers/uss/driver"
 
 // LocalDriver is not available in Cloudflare Workers (no fs module).
 // When running in Node.js container mode, import dynamically on first use.
@@ -80,6 +87,18 @@ async function getFTPDriver(storageConfig: any): Promise<StorageDriver> {
 const driverCache = new Map<string, StorageDriver>()
 const driverInitCache = new Map<string, Promise<StorageDriver>>()
 const cookiePersistenceCache = new Map<string, Promise<void>>()
+
+// M-8：驱动实例缓存容量上限。storage.modified 变化会产生新 key，旧条目若不清理，
+// 长生命周期 isolate 中会无限累积。超出上限时按插入顺序淘汰最旧条目。
+const MAX_DRIVER_CACHE = 100
+
+function setDriverCache(key: string, driver: StorageDriver): void {
+  if (driverCache.size >= MAX_DRIVER_CACHE) {
+    const oldestKey = driverCache.keys().next().value
+    if (oldestKey !== undefined) driverCache.delete(oldestKey)
+  }
+  driverCache.set(key, driver)
+}
 
 export interface StorageRequestContext {
   waitUntil?: (promise: Promise<unknown>) => void
@@ -690,6 +709,75 @@ async function createDriver(
     const addition = parseAddition(storageConfig)
     driver = new SMBDriver(addition)
     await driver.init?.()
+  } else if (normDriver === "crypt") {
+    const addition = parseAddition(storageConfig)
+    driver = new CryptDriver(addition)
+    await driver.init?.()
+  } else if (normDriver === "virtual") {
+    const addition = parseAddition(storageConfig)
+    driver = new VirtualDriver(addition)
+  } else if (
+    normDriver === "alistv3" ||
+    normDriver === "alist" ||
+    normDriver === "alistv2"
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new AListV3Driver(addition, async (token: string) => {
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        stAddition.token = token
+        st.addition = JSON.stringify(stAddition)
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[alist_v3] failed to persist token:", e)
+      }
+    })
+    await driver.init?.()
+  } else if (normDriver === "urltree" || normDriver === "urlstree") {
+    const addition = parseAddition(storageConfig)
+    driver = new UrlTreeDriver(addition, async (urlStructure: string) => {
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        stAddition.url_structure = urlStructure
+        st.addition = JSON.stringify(stAddition)
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[url_tree] failed to persist structure:", e)
+      }
+    })
+    await driver.init?.()
+  } else if (normDriver === "strm") {
+    const addition = parseAddition(storageConfig)
+    driver = new StrmDriver(addition)
+    await driver.init?.()
+  } else if (
+    normDriver === "azureblob" ||
+    normDriver === "azure" ||
+    normDriver === "azblob"
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new AzureBlobDriver(addition)
+    await driver.init?.()
+  } else if (normDriver === "uss" || normDriver === "upyun") {
+    const addition = parseAddition(storageConfig)
+    driver = new UssDriver(addition)
+    await driver.init?.()
   } else {
     throw new Error(
       "failed get driver: unsupported driver '" + driverName + "'",
@@ -722,7 +810,7 @@ export async function getDriver(
     const ready = driverCache.get(cacheKey)
     if (ready) return ready
     const driver = await createDriver(driverName, storageConfig)
-    driverCache.set(cacheKey, driver)
+    setDriverCache(cacheKey, driver)
     return driver
   })
 }

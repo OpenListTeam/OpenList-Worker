@@ -76,7 +76,9 @@ rawRouter.get("/*", async (c) => {
           .split(";")
           .map((s) => s.trim())
           .find((s) => s.startsWith("browser-password="))
-          ?.split("=").slice(1).join("=") || ""
+          ?.split("=")
+          .slice(1)
+          .join("=") || ""
       let cookiePwd = ""
       try {
         cookiePwd = cookiePwdRaw ? decodeURIComponent(cookiePwdRaw) : ""
@@ -237,11 +239,18 @@ rawRouter.get("/*", async (c) => {
               if (lastModified) c.header("Last-Modified", lastModified)
               const cacheControl = upstreamRes.headers.get("cache-control")
               if (cacheControl) c.header("Cache-Control", cacheControl)
+              // FIX(H-3): 上游响应头已按白名单回显，但对 Content-Disposition 额外
+              // 清洗 CR/LF 与控制字符，防止恶意上游注入额外响应头（Set-Cookie/Location）。
               const contentDisposition = upstreamRes.headers.get(
                 "content-disposition",
               )
-              if (contentDisposition)
-                c.header("Content-Disposition", contentDisposition)
+              if (contentDisposition) {
+                const safeDisposition = contentDisposition.replace(
+                  /[\r\n\u0000-\u001f]+/g,
+                  "",
+                )
+                c.header("Content-Disposition", safeDisposition)
+              }
 
               return c.body(upstreamRes.body as any, upstreamRes.status as any)
             } else {

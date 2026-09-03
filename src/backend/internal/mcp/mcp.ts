@@ -60,7 +60,87 @@ export function listMcpPrompts(): McpPrompt[] {
   ]
 }
 
-export function handleMcpJsonRpc(method: string, id: any, params: any): any {
+/** 实际执行 MCP 工具调用（与 Go server/mcp 对齐，聚焦 list_files / get_system_info） */
+async function handleToolCall(
+  id: any,
+  name: string,
+  args: Record<string, any>,
+  env?: any,
+): Promise<any> {
+  try {
+    if (name === "list_files") {
+      const { listItems } = await import("../op/storage")
+      const path = (args?.path || "/") as string
+      const { content, provider } = await listItems(path)
+      const files = content.map((f) => ({
+        name: f.name,
+        size: f.size,
+        is_dir: f.is_dir,
+        modified: f.modified,
+      }))
+      return {
+        jsonrpc: "2.0",
+        result: {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ path, provider, files }, null, 2),
+            },
+          ],
+          isError: false,
+        },
+        id,
+      }
+    }
+    if (name === "get_system_info") {
+      const { getDb } = await import("../model/db")
+      const db = await getDb(env)
+      return {
+        jsonrpc: "2.0",
+        result: {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  storages: db?.storages?.length ?? 0,
+                  users: db?.users?.length ?? 0,
+                  metas: db?.metas?.length ?? 0,
+                  shares: db?.shares?.length ?? 0,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+          isError: false,
+        },
+        id,
+      }
+    }
+    return {
+      jsonrpc: "2.0",
+      error: { code: -32602, message: `Unknown tool: ${name}` },
+      id,
+    }
+  } catch (e: any) {
+    return {
+      jsonrpc: "2.0",
+      result: {
+        content: [{ type: "text", text: String(e?.message || e) }],
+        isError: true,
+      },
+      id,
+    }
+  }
+}
+
+export async function handleMcpJsonRpc(
+  method: string,
+  id: any,
+  params: any,
+  env?: any,
+): Promise<any> {
   switch (method) {
     case "tools/list":
       return {
@@ -70,6 +150,18 @@ export function handleMcpJsonRpc(method: string, id: any, params: any): any {
         },
         id,
       }
+    case "tools/call": {
+      const name = params?.name as string
+      const args = (params?.arguments || {}) as Record<string, any>
+      if (!name) {
+        return {
+          jsonrpc: "2.0",
+          error: { code: -32602, message: "Missing tool name" },
+          id,
+        }
+      }
+      return handleToolCall(id, name, args, env)
+    }
     case "resources/list":
       return {
         jsonrpc: "2.0",

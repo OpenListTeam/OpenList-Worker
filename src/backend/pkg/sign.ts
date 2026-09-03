@@ -17,6 +17,17 @@ import { hmacSha256 } from "./crypto"
 
 const DEFAULT_SIGN_EXPIRES_SECONDS = 24 * 3600 // sign_all 开启但未配过期时默认 24h
 
+/** 恒定时间比较（十六进制字符串），避免 HMAC 验签被时序侧信道攻击（M-1） */
+function constantTimeEqualHex(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  }
+  return diff === 0
+}
+
 export interface SignPolicy {
   enabled: boolean
   expiresIn: number
@@ -66,5 +77,5 @@ export async function verifyDownloadSign(
   }
   const secret = await getJwtSecret(c)
   const expect = await hmacSha256(`${virtualPath}:${expires}`, secret)
-  return expect === hmac
+  return constantTimeEqualHex(expect, hmac)
 }

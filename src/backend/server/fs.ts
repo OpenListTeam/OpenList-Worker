@@ -42,6 +42,32 @@ const getStorageRequestContext = (c: any) => {
 const permissionDenied = (c: any) =>
   c.json({ code: 403, message: "Permission denied", data: null }, 403)
 
+// ---- 上传大小限制（M-5：防止超大请求体被整体读入内存导致 Worker OOM）----
+// 单次整体上传（/put /form）与分片单片（/upload/part）分开设限，
+// 均可通过环境变量 MAX_UPLOAD_SIZE / MAX_PART_SIZE 覆盖。
+const DEFAULT_MAX_UPLOAD_SIZE = 25 * 1024 * 1024 // 25MB
+const DEFAULT_MAX_PART_SIZE = 16 * 1024 * 1024 // 16MB
+
+function getUploadSizeLimit(c: any, part: boolean): number {
+  const env = c.env || {}
+  const key = part ? "MAX_PART_SIZE" : "MAX_UPLOAD_SIZE"
+  const raw =
+    env[key] || (typeof process !== "undefined" ? process.env?.[key] : "")
+  if (raw) {
+    const n = parseInt(String(raw), 10)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return part ? DEFAULT_MAX_PART_SIZE : DEFAULT_MAX_UPLOAD_SIZE
+}
+
+/** 返回超限时的上限字节数；未超限或无法判断（无 Content-Length）返回 null */
+function exceedsUploadLimit(c: any, part = false): number | null {
+  const contentLength = parseInt(c.req.header("Content-Length") || "0", 10)
+  if (!contentLength) return null
+  const max = getUploadSizeLimit(c, part)
+  return contentLength > max ? max : null
+}
+
 // 分享请求错误统一出口：
 // - 密码错误 → 403，前端据此弹出提取码输入框（State.NeedPassword）
 // - 其他（不存在/禁用/过期/超次数/为空）→ 400，前端显示友好提示
@@ -628,6 +654,17 @@ fsRouter.put("/put", async (c) => {
   }
   const reqPath = getActualPath(user, rawPath)
   const requestContext = getStorageRequestContext(c)
+  const tooLarge = exceedsUploadLimit(c)
+  if (tooLarge !== null) {
+    return c.json(
+      {
+        code: 413,
+        message: `File too large (max ${tooLarge} bytes)`,
+        data: null,
+      },
+      413,
+    )
+  }
   try {
     const buffer = await c.req.arrayBuffer()
     await putItem(reqPath, Buffer.from(buffer), requestContext)
@@ -654,6 +691,17 @@ fsRouter.put("/form", async (c) => {
   }
   const reqPath = getActualPath(user, rawPath)
   const requestContext = getStorageRequestContext(c)
+  const tooLarge = exceedsUploadLimit(c)
+  if (tooLarge !== null) {
+    return c.json(
+      {
+        code: 413,
+        message: `File too large (max ${tooLarge} bytes)`,
+        data: null,
+      },
+      413,
+    )
+  }
   try {
     const form = await c.req.formData()
     const file = form.get("file")
@@ -743,6 +791,17 @@ fsRouter.put("/upload/part", async (c) => {
       message: "missing X-Upload-Session / X-Part-Number / Upload-Path",
       data: null,
     })
+  }
+  const tooLarge = exceedsUploadLimit(c, true)
+  if (tooLarge !== null) {
+    return c.json(
+      {
+        code: 413,
+        message: `Part too large (max ${tooLarge} bytes)`,
+        data: null,
+      },
+      413,
+    )
   }
   try {
     const resolved = await resolvePath(dirPath)
@@ -901,6 +960,242 @@ fsRouter.post("/other", async (c) => {
       },
       500,
     )
+  } catch (e: any) {
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
+  }
+})
+
+// ---- batch_rename / regex_rename（与 Go server/handles/fsbatch.go 对齐）----
+
+fsRouter.post("/batch_rename", async (c) => {
+  const user = await getUserFromContext(c)
+  if (!canWrite(user)) return permissionDenied(c)
+  const { src_dir, rename_objects } = await c.req.json().catch(() => ({}))
+  if (!Array.isArray(rename_objects) || rename_objects.length === 0) {
+    return c.json(
+      { code: 400, message: "rename_objects is required", data: null },
+      400,
+    )
+  }
+  const dirPath = getActualPath(user, src_dir || "/")
+  const requestContext = getStorageRequestContext(c)
+  try {
+    for (const obj of rename_objects) {
+      const srcName = obj?.src_name
+      const newName = obj?.new_name
+      if (!srcName || !newName) continue
+      validateFileName(newName)
+      const fullPath = `${dirPath}/${srcName}`.replace(/\/{2,}/g, "/")
+      await renameItem(fullPath, newName, requestContext)
+    }
+    return c.json({ code: 200, message: "success", data: null })
+  } catch (e: any) {
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
+  }
+})
+
+fsRouter.post("/regex_rename", async (c) => {
+  const user = await getUserFromContext(c)
+  if (!canWrite(user)) return permissionDenied(c)
+  const { src_dir, src_name_regex, new_name_regex } = await c.req
+    .json()
+    .catch(() => ({}))
+  if (!src_name_regex) {
+    return c.json(
+      { code: 400, message: "src_name_regex is required", data: null },
+      400,
+    )
+  }
+  const dirPath = getActualPath(user, src_dir || "/")
+  const requestContext = getStorageRequestContext(c)
+  try {
+    const srcRegex = new RegExp(src_name_regex)
+    const { content } = await listItems(dirPath, requestContext)
+    for (const item of content) {
+      if (!item.is_dir && srcRegex.test(item.name)) {
+        const newName = item.name.replace(srcRegex, new_name_regex || "")
+        validateFileName(newName)
+        const fullPath = `${dirPath}/${item.name}`.replace(/\/{2,}/g, "/")
+        await renameItem(fullPath, newName, requestContext)
+      }
+    }
+    return c.json({ code: 200, message: "success", data: null })
+  } catch (e: any) {
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
+  }
+})
+
+// ---- recursive_move（与 Go FsRecursiveMove 对齐：递归枚举文件后扁平移动到 dst_dir）----
+
+fsRouter.post("/recursive_move", async (c) => {
+  const user = await getUserFromContext(c)
+  if (!canWrite(user)) return permissionDenied(c)
+  const { src_dir, dst_dir, conflict_policy } = await c.req
+    .json()
+    .catch(() => ({}))
+  const srcPath = getActualPath(user, src_dir || "/")
+  const dstPath = getActualPath(user, dst_dir || "/")
+  const policy = conflict_policy || "overwrite"
+  const requestContext = getStorageRequestContext(c)
+  try {
+    // 预取目标目录现有文件名（用于 cancel/skip 冲突策略）
+    let existing = new Set<string>()
+    if (policy !== "overwrite") {
+      const dst = await listItems(dstPath, requestContext)
+      existing = new Set(dst.content.map((f) => f.name))
+    }
+    const queue: string[] = [srcPath]
+    let count = 0
+    while (queue.length > 0) {
+      const dir = queue.shift()!
+      const { content } = await listItems(dir, requestContext)
+      for (const item of content) {
+        if (item.is_dir) {
+          queue.push(`${dir}/${item.name}`.replace(/\/{2,}/g, "/"))
+        } else {
+          if (existing.has(item.name)) {
+            if (policy === "cancel") {
+              return c.json(
+                {
+                  code: 403,
+                  message: `file [${item.name}] exists`,
+                  data: null,
+                },
+                403,
+              )
+            }
+            if (policy === "skip") continue
+          }
+          if (policy !== "overwrite") existing.add(item.name)
+          await moveItems(dir, dstPath, [item.name], requestContext)
+          count++
+        }
+      }
+    }
+    return c.json({
+      code: 200,
+      message: `Successfully moved ${count} files`,
+      data: null,
+    })
+  } catch (e: any) {
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
+  }
+})
+
+// ---- remove_empty_directory（与 Go FsRemoveEmptyDirectory 对齐）----
+
+fsRouter.post("/remove_empty_directory", async (c) => {
+  const user = await getUserFromContext(c)
+  if (!canWrite(user)) return permissionDenied(c)
+  const { src_dir } = await c.req.json().catch(() => ({}))
+  const srcPath = getActualPath(user, src_dir || "/")
+  const requestContext = getStorageRequestContext(c)
+  try {
+    const removeEmptyDirs = async (dir: string): Promise<void> => {
+      const { content } = await listItems(dir, requestContext)
+      for (const item of content) {
+        if (item.is_dir) {
+          await removeEmptyDirs(`${dir}/${item.name}`.replace(/\/{2,}/g, "/"))
+        }
+      }
+      if (dir === srcPath) return // 不删除根目录本身
+      const after = await listItems(dir, requestContext)
+      if (after.content.length === 0) {
+        const parent = dir.split("/").slice(0, -1).join("/") || "/"
+        const name = dir.split("/").pop()!
+        await removeItems(parent, [name], requestContext)
+      }
+    }
+    await removeEmptyDirs(srcPath)
+    return c.json({ code: 200, message: "success", data: null })
+  } catch (e: any) {
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
+  }
+})
+
+// ---- link（与 Go Link 对齐，admin 权限，返回真实直链）----
+
+fsRouter.post("/link", async (c) => {
+  const user = await getUserFromContext(c)
+  if (!isAdmin(user)) return permissionDenied(c)
+  const { path } = await c.req.json().catch(() => ({}))
+  const reqPath = getActualPath(user, path || "/")
+  const requestContext = getStorageRequestContext(c)
+  try {
+    const resolved = await resolvePath(reqPath)
+    if (resolved.isVirtual || !resolved.storage) {
+      return c.json(
+        { code: 500, message: "storage not found", data: null },
+        500,
+      )
+    }
+    const driver = await getDriver(resolved.storage.driver, resolved.storage)
+    try {
+      const item = await driver.get(reqPath, resolved.physical)
+      if (item && item.raw_url) {
+        return c.json({
+          code: 200,
+          message: "success",
+          data: { url: item.raw_url },
+        })
+      }
+    } finally {
+      await flushPendingDriverState(
+        resolved.storage.driver,
+        resolved.storage,
+        driver,
+        requestContext,
+      )
+    }
+    // 无直链（如本地/加密驱动）：返回代理下载地址
+    return c.json({
+      code: 200,
+      message: "success",
+      data: { url: `/api/p${reqPath.startsWith("/") ? "" : "/"}${reqPath}` },
+    })
+  } catch (e: any) {
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
+  }
+})
+
+// ---- get_direct_upload_info（与 Go FsGetDirectUploadInfo 对齐）----
+
+fsRouter.post("/get_direct_upload_info", async (c) => {
+  const user = await getUserFromContext(c)
+  if (!canWrite(user)) return permissionDenied(c)
+  const { path, file_name, file_size } = await c.req.json().catch(() => ({}))
+  const reqPath = getActualPath(user, path || "/")
+  try {
+    const resolved = await resolvePath(reqPath)
+    if (resolved.isVirtual || !resolved.storage) {
+      return c.json({ code: 200, message: "success", data: null })
+    }
+    const driver = await getDriver(resolved.storage.driver, resolved.storage)
+    const d = driver as any
+    // 优先使用驱动的直传能力
+    if (typeof d.getDirectUploadInfo === "function") {
+      const info = await d.getDirectUploadInfo(
+        resolved.relative,
+        file_name,
+        file_size,
+      )
+      return c.json({ code: 200, message: "success", data: info })
+    }
+    // 回退到 other("direct_upload") / other("get_direct_upload_info")
+    if (typeof d.other === "function") {
+      for (const m of ["direct_upload", "get_direct_upload_info"]) {
+        try {
+          const info = await d.other(m, resolved.relative, {
+            file_name,
+            file_size,
+          })
+          if (info) return c.json({ code: 200, message: "success", data: info })
+        } catch {
+          // 尝试下一个 method
+        }
+      }
+    }
+    return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
   }
