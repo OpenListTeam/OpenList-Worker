@@ -72,7 +72,7 @@ function clearLoginFailures(c: Context, username: string) {
   loginFailures.delete(loginKey(c, username))
 }
 
-// Helper to hash password matching OpenListNext/AList specification
+// Helper to hash password matching OpenList/AList specification
 export async function hashPassword(plainPassword: string): Promise<string> {
   const hash_salt = "https://github.com/alist-org/alist"
   const msgBuffer = new TextEncoder().encode(`${plainPassword}-${hash_salt}`)

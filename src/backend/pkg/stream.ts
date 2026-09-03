@@ -1,5 +1,5 @@
 /**
- * Stream utilities for OpenListNext.
+ * Stream utilities for OpenList.
  * Uses Web Streams API for cross-runtime compatibility (Cloudflare Workers / Node.js).
  */
 

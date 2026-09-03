@@ -24,7 +24,7 @@ debugRouter.get("/info", async (c) => {
 
   return c.json({
     code: 200,
-    message: "OpenListNext debug profile generated",
+    message: "OpenList debug profile generated",
     data: responseData,
   })
 })

@@ -10,13 +10,13 @@ export const setBasePath = (path: string) => {
     base_path = base_path.slice(0, -1)
   }
 }
-if (window.OPENLISTNEXT_CONFIG.base_path) {
-  setBasePath(window.OPENLISTNEXT_CONFIG.base_path)
+if (window.OPENLIST_CONFIG.base_path) {
+  setBasePath(window.OPENLIST_CONFIG.base_path)
 }
 
 export let api = import.meta.env.VITE_API_URL as string
-if (window.OPENLISTNEXT_CONFIG.api) {
-  api = window.OPENLISTNEXT_CONFIG.api
+if (window.OPENLIST_CONFIG.api) {
+  api = window.OPENLIST_CONFIG.api
 }
 
 api = (api || "").trim()

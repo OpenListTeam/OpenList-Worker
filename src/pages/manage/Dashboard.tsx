@@ -195,11 +195,11 @@ const Dashboard = () => {
                       如需开启 KV 空间持久化：
                       <br />• <strong>腾讯云 EdgeOne Makers</strong>：在 EdgeOne
                       项目设置中绑定 KV 命名空间（变量名推荐{" "}
-                      <code>EDGEONE_KV</code> 或 <code>OPENLISTNEXT_KV</code>
+                      <code>EDGEONE_KV</code> 或 <code>OPENLIST_KV</code>
                       ）。
                       <br />• <strong>Cloudflare Workers</strong>：在 Cloudflare
-                      仪表盘绑定 KV 命名空间（变量名{" "}
-                      <code>OPENLISTNEXT_KV</code>）或配置 REST API 环境变量（
+                      仪表盘绑定 KV 命名空间（变量名 <code>OPENLIST_KV</code>
+                      ）或配置 REST API 环境变量（
                       <code>CF_ACCOUNT_ID</code>,{" "}
                       <code>CF_KV_NAMESPACE_ID</code>, <code>CF_API_TOKEN</code>
                       ）。

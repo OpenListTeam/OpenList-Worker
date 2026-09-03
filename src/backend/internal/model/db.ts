@@ -14,7 +14,7 @@ export const defaultDb = {
     },
     {
       key: "site_title",
-      value: "OpenListNext",
+      value: "OpenList",
       type: "string",
       help: "Site Title",
       group: 1,
@@ -97,7 +97,7 @@ export const defaultDb = {
     },
     {
       key: "home_icon",
-      value: "openlistnext",
+      value: "openlist",
       type: "string",
       help: "Home Icon Name",
       group: 2,
@@ -653,7 +653,7 @@ async function getBlobStore(): Promise<any | null> {
     // In Makers Functions, projectId/token are auto-injected by the runtime.
     // TypeScript types require them, but the SDK works without them inside Functions.
     _blobStore = getStore({
-      name: "openlistnext_db",
+      name: "openlist_db",
       consistency: "strong",
     } as any)
   } catch {
@@ -744,8 +744,8 @@ export async function getKvBinding(envCtx?: any): Promise<{
     ...(customKvName ? [{ key: customKvName, name: customKvName }] : []),
     { key: "EDGEONE_KV", name: "EDGEONE_KV" },
     { key: "EO_KV", name: "EO_KV" },
-    { key: "OPENLISTNEXT_KV", name: "OPENLISTNEXT_KV" },
-    { key: "OPENLISTNEXT_KV_ID", name: "OPENLISTNEXT_KV_ID" },
+    { key: "OPENLIST_KV", name: "OPENLIST_KV" },
+    { key: "OPENLIST_KV_ID", name: "OPENLIST_KV_ID" },
     { key: "KV", name: "KV" },
     { key: "CF_KV", name: "CF_KV" },
     { key: "DATABASE_KV", name: "DATABASE_KV" },
@@ -805,7 +805,7 @@ export async function getKvBinding(envCtx?: any): Promise<{
 
 async function readFromKv(
   kvInfo: Awaited<ReturnType<typeof getKvBinding>>,
-  key = "openlistnext_config",
+  key = "openlist_config",
 ): Promise<any | null> {
   const { binding, mode } = kvInfo
   if (mode === "none" || !binding) return null
@@ -900,9 +900,9 @@ async function saveToKv(
 
 // 已知的旧默认值 → 当前默认值迁移表。
 // 修复「开发环境(无 KV，用新默认值)与生产环境(KV 里保存了旧默认值)不一致」：
-// 早期默认 logo/favicon 为空或 res.oplist.org 旧地址、site_title=OpenList、
-// home_icon=openlist，品牌统一后默认值已更新，但已写入 KV 的旧值不会被
-// ensureDefaultSettings 的「仅补缺失 key」逻辑覆盖，导致 prod 显示旧图标/标题。
+// 早期默认 logo/favicon 为空或 res.oplist.org 旧地址
+// 现已统一为 OpenList/openlist，但已写入 KV 的旧品牌值不会被 ensureDefaultSettings
+// 的「仅补缺失 key」逻辑覆盖，导致 prod 显示旧品牌名。
 const LEGACY_SETTING_MIGRATIONS: Record<string, { from: any[]; to: string }> = {
   logo: {
     from: ["", "https://res.oplist.org/logo/logo.png"],
@@ -913,12 +913,12 @@ const LEGACY_SETTING_MIGRATIONS: Record<string, { from: any[]; to: string }> = {
     to: "/favicon.png",
   },
   site_title: {
-    from: ["OpenList"],
-    to: "OpenListNext",
+    from: ["OpenListNext"],
+    to: "OpenList",
   },
   home_icon: {
-    from: ["openlist", "oplist"],
-    to: "openlistnext",
+    from: ["openlistnext"],
+    to: "openlist",
   },
   // 上游 OpenList 的 home_container 默认是 max_980px（内容限宽 980px 居中），
   // 本项目早期误把默认值设为 hope_container（HopeUI Container 无 maxW，流式全宽），
@@ -1058,7 +1058,7 @@ const loadDb = async (envCtx?: any) => {
   const kvInfo = await getKvBinding(envCtx)
   if (kvInfo.mode !== "none") {
     try {
-      const kvConfig = await readFromKv(kvInfo, "openlistnext_config")
+      const kvConfig = await readFromKv(kvInfo, "openlist_config")
       if (kvConfig) {
         await unsealDb(kvConfig, getEncryptionKey(envCtx))
         memoryDb = kvConfig
@@ -1270,7 +1270,7 @@ export const saveDb = async (data: any, envCtx?: any): Promise<boolean> => {
   try {
     // 落盘前对敏感字段做静态加密（H-1），内存中的 data 保持明文
     const sealed = await sealDb(data, getEncryptionKey(envCtx))
-    success = await saveToKv(kvInfo, "openlistnext_config", sealed)
+    success = await saveToKv(kvInfo, "openlist_config", sealed)
   } catch (err) {
     console.error("[DB] Failed to save to KV:", err)
     success = false
@@ -1296,7 +1296,7 @@ export async function getKvStatus(envCtx?: any) {
 
   if (isConfigured) {
     try {
-      const testVal = await readFromKv(kvInfo, "openlistnext_config")
+      const testVal = await readFromKv(kvInfo, "openlist_config")
       connected = true
       return {
         configured: true,

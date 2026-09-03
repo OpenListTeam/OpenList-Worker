@@ -113,7 +113,7 @@ const Plugins = () => {
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `openlistnext-plugins-${new Date().toISOString().slice(0, 10)}.json`
+    a.download = `openlist-plugins-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
     notify.success(t("plugins.actions.export") + " " + t("global.success"))

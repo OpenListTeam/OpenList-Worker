@@ -1,4 +1,4 @@
-// FTP Storage Driver for OpenListNext
+// FTP Storage Driver for OpenList
 // Ported from OpenList: https://github.com/OpenListTeam/OpenList/tree/main/drivers/ftp
 
 import {

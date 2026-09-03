@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the existing `Pan189Client` OAuth/API protocol, but make authentication lazy when a Cookie is already present, remove the duplicate root preflight, and serialize driver initialization with a cached Promise. Cookie updates stay in the driver’s in-memory state and are flushed once after the request through an injected persistence hook; the Hono request context decides whether the flush is awaited or scheduled with `waitUntil`.
 
-**Tech Stack:** TypeScript, Hono, Cloudflare Workers `ExecutionContext`, Node test runner via `tsx --test`, existing OpenListNext storage-driver interfaces.
+**Tech Stack:** TypeScript, Hono, Cloudflare Workers `ExecutionContext`, Node test runner via `tsx --test`, existing OpenList storage-driver interfaces.
 
 **Spec:** `docs/superpowers/specs/2026-08-23-189cloud-phase1-design.md`
 
@@ -413,7 +413,7 @@ git commit -m "perf(fs): short-circuit mounted storage roots"
 
 - [ ] **Step 1: Run the complete automated checks**
 
-Run from `openlistnext`:
+Run from `openlist`:
 
 ```bash
 npm run test:189

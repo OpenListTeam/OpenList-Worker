@@ -4,11 +4,11 @@ const fs = require("node:fs")
 
 // 1. 模拟 `wrangler kv namespace list` 表格输出（wrangler 4.x 格式）
 const mockList = `
-🌀 Listing namespaces with title filter "OpenListTeam-OpenListnext"
+🌀 Listing namespaces with title filter "OpenListTeam-OpenList"
 ┌──────────────────────────────────────┬──────────────────────────────┐
 │ id                                   │ title                        │
 ├──────────────────────────────────────┼──────────────────────────────┤
-│ 0e48234248a84d4dbdc5a70e886773ea    │ openlistnextpro-OPENLISTNEXT_KV │
+│ 0e48234248a84d4dbdc5a70e886773ea    │ openlist-OPENLIST_KV │
 └──────────────────────────────────────┴──────────────────────────────┘
 `
 const re = /\|\s*([0-9a-fA-F]{32})\s*\|\s*([^|\n]+?)\s*\|/g
@@ -16,16 +16,16 @@ const map = {}
 let m
 while ((m = re.exec(mockList)) !== null) map[m[2].trim()] = m[1].trim()
 console.log("解析 namespace:", JSON.stringify(map))
-const found = Object.keys(map).find((t) => t.includes("OPENLISTNEXT_KV"))
+const found = Object.keys(map).find((t) => t.includes("OPENLIST_KV"))
 console.log("匹配:", found, "→ id:", found ? map[found] : null)
 
 // 2. 模拟 create 输出
 const mockCreate = `
-🌀 Creating namespace with title "OPENLISTNEXT_KV"
+🌀 Creating namespace with title "OPENLIST_KV"
 ✨ Success!
 Add the following to your configuration file in your kv_namespaces array:
 [[kv_namespaces]]
-binding = "OPENLISTNEXT_KV"
+binding = "OPENLIST_KV"
 id = "abc123def456abc123def456abc123def4"
 `
 const idM = mockCreate.match(/id\s*=\s*"([0-9a-fA-F]{32})"/)
@@ -39,13 +39,13 @@ const updated = toml.replace(kvBlockRe, `$1"${newId}"`)
 console.log("toml 更新后含新 id:", updated.includes(newId))
 console.log(
   "toml 其他内容保留:",
-  updated.includes('name = "openlistnextpro"') &&
-    updated.includes('binding = "OPENLISTNEXT_KV"'),
+  updated.includes('name = "openlist"') &&
+    updated.includes('binding = "OPENLIST_KV"'),
 )
 
 // 4. 无 kv 块时追加
 const noKv = 'name = "test"\nmain = "src/backend/worker.ts"\n'
-const block = `\n[[kv_namespaces]]\nbinding = "OPENLISTNEXT_KV"\nid = "${newId}"\n`
+const block = `\n[[kv_namespaces]]\nbinding = "OPENLIST_KV"\nid = "${newId}"\n`
 const appended = noKv.replace(/\s*$/, "") + block
 console.log(
   "无块追加成功:",

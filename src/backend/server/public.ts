@@ -13,6 +13,9 @@ publicRouter.get("/settings", async (c) => {
     title: "OpenList",
     site_title: "OpenList",
     version: "v4.2.3",
+    // 后端类型标识：前端据此在 GO / TS 模式间切换功能开关。
+    // Go 版 OpenList 后端不返回此字段，前端缺省视为 "go"。
+    backend: "ts-worker",
     announcement: "",
     pagination_type: "pagination",
     default_page_size: "20",

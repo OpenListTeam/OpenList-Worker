@@ -1,8 +1,8 @@
 # 贡献指南 (Contributing Guide)
 
-感谢你对 **OpenListNext** 的关注与支持！🎉
+感谢你对 **OpenList** 的关注与支持！🎉
 
-OpenListNext 是一个基于 **SolidJS** + **Hono** + **TypeScript** 的现代化全栈文件列表与网盘管理系统。我们欢迎任何形式的贡献，包括但不限于报告 Bug、提出新功能建议、改进文档、参与国际化翻译以及提交代码。
+OpenList 是一个基于 **SolidJS** + **Hono** + **TypeScript** 的现代化全栈文件列表与网盘管理系统。我们欢迎任何形式的贡献，包括但不限于报告 Bug、提出新功能建议、改进文档、参与国际化翻译以及提交代码。
 
 ---
 
@@ -30,7 +30,7 @@ OpenListNext 是一个基于 **SolidJS** + **Hono** + **TypeScript** 的现代�
 
 ### 1. 报告 Bug
 
-如果您在使用过程中发现了 Bug，请通过 [GitHub Issues](https://github.com/openlistnext/openlistnext/issues) 提交：
+如果您在使用过程中发现了 Bug，请通过 [GitHub Issues](https://github.com/OpenListTeam/OpenList/issues) 提交：
 
 - 检查是否已有相同或相似的 Issue。
 - 详细描述问题发生的场景、复现步骤、预期行为与实际表现。
@@ -49,7 +49,7 @@ OpenListNext 是一个基于 **SolidJS** + **Hono** + **TypeScript** 的现代�
 项目使用 Crowdin 管理多语言翻译：
 
 - 可通过运行 `pnpm run crowdin:download` 同步最新文案。
-- 也欢迎在 [Crowdin 项目页面](https://openlistnext.org/) 或通过 PR 完善语言包。
+- 也欢迎在 [Crowdin 项目页面](https://oplist.org/) 或通过 PR 完善语言包。
 
 ### 4. 提交代码 (Code Contributions)
 
@@ -69,8 +69,8 @@ OpenListNext 是一个基于 **SolidJS** + **Hono** + **TypeScript** 的现代�
 1. **Fork 并克隆仓库**：
 
    ```bash
-   git clone https://github.com/<your-username>/openlistnext.git
-   cd openlistnext
+   git clone https://github.com/<your-username>/OpenList.git
+   cd openlist
    ```
 
 2. **安装依赖**：
@@ -110,7 +110,7 @@ OpenListNext 是一个基于 **SolidJS** + **Hono** + **TypeScript** 的现代�
 ## 🧱 核心架构与开发规范
 
 ```
-openlistnext/
+openlist/
 ├── api/                   # 边缘 / Serverless 入口 ([...route].ts)
 ├── src/
 │   ├── backend/           # 后端核心 (Hono)
@@ -126,7 +126,7 @@ openlistnext/
 
 ### 全栈 Web 标准优先与边缘兼容（重要）
 
-OpenListNext 的后端设计目标是**跨平台与边缘原生**（既能在 Node.js 容器运行，也能部署在 Cloudflare Workers、Vercel、AWS Lambda 等边缘无服务器环境）：
+OpenList 的后端设计目标是**跨平台与边缘原生**（既能在 Node.js 容器运行，也能部署在 Cloudflare Workers、Vercel、AWS Lambda 等边缘无服务器环境）：
 
 1. **必须使用标准 Web API**：
    - 使用 `fetch`、`Web Crypto` (`crypto.subtle`)、`ReadableStream`、`Headers`、`Response` 等标准 Web API。
@@ -227,7 +227,7 @@ OpenListNext 的后端设计目标是**跨平台与边缘原生**（既能在 No
 
 ### AI 辅助使用声明 (AI Disclosure)
 
-OpenListNext 欢迎开发者合理使用 AI 工具提升开发效率。为了确保代码库的合规性与可维护性：
+OpenList 欢迎开发者合理使用 AI 工具提升开发效率。为了确保代码库的合规性与可维护性：
 
 - 若 PR 中包含由 AI（如 ChatGPT、Claude、Copilot、Gemini 等）大量生成的代码或重构内容，请在 PR 模版中的 **AI Disclosure** 区域予以如实勾选与说明。
 - 贡献者需自行审查并完全理解所提交的 AI 辅助内容，确保代码质量与安全性。

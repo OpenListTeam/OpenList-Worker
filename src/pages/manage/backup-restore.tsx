@@ -176,7 +176,7 @@ const BackupRestore = () => {
       )
     }
     download(
-      "openlistnext_backup_" + new Date().toLocaleString() + ".json",
+      "openlist_backup_" + new Date().toLocaleString() + ".json",
       allData,
     )
     appendLog(t("br.finish_backup"), "info")

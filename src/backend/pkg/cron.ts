@@ -1,5 +1,5 @@
 /**
- * Simple cron-like task scheduler for OpenListNext.
+ * Simple cron-like task scheduler for OpenList.
  */
 
 export type CronJob = () => Promise<void> | void

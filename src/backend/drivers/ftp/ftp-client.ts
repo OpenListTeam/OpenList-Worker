@@ -1,4 +1,4 @@
-// Pure TypeScript FTP Client for OpenListNext
+// Pure TypeScript FTP Client for OpenList
 // Dynamic import for Node runtime; safe for edge packaging.
 
 import { FTPAddition, FTPFileEntry } from "./types"

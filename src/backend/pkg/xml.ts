@@ -1,5 +1,5 @@
 /**
- * XML generation utilities for OpenListNext protocols (WebDAV, S3).
+ * XML generation utilities for OpenList protocols (WebDAV, S3).
  */
 
 export function generateWebDavXml(

@@ -1,5 +1,5 @@
 {
-  "name": "openlistnext",
+  "name": "openlist",
   "installCommand": "pnpm install --no-frozen-lockfile",
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist",

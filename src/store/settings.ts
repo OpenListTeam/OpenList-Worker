@@ -1,5 +1,6 @@
 import { createStore } from "solid-js/store"
 import { ext, recordToArray, strToRegExp } from "~/utils"
+import { setBackendKind } from "~/utils/backend"
 
 const [settings, setSettingsStore] = createStore<Record<string, string>>({})
 
@@ -42,6 +43,8 @@ const injectCustomContent = (
 
 export const setSettings = (items: Record<string, string>) => {
   setSettingsStore(items)
+  // 探测后端类型（Go 后端不返回 backend 字段，缺省为 "go"）
+  setBackendKind(items["backend"])
   const version = settings["version"] || "Unknown"
   console.log(
     `%c OpenList %c ${version} %c https://github.com/OpenListTeam/OpenList`,
@@ -84,8 +87,8 @@ export const getSettingNumber = (key: string, defaultV?: number) => {
   return defaultV ?? 0
 }
 export const getMainColor = (): string => {
-  if (window.OPENLISTNEXT_CONFIG.main_color) {
-    return window.OPENLISTNEXT_CONFIG.main_color
+  if (window.OPENLIST_CONFIG.main_color) {
+    return window.OPENLIST_CONFIG.main_color
   }
   return getSetting("main_color") || "#1890ff"
 }

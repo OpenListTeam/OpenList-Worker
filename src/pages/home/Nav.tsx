@@ -66,9 +66,8 @@ export const Nav = () => {
           let text = () => name
           if (!isShare() && text() === "") {
             // 首页根节点显示站点标题（可在后台「站点设置」中配置为中文），
-            // 不再把 home_icon（品牌图标名，如 openlistnext）当文本拼接，避免 “openlistnext返回首页”。
-            text = () =>
-              getSetting("site_title") || t("manage.sidemenu.home")
+            // 不再把 home_icon（品牌图标名，如 openlist）当文本拼接，避免 “openlist返回首页”。
+            text = () => getSetting("site_title") || t("manage.sidemenu.home")
           } else if (isShare() && i() === 0) {
             // 分享页面包屑用分享页专属文案，不复用管理后台的"分享管理"
             text = () => getSetting("share_icon") + t("shares.breadcrumb")

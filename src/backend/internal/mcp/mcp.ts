@@ -21,7 +21,7 @@ export function listMcpTools(): McpTool[] {
   return [
     {
       name: "list_files",
-      description: "List files and directories in OpenListNext storage",
+      description: "List files and directories in OpenList storage",
       inputSchema: {
         type: "object",
         properties: {
@@ -40,10 +40,10 @@ export function listMcpTools(): McpTool[] {
 export function listMcpResources(): McpResource[] {
   return [
     {
-      uri: "openlistnext://storage/metrics",
+      uri: "openlist://storage/metrics",
       name: "Storage Metrics",
       mimeType: "application/json",
-      description: "Current storage metrics of OpenListNext",
+      description: "Current storage metrics of OpenList",
     },
   ]
 }

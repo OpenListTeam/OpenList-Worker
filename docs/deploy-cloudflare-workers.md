@@ -1,6 +1,6 @@
 # Cloudflare Workers 部署指南
 
-OpenListNext 基于 [Hono](https://hono.dev/) 框架构建后端 API，天然支持运行在 Cloudflare Workers 等边缘 Serverless 平台上。本文将指引你如何将 OpenListNext 部署到 Cloudflare Workers。
+OpenList 基于 [Hono](https://hono.dev/) 框架构建后端 API，天然支持运行在 Cloudflare Workers 等边缘 Serverless 平台上。本文将指引你如何将 OpenList 部署到 Cloudflare Workers。
 
 ---
 
@@ -40,7 +40,7 @@ OpenListNext 基于 [Hono](https://hono.dev/) 框架构建后端 API，天然支
 项目根目录下的 [wrangler.toml](../wrangler.toml) 是 Cloudflare Workers 的核心配置文件：
 
 ```toml
-name = "openlistnext"
+name = "openlist"
 main = "src/backend/worker.ts"
 compatibility_date = "2026-08-04"
 compatibility_flags = ["nodejs_compat"]
@@ -56,10 +56,10 @@ ENVIRONMENT = "production"
 VITE_API_URL = "/api"
 
 [[kv_namespaces]]
-binding = "OPENLISTNEXT_KV"
+binding = "OPENLIST_KV"
 ```
 
-- **`main`**: 指定 Worker 入口文件，OpenListNext 导出 Worker 标准 `fetch` 接口的入口为 [src/backend/worker.ts](../src/backend/worker.ts)。
+- **`main`**: 指定 Worker 入口文件，OpenList 导出 Worker 标准 `fetch` 接口的入口为 [src/backend/worker.ts](../src/backend/worker.ts)。
 - **`compatibility_flags = ["nodejs_compat"]`**: 开启 Node.js 兼容层（必需）。
 - **`workers_dev = false`**: 禁用默认的 `*.workers.dev` 子域名，仅通过自定义域名访问。
 - **`[assets]`**: 配置前端静态资源托管，构建产物从 `dist/` 目录提供。
@@ -67,12 +67,12 @@ binding = "OPENLISTNEXT_KV"
 
 ### 关于 KV 命名空间绑定
 
-wrangler.toml 中的 `[[kv_namespaces]]` **不需要填写 `id`**。Wrangler 4.x 支持 Automatic Provisioning——部署时会自动检测或创建名为 `OPENLISTNEXT_KV` 的命名空间并关联绑定。你只需在 Makers 控制台或 Cloudflare Dashboard 中确保该命名空间存在，或让 Wrangler 自动处理。
+wrangler.toml 中的 `[[kv_namespaces]]` **不需要填写 `id`**。Wrangler 4.x 支持 Automatic Provisioning——部署时会自动检测或创建名为 `OPENLIST_KV` 的命名空间并关联绑定。你只需在 Makers 控制台或 Cloudflare Dashboard 中确保该命名空间存在，或让 Wrangler 自动处理。
 
 若需手动创建命名空间（可选）：
 
 ```bash
-npx wrangler kv:namespace create OPENLISTNEXT_KV
+npx wrangler kv:namespace create OPENLIST_KV
 ```
 
 > [!NOTE]
@@ -82,11 +82,11 @@ npx wrangler kv:namespace create OPENLISTNEXT_KV
 
 ## 创建与绑定 Cloudflare KV
 
-OpenListNext 在 Serverless 环境中使用 Cloudflare KV 来存储配置数据和数据库记录（替代本地 `public_data/db.json` 文件）。
+OpenList 在 Serverless 环境中使用 Cloudflare KV 来存储配置数据和数据库记录（替代本地 `public_data/db.json` 文件）。
 
 **推荐方式：Automatic Provisioning（无需手动配置）**
 
-Wrangler 4.x 支持自动配置——部署时会自动检测或创建名为 `OPENLISTNEXT_KV` 的命名空间并关联绑定。你只需：
+Wrangler 4.x 支持自动配置——部署时会自动检测或创建名为 `OPENLIST_KV` 的命名空间并关联绑定。你只需：
 
 1. 确保 wrangler.toml 中有 `[[kv_namespaces]]` 配置（已内置）
 2. 直接运行 `npx wrangler deploy`，Wrangler 会自动处理命名空间创建和关联
@@ -96,18 +96,18 @@ Wrangler 4.x 支持自动配置——部署时会自动检测或创建名为 `OP
 如果你想手动控制命名空间的创建：
 
 ```bash
-npx wrangler kv:namespace create OPENLISTNEXT_KV
+npx wrangler kv:namespace create OPENLIST_KV
 ```
 
 命令行将输出类似以下的信息：
 
 ```text
-🌀 Creating namespace with title "openlistnext-OPENLISTNEXT_KV"
-✨ Success! Created namespace openlistnext-OPENLISTNEXT_KV with ID "a1b2c3d4e5f67890abcdef1234567890"
+🌀 Creating namespace with title "openlist-OPENLIST_KV"
+✨ Success! Created namespace openlist-OPENLIST_KV with ID "a1b2c3d4e5f67890abcdef1234567890"
 ```
 
 > [!NOTE]
-> 即使手动创建了命名空间，wrangler.toml 中也无需填入 `id`。Wrangler 4.x 会根据绑定名称 `OPENLISTNEXT_KV` 自动关联正确的命名空间。
+> 即使手动创建了命名空间，wrangler.toml 中也无需填入 `id`。Wrangler 4.x 会根据绑定名称 `OPENLIST_KV` 自动关联正确的命名空间。
 
 ---
 
@@ -151,7 +151,7 @@ pnpm deploy:worker
 npx wrangler deploy
 ```
 
-部署完成后，命令行会返回分配的默认访问域名（如 `https://openlistnext.<your-subdomain>.workers.dev`）。
+部署完成后，命令行会返回分配的默认访问域名（如 `https://openlist.<your-subdomain>.workers.dev`）。
 
 ---
 
@@ -177,7 +177,7 @@ npx wrangler secret put JWT_SECRET
 ### 2. 绑定自定义域名
 
 1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/)。
-2. 导航至 **Workers & Pages** -> 选择你的 Worker (`openlistnext`)。
+2. 导航至 **Workers & Pages** -> 选择你的 Worker (`openlist`)。
 3. 进入 **Settings** -> **Triggers** -> **Custom Domains**。
 4. 点击 **Add Custom Domain**，输入你在 Cloudflare 解析的自定义域名（例如 `openlist.example.com`）并确认。
 
@@ -190,7 +190,7 @@ npx wrangler secret put JWT_SECRET
 > Cloudflare Workers 运行在无状态边缘计算节点上，因此：
 >
 > 1. 本地硬盘存储驱动 (`Local` Driver) 在 Worker 部署环境下无法作为长期存储使用，推荐配置并使用对象存储（如 **AWS S3 / Cloudflare R2 / 阿里云 OSS / WebDAV** 等云存储驱动）。
-> 2. 系统配置及用户状态会自动持久化到绑定的 `OPENLISTNEXT_KV` 数据库中。
+> 2. 系统配置及用户状态会自动持久化到绑定的 `OPENLIST_KV` 数据库中。
 
 > [!TIP]
 > **资源配额**：

@@ -7,7 +7,7 @@ import { getDb } from "../internal/model/db"
 // 否则从 KV 持久化一个随机密钥（首次生成后复用，重启不失效），
 // 开发环境（无 KV）回退到进程内随机密钥。
 let cachedJwtSecret: string | null = null
-const JWT_SECRET_KV_KEY = "openlistnext_jwt_secret"
+const JWT_SECRET_KV_KEY = "openlist_jwt_secret"
 
 function generateRandomSecret(): string {
   const bytes = new Uint8Array(32)
@@ -95,7 +95,7 @@ export async function getJwtSecret(c?: Context | any): Promise<string> {
 // 说明：Serverless 多实例下各实例独立缓存，KV 持久化仅在冷启动时加载一次，
 // 因此跨实例的「即时」失效不能保证精确，但能在单实例内立即生效，并随新实例
 // 冷启动逐步收敛。exp 过期后条目自动清理，不会无限增长。
-const REVOKED_KV_KEY = "openlistnext_revoked_tokens"
+const REVOKED_KV_KEY = "openlist_revoked_tokens"
 const revokedJtis = new Set<string>()
 let revokedLoaded = false
 

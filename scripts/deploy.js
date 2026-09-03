@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * OpenListNext 一键部署脚本（Cloudflare Workers）
+ * OpenList 一键部署脚本（Cloudflare Workers）
  *
- * wrangler.toml 只声明绑定（[[kv_namespaces]] binding = "OPENLISTNEXT_KV"），
+ * wrangler.toml 只声明绑定（[[kv_namespaces]] binding = "OPENLIST_KV"），
  * **不存储 id** —— wrangler 4.x 的 Automatic provisioning 会在部署时自动
  * 创建/关联同名 KV namespace，无需手动填写 id。
  *
  * 本脚本额外做两件事：
- *   1. 检测云端是否已有 OPENLISTNEXT_KV namespace；没有则显式创建
+ *   1. 检测云端是否已有 OPENLIST_KV namespace；没有则显式创建
  *      （确保资源存在；兼容不支持自动配置的旧版 wrangler）
  *   2. 构建前端 + wrangler deploy
  *
@@ -24,12 +24,12 @@ import path from "node:path"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, "..")
-const KV_TITLE = "OPENLISTNEXT_KV"
+const KV_TITLE = "OPENLIST_KV"
 
 const args = process.argv.slice(2)
 if (args.includes("--help") || args.includes("-h")) {
   console.log(`
-OpenListNext 一键部署脚本（KV 自动绑定，无需手动填写 id）
+OpenList 一键部署脚本（KV 自动绑定，无需手动填写 id）
 
   node scripts/deploy.js          自动部署（确保 KV 存在 + 构建 + wrangler deploy）
   node scripts/deploy.js --kv     仅确保 KV namespace 存在，不部署
@@ -80,7 +80,7 @@ function parseCreatedId(stdout) {
   return m ? m[1] : null
 }
 
-/** 确保 OPENLISTNEXT_KV namespace 存在（不存在则创建）。
+/** 确保 OPENLIST_KV namespace 存在（不存在则创建）。
  *  注意：只创建云端资源，不修改 wrangler.toml —— id 由 wrangler 自动配置。 */
 function ensureKvNamespace() {
   let listOut = ""
@@ -149,7 +149,7 @@ function main() {
   run("npx wrangler deploy")
 
   console.log("\n✅ 部署完成！")
-  console.log("   验证：访问 https://<你的域名>/api/health 应返回 OpenListNext")
+  console.log("   验证：访问 https://<你的域名>/api/health 应返回 OpenList")
 }
 
 main()

@@ -1,6 +1,6 @@
-# OpenListNext 插件开发官方指南
+# OpenList 插件开发官方指南
 
-欢迎阅读 **OpenListNext 插件开发文档**。OpenListNext 提供了强大、轻量且高度灵活的插件系统，支持开发者通过标准的前端技术栈（JavaScript / CSS / SVG）开发各类界面悬浮挂件、文件操作扩展、自定义主题、数据预览及系统集成工具。
+欢迎阅读 **OpenList 插件开发文档**。OpenList 提供了强大、轻量且高度灵活的插件系统，支持开发者通过标准的前端技术栈（JavaScript / CSS / SVG）开发各类界面悬浮挂件、文件操作扩展、自定义主题、数据预览及系统集成工具。
 
 ---
 
@@ -33,7 +33,7 @@
 
 ## 一、插件系统架构与运行机制
 
-OpenListNext 的插件具备以下设计特性：
+OpenList 的插件具备以下设计特性：
 
 1. **零构建门槛**：无需复杂的 Webpack / Vite 本地编译链，纯原生 JavaScript（ES6+）与 CSS 即可编写。
 2. **安全隔离执行**：每个插件在独立封装的函数作用域内运行，避免全局变量污染。
@@ -70,7 +70,7 @@ oplist-plugin-example.zip
   "version": "1.0.0",
   "description": "在右下角提供便捷工具与快捷操作面板",
   "author": "OpenList Developer",
-  "homepage": "https://openlistnext.org",
+  "homepage": "https://oplist.org",
   "repository": "https://github.com/example/oplist-plugin-mywidget",
   "type": "ui",
   "enabled": true,
@@ -451,8 +451,8 @@ const users = await OpenListPlugin.admin.getUsers()
   "version": "1.0.0",
   "description": "在页面右下角嵌入半透明现代卡片，展示每日随机语录并支持一键换一句。",
   "author": "OpenListDev",
-  "homepage": "https://openlistnext.org",
-  "repository": "https://github.com/openlistnext/plugin-hitokoto",
+  "homepage": "https://oplist.org",
+  "repository": "https://github.com/OpenListTeam/plugin-hitokoto",
   "type": "ui",
   "enabled": true,
   "high_privilege": false,
@@ -691,7 +691,7 @@ const users = await OpenListPlugin.admin.getUsers()
 ```markdown
 # 每日一言悬浮助手 (Hitokoto Widget)
 
-在 OpenListNext 页面右下角嵌入优雅现代的每日一言卡片，支持毛玻璃质感、一键刷新与深浅色模式自动适配。
+在 OpenList 页面右下角嵌入优雅现代的每日一言卡片，支持毛玻璃质感、一键刷新与深浅色模式自动适配。
 
 ## 功能亮点
 
@@ -718,9 +718,9 @@ const users = await OpenListPlugin.admin.getUsers()
 zip -r oplist-plugin-hitokoto.zip plugin.json index.js style.css icon.svg README.md
 ```
 
-### 2. 在 OpenListNext 中安装与启用
+### 2. 在 OpenList 中安装与启用
 
-1. 登录 OpenListNext 管理后台。
+1. 登录 OpenList 管理后台。
 2. 依次进入 **管理面板 -> 插件管理 (Plugins)**。
 3. 点击 **安装插件** 按钮，将 `.zip` 压缩包拖入上传区。
 4. 安装成功后，点击 **启用** 开关，即可在前端页面看到插件挂载运行。

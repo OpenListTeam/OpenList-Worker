@@ -1,7 +1,7 @@
 # OpenList-Worker-Next 迭代进度报告
 
 > 更新日期：2026-09-03
-> 主线决策：**方案 A** —— 以 `OpenList-Worker-Next`（openlistnext 基线）为迭代主线，TSWorker 仓库冻结，其独有特性作为增量模块移植。
+> 主线决策：**方案 A** —— 以 `OpenList-Worker-Next`（openlist 基线）为迭代主线，TSWorker 仓库冻结，其独有特性作为增量模块移植。
 > 参考仓库：Go 版 `OpenList/`、TSWorker `OpenList-TSWorker/`、官方前端 `OpenList-Frontend/`。
 > 详细方案与评估见 [EVALUATION-AND-MIGRATION-PLAN.md](./EVALUATION-AND-MIGRATION-PLAN.md)。
 

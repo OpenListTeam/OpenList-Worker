@@ -252,7 +252,7 @@ export class GithubDriver implements StorageDriver {
       const commitMessage = renderCommitMessage(
         this.addition.mkdir_commit_message,
         {
-          UserName: "OpenListNext",
+          UserName: "OpenList",
           ObjName: dirName,
           ObjPath: p,
           ParentName: basename(parentPath),
@@ -322,7 +322,7 @@ export class GithubDriver implements StorageDriver {
       const commitMessage = renderCommitMessage(
         this.addition.put_commit_message,
         {
-          UserName: "OpenListNext",
+          UserName: "OpenList",
           ObjName: fileName,
           ObjPath: p,
           ParentName: basename(parentPath),
@@ -386,7 +386,7 @@ export class GithubDriver implements StorageDriver {
       const commitMessage = renderCommitMessage(
         this.addition.rename_commit_message,
         {
-          UserName: "OpenListNext",
+          UserName: "OpenList",
           ObjName: oldName,
           ObjPath: p,
           ParentName: basename(parentPath),
@@ -461,7 +461,7 @@ export class GithubDriver implements StorageDriver {
       const commitMessage = renderCommitMessage(
         this.addition.delete_commit_message,
         {
-          UserName: "OpenListNext",
+          UserName: "OpenList",
           ObjName: objName,
           ObjPath: p,
           ParentName: basename(parentPath),
@@ -714,7 +714,7 @@ export class GithubDriver implements StorageDriver {
       const commitMessage = renderCommitMessage(
         this.addition.move_commit_message,
         {
-          UserName: "OpenListNext",
+          UserName: "OpenList",
           ObjName: srcObjName,
           ObjPath: srcPath,
           ParentName: basename(srcParentPath),
@@ -763,7 +763,7 @@ export class GithubDriver implements StorageDriver {
       const commitMessage = renderCommitMessage(
         this.addition.copy_commit_message,
         {
-          UserName: "OpenListNext",
+          UserName: "OpenList",
           ObjName: basename(srcPath),
           ObjPath: srcPath,
           ParentName: basename(dirname(srcPath)),

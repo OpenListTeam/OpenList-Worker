@@ -1,4 +1,4 @@
-service: openlistnext
+service: openlist
 
 frameworkVersion: "4"
 

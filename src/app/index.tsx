@@ -21,7 +21,7 @@ const isChunkLoadError = (err: any): boolean => {
 const Index = () => {
   globalStyles()
   // 防死循环：本次会话中已自动刷新过就不再重复刷新，直接展示错误
-  const sessionKey = "__openlistnext_chunk_reload__"
+  const sessionKey = "__openlist_chunk_reload__"
   const alreadyReloaded = () => {
     try {
       return sessionStorage.getItem(sessionKey) === "1"

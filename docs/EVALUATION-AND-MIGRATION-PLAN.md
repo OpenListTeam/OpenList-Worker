@@ -1,7 +1,7 @@
-# OpenListNext 迭代 & TSWorker 特性移植 — 综合评估与执行方案
+# OpenList 迭代 & TSWorker 特性移植 — 综合评估与执行方案
 
 > 生成时间：2026-09-03
-> 主线决策：**方案 A** —— 以 `OpenList-Worker-Next`（openlistnext 基线）为迭代主线，TSWorker 仓库冻结（保留 `legacy-react` 分支），其独有特性（加密/权限/SQL/WebAuthn/媒体库）作为增量模块逐个移植。
+> 主线决策：**方案 A** —— 以 `OpenList-Worker-Next`（openlist 基线）为迭代主线，TSWorker 仓库冻结（保留 `legacy-react` 分支），其独有特性（加密/权限/SQL/WebAuthn/媒体库）作为增量模块逐个移植。
 > 参考仓库：Go 版 `OpenList/`、TSWorker `OpenList-TSWorker/`、官方前端 `OpenList-Frontend/`。
 
 ---
@@ -10,11 +10,11 @@
 
 ### 1.1 数量对比
 
-| 来源                                   | 驱动数量                                             | 说明           |
-| -------------------------------------- | ---------------------------------------------------- | -------------- |
-| Go 版（`OpenList/drivers/`）           | ~82 个（含 `crypt`/`virtual`/`url_tree` 等特殊驱动） | 全量基准       |
-| OpenListNext（`src/backend/drivers/`） | 35 个                                                | 覆盖核心 ~40%  |
-| TSWorker（`src/drive/`）               | ~22 个                                               | 有少量独有驱动 |
+| 来源                               | 驱动数量                                             | 说明           |
+| ---------------------------------- | ---------------------------------------------------- | -------------- |
+| Go 版（`OpenList/drivers/`）       | ~82 个（含 `crypt`/`virtual`/`url_tree` 等特殊驱动） | 全量基准       |
+| OpenList（`src/backend/drivers/`） | 35 个                                                | 覆盖核心 ~40%  |
+| TSWorker（`src/drive/`）           | ~22 个                                               | 有少量独有驱动 |
 
 ### 1.2 next 缺失的驱动（Go 有、next 无，约 48 个）
 
@@ -158,7 +158,7 @@ next 已覆盖 **文件 CRUD、认证主流程、管理 CRUD、分享、下载�
 
 ## 4. TSWorker 特性移植方案（第 4 步）
 
-> 原则：TSWorker 特性作为「可选模块」移植到 next，默认关闭，不破坏 openlistnext 的核心架构。
+> 原则：TSWorker 特性作为「可选模块」移植到 next，默认关闭，不破坏 openlist 的核心架构。
 
 | 特性                                 | TSWorker 位置                            | Go 是否有                            | 移植难度 | 建议                                                                             |
 | ------------------------------------ | ---------------------------------------- | ------------------------------------ | -------- | -------------------------------------------------------------------------------- |

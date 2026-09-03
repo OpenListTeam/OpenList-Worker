@@ -63,14 +63,14 @@ const App: Component = () => {
             resp?.message || "unknown",
           )
           const defaultSettings = {
-            site_title: "OpenListNext",
+            site_title: "OpenList",
             logo: "/logo.png",
             favicon: "/favicon.png",
             announcement:
-              "欢迎使用 OpenListNext! (运行于 Serverless 离线 fallback 模式)",
+              "欢迎使用 OpenList! (运行于 Serverless 离线 fallback 模式)",
             main_color: "#1890ff",
             home_container: "max_980px",
-            home_icon: "openlistnext",
+            home_icon: "openlist",
             settings_layout: "simple",
             version: "v4.2.3",
           }

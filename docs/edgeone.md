@@ -1,6 +1,6 @@
 # 腾讯云 EdgeOne Makers 部署指南
 
-本文档介绍如何将 OpenListNext 部署到 [腾讯云 EdgeOne Makers](https://edgeone.ai/)（边缘函数 / 边缘全栈托管平台）。
+本文档介绍如何将 OpenList 部署到 [腾讯云 EdgeOne Makers](https://edgeone.ai/)（边缘函数 / 边缘全栈托管平台）。
 
 ---
 
@@ -11,7 +11,7 @@
 - **SPA 兜底双保险**：Node 云函数内没有 `ASSETS` 绑定，因此构建时会把 `dist/index.html` 内联进函数包——即使边缘中间件未生效、或请求直达云函数，前端路由（如 `/add`、`/@manage/*`）也会由函数直接返回页面壳（`Cache-Control: no-cache`），不会再出现整站 404。
 - **配置持久化**：
   - **Blob 存储**（推荐）：自动使用 `@edgeone/pages-blob` SDK（HTTP API），无需手动配置，避免 Redis RESP 协议崩溃。
-  - **KV 存储**（兼容）：自动适配 `OPENLISTNEXT_KV` / `EDGEONE_KV` / `EO_KV` 命名空间（仅 Cloudflare 环境）。
+  - **KV 存储**（兼容）：自动适配 `OPENLIST_KV` / `EDGEONE_KV` / `EO_KV` 命名空间（仅 Cloudflare 环境）。
 - **定时任务 (Schedules)**：已内置 `/api/task/refresh` 定时调度（每天凌晨 2:00 自动刷新一次已启用的网盘 Token，完全兼容 EdgeOne 免费版定时任务规则；并在每次实际请求时结合按需检测保障 Token 实时有效）。调度请求需通过 `CRON_SECRET` 环境变量鉴权，配置方法见下文「定时任务与长时任务」。
 
 ---
@@ -26,7 +26,7 @@
    - **安装命令**：`pnpm install --no-frozen-lockfile`
    - **构建命令**：`pnpm run build`
    - **输出目录**：`dist`
-3. **存储配置**：无需手动配置。Blob 存储会自动初始化（使用 `@edgeone/pages-blob` SDK），配置数据持久化在 `openlistnext_db` 命名空间中。
+3. **存储配置**：无需手动配置。Blob 存储会自动初始化（使用 `@edgeone/pages-blob` SDK），配置数据持久化在 `openlist_db` 命名空间中。
 4. **点击部署**：构建完成后即可通过 EdgeOne 分配的 `*.edgeone.cool` 域名直接访问。首次启动会生成随机管理密码，请查看部署日志获取初始密码，登录后立即修改。也可在环境变量中设置 `ADMIN_PASSWORD` 预设密码。
 
 ---
@@ -85,4 +85,4 @@ curl -X POST "https://你的域名/api/task/refresh" \
 
 返回 `{"code":200,"message":"token refresh executed",...}` 即配置成功；也可次日到控制台「可观测性 → 日志分析」查看凌晨 2:00 的触发记录。
 
-> 💡 **免费版配额说明**：EdgeOne Makers 免费版定时任务最小执行间隔为 1 天（86400 秒），故配置为每天凌晨 2:00（`0 2 * * *`）执行一次。OpenListNext 网盘驱动均支持在请求时自动按需换新 Access Token，双重保障网盘连接永不断流。
+> 💡 **免费版配额说明**：EdgeOne Makers 免费版定时任务最小执行间隔为 1 天（86400 秒），故配置为每天凌晨 2:00（`0 2 * * *`）执行一次。OpenList 网盘驱动均支持在请求时自动按需换新 Access Token，双重保障网盘连接永不断流。

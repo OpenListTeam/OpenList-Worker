@@ -1,5 +1,5 @@
 {
-  "name": "openlistnext",
+  "name": "openlist",
   "entry": "./dist/esa-entry.js",
   "installCommand": "pnpm install --no-frozen-lockfile",
   "buildCommand": "pnpm run build",

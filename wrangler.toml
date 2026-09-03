@@ -1,4 +1,4 @@
-name = "openlistnext"
+name = "openlist"
 main = "src/backend/worker.ts"
 compatibility_date = "2026-08-04"
 compatibility_flags = ["nodejs_compat"]
@@ -19,7 +19,7 @@ ENVIRONMENT = "production"
 VITE_API_URL = "/api"
 
 [[kv_namespaces]]
-binding = "OPENLISTNEXT_KV"
+binding = "OPENLIST_KV"
 
 
 
