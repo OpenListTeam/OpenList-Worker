@@ -1,209 +1,253 @@
 <div align="center">
+  <img src="https://raw.githubusercontent.com/OpenListTeam/Logo/main/logo.svg" width="128" height="128" alt="logo" />
 
-<img src="/logo.png" width="128" alt="OpenListNext Logo" />
+  <p><em>OpenList 是一个有韧性、长期治理、社区驱动的 AList 分支，旨在防御基于信任的开源攻击。</em></p>
 
-# OpenListNext
+  <p><strong>本仓库（OpenList-TSWorker）是官方 <a href="https://github.com/OpenListTeam/OpenList">OpenListTeam/OpenList</a> 项目的 TypeScript 移植版，基于 Cloudflare Workers 运行。</strong></p>
 
-**一个现代化的全栈文件列表 / 网盘管理系统**
+<a href="https://github.com/OpenListTeam/OpenList/blob/main/LICENSE"><img src="https://img.shields.io/github/license/OpenListTeam/OpenList" alt="License" /></a>
+<a href="https://github.com/OpenListTeam/OpenList/actions?query=workflow%3ABuild"><img src="https://img.shields.io/github/actions/workflow/status/OpenListTeam/OpenList/build.yml?branch=main" alt="Build status" /></a>
+<a href="https://github.com/OpenListTeam/OpenList/releases"><img src="https://img.shields.io/github/release/OpenListTeam/OpenList" alt="latest version" /></a>
 
-OpenListNext 是 [OpenList](https://github.com/OpenListTeam/OpenList) 的定制全栈分支，用轻量级 **Node.js (Hono + TypeScript)** 后端替代了原版 Go 后端，部署更轻量、启动更快、无需编译 Go 二进制。
-
-<br/>
-
-### 👥 贡献者 & 协作者
-
-<a href="https://github.com/Polonium-salts"><img src="https://github.com/Polonium-salts.png" width="48" height="48" alt="Polonium-salts" style="border-radius: 50%; margin: 2px;" title="Polonium-salts" /></a>
-<a href="https://github.com/Dummysky06"><img src="https://github.com/Dummysky06.png" width="48" height="48" alt="Dummysky06" style="border-radius: 50%; margin: 2px;" title="Dummysky06" /></a>
-<a href="https://github.com/lie-jiu"><img src="https://github.com/lie-jiu.png" width="48" height="48" alt="lie-jiu (烈酒)" style="border-radius: 50%; margin: 2px;" title="lie-jiu (烈酒)" /></a>
-<a href="https://github.com/Astroptis"><img src="https://github.com/Astroptis.png" width="48" height="48" alt="Astroptis" style="border-radius: 50%; margin: 2px;" title="Astroptis" /></a>
-<a href="https://github.com/BAJJDY"><img src="https://github.com/BAJJDY.png" width="48" height="48" alt="BAJJDY" style="border-radius: 50%; margin: 2px;" title="BAJJDY" /></a>
-<a href="https://github.com/chenyimaio"><img src="https://github.com/chenyimaio.png" width="48" height="48" alt="chenyimaio" style="border-radius: 50%; margin: 2px;" title="chenyimaio" /></a>
-
-<br/><br/>
-
-[技术架构](#-技术架构) · [快速开始](#-快速开始) · [部署方法](#-部署方法) · [贡献指南](CONTRIBUTING.md) · [原版项目](#-原版项目) · [许可证](#-许可证)
+<a href="https://github.com/OpenListTeam/OpenList/discussions"><img src="https://img.shields.io/github/discussions/OpenListTeam/OpenList?color=%23ED8936" alt="discussions" /></a>
+<a href="https://github.com/OpenListTeam/OpenList/releases"><img src="https://img.shields.io/github/downloads/OpenListTeam/OpenList/total?color=%239F7AEA&logo=github" alt="Downloads" /></a>
 
 </div>
 
 ---
 
-## ✨ 功能特性
+- English | 中文（本文件） | [日本語](https://github.com/OpenListTeam/OpenList/blob/main/README/README_ja.md) | [更多语言](https://github.com/OpenListTeam/OpenList/tree/main/README)
 
-- 📁 文件浏览、搜索、排序、分页
-- 👁️ 多格式预览：PDF、Markdown、代码、Office、图片画廊、视频 / 音频（字幕 / 弹幕 / 歌词）
-- 📥 上传 / 下载 / 删除 / 重命名 / 移动 / 复制，文件夹打包下载
-- 🔗 文件永久链接、直链下载、分享链接（含提取码）
-- 🌙 黑暗模式、国际化（中 / 英）
-- 🔐 JWT 认证、密码保护、后台管理
-- ☁️ 34 种网盘驱动：夸克网盘、阿里云盘、百度网盘、123 云盘、天翼云盘、OneDrive、Google Drive、Dropbox、115 网盘、PikPak、迅雷、腾讯微云、189 云盘、又拍云、S3、WebDAV、SMB、FTP、SFTP、GitHub、本地文件系统等
-- ⚡ 边缘部署：Cloudflare Workers / Vercel / Serverless 开箱即用（SFTP / FTP 等 Node 专属驱动除外，见 [核心设计](#核心设计)）
+- [上游项目](https://github.com/OpenListTeam/OpenList)
+- [贡献指南](https://github.com/OpenListTeam/OpenList/blob/main/CONTRIBUTING.md)
+- [行为准则](https://github.com/OpenListTeam/OpenList/blob/main/CODE_OF_CONDUCT.md)
+- [许可证](./LICENSE)
 
----
+## 关于本移植版
 
-## 🧱 技术架构
+OpenList-TSWorker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTeam/OpenList)（Go 后端，位于 `OpenList-Backends`）的 TypeScript 移植版，将后端从 Go 重写为运行于 Cloudflare Workers 上的 TypeScript 服务，前端保持一致的界面与交互体验。
+
+- 上游源码：https://github.com/OpenListTeam/OpenList
+- 本项目仅对上游进行技术栈移植（Go → TypeScript / Cloudflare Workers），不改动功能语义与数据模型。
+- 本项目遵循与上游一致的 [AGPL-3.0](./LICENSE) 开源许可证。
+
+## 免责声明
+
+OpenList 是一个由 OpenList 团队独立维护的开源项目，遵循 AGPL-3.0 许可证，致力于保持完整的代码开放性和修改透明性。
+
+我们注意到社区中出现了一些与本项目名称相似的第三方项目，如 OpenListApp/OpenListApp，以及部分采用相同或近似命名的收费专有软件。为避免用户误解，现声明如下：
+
+- OpenList 与任何第三方衍生项目无官方关联。
+
+- 本项目的全部软件、代码与服务由 OpenList 团队维护，可在 GitHub 免费获取。
+
+- 项目文档与 API 服务均主要依托于 Cloudflare 提供的公益资源，目前无任何收费计划或商业部署，现有功能使用不涉及任何支出。
+
+我们尊重社区的自由使用与衍生开发权利，但也强烈呼吁下游项目：
+
+- 不应以“OpenList”名义进行冒名宣传或获取商业利益；
+
+- 不得将基于 OpenList 的代码进行闭源分发或违反 AGPL 许可证条款。
+
+为了更好地维护生态健康发展，我们建议：
+
+- 明确注明项目来源，并以符合开源精神的方式选择适当的开源许可证；
+
+- 如涉及商业用途，请避免使用“OpenList”或任何会产生混淆的方式作为项目名称；
+
+- 若需使用本项目位于 OpenListTeam/Logo 下的素材，可在遵守协议的前提下进行修改后使用。
+
+感谢您对 OpenList 项目的支持与理解。
+
+## 功能
+
+- [x] 多种存储
+  - [x] 本地存储
+  - [x] [阿里云盘](https://www.alipan.com)
+  - [x] OneDrive / Sharepoint（[国际版](https://www.microsoft.com/en-us/microsoft-365/onedrive/online-cloud-storage)、[中国](https://portal.partner.microsoftonline.cn)、DE、US）
+  - [x] [天翼云盘](https://cloud.189.cn)（个人、家庭）
+  - [x] [GoogleDrive](https://drive.google.com)
+  - [x] [123云盘](https://www.123pan.com)
+  - [x] [FTP / SFTP](https://en.wikipedia.org/wiki/File_Transfer_Protocol)
+  - [x] [PikPak](https://www.mypikpak.com)
+  - [x] [S3](https://aws.amazon.com/s3)
+  - [x] [Seafile](https://seafile.com)
+  - [x] [又拍云对象存储](https://www.upyun.com/products/file-storage)
+  - [x] [WebDAV](https://en.wikipedia.org/wiki/WebDAV)
+  - [x] Teambition（[中国](https://www.teambition.com)、[国际](https://us.teambition.com)）
+  - [x] [MediaFire](https://www.mediafire.com)
+  - [x] [分秒帧](https://www.mediatrack.cn)
+  - [x] [ProtonDrive](https://proton.me/drive)
+  - [x] [和彩云](https://yun.139.com)（个人、家庭、群组、分享）
+  - [x] [YandexDisk](https://disk.yandex.com)
+  - [x] [百度网盘](http://pan.baidu.com)
+  - [x] [Terabox](https://www.terabox.com/main)
+  - [x] [UC网盘](https://drive.uc.cn)
+  - [x] [夸克网盘](https://pan.quark.cn)
+  - [x] [迅雷网盘](https://pan.xunlei.com)
+  - [x] [蓝奏云](https://www.lanzou.com)
+  - [x] [蓝奏云优享版](https://www.ilanzou.com)
+  - [x] [Google 相册](https://photos.google.com)
+  - [x] [Mega.nz](https://mega.nz)
+  - [x] [百度相册](https://photo.baidu.com)
+  - [x] [SMB](https://en.wikipedia.org/wiki/Server_Message_Block)
+  - [x] [115](https://115.com)
+  - [x] [Cloudreve](https://cloudreve.org)
+  - [x] [Dropbox](https://www.dropbox.com)
+  - [x] [飞机盘](https://www.feijipan.com)
+  - [x] [多吉云](https://www.dogecloud.com/product/oss)
+  - [x] [Azure Blob Storage](https://azure.microsoft.com/products/storage/blobs)
+  - [x] [超星](https://www.chaoxing.com)
+  - [x] [CNB](https://cnb.cool/)
+  - [x] [Degoo](https://degoo.com)
+  - [x] [豆包](https://www.doubao.com)
+  - [x] [Febbox](https://www.febbox.com)
+  - [x] [GitHub](https://github.com)
+  - [x] [OpenList](https://github.com/OpenListTeam/OpenList)
+  - [x] [Teldrive](https://github.com/tgdrive/teldrive)
+  - [x] [微云](https://www.weiyun.com)
+  - [x] [钉钉文档](https://alidocs.dingtalk.com/)
+- [x] 部署方便，开箱即用
+- [x] 文件预览（PDF、markdown、代码、纯文本等）
+- [x] 画廊模式下的图片预览
+- [x] 视频和音频预览，支持歌词和字幕
+- [x] Office 文档预览（docx、pptx、xlsx 等）
+- [x] `README.md` 预览渲染
+- [x] 文件永久链接复制和直接文件下载
+- [x] 黑暗模式
+- [x] 国际化
+- [x] 受保护的路由（密码保护和认证）
+- [x] WebDAV
+- [x] Cloudflare Workers 原生部署
+- [x] 文件/文件夹打包下载
+- [x] 网页上传（可允许访客上传）、删除、新建文件夹、重命名、移动和复制
+- [x] 离线下载
+- [x] 跨存储复制文件
+- [x] 单文件多线程下载/流式加速
+
+## 技术栈（本移植版）
+
+### 后端
+
+- **运行环境**：Cloudflare Workers（Edge Computing）
+- **Web 框架**：Hono.js
+- **数据库**：Cloudflare D1（SQLite）/ 支持 MySQL、MariaDB、PostgreSQL、SQL Server
+- **缓存**：Cloudflare KV（可选）
+- **语言**：TypeScript
+- **构建工具**：Wrangler、esbuild
+
+### 前端
+
+- **框架**：React 19 + TypeScript
+- **UI 库**：Ant Design / Material-UI
+- **构建工具**：Vite
+
+### 项目结构
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    前端 (SolidJS)                    │
-│  SolidJS 1.9 · @hope-ui/solid · Vite 8 · TS 5.9     │
-└──────────────────────┬──────────────────────────────┘
-                       │ HTTP /api
-┌──────────────────────▼──────────────────────────────┐
-│                    后端 (Hono)                       │
-│  Hono 4 · TypeScript · Web 标准优先（fetch / Streams）│
-│  ├── /api/fs     文件操作（列表/上传/下载/管理）      │
-│  ├── /api/auth   JWT 认证                            │
-│  ├── /api/admin  后台管理（存储/用户/元数据/分享）    │
-│  ├── /api/share  分享管理                            │
-│  ├── /api/task   任务管理                            │
-│  ├── /api/raw · /d · /p · /sd  下载与代理            │
-│  ├── /api/mcp    MCP 协议支持                        │
-│  └── /healthz    就绪探针（检查 KV 持久化状态）      │
-└──────────────────────┬──────────────────────────────┘
-                       │ 存储驱动接口 (StorageDriver)
-┌──────────────────────▼──────────────────────────────┐
-│     存储驱动层：Local · Quark · Aliyundrive · OneDrive ·    │
-│           GoogleDrive · BaiduNetdisk · 123Pan · S3 ·       │
-│        WebDAV · SFTP · FTP · SMB · PikPak · 189 · ...     │
-└──────────────────────┬──────────────────────────────┘
-                       │ 持久化
-        ┌──────────────┴───────────────┐
-        ▼                              ▼
-  Cloudflare KV (边缘)          public_data/db.json (容器)
+OpenList-TSWorker/
+├── src/                      # 后端源码（TypeScript / Cloudflare Workers）
+│   ├── admin/               # 系统管理模块
+│   ├── binds/               # OAuth 绑定管理
+│   ├── crypt/               # 加密配置管理
+│   ├── drive/               # 云存储驱动
+│   ├── fetch/               # 离线下载管理
+│   ├── files/               # 文件操作管理
+│   ├── group/               # 用户组管理
+│   ├── mates/               # 元数据配置管理
+│   ├── mount/               # 挂载路径管理
+│   ├── oauth/               # OAuth 认证管理
+│   ├── saves/               # 数据持久化
+│   ├── share/               # 分享管理
+│   ├── system/              # 系统信息
+│   ├── tasks/               # 任务管理
+│   ├── token/               # Token 管理
+│   ├── users/               # 用户管理
+│   └── index.ts             # 主入口文件
+├── pages/                    # 前端源码
+├── prisma/                   # Prisma 数据模型
+├── migrations/               # 数据库迁移
+├── schema.sql               # 数据库结构
+├── wrangler.jsonc           # Cloudflare Workers 配置
+└── package.json             # 项目依赖
 ```
 
-### 核心设计
+## 快速开始
 
-| 设计点               | 说明                                                                                            |
-| -------------------- | ----------------------------------------------------------------------------------------------- |
-| **全栈 TypeScript**  | 前端与后端同语言，类型共享，无 Go 编译链                                                        |
-| **Web 标准优先**     | 后端主体只用 `fetch` / `Web Crypto` / `ReadableStream`，不依赖 `fs` / `http` 等 Node.js 模块    |
-| **Node 专属驱动**    | SFTP / FTP 依赖 `ssh2`、`node:net` 等 Node 模块，边缘构建时替换为空实现，仅完整 Node 环境可用   |
-| **驱动抽象**         | 统一的 `StorageDriver` 接口（list/get/mkdir/rename/remove/move/copy），接入新网盘只需实现一个类 |
-| **多平台运行**       | 同一套代码可部署到 Node.js 容器、Cloudflare Workers、Vercel、AWS Lambda                         |
-| **JSON / KV 持久化** | 配置、存储、用户、分享、任务全部存 JSON（本地）或 KV（边缘），无数据库依赖                      |
+> 完整部署说明请参考上游官方文档：[https://doc.oplist.org](https://doc.oplist.org)
 
----
+### 前置要求
 
-## 🚀 快速开始
-
-### 环境要求
-
-- Node.js 18+（推荐 22+）
-- 包管理器：`pnpm`（推荐）或 `npm`
-
-### 安装依赖
-
-```bash
-pnpm install
-# 或
-npm install
-```
+- Node.js 18+
+- Cloudflare 账号（用于部署到 Workers）
 
 ### 本地开发
 
 ```bash
+# 1. 安装后端依赖
+npm install
+
+# 2. 安装前端依赖
+npm run install:page
+
+# 3. 配置 wrangler.jsonc（填写 JWT_SECRET、KV/D1 绑定）
+
+# 4. 启动后端开发服务器
 npm run dev
+
+# 5. 在另一个终端启动前端开发服务器
+npm run dev:page
 ```
 
-同时启动后端 API 与 Vite 前端开发服务器，访问 `http://localhost:3000`。
-
-### 管理凭据
-
-| 项     | 值       |
-| ------ | -------- |
-| 用户名 | `admin`  |
-| 密码   | 随机生成 |
-
-首次启动时，如果没有配置 `ADMIN_PASSWORD` 环境变量，系统会生成一个随机密码并打印到启动日志。请查看日志获取初始密码，登录后立即修改。
-
-可通过环境变量预设密码（推荐）：
+### 生产部署
 
 ```bash
-# Cloudflare Workers
-npx wrangler secret put ADMIN_PASSWORD
-
-# EdgeOne：在控制台环境变量中设置 ADMIN_PASSWORD
-```
-
-### 本地文件系统（Mock / Local FS）
-
-本地驱动将文件上传、读取、下载直接映射到 `public_data/` 目录；设置与存储配置持久化为 `public_data/db.json`。
-
----
-
-## 📦 部署方法
-
-### 方式一：Cloudflare Workers（推荐，免费边缘部署）
-
-项目内置 [wrangler.toml](wrangler.toml) 与 [部署指南](docs/deploy-cloudflare-workers.md)。
-
-```bash
-# 一键部署（自动检测/创建 KV namespace 并写入 wrangler.toml，无需手动填 id）
+# 一键部署（前端构建 + 后端部署到 Cloudflare Workers）
 npm run deploy
-
-# 或分步执行：
-# 1) 登录 Cloudflare
-npx wrangler login
-# 2) 确保 KV 绑定（自动检测/创建，无需手动编辑 wrangler.toml）
-node scripts/deploy.js --kv
-# 3) 部署
-npm run deploy:worker
-# 本地预览
-npm run dev:worker   # wrangler dev
 ```
 
-`npm run deploy` 会自动完成：检测 `OPENLISTNEXT_KV` namespace（不存在则自动创建）→ 构建前端 → `wrangler deploy`。`wrangler.toml` 只声明绑定、**不存储 KV id**，由 wrangler 4.x 的 Automatic provisioning 在部署时自动创建/关联同名 namespace——全程无需手动填写 KV id。
+## 文档
 
-部署完成后静态资源由 Workers 的 `ASSETS` binding 托管，API 由 Hono 后端处理，配置数据持久化在 KV 中。
+- 📘 [官方文档](https://doc.oplist.org)
+- 🌏 [中国镜像](https://doc.oplist.org.cn)
+- ⚖️ [使用条款](https://doc.oplist.org/terms)
+- 🔒 [隐私政策](https://doc.oplist.org/privacy)
 
-### 方式二：腾讯云 EdgeOne Makers / EdgeOne Pages
+## Demo
 
-1. **导入项目**：在 [EdgeOne Makers 控制台](https://edgeone.ai/) 新建项目，关联 GitHub 仓库。控制台会自动读取项目根目录的 `edgeone.json`，无需手动配置构建命令。
-2. **存储配置**：无需手动配置。后端使用 `@edgeone/pages-blob` SDK 自动持久化。详见 [docs/edgeone.md](docs/edgeone.md)。
-3. **定时任务（可选）**：已内置每天凌晨 2:00 自动刷新网盘 Token，需在控制台设置 `CRON_SECRET` 环境变量。⚠️ 公开 fork 请勿提交真实密钥。详见 [docs/edgeone.md](docs/edgeone.md#定时任务与长时任务-schedules)。
+- 🌎 [全球 Demo](https://demo.oplist.org)
+- 🇨🇳 [中国 Demo](https://demo.oplist.org.cn)
 
-### 方式三：Vercel / 边缘 Serverless
+## 讨论
 
-```bash
-# 构建（输出 dist-server/api/[...route].js Serverless 入口）
-npm run build
+如有一般性问题请前往 [_Discussions_](https://github.com/OpenListTeam/OpenList/discussions) 讨论区，**_Issues_ 仅用于错误报告和功能请求。**
 
-# 由 Vercel 识别 vercel.json 自动部署
-```
+## 许可证
 
-`api/[...route].ts` 导出 Vercel Serverless 句柄（`GET/POST/...`）、EdgeOne `onRequest` 句柄与 Cloudflare Workers 原生 `fetch` 句柄，`handler.ts` 导出 AWS Lambda 句柄，`wrangler.toml` 配置 Cloudflare Workers。
+`OpenList` 是基于 [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.txt) 许可证的开源软件。
 
-### 方式四：阿里云 ESA 边缘安全加速
+## 免责声明
 
-1. **创建KV存储**：在阿里云ESA边缘安全加速(https://esa.console.aliyun.com/)主页/边缘计算和 AI/KV 存储中创建存储空间名称随意例如`openlistnext`。
-2. **导入项目**：在阿里云ESA边缘安全加速(https://esa.console.aliyun.com/)主页/边缘计算和 AI/函数和 Pages中创建导入GitHub仓库。
-3. **构建配置**：
-   - 安装命令：`npm install` 默认即可。
-   - 构建命令：`npm run build` 默认即可。
-   - 高级配置/环境变量：`KV_NAMESPACE` 你KV存储的名称 `JWT_SECRET` 随机英文字符20位左右即可。
+- 本项目为免费开源软件，旨在通过网盘便捷分享文件，主要用于 Go 语言的下载与学习。
+- 使用本软件时请遵守相关法律法规，严禁任何形式的滥用。
+- 本软件基于官方 SDK 或 API 实现，未对其行为进行任何修改、破坏或干扰。
+- 仅进行 HTTP 302 跳转或流量转发，不拦截、存储或篡改任何用户数据。
+- 本项目与任何官方平台或服务提供商无关。
+- 本软件按“原样”提供，不附带任何明示或暗示的担保，包括但不限于适销性或特定用途的适用性。
+- 维护者不对因使用或无法使用本软件而导致的任何直接或间接损失负责。
+- 您需自行承担使用本软件的所有风险，包括但不限于账号被封、下载限速等。
+- 本项目遵循 [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.txt) 许可证，详情请参见 [LICENSE](./LICENSE) 文件。
 
-## 🔗 原版项目
+## 联系我们
 
-OpenListNext 是以下项目的分支 / 衍生实现：
+- [@GitHub](https://github.com/OpenListTeam)
+- [Telegram 交流群](https://t.me/OpenListTeam)
+- [Telegram 频道](https://t.me/OpenListOfficial)
 
-| 项目                  | 说明                                    | 链接                                                                         |
-| --------------------- | --------------------------------------- | ---------------------------------------------------------------------------- |
-| **OpenList**          | 本项目的上游原版（Go 后端）             | [github.com/OpenListTeam/OpenList](https://github.com/OpenListTeam/OpenList) |
-| **OpenList Docs**     | 官方文档（配置 / 驱动 / FAQ）           | [doc.oplist.org](https://doc.oplist.org/)                                    |
-| **AList**             | OpenList 的前身，开箱即用的文件列表程序 | [github.com/alist-org/alist](https://github.com/alist-org/alist)             |
-| **OpenList 在线 API** | 部分网盘驱动的 token 获取服务           | [api.oplist.org](https://api.oplist.org/)                                    |
+## 贡献者
 
----
+我们衷心感谢原项目 [AlistGo/alist](https://github.com/AlistGo/alist) 的作者 [Xhofe](https://github.com/Xhofe) 及所有其他贡献者。
 
-## 📄 许可证
+感谢这些优秀的人：
 
-[AGPL-3.0 License](LICENSE)
-
----
-
-<div align="center">
-
-**Powered by OpenListNext** · 由 [OpenList 社区](https://github.com/OpenListTeam/OpenList) 驱动
-
-</div>
+[![Contributors](https://contrib.rocks/image?repo=OpenListTeam/OpenList)](https://github.com/OpenListTeam/OpenList/graphs/contributors)

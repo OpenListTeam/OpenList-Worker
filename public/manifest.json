@@ -2,7 +2,7 @@
   "display": "standalone",
   "scope": "/",
   "start_url": "/",
-  "name": "OpenListNext",
+  "name": "OpenList",
   "icons": [
     {
       "src": "/apple-touch-icon.png",
