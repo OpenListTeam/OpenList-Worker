@@ -48,7 +48,7 @@ export class HostDriver extends BasicDriver {
         } catch (e: any) { return {pageSize: 0, filePath: file?.path, fileList: []}; }
     }
 
-    private getPrefix(path?: string): string {
+    private getPrefix(path?: string | null): string {
         const root = this.config.root_path ? `${this.config.root_path}/` : "";
         const sub = path ? path.replace(/^\//, "") : "";
         return root + (sub ? `${sub}/` : "");

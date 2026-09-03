@@ -98,7 +98,7 @@ export class HostDriver extends BasicDriver {
 			}
 
 			// 获取文件列表
-			const files = await this.getFiles(file.uuid);
+			const files = await this.getFiles(file.uuid || this.config.root_folder_id);
 			
 			// 转换为标准格式
 			const fileList: fso.FileInfo[] = files.map(f => this.fileToObj(f));
@@ -531,10 +531,17 @@ export class HostDriver extends BasicDriver {
 	 */
 	async upFile(
 		file: fso.FileFind,
-		fileData: Buffer | ReadableStream,
+		fileData: Buffer | ReadableStream<Uint8Array>,
 		onProgress?: (progress: number) => void
 	): Promise<DriveResult> {
 		try {
+			let uploadBuffer: Buffer;
+			if (fileData instanceof ReadableStream) {
+				uploadBuffer = await this.streamToBuffer(fileData);
+			} else {
+				uploadBuffer = fileData;
+			}
+
 			// 解析父目录ID
 			let parentId = this.config.root_folder_id;
 			if (file.path) {
@@ -570,7 +577,7 @@ export class HostDriver extends BasicDriver {
 
 			// 如果启用秒传，计算pre_hash
 			if (this.config.rapid_upload && fileSize > 100 * 1024) {
-				const preHash = await this.calculatePreHash(fileData);
+				const preHash = await this.calculatePreHash(uploadBuffer);
 				createData.pre_hash = preHash;
 			}
 
@@ -589,8 +596,8 @@ export class HostDriver extends BasicDriver {
 					console.log("[AliCloud] pre_hash匹配，尝试秒传");
 					
 					// 计算完整文件hash
-					const contentHash = await this.calculateSHA1(fileData);
-					const proofCode = await this.calculateProofCode(fileData, fileSize);
+					const contentHash = await this.calculateSHA1(uploadBuffer);
+					const proofCode = await this.calculateProofCode(uploadBuffer, fileSize);
 
 					delete createData.pre_hash;
 					createData.content_hash = contentHash;
@@ -624,7 +631,7 @@ export class HostDriver extends BasicDriver {
 			// 普通上传
 			console.log("[AliCloud] 开始分片上传");
 			await this.uploadParts(
-				fileData,
+				uploadBuffer,
 				createResponse.part_info_list || [],
 				partSize,
 				onProgress
@@ -685,18 +692,16 @@ export class HostDriver extends BasicDriver {
 	 * 上传分片
 	 */
 	private async uploadParts(
-		fileData: Buffer | ReadableStream,
+		buffer: Buffer,
 		partInfoList: PartInfo[],
 		partSize: number,
 		onProgress?: (progress: number) => void
 	): Promise<void> {
-		const buffer = fileData instanceof Buffer ? fileData : await this.streamToBuffer(fileData);
-
 		for (let i = 0; i < partInfoList.length; i++) {
 			const partInfo = partInfoList[i];
 			const start = i * partSize;
 			const end = Math.min(start + partSize, buffer.length);
-			const chunk = buffer.slice(start, end);
+			const chunk = new Uint8Array(buffer.subarray(start, end));
 
 			// 上传分片
 			let uploadUrl = partInfo.upload_url || "";
@@ -729,8 +734,7 @@ export class HostDriver extends BasicDriver {
 	/**
 	 * 计算文件的前1024字节SHA1（用于秒传）
 	 */
-	private async calculatePreHash(fileData: Buffer | ReadableStream): Promise<string> {
-		const buffer = fileData instanceof Buffer ? fileData : await this.streamToBuffer(fileData);
+	private async calculatePreHash(buffer: Buffer): Promise<string> {
 		const preData = buffer.slice(0, Math.min(1024, buffer.length));
 		return crypto.createHash("sha1").update(preData).digest("hex").toUpperCase();
 	}
@@ -738,20 +742,17 @@ export class HostDriver extends BasicDriver {
 	/**
 	 * 计算文件完整SHA1
 	 */
-	private async calculateSHA1(fileData: Buffer | ReadableStream): Promise<string> {
-		const buffer = fileData instanceof Buffer ? fileData : await this.streamToBuffer(fileData);
+	private async calculateSHA1(buffer: Buffer): Promise<string> {
 		return crypto.createHash("sha1").update(buffer).digest("hex").toUpperCase();
 	}
 
 	/**
 	 * 计算proof_code（用于秒传验证）
 	 */
-	private async calculateProofCode(fileData: Buffer | ReadableStream, fileSize: number): Promise<string> {
+	private async calculateProofCode(buffer: Buffer, fileSize: number): Promise<string> {
 		if (fileSize === 0) {
 			return "";
 		}
-
-		const buffer = fileData instanceof Buffer ? fileData : await this.streamToBuffer(fileData);
 		const accessToken = this.saving.access_token || "";
 		
 		// 计算proof范围
@@ -768,7 +769,7 @@ export class HostDriver extends BasicDriver {
 	/**
 	 * 将ReadableStream转换为Buffer
 	 */
-	private async streamToBuffer(stream: ReadableStream): Promise<Buffer> {
+	private async streamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
 		const reader = stream.getReader();
 		const chunks: Uint8Array[] = [];
 		

@@ -85,7 +85,8 @@ try {
 
 			// 获取文件列表
 			const files = await this.getFiles(file.uuid);
-			const fileList: fso.FileInfo[] = files.map((f) => this.convertToFileInfo(f, file.path || "/"));
+			const currentPath = file.path || "/";
+			const fileList: fso.FileInfo[] = files.map((f) => this.convertToFileInfo(f, currentPath));
 
 			return {
 				pageSize: fileList.length,
@@ -382,11 +383,9 @@ try {
 	): Promise<DriveResult | null> {
 		try {
 			// 获取父目录ID
+			let parentId = file?.uuid || this.config.root_folder_id || "0";
 			if (file?.path) {
-				file.uuid = await this.findUUID(file.path);
-			}
-			if (!file?.uuid) {
-				file.uuid = this.config.root_folder_id || "0";
+				parentId = (await this.findUUID(file.path)) || this.config.root_folder_id || "0";
 			}
 			if (!name) {
 				return { flag: false, text: "Invalid parameters" };
@@ -396,7 +395,7 @@ try {
 			if (type === fso.FileType.F_DIR) {
 				const url = this.clouds.getApiUrl(con.API_PATHS.MKDIR);
 				const result = await this.clouds.request(url, "POST", {
-					pid: file.uuid,
+					pid: parentId,
 					cname: name.replace(/\/$/, ""),
 				});
 
@@ -404,7 +403,7 @@ try {
 			}
 			// 创建文件
 			else {
-				return await this.uploadFile(file.uuid, name, data);
+				return await this.uploadFile(parentId, name, data);
 			}
 		} catch (error: any) {
 			console.error("[115云盘] makeFile error:", error);
@@ -607,6 +606,7 @@ async findUUID(path: string): Promise<string | null> {
 			// 实际使用中，文件信息应该在downFile中通过文件列表数据传递
 			const fileInfo: Cloud115File = {
 				fid: fid,
+				n: "",
 				pc: "", // pick_code应该由调用方提供
 			};
 			

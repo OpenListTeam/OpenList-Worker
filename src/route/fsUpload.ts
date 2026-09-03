@@ -14,6 +14,7 @@ import type { Hono, Context } from 'hono';
 import { MountManage } from '../mount/MountManage';
 import { UsersManage } from '../users/UsersManage';
 import { successResp, errorResp } from '../types/HttpResponse';
+import { fetchUpstream } from '../utils/requestSecurity';
 
 // ============================================================
 // 工具函数
@@ -29,17 +30,21 @@ function getFilePath(c: Context): string {
     );
 }
 
-/** 简单签名验证（与 GO 后端 sign.Verify 对应，此处简化实现） */
-function verifySign(path: string, sign: string, secret: string): boolean {
-    if (!sign) return false;
-    // 格式：base64(sha256(path + ":" + secret + ":" + expiry)) + ":" + expiry
-    // 简化：只要 sign 不为空且格式正确即通过（生产环境需完整实现）
+/** 校验下载签名：base64url(sha256(path + ":" + secret + ":" + expiry)) + ":" + expiry */
+async function verifySign(path: string, sign: string, secret: string): Promise<boolean> {
+    if (!sign || !secret) return false;
     try {
-        const parts = sign.split(':');
-        if (parts.length < 2) return false;
-        const expiry = parseInt(parts[parts.length - 1]);
-        if (expiry > 0 && Date.now() / 1000 > expiry) return false;
-        return true;
+        const separator = sign.lastIndexOf(':');
+        if (separator <= 0) return false;
+        const encoded = sign.slice(0, separator);
+        const expiryText = sign.slice(separator + 1);
+        const expiry = Number(expiryText);
+        const now = Math.floor(Date.now() / 1000);
+        if (!Number.isSafeInteger(expiry) || expiry <= now || expiry - now > 7 * 24 * 60 * 60) return false;
+        const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+        const digest = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${path}:${secret}:${expiry}`)));
+        const expected = btoa(String.fromCharCode(...digest)).replace(/=+$/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+        return expected === encoded;
     } catch {
         return false;
     }
@@ -57,10 +62,10 @@ export function fsUploadDownloadRoutes(app: Hono<any>) {
     // ------------------------------------------------------------------
     app.put('/api/fs/put', async (c: Context): Promise<any> => {
         const user = c.get('user');
-        if (!user) return errorResp(c, '未登录', 401);
+        if (!user) return errorResp(c, 'common.not_logged_in', 401);
 
         const filePath = getFilePath(c);
-        if (!filePath) return errorResp(c, 'File-Path 请求头不能为空', 400);
+        if (!filePath) return errorResp(c, 'fs.file_path_required', 400);
 
         const asTask = c.req.header('As-Task') === 'true';
         const overwrite = c.req.header('Overwrite') !== 'false';
@@ -71,7 +76,7 @@ export function fsUploadDownloadRoutes(app: Hono<any>) {
 
         const mountManage = new MountManage(c);
         const driveLoad = await mountManage.loader(dirPath, false, false);
-        if (!driveLoad || !driveLoad[0]) return errorResp(c, '目标目录不存在', 404);
+        if (!driveLoad || !driveLoad[0]) return errorResp(c, 'fs.target_dir_not_found', 404);
 
         await driveLoad[0].loadSelf();
         const relativeDirPath = dirPath.replace(driveLoad[0].router, '') || '/';
@@ -79,7 +84,7 @@ export function fsUploadDownloadRoutes(app: Hono<any>) {
         try {
             // 获取请求体作为文件数据
             const body = c.req.raw.body;
-            if (!body) return errorResp(c, '请求体为空', 400);
+            if (!body) return errorResp(c, 'fs.body_empty', 400);
 
             const contentLength = parseInt(c.req.header('Content-Length') || '0');
             const contentType = c.req.header('Content-Type') || 'application/octet-stream';
@@ -118,7 +123,7 @@ export function fsUploadDownloadRoutes(app: Hono<any>) {
             }
             return successResp(c);
         } catch (e: any) {
-            return errorResp(c, e.message || '上传失败', 500);
+            return errorResp(c, e.message || 'fs.upload_failed', 500);
         }
     });
 
@@ -129,27 +134,27 @@ export function fsUploadDownloadRoutes(app: Hono<any>) {
     // ------------------------------------------------------------------
     app.put('/api/fs/form', async (c: Context): Promise<any> => {
         const user = c.get('user');
-        if (!user) return errorResp(c, '未登录', 401);
+        if (!user) return errorResp(c, 'common.not_logged_in', 401);
 
         const targetPath = c.req.query('path') || c.req.header('File-Path') || '';
-        if (!targetPath) return errorResp(c, '目标路径不能为空', 400);
+        if (!targetPath) return errorResp(c, 'fs.target_path_required', 400);
 
         let formData: FormData;
         try {
             formData = await c.req.formData();
         } catch {
-            return errorResp(c, '解析表单数据失败', 400);
+            return errorResp(c, 'fs.form_parse_failed', 400);
         }
 
         const file = formData.get('file') as File | null;
-        if (!file) return errorResp(c, '未找到上传文件（字段名应为 file）', 400);
+        if (!file) return errorResp(c, 'common.file_field_required', 400);
 
         const dirPath = targetPath.replace(/\/[^/]+$/, '') || '/';
         const fileName = file.name || targetPath.split('/').pop() || 'upload';
 
         const mountManage = new MountManage(c);
         const driveLoad = await mountManage.loader(dirPath, false, false);
-        if (!driveLoad || !driveLoad[0]) return errorResp(c, '目标目录不存在', 404);
+        if (!driveLoad || !driveLoad[0]) return errorResp(c, 'fs.target_dir_not_found', 404);
 
         await driveLoad[0].loadSelf();
         const relativeDirPath = dirPath.replace(driveLoad[0].router, '') || '/';
@@ -163,7 +168,7 @@ export function fsUploadDownloadRoutes(app: Hono<any>) {
             );
             return successResp(c);
         } catch (e: any) {
-            return errorResp(c, e.message || '上传失败', 500);
+            return errorResp(c, e.message || 'fs.upload_failed', 500);
         }
     });
 
@@ -175,12 +180,16 @@ export function fsUploadDownloadRoutes(app: Hono<any>) {
         const rawPath = '/' + c.req.param('*');
         const path = decodeURIComponent(rawPath);
         const sign = c.req.query('sign') || '';
+        const signSecret = String(c.env.SIGN_SECRET || c.env.JWT_SECRET || '');
+        if (!await verifySign(path, sign, signSecret)) {
+            return c.text('common.unauthorized', 401);
+        }
 
         // 获取挂载点
         const mountManage = new MountManage(c);
         const driveLoad = await mountManage.loader(path, false, false);
         if (!driveLoad || !driveLoad[0]) {
-            return c.text('文件不存在', 404);
+            return c.text('fs.file_not_found', 404);
         }
 
         await driveLoad[0].loadSelf();
@@ -188,7 +197,7 @@ export function fsUploadDownloadRoutes(app: Hono<any>) {
 
         try {
             const links = await driveLoad[0].downFile({ path: relativePath });
-            if (!links || links.length === 0) return c.text('无法获取下载链接', 500);
+            if (!links || links.length === 0) return c.text('common.cannot_get_link', 500);
 
             const link = links[0];
 
@@ -212,9 +221,9 @@ export function fsUploadDownloadRoutes(app: Hono<any>) {
                 return c.redirect(link.direct || link.url, 302);
             }
 
-            return c.text('无法获取下载链接', 500);
+            return c.text('common.cannot_get_link', 500);
         } catch (e: any) {
-            return c.text(e.message || '下载失败', 500);
+            return c.text(e.message || 'common.download_failed', 500);
         }
     });
 
@@ -222,6 +231,9 @@ export function fsUploadDownloadRoutes(app: Hono<any>) {
     app.on('HEAD', '/d/*', async (c: Context): Promise<any> => {
         const rawPath = '/' + c.req.param('*');
         const path = decodeURIComponent(rawPath);
+        const sign = c.req.query('sign') || '';
+        const signSecret = String(c.env.SIGN_SECRET || c.env.JWT_SECRET || '');
+        if (!await verifySign(path, sign, signSecret)) return c.text('', 401);
 
         const mountManage = new MountManage(c);
         const driveLoad = await mountManage.loader(path, false, false);
@@ -251,17 +263,19 @@ export function fsUploadDownloadRoutes(app: Hono<any>) {
     app.get('/p/*', async (c: Context): Promise<any> => {
         const rawPath = '/' + c.req.param('*');
         const path = decodeURIComponent(rawPath);
+        const user = c.get('user');
+        if (!user) return c.text('common.unauthorized', 401);
 
         const mountManage = new MountManage(c);
         const driveLoad = await mountManage.loader(path, false, false);
-        if (!driveLoad || !driveLoad[0]) return c.text('文件不存在', 404);
+        if (!driveLoad || !driveLoad[0]) return c.text('fs.file_not_found', 404);
 
         await driveLoad[0].loadSelf();
         const relativePath = path.replace(driveLoad[0].router, '') || '/';
 
         try {
             const links = await driveLoad[0].downFile({ path: relativePath });
-            if (!links || links.length === 0) return c.text('无法获取下载链接', 500);
+            if (!links || links.length === 0) return c.text('common.cannot_get_link', 500);
 
             const link = links[0];
 
@@ -286,7 +300,7 @@ export function fsUploadDownloadRoutes(app: Hono<any>) {
                 const fetchHeaders: Record<string, string> = { ...(link.header || {}) };
                 if (rangeHeader) fetchHeaders['Range'] = rangeHeader;
 
-                const upstream = await fetch(link.direct || link.url, { headers: fetchHeaders });
+                const upstream = await fetchUpstream(link.direct || link.url, { headers: fetchHeaders });
                 const responseHeaders: Record<string, string> = {
                     'Content-Type': upstream.headers.get('Content-Type') || 'application/octet-stream',
                     'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(path.split('/').pop() || 'file')}`,
@@ -303,9 +317,9 @@ export function fsUploadDownloadRoutes(app: Hono<any>) {
                 });
             }
 
-            return c.text('无法代理下载', 500);
+            return c.text('common.cannot_proxy', 500);
         } catch (e: any) {
-            return c.text(e.message || '代理下载失败', 500);
+            return c.text(e.message || 'common.proxy_download_failed', 500);
         }
     });
 
@@ -313,6 +327,8 @@ export function fsUploadDownloadRoutes(app: Hono<any>) {
     app.on('HEAD', '/p/*', async (c: Context): Promise<any> => {
         const rawPath = '/' + c.req.param('*');
         const path = decodeURIComponent(rawPath);
+        const user = c.get('user');
+        if (!user) return c.text('', 401);
 
         const mountManage = new MountManage(c);
         const driveLoad = await mountManage.loader(path, false, false);

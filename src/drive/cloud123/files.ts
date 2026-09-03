@@ -79,15 +79,13 @@ export class HostDriver extends BasicDriver {
 	async listFile(file?: fso.FileFind): Promise<fso.PathInfo> {
 		try {
 			// 获取文件ID
+			let parentId = file?.uuid || this.config.root_folder_id || con.ROOT_FOLDER_ID;
 			if (file?.path) {
-				file.uuid = await this.findUUID(file.path);
-			}
-			if (!file?.uuid) {
-				file.uuid = this.config.root_folder_id || con.ROOT_FOLDER_ID;
+				parentId = (await this.findUUID(file.path)) || this.config.root_folder_id || con.ROOT_FOLDER_ID;
 			}
 
 			// 获取文件列表
-			const files = await this.getFiles(file.uuid);
+			const files = await this.getFiles(parentId);
 			const fileList: fso.FileInfo[] = files.map((f) => this.convertToFileInfo(f));
 
 			return {
@@ -314,17 +312,15 @@ export class HostDriver extends BasicDriver {
 	): Promise<DriveResult | null> {
 		try {
 			// 获取父目录ID
+			let parentUuid = file?.uuid || this.config.root_folder_id || con.ROOT_FOLDER_ID;
 			if (file?.path) {
-				file.uuid = await this.findUUID(file.path);
-			}
-			if (!file?.uuid) {
-				file.uuid = this.config.root_folder_id || con.ROOT_FOLDER_ID;
+				parentUuid = (await this.findUUID(file.path)) || this.config.root_folder_id || con.ROOT_FOLDER_ID;
 			}
 			if (!name) {
 				return { flag: false, text: "Invalid parameters" };
 			}
 
-			const parentId = parseInt(file.uuid, 10);
+			const parentId = parseInt(parentUuid, 10);
 
 			// 创建文件夹
 			if (type === fso.FileType.F_DIR) {

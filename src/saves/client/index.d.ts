@@ -24,6 +24,11 @@ export type mount = $Result.DefaultSelection<Prisma.$mountPayload>
  */
 export type users = $Result.DefaultSelection<Prisma.$usersPayload>
 /**
+ * Model webauthn_credentials
+ * 
+ */
+export type webauthn_credentials = $Result.DefaultSelection<Prisma.$webauthn_credentialsPayload>
+/**
  * Model oauth
  * 
  */
@@ -219,6 +224,16 @@ export class PrismaClient<
     * ```
     */
   get users(): Prisma.usersDelegate<ExtArgs, ClientOptions>;
+
+  /**
+   * `prisma.webauthn_credentials`: Exposes CRUD operations for the **webauthn_credentials** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more Webauthn_credentials
+    * const webauthn_credentials = await prisma.webauthn_credentials.findMany()
+    * ```
+    */
+  get webauthn_credentials(): Prisma.webauthn_credentialsDelegate<ExtArgs, ClientOptions>;
 
   /**
    * `prisma.oauth`: Exposes CRUD operations for the **oauth** model.
@@ -765,6 +780,7 @@ export namespace Prisma {
   export const ModelName: {
     mount: 'mount',
     users: 'users',
+    webauthn_credentials: 'webauthn_credentials',
     oauth: 'oauth',
     binds: 'binds',
     crypt: 'crypt',
@@ -791,7 +807,7 @@ export namespace Prisma {
       omit: GlobalOmitOptions
     }
     meta: {
-      modelProps: "mount" | "users" | "oauth" | "binds" | "crypt" | "mates" | "share" | "token" | "tasks" | "fetch" | "group" | "cache" | "admin"
+      modelProps: "mount" | "users" | "webauthn_credentials" | "oauth" | "binds" | "crypt" | "mates" | "share" | "token" | "tasks" | "fetch" | "group" | "cache" | "admin"
       txIsolationLevel: Prisma.TransactionIsolationLevel
     }
     model: {
@@ -940,6 +956,80 @@ export namespace Prisma {
           count: {
             args: Prisma.usersCountArgs<ExtArgs>
             result: $Utils.Optional<UsersCountAggregateOutputType> | number
+          }
+        }
+      }
+      webauthn_credentials: {
+        payload: Prisma.$webauthn_credentialsPayload<ExtArgs>
+        fields: Prisma.webauthn_credentialsFieldRefs
+        operations: {
+          findUnique: {
+            args: Prisma.webauthn_credentialsFindUniqueArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$webauthn_credentialsPayload> | null
+          }
+          findUniqueOrThrow: {
+            args: Prisma.webauthn_credentialsFindUniqueOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$webauthn_credentialsPayload>
+          }
+          findFirst: {
+            args: Prisma.webauthn_credentialsFindFirstArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$webauthn_credentialsPayload> | null
+          }
+          findFirstOrThrow: {
+            args: Prisma.webauthn_credentialsFindFirstOrThrowArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$webauthn_credentialsPayload>
+          }
+          findMany: {
+            args: Prisma.webauthn_credentialsFindManyArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$webauthn_credentialsPayload>[]
+          }
+          create: {
+            args: Prisma.webauthn_credentialsCreateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$webauthn_credentialsPayload>
+          }
+          createMany: {
+            args: Prisma.webauthn_credentialsCreateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          createManyAndReturn: {
+            args: Prisma.webauthn_credentialsCreateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$webauthn_credentialsPayload>[]
+          }
+          delete: {
+            args: Prisma.webauthn_credentialsDeleteArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$webauthn_credentialsPayload>
+          }
+          update: {
+            args: Prisma.webauthn_credentialsUpdateArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$webauthn_credentialsPayload>
+          }
+          deleteMany: {
+            args: Prisma.webauthn_credentialsDeleteManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateMany: {
+            args: Prisma.webauthn_credentialsUpdateManyArgs<ExtArgs>
+            result: BatchPayload
+          }
+          updateManyAndReturn: {
+            args: Prisma.webauthn_credentialsUpdateManyAndReturnArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$webauthn_credentialsPayload>[]
+          }
+          upsert: {
+            args: Prisma.webauthn_credentialsUpsertArgs<ExtArgs>
+            result: $Utils.PayloadToResult<Prisma.$webauthn_credentialsPayload>
+          }
+          aggregate: {
+            args: Prisma.Webauthn_credentialsAggregateArgs<ExtArgs>
+            result: $Utils.Optional<AggregateWebauthn_credentials>
+          }
+          groupBy: {
+            args: Prisma.webauthn_credentialsGroupByArgs<ExtArgs>
+            result: $Utils.Optional<Webauthn_credentialsGroupByOutputType>[]
+          }
+          count: {
+            args: Prisma.webauthn_credentialsCountArgs<ExtArgs>
+            result: $Utils.Optional<Webauthn_credentialsCountAggregateOutputType> | number
           }
         }
       }
@@ -1867,6 +1957,7 @@ export namespace Prisma {
   export type GlobalOmitConfig = {
     mount?: mountOmit
     users?: usersOmit
+    webauthn_credentials?: webauthn_credentialsOmit
     oauth?: oauthOmit
     binds?: bindsOmit
     crypt?: cryptOmit
@@ -3109,6 +3200,7 @@ export namespace Prisma {
     total_used: number | null
     oauth_data: string | null
     mount_data: string | null
+    otp_secret: string | null
   }
 
   export type UsersMaxAggregateOutputType = {
@@ -3121,6 +3213,7 @@ export namespace Prisma {
     total_used: number | null
     oauth_data: string | null
     mount_data: string | null
+    otp_secret: string | null
   }
 
   export type UsersCountAggregateOutputType = {
@@ -3133,6 +3226,7 @@ export namespace Prisma {
     total_used: number
     oauth_data: number
     mount_data: number
+    otp_secret: number
     _all: number
   }
 
@@ -3159,6 +3253,7 @@ export namespace Prisma {
     total_used?: true
     oauth_data?: true
     mount_data?: true
+    otp_secret?: true
   }
 
   export type UsersMaxAggregateInputType = {
@@ -3171,6 +3266,7 @@ export namespace Prisma {
     total_used?: true
     oauth_data?: true
     mount_data?: true
+    otp_secret?: true
   }
 
   export type UsersCountAggregateInputType = {
@@ -3183,6 +3279,7 @@ export namespace Prisma {
     total_used?: true
     oauth_data?: true
     mount_data?: true
+    otp_secret?: true
     _all?: true
   }
 
@@ -3282,6 +3379,7 @@ export namespace Prisma {
     total_used: number | null
     oauth_data: string | null
     mount_data: string | null
+    otp_secret: string | null
     _count: UsersCountAggregateOutputType | null
     _avg: UsersAvgAggregateOutputType | null
     _sum: UsersSumAggregateOutputType | null
@@ -3313,6 +3411,7 @@ export namespace Prisma {
     total_used?: boolean
     oauth_data?: boolean
     mount_data?: boolean
+    otp_secret?: boolean
   }, ExtArgs["result"]["users"]>
 
   export type usersSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
@@ -3325,6 +3424,7 @@ export namespace Prisma {
     total_used?: boolean
     oauth_data?: boolean
     mount_data?: boolean
+    otp_secret?: boolean
   }, ExtArgs["result"]["users"]>
 
   export type usersSelectUpdateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
@@ -3337,6 +3437,7 @@ export namespace Prisma {
     total_used?: boolean
     oauth_data?: boolean
     mount_data?: boolean
+    otp_secret?: boolean
   }, ExtArgs["result"]["users"]>
 
   export type usersSelectScalar = {
@@ -3349,9 +3450,10 @@ export namespace Prisma {
     total_used?: boolean
     oauth_data?: boolean
     mount_data?: boolean
+    otp_secret?: boolean
   }
 
-  export type usersOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"users_name" | "users_mail" | "users_pass" | "users_mask" | "is_enabled" | "total_size" | "total_used" | "oauth_data" | "mount_data", ExtArgs["result"]["users"]>
+  export type usersOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"users_name" | "users_mail" | "users_pass" | "users_mask" | "is_enabled" | "total_size" | "total_used" | "oauth_data" | "mount_data" | "otp_secret", ExtArgs["result"]["users"]>
 
   export type $usersPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     name: "users"
@@ -3366,6 +3468,7 @@ export namespace Prisma {
       total_used: number | null
       oauth_data: string | null
       mount_data: string | null
+      otp_secret: string | null
     }, ExtArgs["result"]["users"]>
     composites: {}
   }
@@ -3798,6 +3901,7 @@ export namespace Prisma {
     readonly total_used: FieldRef<"users", 'Int'>
     readonly oauth_data: FieldRef<"users", 'String'>
     readonly mount_data: FieldRef<"users", 'String'>
+    readonly otp_secret: FieldRef<"users", 'String'>
   }
     
 
@@ -4159,6 +4263,1097 @@ export namespace Prisma {
      * Omit specific fields from the users
      */
     omit?: usersOmit<ExtArgs> | null
+  }
+
+
+  /**
+   * Model webauthn_credentials
+   */
+
+  export type AggregateWebauthn_credentials = {
+    _count: Webauthn_credentialsCountAggregateOutputType | null
+    _avg: Webauthn_credentialsAvgAggregateOutputType | null
+    _sum: Webauthn_credentialsSumAggregateOutputType | null
+    _min: Webauthn_credentialsMinAggregateOutputType | null
+    _max: Webauthn_credentialsMaxAggregateOutputType | null
+  }
+
+  export type Webauthn_credentialsAvgAggregateOutputType = {
+    id: number | null
+    counter: number | null
+    created_at: number | null
+    last_used_at: number | null
+  }
+
+  export type Webauthn_credentialsSumAggregateOutputType = {
+    id: number | null
+    counter: number | null
+    created_at: number | null
+    last_used_at: number | null
+  }
+
+  export type Webauthn_credentialsMinAggregateOutputType = {
+    id: number | null
+    users_name: string | null
+    credential_id: string | null
+    public_key: string | null
+    counter: number | null
+    transports: string | null
+    device_name: string | null
+    created_at: number | null
+    last_used_at: number | null
+  }
+
+  export type Webauthn_credentialsMaxAggregateOutputType = {
+    id: number | null
+    users_name: string | null
+    credential_id: string | null
+    public_key: string | null
+    counter: number | null
+    transports: string | null
+    device_name: string | null
+    created_at: number | null
+    last_used_at: number | null
+  }
+
+  export type Webauthn_credentialsCountAggregateOutputType = {
+    id: number
+    users_name: number
+    credential_id: number
+    public_key: number
+    counter: number
+    transports: number
+    device_name: number
+    created_at: number
+    last_used_at: number
+    _all: number
+  }
+
+
+  export type Webauthn_credentialsAvgAggregateInputType = {
+    id?: true
+    counter?: true
+    created_at?: true
+    last_used_at?: true
+  }
+
+  export type Webauthn_credentialsSumAggregateInputType = {
+    id?: true
+    counter?: true
+    created_at?: true
+    last_used_at?: true
+  }
+
+  export type Webauthn_credentialsMinAggregateInputType = {
+    id?: true
+    users_name?: true
+    credential_id?: true
+    public_key?: true
+    counter?: true
+    transports?: true
+    device_name?: true
+    created_at?: true
+    last_used_at?: true
+  }
+
+  export type Webauthn_credentialsMaxAggregateInputType = {
+    id?: true
+    users_name?: true
+    credential_id?: true
+    public_key?: true
+    counter?: true
+    transports?: true
+    device_name?: true
+    created_at?: true
+    last_used_at?: true
+  }
+
+  export type Webauthn_credentialsCountAggregateInputType = {
+    id?: true
+    users_name?: true
+    credential_id?: true
+    public_key?: true
+    counter?: true
+    transports?: true
+    device_name?: true
+    created_at?: true
+    last_used_at?: true
+    _all?: true
+  }
+
+  export type Webauthn_credentialsAggregateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which webauthn_credentials to aggregate.
+     */
+    where?: webauthn_credentialsWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of webauthn_credentials to fetch.
+     */
+    orderBy?: webauthn_credentialsOrderByWithRelationInput | webauthn_credentialsOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the start position
+     */
+    cursor?: webauthn_credentialsWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` webauthn_credentials from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` webauthn_credentials.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Count returned webauthn_credentials
+    **/
+    _count?: true | Webauthn_credentialsCountAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to average
+    **/
+    _avg?: Webauthn_credentialsAvgAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to sum
+    **/
+    _sum?: Webauthn_credentialsSumAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the minimum value
+    **/
+    _min?: Webauthn_credentialsMinAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to find the maximum value
+    **/
+    _max?: Webauthn_credentialsMaxAggregateInputType
+  }
+
+  export type GetWebauthn_credentialsAggregateType<T extends Webauthn_credentialsAggregateArgs> = {
+        [P in keyof T & keyof AggregateWebauthn_credentials]: P extends '_count' | 'count'
+      ? T[P] extends true
+        ? number
+        : GetScalarType<T[P], AggregateWebauthn_credentials[P]>
+      : GetScalarType<T[P], AggregateWebauthn_credentials[P]>
+  }
+
+
+
+
+  export type webauthn_credentialsGroupByArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    where?: webauthn_credentialsWhereInput
+    orderBy?: webauthn_credentialsOrderByWithAggregationInput | webauthn_credentialsOrderByWithAggregationInput[]
+    by: Webauthn_credentialsScalarFieldEnum[] | Webauthn_credentialsScalarFieldEnum
+    having?: webauthn_credentialsScalarWhereWithAggregatesInput
+    take?: number
+    skip?: number
+    _count?: Webauthn_credentialsCountAggregateInputType | true
+    _avg?: Webauthn_credentialsAvgAggregateInputType
+    _sum?: Webauthn_credentialsSumAggregateInputType
+    _min?: Webauthn_credentialsMinAggregateInputType
+    _max?: Webauthn_credentialsMaxAggregateInputType
+  }
+
+  export type Webauthn_credentialsGroupByOutputType = {
+    id: number
+    users_name: string
+    credential_id: string
+    public_key: string
+    counter: number
+    transports: string | null
+    device_name: string | null
+    created_at: number
+    last_used_at: number | null
+    _count: Webauthn_credentialsCountAggregateOutputType | null
+    _avg: Webauthn_credentialsAvgAggregateOutputType | null
+    _sum: Webauthn_credentialsSumAggregateOutputType | null
+    _min: Webauthn_credentialsMinAggregateOutputType | null
+    _max: Webauthn_credentialsMaxAggregateOutputType | null
+  }
+
+  type GetWebauthn_credentialsGroupByPayload<T extends webauthn_credentialsGroupByArgs> = Prisma.PrismaPromise<
+    Array<
+      PickEnumerable<Webauthn_credentialsGroupByOutputType, T['by']> &
+        {
+          [P in ((keyof T) & (keyof Webauthn_credentialsGroupByOutputType))]: P extends '_count'
+            ? T[P] extends boolean
+              ? number
+              : GetScalarType<T[P], Webauthn_credentialsGroupByOutputType[P]>
+            : GetScalarType<T[P], Webauthn_credentialsGroupByOutputType[P]>
+        }
+      >
+    >
+
+
+  export type webauthn_credentialsSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    users_name?: boolean
+    credential_id?: boolean
+    public_key?: boolean
+    counter?: boolean
+    transports?: boolean
+    device_name?: boolean
+    created_at?: boolean
+    last_used_at?: boolean
+  }, ExtArgs["result"]["webauthn_credentials"]>
+
+  export type webauthn_credentialsSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    users_name?: boolean
+    credential_id?: boolean
+    public_key?: boolean
+    counter?: boolean
+    transports?: boolean
+    device_name?: boolean
+    created_at?: boolean
+    last_used_at?: boolean
+  }, ExtArgs["result"]["webauthn_credentials"]>
+
+  export type webauthn_credentialsSelectUpdateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
+    id?: boolean
+    users_name?: boolean
+    credential_id?: boolean
+    public_key?: boolean
+    counter?: boolean
+    transports?: boolean
+    device_name?: boolean
+    created_at?: boolean
+    last_used_at?: boolean
+  }, ExtArgs["result"]["webauthn_credentials"]>
+
+  export type webauthn_credentialsSelectScalar = {
+    id?: boolean
+    users_name?: boolean
+    credential_id?: boolean
+    public_key?: boolean
+    counter?: boolean
+    transports?: boolean
+    device_name?: boolean
+    created_at?: boolean
+    last_used_at?: boolean
+  }
+
+  export type webauthn_credentialsOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "users_name" | "credential_id" | "public_key" | "counter" | "transports" | "device_name" | "created_at" | "last_used_at", ExtArgs["result"]["webauthn_credentials"]>
+
+  export type $webauthn_credentialsPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    name: "webauthn_credentials"
+    objects: {}
+    scalars: $Extensions.GetPayloadResult<{
+      id: number
+      users_name: string
+      credential_id: string
+      public_key: string
+      counter: number
+      transports: string | null
+      device_name: string | null
+      created_at: number
+      last_used_at: number | null
+    }, ExtArgs["result"]["webauthn_credentials"]>
+    composites: {}
+  }
+
+  type webauthn_credentialsGetPayload<S extends boolean | null | undefined | webauthn_credentialsDefaultArgs> = $Result.GetResult<Prisma.$webauthn_credentialsPayload, S>
+
+  type webauthn_credentialsCountArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> =
+    Omit<webauthn_credentialsFindManyArgs, 'select' | 'include' | 'distinct' | 'omit'> & {
+      select?: Webauthn_credentialsCountAggregateInputType | true
+    }
+
+  export interface webauthn_credentialsDelegate<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, GlobalOmitOptions = {}> {
+    [K: symbol]: { types: Prisma.TypeMap<ExtArgs>['model']['webauthn_credentials'], meta: { name: 'webauthn_credentials' } }
+    /**
+     * Find zero or one Webauthn_credentials that matches the filter.
+     * @param {webauthn_credentialsFindUniqueArgs} args - Arguments to find a Webauthn_credentials
+     * @example
+     * // Get one Webauthn_credentials
+     * const webauthn_credentials = await prisma.webauthn_credentials.findUnique({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUnique<T extends webauthn_credentialsFindUniqueArgs>(args: SelectSubset<T, webauthn_credentialsFindUniqueArgs<ExtArgs>>): Prisma__webauthn_credentialsClient<$Result.GetResult<Prisma.$webauthn_credentialsPayload<ExtArgs>, T, "findUnique", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find one Webauthn_credentials that matches the filter or throw an error with `error.code='P2025'`
+     * if no matches were found.
+     * @param {webauthn_credentialsFindUniqueOrThrowArgs} args - Arguments to find a Webauthn_credentials
+     * @example
+     * // Get one Webauthn_credentials
+     * const webauthn_credentials = await prisma.webauthn_credentials.findUniqueOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findUniqueOrThrow<T extends webauthn_credentialsFindUniqueOrThrowArgs>(args: SelectSubset<T, webauthn_credentialsFindUniqueOrThrowArgs<ExtArgs>>): Prisma__webauthn_credentialsClient<$Result.GetResult<Prisma.$webauthn_credentialsPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find the first Webauthn_credentials that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {webauthn_credentialsFindFirstArgs} args - Arguments to find a Webauthn_credentials
+     * @example
+     * // Get one Webauthn_credentials
+     * const webauthn_credentials = await prisma.webauthn_credentials.findFirst({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirst<T extends webauthn_credentialsFindFirstArgs>(args?: SelectSubset<T, webauthn_credentialsFindFirstArgs<ExtArgs>>): Prisma__webauthn_credentialsClient<$Result.GetResult<Prisma.$webauthn_credentialsPayload<ExtArgs>, T, "findFirst", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find the first Webauthn_credentials that matches the filter or
+     * throw `PrismaKnownClientError` with `P2025` code if no matches were found.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {webauthn_credentialsFindFirstOrThrowArgs} args - Arguments to find a Webauthn_credentials
+     * @example
+     * // Get one Webauthn_credentials
+     * const webauthn_credentials = await prisma.webauthn_credentials.findFirstOrThrow({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     */
+    findFirstOrThrow<T extends webauthn_credentialsFindFirstOrThrowArgs>(args?: SelectSubset<T, webauthn_credentialsFindFirstOrThrowArgs<ExtArgs>>): Prisma__webauthn_credentialsClient<$Result.GetResult<Prisma.$webauthn_credentialsPayload<ExtArgs>, T, "findFirstOrThrow", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Find zero or more Webauthn_credentials that matches the filter.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {webauthn_credentialsFindManyArgs} args - Arguments to filter and select certain fields only.
+     * @example
+     * // Get all Webauthn_credentials
+     * const webauthn_credentials = await prisma.webauthn_credentials.findMany()
+     * 
+     * // Get first 10 Webauthn_credentials
+     * const webauthn_credentials = await prisma.webauthn_credentials.findMany({ take: 10 })
+     * 
+     * // Only select the `id`
+     * const webauthn_credentialsWithIdOnly = await prisma.webauthn_credentials.findMany({ select: { id: true } })
+     * 
+     */
+    findMany<T extends webauthn_credentialsFindManyArgs>(args?: SelectSubset<T, webauthn_credentialsFindManyArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$webauthn_credentialsPayload<ExtArgs>, T, "findMany", GlobalOmitOptions>>
+
+    /**
+     * Create a Webauthn_credentials.
+     * @param {webauthn_credentialsCreateArgs} args - Arguments to create a Webauthn_credentials.
+     * @example
+     * // Create one Webauthn_credentials
+     * const Webauthn_credentials = await prisma.webauthn_credentials.create({
+     *   data: {
+     *     // ... data to create a Webauthn_credentials
+     *   }
+     * })
+     * 
+     */
+    create<T extends webauthn_credentialsCreateArgs>(args: SelectSubset<T, webauthn_credentialsCreateArgs<ExtArgs>>): Prisma__webauthn_credentialsClient<$Result.GetResult<Prisma.$webauthn_credentialsPayload<ExtArgs>, T, "create", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Create many Webauthn_credentials.
+     * @param {webauthn_credentialsCreateManyArgs} args - Arguments to create many Webauthn_credentials.
+     * @example
+     * // Create many Webauthn_credentials
+     * const webauthn_credentials = await prisma.webauthn_credentials.createMany({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     *     
+     */
+    createMany<T extends webauthn_credentialsCreateManyArgs>(args?: SelectSubset<T, webauthn_credentialsCreateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Create many Webauthn_credentials and returns the data saved in the database.
+     * @param {webauthn_credentialsCreateManyAndReturnArgs} args - Arguments to create many Webauthn_credentials.
+     * @example
+     * // Create many Webauthn_credentials
+     * const webauthn_credentials = await prisma.webauthn_credentials.createManyAndReturn({
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Create many Webauthn_credentials and only return the `id`
+     * const webauthn_credentialsWithIdOnly = await prisma.webauthn_credentials.createManyAndReturn({
+     *   select: { id: true },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    createManyAndReturn<T extends webauthn_credentialsCreateManyAndReturnArgs>(args?: SelectSubset<T, webauthn_credentialsCreateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$webauthn_credentialsPayload<ExtArgs>, T, "createManyAndReturn", GlobalOmitOptions>>
+
+    /**
+     * Delete a Webauthn_credentials.
+     * @param {webauthn_credentialsDeleteArgs} args - Arguments to delete one Webauthn_credentials.
+     * @example
+     * // Delete one Webauthn_credentials
+     * const Webauthn_credentials = await prisma.webauthn_credentials.delete({
+     *   where: {
+     *     // ... filter to delete one Webauthn_credentials
+     *   }
+     * })
+     * 
+     */
+    delete<T extends webauthn_credentialsDeleteArgs>(args: SelectSubset<T, webauthn_credentialsDeleteArgs<ExtArgs>>): Prisma__webauthn_credentialsClient<$Result.GetResult<Prisma.$webauthn_credentialsPayload<ExtArgs>, T, "delete", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Update one Webauthn_credentials.
+     * @param {webauthn_credentialsUpdateArgs} args - Arguments to update one Webauthn_credentials.
+     * @example
+     * // Update one Webauthn_credentials
+     * const webauthn_credentials = await prisma.webauthn_credentials.update({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    update<T extends webauthn_credentialsUpdateArgs>(args: SelectSubset<T, webauthn_credentialsUpdateArgs<ExtArgs>>): Prisma__webauthn_credentialsClient<$Result.GetResult<Prisma.$webauthn_credentialsPayload<ExtArgs>, T, "update", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+    /**
+     * Delete zero or more Webauthn_credentials.
+     * @param {webauthn_credentialsDeleteManyArgs} args - Arguments to filter Webauthn_credentials to delete.
+     * @example
+     * // Delete a few Webauthn_credentials
+     * const { count } = await prisma.webauthn_credentials.deleteMany({
+     *   where: {
+     *     // ... provide filter here
+     *   }
+     * })
+     * 
+     */
+    deleteMany<T extends webauthn_credentialsDeleteManyArgs>(args?: SelectSubset<T, webauthn_credentialsDeleteManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more Webauthn_credentials.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {webauthn_credentialsUpdateManyArgs} args - Arguments to update one or more rows.
+     * @example
+     * // Update many Webauthn_credentials
+     * const webauthn_credentials = await prisma.webauthn_credentials.updateMany({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: {
+     *     // ... provide data here
+     *   }
+     * })
+     * 
+     */
+    updateMany<T extends webauthn_credentialsUpdateManyArgs>(args: SelectSubset<T, webauthn_credentialsUpdateManyArgs<ExtArgs>>): Prisma.PrismaPromise<BatchPayload>
+
+    /**
+     * Update zero or more Webauthn_credentials and returns the data updated in the database.
+     * @param {webauthn_credentialsUpdateManyAndReturnArgs} args - Arguments to update many Webauthn_credentials.
+     * @example
+     * // Update many Webauthn_credentials
+     * const webauthn_credentials = await prisma.webauthn_credentials.updateManyAndReturn({
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * 
+     * // Update zero or more Webauthn_credentials and only return the `id`
+     * const webauthn_credentialsWithIdOnly = await prisma.webauthn_credentials.updateManyAndReturn({
+     *   select: { id: true },
+     *   where: {
+     *     // ... provide filter here
+     *   },
+     *   data: [
+     *     // ... provide data here
+     *   ]
+     * })
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * 
+     */
+    updateManyAndReturn<T extends webauthn_credentialsUpdateManyAndReturnArgs>(args: SelectSubset<T, webauthn_credentialsUpdateManyAndReturnArgs<ExtArgs>>): Prisma.PrismaPromise<$Result.GetResult<Prisma.$webauthn_credentialsPayload<ExtArgs>, T, "updateManyAndReturn", GlobalOmitOptions>>
+
+    /**
+     * Create or update one Webauthn_credentials.
+     * @param {webauthn_credentialsUpsertArgs} args - Arguments to update or create a Webauthn_credentials.
+     * @example
+     * // Update or create a Webauthn_credentials
+     * const webauthn_credentials = await prisma.webauthn_credentials.upsert({
+     *   create: {
+     *     // ... data to create a Webauthn_credentials
+     *   },
+     *   update: {
+     *     // ... in case it already exists, update
+     *   },
+     *   where: {
+     *     // ... the filter for the Webauthn_credentials we want to update
+     *   }
+     * })
+     */
+    upsert<T extends webauthn_credentialsUpsertArgs>(args: SelectSubset<T, webauthn_credentialsUpsertArgs<ExtArgs>>): Prisma__webauthn_credentialsClient<$Result.GetResult<Prisma.$webauthn_credentialsPayload<ExtArgs>, T, "upsert", GlobalOmitOptions>, never, ExtArgs, GlobalOmitOptions>
+
+
+    /**
+     * Count the number of Webauthn_credentials.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {webauthn_credentialsCountArgs} args - Arguments to filter Webauthn_credentials to count.
+     * @example
+     * // Count the number of Webauthn_credentials
+     * const count = await prisma.webauthn_credentials.count({
+     *   where: {
+     *     // ... the filter for the Webauthn_credentials we want to count
+     *   }
+     * })
+    **/
+    count<T extends webauthn_credentialsCountArgs>(
+      args?: Subset<T, webauthn_credentialsCountArgs>,
+    ): Prisma.PrismaPromise<
+      T extends $Utils.Record<'select', any>
+        ? T['select'] extends true
+          ? number
+          : GetScalarType<T['select'], Webauthn_credentialsCountAggregateOutputType>
+        : number
+    >
+
+    /**
+     * Allows you to perform aggregations operations on a Webauthn_credentials.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {Webauthn_credentialsAggregateArgs} args - Select which aggregations you would like to apply and on what fields.
+     * @example
+     * // Ordered by age ascending
+     * // Where email contains prisma.io
+     * // Limited to the 10 users
+     * const aggregations = await prisma.user.aggregate({
+     *   _avg: {
+     *     age: true,
+     *   },
+     *   where: {
+     *     email: {
+     *       contains: "prisma.io",
+     *     },
+     *   },
+     *   orderBy: {
+     *     age: "asc",
+     *   },
+     *   take: 10,
+     * })
+    **/
+    aggregate<T extends Webauthn_credentialsAggregateArgs>(args: Subset<T, Webauthn_credentialsAggregateArgs>): Prisma.PrismaPromise<GetWebauthn_credentialsAggregateType<T>>
+
+    /**
+     * Group by Webauthn_credentials.
+     * Note, that providing `undefined` is treated as the value not being there.
+     * Read more here: https://pris.ly/d/null-undefined
+     * @param {webauthn_credentialsGroupByArgs} args - Group by arguments.
+     * @example
+     * // Group by city, order by createdAt, get count
+     * const result = await prisma.user.groupBy({
+     *   by: ['city', 'createdAt'],
+     *   orderBy: {
+     *     createdAt: true
+     *   },
+     *   _count: {
+     *     _all: true
+     *   },
+     * })
+     * 
+    **/
+    groupBy<
+      T extends webauthn_credentialsGroupByArgs,
+      HasSelectOrTake extends Or<
+        Extends<'skip', Keys<T>>,
+        Extends<'take', Keys<T>>
+      >,
+      OrderByArg extends True extends HasSelectOrTake
+        ? { orderBy: webauthn_credentialsGroupByArgs['orderBy'] }
+        : { orderBy?: webauthn_credentialsGroupByArgs['orderBy'] },
+      OrderFields extends ExcludeUnderscoreKeys<Keys<MaybeTupleToUnion<T['orderBy']>>>,
+      ByFields extends MaybeTupleToUnion<T['by']>,
+      ByValid extends Has<ByFields, OrderFields>,
+      HavingFields extends GetHavingFields<T['having']>,
+      HavingValid extends Has<ByFields, HavingFields>,
+      ByEmpty extends T['by'] extends never[] ? True : False,
+      InputErrors extends ByEmpty extends True
+      ? `Error: "by" must not be empty.`
+      : HavingValid extends False
+      ? {
+          [P in HavingFields]: P extends ByFields
+            ? never
+            : P extends string
+            ? `Error: Field "${P}" used in "having" needs to be provided in "by".`
+            : [
+                Error,
+                'Field ',
+                P,
+                ` in "having" needs to be provided in "by"`,
+              ]
+        }[HavingFields]
+      : 'take' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "take", you also need to provide "orderBy"'
+      : 'skip' extends Keys<T>
+      ? 'orderBy' extends Keys<T>
+        ? ByValid extends True
+          ? {}
+          : {
+              [P in OrderFields]: P extends ByFields
+                ? never
+                : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+            }[OrderFields]
+        : 'Error: If you provide "skip", you also need to provide "orderBy"'
+      : ByValid extends True
+      ? {}
+      : {
+          [P in OrderFields]: P extends ByFields
+            ? never
+            : `Error: Field "${P}" in "orderBy" needs to be provided in "by"`
+        }[OrderFields]
+    >(args: SubsetIntersection<T, webauthn_credentialsGroupByArgs, OrderByArg> & InputErrors): {} extends InputErrors ? GetWebauthn_credentialsGroupByPayload<T> : Prisma.PrismaPromise<InputErrors>
+  /**
+   * Fields of the webauthn_credentials model
+   */
+  readonly fields: webauthn_credentialsFieldRefs;
+  }
+
+  /**
+   * The delegate class that acts as a "Promise-like" for webauthn_credentials.
+   * Why is this prefixed with `Prisma__`?
+   * Because we want to prevent naming conflicts as mentioned in
+   * https://github.com/prisma/prisma-client-js/issues/707
+   */
+  export interface Prisma__webauthn_credentialsClient<T, Null = never, ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
+    readonly [Symbol.toStringTag]: "PrismaPromise"
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null): $Utils.JsPromise<TResult1 | TResult2>
+    /**
+     * Attaches a callback for only the rejection of the Promise.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of the callback.
+     */
+    catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null): $Utils.JsPromise<T | TResult>
+    /**
+     * Attaches a callback that is invoked when the Promise is settled (fulfilled or rejected). The
+     * resolved value cannot be modified from the callback.
+     * @param onfinally The callback to execute when the Promise is settled (fulfilled or rejected).
+     * @returns A Promise for the completion of the callback.
+     */
+    finally(onfinally?: (() => void) | undefined | null): $Utils.JsPromise<T>
+  }
+
+
+
+
+  /**
+   * Fields of the webauthn_credentials model
+   */
+  interface webauthn_credentialsFieldRefs {
+    readonly id: FieldRef<"webauthn_credentials", 'Int'>
+    readonly users_name: FieldRef<"webauthn_credentials", 'String'>
+    readonly credential_id: FieldRef<"webauthn_credentials", 'String'>
+    readonly public_key: FieldRef<"webauthn_credentials", 'String'>
+    readonly counter: FieldRef<"webauthn_credentials", 'Int'>
+    readonly transports: FieldRef<"webauthn_credentials", 'String'>
+    readonly device_name: FieldRef<"webauthn_credentials", 'String'>
+    readonly created_at: FieldRef<"webauthn_credentials", 'Int'>
+    readonly last_used_at: FieldRef<"webauthn_credentials", 'Int'>
+  }
+    
+
+  // Custom InputTypes
+  /**
+   * webauthn_credentials findUnique
+   */
+  export type webauthn_credentialsFindUniqueArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the webauthn_credentials
+     */
+    select?: webauthn_credentialsSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the webauthn_credentials
+     */
+    omit?: webauthn_credentialsOmit<ExtArgs> | null
+    /**
+     * Filter, which webauthn_credentials to fetch.
+     */
+    where: webauthn_credentialsWhereUniqueInput
+  }
+
+  /**
+   * webauthn_credentials findUniqueOrThrow
+   */
+  export type webauthn_credentialsFindUniqueOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the webauthn_credentials
+     */
+    select?: webauthn_credentialsSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the webauthn_credentials
+     */
+    omit?: webauthn_credentialsOmit<ExtArgs> | null
+    /**
+     * Filter, which webauthn_credentials to fetch.
+     */
+    where: webauthn_credentialsWhereUniqueInput
+  }
+
+  /**
+   * webauthn_credentials findFirst
+   */
+  export type webauthn_credentialsFindFirstArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the webauthn_credentials
+     */
+    select?: webauthn_credentialsSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the webauthn_credentials
+     */
+    omit?: webauthn_credentialsOmit<ExtArgs> | null
+    /**
+     * Filter, which webauthn_credentials to fetch.
+     */
+    where?: webauthn_credentialsWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of webauthn_credentials to fetch.
+     */
+    orderBy?: webauthn_credentialsOrderByWithRelationInput | webauthn_credentialsOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for webauthn_credentials.
+     */
+    cursor?: webauthn_credentialsWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` webauthn_credentials from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` webauthn_credentials.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of webauthn_credentials.
+     */
+    distinct?: Webauthn_credentialsScalarFieldEnum | Webauthn_credentialsScalarFieldEnum[]
+  }
+
+  /**
+   * webauthn_credentials findFirstOrThrow
+   */
+  export type webauthn_credentialsFindFirstOrThrowArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the webauthn_credentials
+     */
+    select?: webauthn_credentialsSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the webauthn_credentials
+     */
+    omit?: webauthn_credentialsOmit<ExtArgs> | null
+    /**
+     * Filter, which webauthn_credentials to fetch.
+     */
+    where?: webauthn_credentialsWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of webauthn_credentials to fetch.
+     */
+    orderBy?: webauthn_credentialsOrderByWithRelationInput | webauthn_credentialsOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for searching for webauthn_credentials.
+     */
+    cursor?: webauthn_credentialsWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` webauthn_credentials from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` webauthn_credentials.
+     */
+    skip?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+     * 
+     * Filter by unique combinations of webauthn_credentials.
+     */
+    distinct?: Webauthn_credentialsScalarFieldEnum | Webauthn_credentialsScalarFieldEnum[]
+  }
+
+  /**
+   * webauthn_credentials findMany
+   */
+  export type webauthn_credentialsFindManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the webauthn_credentials
+     */
+    select?: webauthn_credentialsSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the webauthn_credentials
+     */
+    omit?: webauthn_credentialsOmit<ExtArgs> | null
+    /**
+     * Filter, which webauthn_credentials to fetch.
+     */
+    where?: webauthn_credentialsWhereInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/sorting Sorting Docs}
+     * 
+     * Determine the order of webauthn_credentials to fetch.
+     */
+    orderBy?: webauthn_credentialsOrderByWithRelationInput | webauthn_credentialsOrderByWithRelationInput[]
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination#cursor-based-pagination Cursor Docs}
+     * 
+     * Sets the position for listing webauthn_credentials.
+     */
+    cursor?: webauthn_credentialsWhereUniqueInput
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Take `±n` webauthn_credentials from the position of the cursor.
+     */
+    take?: number
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/pagination Pagination Docs}
+     * 
+     * Skip the first `n` webauthn_credentials.
+     */
+    skip?: number
+    distinct?: Webauthn_credentialsScalarFieldEnum | Webauthn_credentialsScalarFieldEnum[]
+  }
+
+  /**
+   * webauthn_credentials create
+   */
+  export type webauthn_credentialsCreateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the webauthn_credentials
+     */
+    select?: webauthn_credentialsSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the webauthn_credentials
+     */
+    omit?: webauthn_credentialsOmit<ExtArgs> | null
+    /**
+     * The data needed to create a webauthn_credentials.
+     */
+    data: XOR<webauthn_credentialsCreateInput, webauthn_credentialsUncheckedCreateInput>
+  }
+
+  /**
+   * webauthn_credentials createMany
+   */
+  export type webauthn_credentialsCreateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to create many webauthn_credentials.
+     */
+    data: webauthn_credentialsCreateManyInput | webauthn_credentialsCreateManyInput[]
+  }
+
+  /**
+   * webauthn_credentials createManyAndReturn
+   */
+  export type webauthn_credentialsCreateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the webauthn_credentials
+     */
+    select?: webauthn_credentialsSelectCreateManyAndReturn<ExtArgs> | null
+    /**
+     * Omit specific fields from the webauthn_credentials
+     */
+    omit?: webauthn_credentialsOmit<ExtArgs> | null
+    /**
+     * The data used to create many webauthn_credentials.
+     */
+    data: webauthn_credentialsCreateManyInput | webauthn_credentialsCreateManyInput[]
+  }
+
+  /**
+   * webauthn_credentials update
+   */
+  export type webauthn_credentialsUpdateArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the webauthn_credentials
+     */
+    select?: webauthn_credentialsSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the webauthn_credentials
+     */
+    omit?: webauthn_credentialsOmit<ExtArgs> | null
+    /**
+     * The data needed to update a webauthn_credentials.
+     */
+    data: XOR<webauthn_credentialsUpdateInput, webauthn_credentialsUncheckedUpdateInput>
+    /**
+     * Choose, which webauthn_credentials to update.
+     */
+    where: webauthn_credentialsWhereUniqueInput
+  }
+
+  /**
+   * webauthn_credentials updateMany
+   */
+  export type webauthn_credentialsUpdateManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * The data used to update webauthn_credentials.
+     */
+    data: XOR<webauthn_credentialsUpdateManyMutationInput, webauthn_credentialsUncheckedUpdateManyInput>
+    /**
+     * Filter which webauthn_credentials to update
+     */
+    where?: webauthn_credentialsWhereInput
+    /**
+     * Limit how many webauthn_credentials to update.
+     */
+    limit?: number
+  }
+
+  /**
+   * webauthn_credentials updateManyAndReturn
+   */
+  export type webauthn_credentialsUpdateManyAndReturnArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the webauthn_credentials
+     */
+    select?: webauthn_credentialsSelectUpdateManyAndReturn<ExtArgs> | null
+    /**
+     * Omit specific fields from the webauthn_credentials
+     */
+    omit?: webauthn_credentialsOmit<ExtArgs> | null
+    /**
+     * The data used to update webauthn_credentials.
+     */
+    data: XOR<webauthn_credentialsUpdateManyMutationInput, webauthn_credentialsUncheckedUpdateManyInput>
+    /**
+     * Filter which webauthn_credentials to update
+     */
+    where?: webauthn_credentialsWhereInput
+    /**
+     * Limit how many webauthn_credentials to update.
+     */
+    limit?: number
+  }
+
+  /**
+   * webauthn_credentials upsert
+   */
+  export type webauthn_credentialsUpsertArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the webauthn_credentials
+     */
+    select?: webauthn_credentialsSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the webauthn_credentials
+     */
+    omit?: webauthn_credentialsOmit<ExtArgs> | null
+    /**
+     * The filter to search for the webauthn_credentials to update in case it exists.
+     */
+    where: webauthn_credentialsWhereUniqueInput
+    /**
+     * In case the webauthn_credentials found by the `where` argument doesn't exist, create a new webauthn_credentials with this data.
+     */
+    create: XOR<webauthn_credentialsCreateInput, webauthn_credentialsUncheckedCreateInput>
+    /**
+     * In case the webauthn_credentials was found with the provided `where` argument, update it with this data.
+     */
+    update: XOR<webauthn_credentialsUpdateInput, webauthn_credentialsUncheckedUpdateInput>
+  }
+
+  /**
+   * webauthn_credentials delete
+   */
+  export type webauthn_credentialsDeleteArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the webauthn_credentials
+     */
+    select?: webauthn_credentialsSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the webauthn_credentials
+     */
+    omit?: webauthn_credentialsOmit<ExtArgs> | null
+    /**
+     * Filter which webauthn_credentials to delete.
+     */
+    where: webauthn_credentialsWhereUniqueInput
+  }
+
+  /**
+   * webauthn_credentials deleteMany
+   */
+  export type webauthn_credentialsDeleteManyArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Filter which webauthn_credentials to delete
+     */
+    where?: webauthn_credentialsWhereInput
+    /**
+     * Limit how many webauthn_credentials to delete.
+     */
+    limit?: number
+  }
+
+  /**
+   * webauthn_credentials without action
+   */
+  export type webauthn_credentialsDefaultArgs<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
+    /**
+     * Select specific fields to fetch from the webauthn_credentials
+     */
+    select?: webauthn_credentialsSelect<ExtArgs> | null
+    /**
+     * Omit specific fields from the webauthn_credentials
+     */
+    omit?: webauthn_credentialsOmit<ExtArgs> | null
   }
 
 
@@ -15562,10 +16757,26 @@ export namespace Prisma {
     total_size: 'total_size',
     total_used: 'total_used',
     oauth_data: 'oauth_data',
-    mount_data: 'mount_data'
+    mount_data: 'mount_data',
+    otp_secret: 'otp_secret'
   };
 
   export type UsersScalarFieldEnum = (typeof UsersScalarFieldEnum)[keyof typeof UsersScalarFieldEnum]
+
+
+  export const Webauthn_credentialsScalarFieldEnum: {
+    id: 'id',
+    users_name: 'users_name',
+    credential_id: 'credential_id',
+    public_key: 'public_key',
+    counter: 'counter',
+    transports: 'transports',
+    device_name: 'device_name',
+    created_at: 'created_at',
+    last_used_at: 'last_used_at'
+  };
+
+  export type Webauthn_credentialsScalarFieldEnum = (typeof Webauthn_credentialsScalarFieldEnum)[keyof typeof Webauthn_credentialsScalarFieldEnum]
 
 
   export const OauthScalarFieldEnum: {
@@ -15835,6 +17046,7 @@ export namespace Prisma {
     total_used?: IntNullableFilter<"users"> | number | null
     oauth_data?: StringNullableFilter<"users"> | string | null
     mount_data?: StringNullableFilter<"users"> | string | null
+    otp_secret?: StringNullableFilter<"users"> | string | null
   }
 
   export type usersOrderByWithRelationInput = {
@@ -15847,6 +17059,7 @@ export namespace Prisma {
     total_used?: SortOrderInput | SortOrder
     oauth_data?: SortOrderInput | SortOrder
     mount_data?: SortOrderInput | SortOrder
+    otp_secret?: SortOrderInput | SortOrder
   }
 
   export type usersWhereUniqueInput = Prisma.AtLeast<{
@@ -15862,6 +17075,7 @@ export namespace Prisma {
     total_used?: IntNullableFilter<"users"> | number | null
     oauth_data?: StringNullableFilter<"users"> | string | null
     mount_data?: StringNullableFilter<"users"> | string | null
+    otp_secret?: StringNullableFilter<"users"> | string | null
   }, "users_name" | "users_name">
 
   export type usersOrderByWithAggregationInput = {
@@ -15874,6 +17088,7 @@ export namespace Prisma {
     total_used?: SortOrderInput | SortOrder
     oauth_data?: SortOrderInput | SortOrder
     mount_data?: SortOrderInput | SortOrder
+    otp_secret?: SortOrderInput | SortOrder
     _count?: usersCountOrderByAggregateInput
     _avg?: usersAvgOrderByAggregateInput
     _max?: usersMaxOrderByAggregateInput
@@ -15894,6 +17109,81 @@ export namespace Prisma {
     total_used?: IntNullableWithAggregatesFilter<"users"> | number | null
     oauth_data?: StringNullableWithAggregatesFilter<"users"> | string | null
     mount_data?: StringNullableWithAggregatesFilter<"users"> | string | null
+    otp_secret?: StringNullableWithAggregatesFilter<"users"> | string | null
+  }
+
+  export type webauthn_credentialsWhereInput = {
+    AND?: webauthn_credentialsWhereInput | webauthn_credentialsWhereInput[]
+    OR?: webauthn_credentialsWhereInput[]
+    NOT?: webauthn_credentialsWhereInput | webauthn_credentialsWhereInput[]
+    id?: IntFilter<"webauthn_credentials"> | number
+    users_name?: StringFilter<"webauthn_credentials"> | string
+    credential_id?: StringFilter<"webauthn_credentials"> | string
+    public_key?: StringFilter<"webauthn_credentials"> | string
+    counter?: IntFilter<"webauthn_credentials"> | number
+    transports?: StringNullableFilter<"webauthn_credentials"> | string | null
+    device_name?: StringNullableFilter<"webauthn_credentials"> | string | null
+    created_at?: IntFilter<"webauthn_credentials"> | number
+    last_used_at?: IntNullableFilter<"webauthn_credentials"> | number | null
+  }
+
+  export type webauthn_credentialsOrderByWithRelationInput = {
+    id?: SortOrder
+    users_name?: SortOrder
+    credential_id?: SortOrder
+    public_key?: SortOrder
+    counter?: SortOrder
+    transports?: SortOrderInput | SortOrder
+    device_name?: SortOrderInput | SortOrder
+    created_at?: SortOrder
+    last_used_at?: SortOrderInput | SortOrder
+  }
+
+  export type webauthn_credentialsWhereUniqueInput = Prisma.AtLeast<{
+    id?: number
+    credential_id?: string
+    AND?: webauthn_credentialsWhereInput | webauthn_credentialsWhereInput[]
+    OR?: webauthn_credentialsWhereInput[]
+    NOT?: webauthn_credentialsWhereInput | webauthn_credentialsWhereInput[]
+    users_name?: StringFilter<"webauthn_credentials"> | string
+    public_key?: StringFilter<"webauthn_credentials"> | string
+    counter?: IntFilter<"webauthn_credentials"> | number
+    transports?: StringNullableFilter<"webauthn_credentials"> | string | null
+    device_name?: StringNullableFilter<"webauthn_credentials"> | string | null
+    created_at?: IntFilter<"webauthn_credentials"> | number
+    last_used_at?: IntNullableFilter<"webauthn_credentials"> | number | null
+  }, "id" | "credential_id">
+
+  export type webauthn_credentialsOrderByWithAggregationInput = {
+    id?: SortOrder
+    users_name?: SortOrder
+    credential_id?: SortOrder
+    public_key?: SortOrder
+    counter?: SortOrder
+    transports?: SortOrderInput | SortOrder
+    device_name?: SortOrderInput | SortOrder
+    created_at?: SortOrder
+    last_used_at?: SortOrderInput | SortOrder
+    _count?: webauthn_credentialsCountOrderByAggregateInput
+    _avg?: webauthn_credentialsAvgOrderByAggregateInput
+    _max?: webauthn_credentialsMaxOrderByAggregateInput
+    _min?: webauthn_credentialsMinOrderByAggregateInput
+    _sum?: webauthn_credentialsSumOrderByAggregateInput
+  }
+
+  export type webauthn_credentialsScalarWhereWithAggregatesInput = {
+    AND?: webauthn_credentialsScalarWhereWithAggregatesInput | webauthn_credentialsScalarWhereWithAggregatesInput[]
+    OR?: webauthn_credentialsScalarWhereWithAggregatesInput[]
+    NOT?: webauthn_credentialsScalarWhereWithAggregatesInput | webauthn_credentialsScalarWhereWithAggregatesInput[]
+    id?: IntWithAggregatesFilter<"webauthn_credentials"> | number
+    users_name?: StringWithAggregatesFilter<"webauthn_credentials"> | string
+    credential_id?: StringWithAggregatesFilter<"webauthn_credentials"> | string
+    public_key?: StringWithAggregatesFilter<"webauthn_credentials"> | string
+    counter?: IntWithAggregatesFilter<"webauthn_credentials"> | number
+    transports?: StringNullableWithAggregatesFilter<"webauthn_credentials"> | string | null
+    device_name?: StringNullableWithAggregatesFilter<"webauthn_credentials"> | string | null
+    created_at?: IntWithAggregatesFilter<"webauthn_credentials"> | number
+    last_used_at?: IntNullableWithAggregatesFilter<"webauthn_credentials"> | number | null
   }
 
   export type oauthWhereInput = {
@@ -16616,6 +17906,7 @@ export namespace Prisma {
     total_used?: number | null
     oauth_data?: string | null
     mount_data?: string | null
+    otp_secret?: string | null
   }
 
   export type usersUncheckedCreateInput = {
@@ -16628,6 +17919,7 @@ export namespace Prisma {
     total_used?: number | null
     oauth_data?: string | null
     mount_data?: string | null
+    otp_secret?: string | null
   }
 
   export type usersUpdateInput = {
@@ -16640,6 +17932,7 @@ export namespace Prisma {
     total_used?: NullableIntFieldUpdateOperationsInput | number | null
     oauth_data?: NullableStringFieldUpdateOperationsInput | string | null
     mount_data?: NullableStringFieldUpdateOperationsInput | string | null
+    otp_secret?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type usersUncheckedUpdateInput = {
@@ -16652,6 +17945,7 @@ export namespace Prisma {
     total_used?: NullableIntFieldUpdateOperationsInput | number | null
     oauth_data?: NullableStringFieldUpdateOperationsInput | string | null
     mount_data?: NullableStringFieldUpdateOperationsInput | string | null
+    otp_secret?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type usersCreateManyInput = {
@@ -16664,6 +17958,7 @@ export namespace Prisma {
     total_used?: number | null
     oauth_data?: string | null
     mount_data?: string | null
+    otp_secret?: string | null
   }
 
   export type usersUpdateManyMutationInput = {
@@ -16676,6 +17971,7 @@ export namespace Prisma {
     total_used?: NullableIntFieldUpdateOperationsInput | number | null
     oauth_data?: NullableStringFieldUpdateOperationsInput | string | null
     mount_data?: NullableStringFieldUpdateOperationsInput | string | null
+    otp_secret?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type usersUncheckedUpdateManyInput = {
@@ -16688,6 +17984,88 @@ export namespace Prisma {
     total_used?: NullableIntFieldUpdateOperationsInput | number | null
     oauth_data?: NullableStringFieldUpdateOperationsInput | string | null
     mount_data?: NullableStringFieldUpdateOperationsInput | string | null
+    otp_secret?: NullableStringFieldUpdateOperationsInput | string | null
+  }
+
+  export type webauthn_credentialsCreateInput = {
+    users_name: string
+    credential_id: string
+    public_key: string
+    counter?: number
+    transports?: string | null
+    device_name?: string | null
+    created_at: number
+    last_used_at?: number | null
+  }
+
+  export type webauthn_credentialsUncheckedCreateInput = {
+    id?: number
+    users_name: string
+    credential_id: string
+    public_key: string
+    counter?: number
+    transports?: string | null
+    device_name?: string | null
+    created_at: number
+    last_used_at?: number | null
+  }
+
+  export type webauthn_credentialsUpdateInput = {
+    users_name?: StringFieldUpdateOperationsInput | string
+    credential_id?: StringFieldUpdateOperationsInput | string
+    public_key?: StringFieldUpdateOperationsInput | string
+    counter?: IntFieldUpdateOperationsInput | number
+    transports?: NullableStringFieldUpdateOperationsInput | string | null
+    device_name?: NullableStringFieldUpdateOperationsInput | string | null
+    created_at?: IntFieldUpdateOperationsInput | number
+    last_used_at?: NullableIntFieldUpdateOperationsInput | number | null
+  }
+
+  export type webauthn_credentialsUncheckedUpdateInput = {
+    id?: IntFieldUpdateOperationsInput | number
+    users_name?: StringFieldUpdateOperationsInput | string
+    credential_id?: StringFieldUpdateOperationsInput | string
+    public_key?: StringFieldUpdateOperationsInput | string
+    counter?: IntFieldUpdateOperationsInput | number
+    transports?: NullableStringFieldUpdateOperationsInput | string | null
+    device_name?: NullableStringFieldUpdateOperationsInput | string | null
+    created_at?: IntFieldUpdateOperationsInput | number
+    last_used_at?: NullableIntFieldUpdateOperationsInput | number | null
+  }
+
+  export type webauthn_credentialsCreateManyInput = {
+    id?: number
+    users_name: string
+    credential_id: string
+    public_key: string
+    counter?: number
+    transports?: string | null
+    device_name?: string | null
+    created_at: number
+    last_used_at?: number | null
+  }
+
+  export type webauthn_credentialsUpdateManyMutationInput = {
+    users_name?: StringFieldUpdateOperationsInput | string
+    credential_id?: StringFieldUpdateOperationsInput | string
+    public_key?: StringFieldUpdateOperationsInput | string
+    counter?: IntFieldUpdateOperationsInput | number
+    transports?: NullableStringFieldUpdateOperationsInput | string | null
+    device_name?: NullableStringFieldUpdateOperationsInput | string | null
+    created_at?: IntFieldUpdateOperationsInput | number
+    last_used_at?: NullableIntFieldUpdateOperationsInput | number | null
+  }
+
+  export type webauthn_credentialsUncheckedUpdateManyInput = {
+    id?: IntFieldUpdateOperationsInput | number
+    users_name?: StringFieldUpdateOperationsInput | string
+    credential_id?: StringFieldUpdateOperationsInput | string
+    public_key?: StringFieldUpdateOperationsInput | string
+    counter?: IntFieldUpdateOperationsInput | number
+    transports?: NullableStringFieldUpdateOperationsInput | string | null
+    device_name?: NullableStringFieldUpdateOperationsInput | string | null
+    created_at?: IntFieldUpdateOperationsInput | number
+    last_used_at?: NullableIntFieldUpdateOperationsInput | number | null
   }
 
   export type oauthCreateInput = {
@@ -17521,6 +18899,7 @@ export namespace Prisma {
     total_used?: SortOrder
     oauth_data?: SortOrder
     mount_data?: SortOrder
+    otp_secret?: SortOrder
   }
 
   export type usersAvgOrderByAggregateInput = {
@@ -17539,6 +18918,7 @@ export namespace Prisma {
     total_used?: SortOrder
     oauth_data?: SortOrder
     mount_data?: SortOrder
+    otp_secret?: SortOrder
   }
 
   export type usersMinOrderByAggregateInput = {
@@ -17551,12 +18931,63 @@ export namespace Prisma {
     total_used?: SortOrder
     oauth_data?: SortOrder
     mount_data?: SortOrder
+    otp_secret?: SortOrder
   }
 
   export type usersSumOrderByAggregateInput = {
     is_enabled?: SortOrder
     total_size?: SortOrder
     total_used?: SortOrder
+  }
+
+  export type webauthn_credentialsCountOrderByAggregateInput = {
+    id?: SortOrder
+    users_name?: SortOrder
+    credential_id?: SortOrder
+    public_key?: SortOrder
+    counter?: SortOrder
+    transports?: SortOrder
+    device_name?: SortOrder
+    created_at?: SortOrder
+    last_used_at?: SortOrder
+  }
+
+  export type webauthn_credentialsAvgOrderByAggregateInput = {
+    id?: SortOrder
+    counter?: SortOrder
+    created_at?: SortOrder
+    last_used_at?: SortOrder
+  }
+
+  export type webauthn_credentialsMaxOrderByAggregateInput = {
+    id?: SortOrder
+    users_name?: SortOrder
+    credential_id?: SortOrder
+    public_key?: SortOrder
+    counter?: SortOrder
+    transports?: SortOrder
+    device_name?: SortOrder
+    created_at?: SortOrder
+    last_used_at?: SortOrder
+  }
+
+  export type webauthn_credentialsMinOrderByAggregateInput = {
+    id?: SortOrder
+    users_name?: SortOrder
+    credential_id?: SortOrder
+    public_key?: SortOrder
+    counter?: SortOrder
+    transports?: SortOrder
+    device_name?: SortOrder
+    created_at?: SortOrder
+    last_used_at?: SortOrder
+  }
+
+  export type webauthn_credentialsSumOrderByAggregateInput = {
+    id?: SortOrder
+    counter?: SortOrder
+    created_at?: SortOrder
+    last_used_at?: SortOrder
   }
 
   export type oauthCountOrderByAggregateInput = {

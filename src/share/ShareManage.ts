@@ -2,7 +2,6 @@ import {Context} from "hono";
 import {DBResult} from "../saves/SavesObject";
 import {SavesManage} from "../saves/SavesManage";
 import {ShareConfig, ShareResult} from "./ShareObject";
-import {v4 as uuidv4} from 'uuid';
 
 /**
  * 分享管理类，用于处理文件分享的创建、删除、配置和查询操作。
@@ -36,7 +35,7 @@ export class ShareManage {
             }
 
             // 生成UUID
-            const share_uuid = shareData.share_uuid || uuidv4();
+            const share_uuid = shareData.share_uuid || crypto.randomUUID();
 
             // 检查分享是否已经存在
             const find_share: DBResult = await this.d.find({
@@ -50,14 +49,6 @@ export class ShareManage {
             // 验证分享密码长度（如果提供）
             if (shareData.share_pass && shareData.share_pass.length > 0 && shareData.share_pass.length < 4) {
                 return {flag: false, text: "分享密码至少4个字符"};
-            }
-
-            // 验证日期格式
-            if (shareData.share_date && !this.isValidDate(shareData.share_date)) {
-                return {flag: false, text: "分享日期格式不正确"};
-            }
-            if (shareData.share_ends && !this.isValidDate(shareData.share_ends)) {
-                return {flag: false, text: "分享结束日期格式不正确"};
             }
 
             // 验证结束日期是否在开始日期之后
@@ -75,8 +66,8 @@ export class ShareManage {
                 share_path: shareData.share_path,
                 share_pass: shareData.share_pass || "",
                 share_user: shareData.share_user,
-                share_date: shareData.share_date || new Date().toISOString(),
-                share_ends: shareData.share_ends || "",
+                share_date: shareData.share_date || Date.now(),
+                share_ends: shareData.share_ends || 0,
                 is_enabled: shareData.is_enabled ?? 1 // 默认启用
             };
 
@@ -253,7 +244,8 @@ export class ShareManage {
             if (!share_uuid || share_uuid.length === 0) {
                 return {flag: false, text: "分享UUID不能为空"};
             }
-            if (share_ends && !this.isValidDate(share_ends)) {
+            const endTimestamp = share_ends ? Date.parse(share_ends) : 0;
+            if (share_ends && !Number.isFinite(endTimestamp)) {
                 return {flag: false, text: "分享结束日期格式不正确"};
             }
 
@@ -267,14 +259,12 @@ export class ShareManage {
             
             // 验证结束日期是否在开始日期之后
             if (share_ends && shareData.share_date) {
-                const startDate = new Date(shareData.share_date);
-                const endDate = new Date(share_ends);
-                if (endDate <= startDate) {
+                if (endTimestamp <= shareData.share_date) {
                     return {flag: false, text: "分享结束日期必须在开始日期之后"};
                 }
             }
 
-            shareData.share_ends = share_ends || "";
+            shareData.share_ends = endTimestamp;
 
             return await this.config(shareData);
         } catch (error) {
@@ -380,10 +370,8 @@ export class ShareManage {
             }
 
             // 检查分享是否过期
-            if (shareData.share_ends && shareData.share_ends.length > 0) {
-                const endDate = new Date(shareData.share_ends);
-                const now = new Date();
-                if (now > endDate) {
+            if (shareData.share_ends > 0) {
+                if (Date.now() > shareData.share_ends) {
                     return {flag: false, text: "分享已过期"};
                 }
             }
@@ -422,15 +410,14 @@ export class ShareManage {
             });
 
             let result_data: ShareConfig[] = [];
-            const now = new Date();
-            const futureDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+            const now = Date.now();
+            const futureDate = now + days * 24 * 60 * 60 * 1000;
 
             if (result.data.length > 0) {
                 for (const item of result.data) {
                     const shareData = item as ShareConfig;
-                    if (shareData.share_ends && shareData.share_ends.length > 0) {
-                        const endDate = new Date(shareData.share_ends);
-                        if (endDate > now && endDate <= futureDate) {
+                    if (shareData.share_ends > 0) {
+                        if (shareData.share_ends > now && shareData.share_ends <= futureDate) {
                             result_data.push(shareData);
                         }
                     }
@@ -463,14 +450,13 @@ export class ShareManage {
             });
 
             let cleanedCount = 0;
-            const now = new Date();
+            const now = Date.now();
 
             if (result.data.length > 0) {
                 for (const item of result.data) {
                     const shareData = item as ShareConfig;
-                    if (shareData.share_ends && shareData.share_ends.length > 0) {
-                        const endDate = new Date(shareData.share_ends);
-                        if (now > endDate) {
+                    if (shareData.share_ends > 0) {
+                        if (now > shareData.share_ends) {
                             await this.remove(shareData.share_uuid);
                             cleanedCount++;
                         }
@@ -491,13 +477,4 @@ export class ShareManage {
         }
     }
 
-    /**
-     * 验证日期格式
-     * @param dateString - 日期字符串
-     * @returns 是否为有效日期
-     */
-    private isValidDate(dateString: string): boolean {
-        const date = new Date(dateString);
-        return date instanceof Date && !isNaN(date.getTime());
-    }
 }

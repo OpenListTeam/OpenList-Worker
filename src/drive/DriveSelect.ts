@@ -9,6 +9,7 @@ import * as alicloud from "./alicloud/files"
 import * as webdavfs from "./webdavfs/files"
 // ========= 新增驱动 =========
 import * as cloudreve4 from "./cdrevev4/files"
+import * as guangyapan from "./guangyapan/files"
 import * as neteasemusic from "./neteases/files"
 import * as openlist from "./openlist/files"
 import * as pikpak from "./pikpakv1/files"
@@ -22,6 +23,12 @@ import * as thunderx from "./thunderx/files"
 import * as weiyun from "./weicloud/files"
 import * as wopan from "./wopanyun/files"
 import * as yandexdisk from "./yandexv1/files"
+// ========= Reserved 驱动（骨架，待完善） =========
+import * as aliquark from "./reserved/aliquark/files"
+import * as aliucyun from "./reserved/aliucyun/files"
+import * as dropboxs from "./reserved/dropboxs/files"
+import * as megadisk from "./reserved/megadisk/files"
+import * as thunders from "./reserved/thunders/files"
 
 // 表单值类型定义，支持所有驱动配置字段
 type FormValues = Record<string, any>;
@@ -38,6 +45,7 @@ export const driver_list: Record<string, any> = {
     webdavfs: webdavfs.HostDriver,
     // ========= 新增驱动 =========
     cloudreve4: cloudreve4.HostDriver,
+    guangyapan: guangyapan.HostDriver,
     neteasemusic: neteasemusic.HostDriver,
     openlist: openlist.HostDriver,
     pikpak: pikpak.HostDriver,
@@ -51,6 +59,12 @@ export const driver_list: Record<string, any> = {
     weiyun: weiyun.HostDriver,
     wopan: wopan.HostDriver,
     yandexdisk: yandexdisk.HostDriver,
+    // ========= Reserved 驱动（骨架） =========
+    aliquark: aliquark.HostDriver,
+    aliucyun: aliucyun.HostDriver,
+    dropboxs: dropboxs.HostDriver,
+    megadisk: megadisk.HostDriver,
+    thunders: thunders.HostDriver,
 };
 
 // 驱动配置信息映射
@@ -282,6 +296,28 @@ export const config_list: Record<string, any> = {
             { key: "enable_thumb", label: "启用缩略图", type: "boolean", required: false, defaultValue: true }
         ]
     },
+    guangyapan: {
+        name: "广雅云盘",
+        description: "广雅云盘存储服务（GuangYaPan）",
+        fields: [
+            { key: "client_id", label: "客户端ID (Client ID)", type: "text", required: true, placeholder: "请输入广雅云盘客户端ID" },
+            { key: "access_token", label: "访问令牌", type: "textarea", required: false, placeholder: "可选：直接提供访问令牌" },
+            { key: "refresh_token", label: "刷新令牌", type: "textarea", required: false, placeholder: "可选：提供刷新令牌自动登录" },
+            { key: "phone_number", label: "手机号", type: "text", required: false, placeholder: "短信登录用，格式+86 13800000000" },
+            { key: "captcha_token", label: "验证码令牌", type: "text", required: false, placeholder: "短信登录用（自动生成）" },
+            { key: "send_code", label: "发送验证码", type: "boolean", required: false, defaultValue: false, help: "设为true并保存以发送短信验证码，发送后自动恢复为false" },
+            { key: "verify_code", label: "短信验证码", type: "text", required: false, placeholder: "收到验证码后填入并保存完成登录" },
+            { key: "root_path", label: "根目录路径", type: "text", required: false, placeholder: "留空为根目录，例：Documents/Work" },
+            { key: "device_id", label: "设备ID", type: "text", required: false, placeholder: "32位hex，留空自动生成" },
+            { key: "page_size", label: "每页数量", type: "text", required: false, placeholder: "默认100", defaultValue: "100" },
+            { key: "order_by", label: "排序字段", type: "select", required: false, options: [
+                { value: "0", label: "默认" }, { value: "1", label: "文件名" }, { value: "2", label: "大小" }, { value: "3", label: "修改时间" }, { value: "4", label: "创建时间" }
+            ], defaultValue: "3" },
+            { key: "sort_type", label: "排序方向", type: "select", required: false, options: [
+                { value: "0", label: "升序" }, { value: "1", label: "降序" }
+            ], defaultValue: "1" }
+        ]
+    },
     neteasemusic: {
         name: "网易云音乐",
         description: "网易云音乐云盘",
@@ -424,6 +460,43 @@ export const config_list: Record<string, any> = {
             { key: "client_secret", label: "客户端密钥", type: "password", required: false },
             { key: "root_path", label: "根目录", type: "text", required: false, placeholder: "默认/", defaultValue: "/" },
             { key: "order_by", label: "排序方式", type: "select", required: false, options: [{ value: "name", label: "名称" }, { value: "size", label: "大小" }, { value: "modified", label: "修改时间" }], defaultValue: "name" }
+        ]
+    },
+    // ========= Reserved 驱动（骨架实现，标记为开发中） =========
+    aliquark: {
+        name: "阿里夸克网盘",
+        description: "阿里夸克网盘（开发中）",
+        fields: [
+            { key: "cookie", label: "Cookie", type: "textarea", required: false, placeholder: "开发中，暂不可用" },
+        ]
+    },
+    aliucyun: {
+        name: "阿里UC云盘",
+        description: "阿里UC云盘（开发中）",
+        fields: [
+            { key: "cookie", label: "Cookie", type: "textarea", required: false, placeholder: "开发中，暂不可用" },
+        ]
+    },
+    dropboxs: {
+        name: "Dropbox",
+        description: "Dropbox云存储（开发中）",
+        fields: [
+            { key: "access_token", label: "访问令牌", type: "textarea", required: false, placeholder: "开发中，暂不可用" },
+        ]
+    },
+    megadisk: {
+        name: "MEGA",
+        description: "MEGA云存储（开发中）",
+        fields: [
+            { key: "email", label: "邮箱", type: "text", required: false },
+            { key: "password", label: "密码", type: "password", required: false },
+        ]
+    },
+    thunders: {
+        name: "迅雷云盘",
+        description: "迅雷云盘（开发中）",
+        fields: [
+            { key: "cookie", label: "Cookie", type: "textarea", required: false, placeholder: "开发中，暂不可用" },
         ]
     },
 };

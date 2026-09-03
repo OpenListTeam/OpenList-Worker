@@ -138,7 +138,12 @@ export class MountManage {
         // 为新创建的挂载点添加初始日志
         config.drive_logs = `${new Date().toISOString()}: Mount Created`;
         const result = await this.config(config);
-        await this.reload(config.mount_path);
+        try {
+            await this.reload(config.mount_path);
+        } catch (e: any) {
+            console.error("@mount reload error", e?.message || e);
+            // reload 异常不影响挂载点已保存的事实
+        }
         return result
     }
 

@@ -23,23 +23,11 @@ export class FilesManage {
             const user = this.c.get('user');
             if (!user) return 'other'; // 未登录用户
 
-            // 检查是否为管理员
-            if (user.users_mask && (user.users_mask.includes('admin') || user.users_mask === '1')) {
-                return 'owner';
-            }
-            if (user.users_name === 'admin') {
-                return 'owner';
-            }
+            if (UsersManage.isAdmin(user)) return 'owner';
 
-            // 查找匹配的路径规则，检查是否为文件所有者
-            const rule = PathRuleService.matchRule(originalSource, rules);
-            if (rule && rule.mates_user) {
-                // TODO: 将 mates_user (number) 与当前用户ID比较
-                // 目前简单处理：登录用户为 group 角色
-                return 'group';
-            }
-
-            return 'group'; // 登录用户默认为 group 角色
+            // 当前用户模型没有可与 mates_user 稳定关联的数值主键。
+            // 在完成数据模型迁移前，普通登录用户只能获得 group 权限。
+            return 'group';
         } catch (error) {
             return 'other';
         }
@@ -82,7 +70,7 @@ export class FilesManage {
         userRole: 'owner' | 'group' | 'other'
     ): boolean {
         const rule = PathRuleService.matchRule(originalSource, rules);
-        if (!rule) return true; // 没有规则则允许
+        if (!rule) return userRole === 'owner'; // 未配置规则时仅资源所有者可操作，默认拒绝公开访问
 
         switch (action) {
             case 'list':
@@ -99,7 +87,7 @@ export class FilesManage {
             case 'remove':
                 return PathRuleService.checkPermission(rule.mates_mask, 'delete', userRole);
             default:
-                return true;
+                return false;
         }
     }
 

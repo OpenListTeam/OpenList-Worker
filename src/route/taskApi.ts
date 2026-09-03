@@ -73,6 +73,17 @@ async function parseBody(c: Context): Promise<any> {
     }
 }
 
+/**
+ * 兼容读取 tid：优先从 query，其次从 body（前端使用 POST body 传 {tid}）
+ */
+async function getTid(c: Context): Promise<string> {
+    const queryTid = c.req.query('tid');
+    if (queryTid) return queryTid;
+    const body = await parseBody(c);
+    if (body && typeof body === 'object' && body.tid) return String(body.tid);
+    return '';
+}
+
 /** 将 TasksManage 的任务对象转换为 GO 后端 TaskInfo 格式 */
 function toTaskInfo(task: any): any {
     return {
@@ -168,7 +179,7 @@ export function taskRoutes(app: Hono<any>) {
         const user = c.get('user');
         if (!user) return errorResp(c, '未登录', 401);
 
-        const tid = c.req.query('tid');
+        const tid = await getTid(c);
         if (!tid) return errorResp(c, 'tid 不能为空', 400);
 
         const tasksManage = new TasksManage(c);
@@ -195,7 +206,7 @@ export function taskRoutes(app: Hono<any>) {
         const user = c.get('user');
         if (!user) return errorResp(c, '未登录', 401);
 
-        const tid = c.req.query('tid');
+        const tid = await getTid(c);
         if (!tid) return errorResp(c, 'tid 不能为空', 400);
 
         const tasksManage = new TasksManage(c);
@@ -223,7 +234,7 @@ export function taskRoutes(app: Hono<any>) {
         const user = c.get('user');
         if (!user) return errorResp(c, '未登录', 401);
 
-        const tid = c.req.query('tid');
+        const tid = await getTid(c);
         if (!tid) return errorResp(c, 'tid 不能为空', 400);
 
         const tasksManage = new TasksManage(c);
@@ -250,7 +261,7 @@ export function taskRoutes(app: Hono<any>) {
         const user = c.get('user');
         if (!user) return errorResp(c, '未登录', 401);
 
-        const tid = c.req.query('tid');
+        const tid = await getTid(c);
         if (!tid) return errorResp(c, 'tid 不能为空', 400);
 
         const tasksManage = new TasksManage(c);

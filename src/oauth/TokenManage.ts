@@ -5,6 +5,7 @@ import { DBResult } from "../saves/SavesObject";
 import { OauthManage } from "./OauthManage";
 import { OauthConfig } from "./OauthObject";
 import { UsersManage } from "../users/UsersManage";
+import type { UsersConfig } from "../users/UsersObject";
 import { BindsManage } from "../binds/BindsManage";
 import { BindsData } from "../binds/BindsObject";
 
@@ -19,11 +20,12 @@ export interface OauthTokenData {
     created_at: number;
 }
 
-export interface OauthTokenResult {
+export interface OauthTokenResult<T = OauthTokenData> {
     flag: boolean;
-    text: string;
-    data?: OauthTokenData[];
+    text?: string;
+    data?: T[];
     token?: string;
+    code?: number;
 }
 
 export interface OauthAuthRequest {
@@ -50,7 +52,9 @@ export class TokenManage {
     constructor(c: Context) {
         this.c = c;
         this.d = new SavesManage(c);
-        this.JWT_SECRET = process.env.JWT_SECRET || 'oauth_default_secret_key_change_in_production';
+        const secret = String(c.env.JWT_SECRET || '');
+        if (secret.length < 16) throw new Error('JWT_SECRET_NOT_CONFIGURED');
+        this.JWT_SECRET = secret;
     }
 
     /**
@@ -134,7 +138,7 @@ export class TokenManage {
      * @param authRequest - 授权请求数据
      * @returns 返回token信息和用户登录token
      */
-    async handleCallback(authRequest: OauthAuthRequest): Promise<OauthTokenResult> {
+    async handleCallback(authRequest: OauthAuthRequest): Promise<OauthTokenResult<UsersConfig>> {
         try {
             const oauthManage = new OauthManage(this.c);
             const configResult = await oauthManage.select(authRequest.oauth_name);
@@ -158,7 +162,7 @@ export class TokenManage {
             // 交换access token
             const tokenResult = await this.exchangeCodeForToken(config, oauthData, authRequest);
             if (!tokenResult.flag) {
-                return tokenResult;
+                return { flag: false, text: tokenResult.text };
             }
 
             const tokenData = tokenResult.data![0];
@@ -190,7 +194,7 @@ export class TokenManage {
             tokenData.user_id = loginResult.data![0].users_name;
             const saveResult = await this.saveToken(tokenData);
             if (!saveResult.flag) {
-                return saveResult;
+                return { flag: false, text: saveResult.text };
             }
 
             // 返回用户登录token
@@ -315,7 +319,7 @@ export class TokenManage {
                 keys: keys
             });
 
-            const tokens: OauthTokenData[] = result.data.map(item => item as OauthTokenData);
+            const tokens: OauthTokenData[] = result.data.map((item: unknown) => item as OauthTokenData);
 
             return {
                 flag: result.flag,
@@ -596,7 +600,7 @@ export class TokenManage {
      */
     async verifyJWT(token: string): Promise<any> {
         try {
-            return await verify(token, this.JWT_SECRET);
+            return await verify(token, this.JWT_SECRET, 'HS256');
         } catch (error) {
             console.error("验证JWT错误:", error);
             return null;
@@ -646,7 +650,7 @@ export class TokenManage {
             // 交换access token
             const tokenResult = await this.exchangeCodeForToken(config, oauthData, authRequest);
             if (!tokenResult.flag) {
-                return tokenResult;
+                return { flag: false, text: tokenResult.text };
             }
 
             const tokenData = tokenResult.data![0];
@@ -694,7 +698,7 @@ export class TokenManage {
             tokenData.user_id = currentUser;
             const saveResult = await this.saveToken(tokenData);
             if (!saveResult.flag) {
-                return saveResult;
+                return { flag: false, text: saveResult.text };
             }
 
             return {

@@ -9,6 +9,8 @@ interface UsersConfig {
     oauth_data?: string;
     mount_data?: string;
     group_name?: string;  // 用户组名称，可选
+    otp_secret?: string;  // 已验证的 TOTP 密钥
+    otp_code?: string;    // 登录时提交的一次性验证码
 }
 
 interface UsersResult {

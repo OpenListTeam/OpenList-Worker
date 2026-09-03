@@ -2,8 +2,6 @@ import {Context} from "hono";
 import {DBResult} from "../saves/SavesObject";
 import {SavesManage} from "../saves/SavesManage";
 import {TokenConfig, TokenResult} from "./TokenObject";
-import {v4 as uuidv4} from 'uuid';
-import * as crypto from 'crypto';
 
 /**
  * 外部连接管理类，用于处理外部连接令牌的创建、删除、配置和查询操作。
@@ -40,7 +38,7 @@ export class TokenManage {
             }
 
             // 生成UUID和令牌
-            const token_uuid = tokenData.token_uuid || uuidv4();
+            const token_uuid = tokenData.token_uuid || crypto.randomUUID();
             const token_data = tokenData.token_data || this.generateToken();
 
             // 检查令牌名称是否已经存在
@@ -519,7 +517,9 @@ export class TokenManage {
      * @returns 返回生成的令牌字符串
      */
     private generateToken(): string {
-        return crypto.randomBytes(32).toString('hex');
+        const bytes = new Uint8Array(32);
+        crypto.getRandomValues(bytes);
+        return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
     }
 
     /**

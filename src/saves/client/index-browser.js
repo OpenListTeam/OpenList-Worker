@@ -140,7 +140,20 @@ exports.Prisma.UsersScalarFieldEnum = {
   total_size: 'total_size',
   total_used: 'total_used',
   oauth_data: 'oauth_data',
-  mount_data: 'mount_data'
+  mount_data: 'mount_data',
+  otp_secret: 'otp_secret'
+};
+
+exports.Prisma.Webauthn_credentialsScalarFieldEnum = {
+  id: 'id',
+  users_name: 'users_name',
+  credential_id: 'credential_id',
+  public_key: 'public_key',
+  counter: 'counter',
+  transports: 'transports',
+  device_name: 'device_name',
+  created_at: 'created_at',
+  last_used_at: 'last_used_at'
 };
 
 exports.Prisma.OauthScalarFieldEnum = {
@@ -249,6 +262,7 @@ exports.Prisma.NullsOrder = {
 exports.Prisma.ModelName = {
   mount: 'mount',
   users: 'users',
+  webauthn_credentials: 'webauthn_credentials',
   oauth: 'oauth',
   binds: 'binds',
   crypt: 'crypt',

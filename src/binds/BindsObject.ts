@@ -2,6 +2,7 @@
  * OAuth绑定配置接口
  */
 export interface BindsConfig {
+    oauth_uuid?: string;    // 绑定记录主键（创建时自动生成）
     oauth_name: string;     // 授权名称
     binds_user: string;     // 绑定的用户名
     binds_data: string;     // 绑定数据（JSON格式）

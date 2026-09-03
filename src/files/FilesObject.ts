@@ -6,6 +6,8 @@ export * from "./FilesObject";
 export interface FileFind {
     path?: string | null;
     uuid?: string | null;
+    name?: string;
+    size?: number;
 }
 
 // 文件信息 ############################
@@ -43,11 +45,12 @@ export interface FileTask {
 
 // 下载连接 ############################
 export interface FileLink {
-    status?: boolean    // 下载状态
-    direct?: string     // 下载地址
-    stream?: any        // 下载FD流
+    status?: boolean | StatusCode // 下载状态或上游状态码
+    direct?: string               // 下载地址
+    stream?: any                  // 下载FD流
     header?: Record<string, string>
-    result?: string     // 文本结果
+    headers?: Record<string, string> // 兼容旧驱动字段
+    result?: string               // 文本结果
 }
 
 // 文件哈希 ############################

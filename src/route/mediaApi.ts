@@ -69,14 +69,14 @@ export function mediaApiRoutes(app: Hono<any>) {
 
     // GET /api/public/media/list?media_type=video&page=1&page_size=48&keyword=&scan_path_id=
     app.get('/api/public/media/list', async (c: Context): Promise<any> => {
-        const q = c.req.query;
+        const query = (key: string): string | undefined => c.req.query(key);
         const media = new MediaManage(c);
         const result = await media.listItems({
-            media_type:   q('media_type') as MediaType | undefined,
-            scan_path_id: intParam(q('scan_path_id'), 0) || undefined,
-            keyword:      q('keyword') ?? '',
-            page:         intParam(q('page'), 1),
-            page_size:    Math.min(intParam(q('page_size'), 48), 200),
+            media_type:   query('media_type') as MediaType | undefined,
+            scan_path_id: intParam(query('scan_path_id'), 0) || undefined,
+            keyword:      query('keyword') ?? '',
+            page:         intParam(query('page'), 1),
+            page_size:    Math.min(intParam(query('page_size'), 48), 200),
         });
         if (!result.flag) return errorResp(c, result.text, 500);
         return successResp(c, result.data);
@@ -195,14 +195,14 @@ export function mediaApiRoutes(app: Hono<any>) {
     // GET /api/admin/media/items — 管理员视角（含未刮削条目）
     app.get('/api/admin/media/items', async (c: Context): Promise<any> => {
         if (!requireAdmin(c)) return errorResp(c, '需要管理员权限', 403);
-        const q = c.req.query;
+        const query = (key: string): string | undefined => c.req.query(key);
         const media = new MediaManage(c);
         const result = await media.listItems({
-            media_type:   q('media_type') as MediaType | undefined,
-            scan_path_id: intParam(q('scan_path_id'), 0) || undefined,
-            keyword:      q('keyword') ?? '',
-            page:         intParam(q('page'), 1),
-            page_size:    Math.min(intParam(q('page_size'), 50), 200),
+            media_type:   query('media_type') as MediaType | undefined,
+            scan_path_id: intParam(query('scan_path_id'), 0) || undefined,
+            keyword:      query('keyword') ?? '',
+            page:         intParam(query('page'), 1),
+            page_size:    Math.min(intParam(query('page_size'), 50), 200),
         });
         if (!result.flag) return errorResp(c, result.text, 500);
         return successResp(c, result.data);

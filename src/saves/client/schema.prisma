@@ -36,6 +36,24 @@ model users {
   total_used Int?
   oauth_data String?
   mount_data String?
+  otp_secret String?
+}
+
+// WebAuthn 凭据
+model webauthn_credentials {
+  id            Int     @id @default(autoincrement())
+  users_name    String
+  credential_id String  @unique
+  public_key    String
+  counter       Int     @default(0)
+  transports    String?
+  device_name   String?
+  created_at    Int
+  last_used_at  Int?
+
+  @@index([users_name])
+  @@index([credential_id])
+  @@map("webauthn_credentials")
 }
 
 // 授权认证系统配置

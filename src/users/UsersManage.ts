@@ -35,6 +35,15 @@ export function isJwtSecretConfigured(c: Context): boolean {
     }
 }
 
+function toArrayBuffer(data: Uint8Array): ArrayBuffer {
+    return data.slice().buffer as ArrayBuffer;
+}
+
+function decodeBase64Url(value: string): string {
+    const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+    return atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='));
+}
+
 /** 生成 JWT Token（HS256） */
 async function generateJwt(payload: Record<string, any>, secret: string): Promise<string> {
     const header = { alg: 'HS256', typ: 'JWT' };
@@ -70,13 +79,20 @@ async function verifyJwt(token: string, secret: string): Promise<Record<string, 
             false,
             ['verify']
         );
-        const sig = Uint8Array.from(atob(sigB64.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
-        const valid = await crypto.subtle.verify('HMAC', key, sig, new TextEncoder().encode(data));
+        const sig = Uint8Array.from(decodeBase64Url(sigB64), c => c.charCodeAt(0));
+        const valid = await crypto.subtle.verify(
+            'HMAC', key, toArrayBuffer(sig), toArrayBuffer(new TextEncoder().encode(data))
+        );
         if (!valid) return null;
 
-        const payload = JSON.parse(atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/')));
-        // 检查过期时间
-        if (payload.exp && Date.now() / 1000 > payload.exp) return null;
+        const header = JSON.parse(decodeBase64Url(headerB64));
+        if (header.alg !== 'HS256' || header.typ !== 'JWT') return null;
+        const payload = JSON.parse(decodeBase64Url(payloadB64));
+        if (typeof payload !== 'object' || payload === null) return null;
+        // 检查过期时间和必要的签发时间
+        const now = Date.now() / 1000;
+        if (typeof payload.exp !== 'number' || payload.exp <= now) return null;
+        if (payload.nbf !== undefined && (typeof payload.nbf !== 'number' || payload.nbf > now)) return null;
         return payload;
     } catch {
         return null;
@@ -87,6 +103,47 @@ async function verifyJwt(token: string, secret: string): Promise<Record<string, 
 async function sha256Hash(input: string): Promise<string> {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+const TOTP_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+function decodeBase32(value: string): Uint8Array {
+    const normalized = value.toUpperCase().replace(/[^A-Z2-7]/g, '');
+    let buffer = 0;
+    let bits = 0;
+    const bytes: number[] = [];
+    for (const char of normalized) {
+        const index = TOTP_ALPHABET.indexOf(char);
+        if (index < 0) continue;
+        buffer = (buffer << 5) | index;
+        bits += 5;
+        if (bits >= 8) {
+            bits -= 8;
+            bytes.push((buffer >> bits) & 0xff);
+        }
+    }
+    return new Uint8Array(bytes);
+}
+
+async function verifyTotp(secret: string, code: string): Promise<boolean> {
+    const keyBytes = decodeBase32(secret);
+    if (!keyBytes.length) return false;
+    const counter = Math.floor(Date.now() / 1000 / 30);
+    const expected = code.replace(/\s/g, '');
+    for (let offset = -1; offset <= 1; offset++) {
+        const value = new ArrayBuffer(8);
+        const view = new DataView(value);
+        view.setUint32(0, Math.floor((counter + offset) / 0x100000000));
+        view.setUint32(4, (counter + offset) >>> 0);
+        const key = await crypto.subtle.importKey(
+            'raw', toArrayBuffer(keyBytes), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']
+        );
+        const digest = new Uint8Array(await crypto.subtle.sign('HMAC', key, value));
+        const index = digest[digest.length - 1] & 0x0f;
+        const binary = ((digest[index] & 0x7f) << 24) | (digest[index + 1] << 16) | (digest[index + 2] << 8) | digest[index + 3];
+        if (String(binary % 1_000_000).padStart(6, '0') === expected) return true;
+    }
+    return false;
 }
 
 // ============================================================
@@ -137,8 +194,8 @@ export class UsersManage {
     async create(userData: UsersConfig): Promise<UsersResult> {
         try {
             if (!userData.users_name || userData.users_name.length < 5) return {flag: false, text: "用户至少5个字符"};
-            if (!userData.users_pass) userData.users_pass = "admin";
-            if (userData.users_pass.length < 6) return {flag: false, text: "登录至少6个字符"};
+            if (!userData.users_pass) return {flag: false, text: "必须设置登录密码"};
+            if (userData.users_pass.length < 8) return {flag: false, text: "登录密码至少8个字符"};
             if (userData.users_mail) if (!reg.test(userData.users_mail)) return {flag: false, text: "邮箱格式不正确"};
             const find_user: DBResult = await this.d.find({main: "users", keys: {"users_name": userData.users_name}});
             if (find_user.data.length > 0) return {flag: false, text: "用户已存在"};
@@ -243,21 +300,21 @@ export class UsersManage {
     // 对应 GO 后端 Login 接口
     // ============================================================
     async log_in(loginData: UsersConfig): Promise<UsersResult> {
-        return this._loginInternal(loginData.users_name || '', loginData.users_pass || '', false);
+        return this._loginInternal(loginData.users_name || '', loginData.users_pass || '', false, loginData.otp_code);
     }
 
     // ============================================================
     // 登录（已哈希密码）
     // 对应 GO 后端 LoginHash 接口
     // ============================================================
-    async log_in_hash(username: string, hashedPassword: string): Promise<UsersResult> {
-        return this._loginInternal(username, hashedPassword, true);
+    async log_in_hash(username: string, hashedPassword: string, otpCode?: string): Promise<UsersResult> {
+        return this._loginInternal(username, hashedPassword, true, otpCode);
     }
 
     // ============================================================
     // 内部登录逻辑
     // ============================================================
-    private async _loginInternal(username: string, password: string, isHashed: boolean): Promise<UsersResult> {
+    private async _loginInternal(username: string, password: string, isHashed: boolean, otpCode?: string): Promise<UsersResult> {
         try {
             if (!username) return { flag: false, text: "用户名不能为空" };
             if (!password) return { flag: false, text: "密码不能为空" };
@@ -293,7 +350,8 @@ export class UsersManage {
             // 密码验证
             let isPasswordValid = false;
             if (!userData.users_pass || userData.users_pass === "") {
-                isPasswordValid = password === "admin";
+                // 缺少密码的账户必须拒绝登录，禁止使用可预测的默认密码。
+                isPasswordValid = false;
             } else {
                 // GO 后端：明文密码先 SHA256，再与 bcrypt 比对
                 const pwdToCheck = isHashed ? password : await sha256Hash(password);
@@ -307,6 +365,20 @@ export class UsersManage {
             if (!isPasswordValid) {
                 recordLoginFail(ip);
                 return { flag: false, text: "用户名或密码错误" };
+            }
+
+            // 2FA 字段存在时必须验证 OTP；未提交或错误均不得签发 Token。
+            const otpSecret = String(userData.otp_secret || userData.totp_secret || '').trim();
+            if (otpSecret) {
+                if (!otpCode || !/^\d{6}$/.test(otpCode)) {
+                    recordLoginFail(ip);
+                    return { flag: false, text: "需要输入一次性验证码", code: 402 };
+                }
+                const otpValid = await verifyTotp(otpSecret, otpCode);
+                if (!otpValid) {
+                    recordLoginFail(ip);
+                    return { flag: false, text: "一次性验证码错误", code: 401 };
+                }
             }
 
             clearLoginFail(ip);
@@ -404,6 +476,9 @@ export class UsersManage {
 
             if (existingUser) {
                 if (!existingUser.is_enabled) return { flag: false, text: "账户已被禁用" };
+                if (existingUser.otp_secret) {
+                    return { flag: false, text: "此账户已启用两步验证，请使用密码和验证码登录", code: 402 };
+                }
                 const secret = getJwtSecret(this.c);
                 const now = Math.floor(Date.now() / 1000);
                 const token = await generateJwt({
@@ -493,12 +568,13 @@ export class UsersManage {
                 raw_data: oauthUserInfo.raw_data,
                 created_at: Date.now()
             };
-            return await bindsManage.create({
+            const result = await bindsManage.create({
                 oauth_name: oauthUserInfo.oauth_name,
                 binds_user: username,
                 binds_data: JSON.stringify(bindsData),
                 is_enabled: 1
             });
+            return { flag: result.flag, text: result.text };
         } catch (error) {
             console.error("绑定OAuth账户过程中发生错误:", error);
             return { flag: false, text: "绑定OAuth账户失败，请稍后重试" };
@@ -522,7 +598,8 @@ export class UsersManage {
             const bind = bindResult.data[0];
             if (bind.binds_user !== username) return { flag: false, text: "无权解绑此OAuth账户" };
 
-            return await bindsManage.remove(oauthName, username);
+            const result = await bindsManage.remove(oauthName, username);
+            return { flag: result.flag, text: result.text };
         } catch (error) {
             console.error("解绑OAuth账户过程中发生错误:", error);
             return { flag: false, text: "解绑OAuth账户失败，请稍后重试" };
@@ -553,8 +630,6 @@ export class UsersManage {
     // 判断用户是否为管理员（仅基于 users_mask，不依赖数据库角色查询）
     // ============================================================
     static isAdmin(user: any): boolean {
-        if (!user) return false;
-        return user.users_mask === 'admin' ||
-            (typeof user.users_mask === 'string' && user.users_mask.includes('admin'));
+        return Boolean(user) && user.users_mask === 'admin';
     }
 }

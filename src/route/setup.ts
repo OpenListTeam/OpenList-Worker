@@ -98,7 +98,7 @@ export function setupRoutes(app: Hono<any>) {
             return c.json({
                 code: 503,
                 message: 'JWT_SECRET_NOT_CONFIGURED',
-                error: '系统尚未完成安全配置：请在 wrangler.jsonc 的 vars 中设置 JWT_SECRET（至少16位随机字符串），然后重新部署。',
+                error: '系统尚未完成安全配置：请使用 wrangler secret put JWT_SECRET 设置至少 16 位随机密钥，然后重新部署。',
             }, 503);
         }
         return successResp(c, { status: 'ok' });
@@ -108,8 +108,8 @@ export function setupRoutes(app: Hono<any>) {
     // 旧版兼容路由（保留原有格式）
     // ------------------------------------------------------------------
     app.use('/@setup/:action/:method', async (c: Context): Promise<any> => {
-        const action: string = c.req.param('action');
-        const method: string = c.req.param('method');
+        const action = c.req.param('action') || '';
+        const method = c.req.param('method') || '';
 
         if (action === 'status') {
             try {

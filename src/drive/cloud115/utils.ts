@@ -20,6 +20,7 @@ interface ResponseError {
 	state: boolean;
 	error?: string;
 	errno?: number;
+	errcode?: number;
 	errtype?: string;
 	data?: any;
 }
@@ -676,8 +677,12 @@ return textResponse;
 			refresh_token_preview: refreshToken.substring(0, 20) + "...",
 		});
 		
-// 测试多种认证方式 - 基于Alist项目的成功配置
-		const authMethods = [
+		// 测试多种认证方式 - 基于Alist项目的成功配置
+		const authMethods: Array<{
+			name: string;
+			headers: Record<string, string>;
+			addToQuery?: string;
+		}> = [
 			{
 				name: "115 App Bearer Token (Alist配置)",
 				headers: {
@@ -702,7 +707,7 @@ return textResponse;
 				},
 				addToQuery: `access_token=${accessToken}`
 			},
-{
+			{
 				name: "Original Bearer Token",
 				headers: {
 					"User-Agent": "Mozilla/5.0 115disk/42.0.0.2",

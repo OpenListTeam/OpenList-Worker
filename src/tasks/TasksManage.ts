@@ -2,7 +2,6 @@ import {Context} from "hono";
 import {DBResult} from "../saves/SavesObject";
 import {SavesManage} from "../saves/SavesManage";
 import {TasksConfig, TasksResult} from "./TasksObject";
-import {v4 as uuidv4} from 'uuid';
 
 /**
  * 任务管理类，用于处理任务的创建、删除、配置和查询操作。
@@ -39,7 +38,7 @@ export class TasksManage {
             }
 
             // 生成UUID
-            const tasks_uuid = tasksData.tasks_uuid || uuidv4();
+            const tasks_uuid = tasksData.tasks_uuid || crypto.randomUUID();
 
             // 检查任务是否已经存在
             const find_task: DBResult = await this.d.find({

@@ -17,6 +17,8 @@ import {
     corsMiddleware,
     loggerMiddleware,
     errorMiddleware,
+    loginRateLimit,
+    i18nMiddleware,
 } from './route';
 
 // ========================================================================
@@ -41,14 +43,17 @@ import {
 // 新版路由模块（/api/* 风格，与 GO 后端对齐）
 // ========================================================================
 import { authRoutes } from './route/auth';
+import { webauthnRoutes } from './route/webauthn';
 import { fsReadRoutes } from './route/fsRead';
 import { fsWriteRoutes } from './route/fsWrite';
 import { fsUploadDownloadRoutes } from './route/fsUpload';
+import { fsArchiveRoutes } from './route/fsArchive';
 import { sharingRoutes } from './route/sharing';
 import { taskRoutes } from './route/taskApi';
 import { adminApiRoutes } from './route/adminApi';
 import { mediaApiRoutes } from './route/mediaApi';
 import { setupRoutes } from './route/setup';
+import { publicRoutes } from './route/public';
 
 // ========================================================================
 // WebDAV
@@ -78,14 +83,19 @@ export const app = new Hono<{ Bindings: Bindings }>();
 // 1. 错误处理 — 捕获所有未处理异常
 app.use('*', errorMiddleware);
 
-// 2. CORS处理 — 跨域请求支持
+// 2. 国际化语言检测 — 从 Accept-Language/查询参数检测用户语言
+app.use('*', i18nMiddleware);
+
+// 3. CORS处理 — 跨域请求支持
 app.use('*', corsMiddleware);
 
-// 3. 请求日志 — 开发环境下记录请求信息
+// 4. 请求日志 — 开发环境下记录请求信息
 app.use('*', loggerMiddleware);
 
-// 4. 认证中间件 — /api/* 路由（公开路由在中间件内部豁免）
+// 5. 认证中间件 — /api/* 路由（公开路由在中间件内部豁免）
 app.use('/api/*', authMiddleware);
+app.use('/p/*', authMiddleware);
+app.use('/ae/*', authMiddleware);
 
 // 旧版 /@* 认证中间件已停用
 // app.use('/@*', authMiddleware);
@@ -94,10 +104,21 @@ app.use('/api/*', authMiddleware);
 // 新版路由（/api/* 风格，与 GO 后端对齐）
 // ========================================================================
 
-// --- 认证 ---
+// --- 公开路由（无需认证） ---
+publicRoutes(app);         // GET|POST /api/public/settings|offline_download_tools|archive_extensions
+
+// --- 认证（登录端点限流） ---
+app.use('/api/auth/login', loginRateLimit());
+app.use('/api/auth/login/hash', loginRateLimit());
 authRoutes(app);           // POST /api/auth/login, /api/auth/login/hash, GET /api/auth/logout
-                           // POST /api/auth/2fa/generate, /api/auth/2fa/verify
+                           // POST /api/auth/2fa/generate, /api/auth/2fa/verify, /api/auth/2fa/disable
                            // GET /api/me, POST /api/me/update
+                           // GET /api/me/sshkey/list, POST /api/me/sshkey/add, POST /api/me/sshkey/delete
+
+// --- WebAuthn/FIDO2 认证 ---
+webauthnRoutes(app);       // POST /api/authn/registration/begin, /api/authn/registration/finish
+                           // POST /api/authn/authentication/begin, /api/authn/authentication/finish
+                           // GET /api/authn/credentials, POST /api/authn/credentials/delete, /api/authn/credentials/rename
 
 // --- 文件系统（读） ---
 fsReadRoutes(app);         // POST /api/fs/list, /api/fs/get, /api/fs/search, /api/fs/other
@@ -107,6 +128,11 @@ fsReadRoutes(app);         // POST /api/fs/list, /api/fs/get, /api/fs/search, /a
 fsWriteRoutes(app);        // POST /api/fs/mkdir, /api/fs/rename, /api/fs/move, /api/fs/copy
                            // POST /api/fs/remove, /api/fs/remove_empty_directory
                            // POST /api/fs/link, /api/fs/add_offline_download, /api/fs/batch_rename
+
+// --- 文件归档 ---
+fsArchiveRoutes(app);      // POST /api/fs/archive/meta|list|decompress
+                           // GET /ae/*path（归档内部提取下载）
+                           // /ad/*path、/ap/*path 委托至 /d/*、/p/* 处理器
 
 // --- 文件上传与直接下载 ---
 fsUploadDownloadRoutes(app); // PUT /api/fs/put, /api/fs/form

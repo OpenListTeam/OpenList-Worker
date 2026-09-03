@@ -188,7 +188,7 @@ export class SavesManage {
             if (data.find) {
                 const find_maps: any[] = await this.kv_find(data)
                 find_list = find_maps.filter(
-                    str => find_keys.includes(str));
+                    str => str.startsWith(find_keys));
             }
             let save_data: DBResult = {
                 flag: true,

@@ -14,6 +14,7 @@ import { MountManage } from '../mount/MountManage';
 import { ShareManage } from '../share/ShareManage';
 import { successResp, errorResp, pageResp } from '../types/HttpResponse';
 import { UsersManage } from '../users/UsersManage';
+import { joinPathWithinRoot } from '../utils/pathSecurity';
 
 // ============================================================
 // 工具函数
@@ -108,7 +109,7 @@ export function fsReadRoutes(app: Hono<any>) {
         // 加载挂载点
         const mountManage = new MountManage(c);
         const driveLoad = await mountManage.loader(path, true, true);
-        if (!driveLoad) return errorResp(c, '路径不存在', 404);
+        if (!driveLoad) return errorResp(c, 'fs.path_not_found', 404);
 
         const hasMountMain = driveLoad[0] !== null;
         let fileList: any[] = [];
@@ -182,7 +183,7 @@ export function fsReadRoutes(app: Hono<any>) {
 
         const mountManage = new MountManage(c);
         const driveLoad = await mountManage.loader(path, false, false);
-        if (!driveLoad || !driveLoad[0]) return errorResp(c, '文件不存在', 404);
+        if (!driveLoad || !driveLoad[0]) return errorResp(c, 'fs.file_not_found', 404);
 
         await driveLoad[0].loadSelf();
         const relativePath = path.replace(driveLoad[0].router, '') || '/';
@@ -235,7 +236,7 @@ export function fsReadRoutes(app: Hono<any>) {
 
         const mountManage = new MountManage(c);
         const driveLoad = await mountManage.loader(path, true, true);
-        if (!driveLoad) return errorResp(c, '路径不存在', 404);
+        if (!driveLoad) return errorResp(c, 'fs.path_not_found', 404);
 
         let dirs: any[] = [];
 
@@ -273,12 +274,13 @@ export function fsReadRoutes(app: Hono<any>) {
     // ------------------------------------------------------------------
     app.post('/api/fs/search', async (c: Context): Promise<any> => {
         const body = await parseBody(c);
-        const path: string = body.path || '/';
+        // 兼容前端字段名：parent（React前端） / path（Go后端）
+        const path: string = body.path || body.parent || '/';
         const keywords: string = body.keywords || '';
         const page: number = parseInt(body.page) || 1;
         const perPage: number = parseInt(body.per_page) || 30;
 
-        if (!keywords) return errorResp(c, 'keywords 不能为空', 400);
+        if (!keywords) return errorResp(c, 'fs.keywords_required', 400);
 
         // 简单实现：列出目录后过滤
         const mountManage = new MountManage(c);
@@ -324,7 +326,7 @@ export function fsReadRoutes(app: Hono<any>) {
             const result = await driveLoad[0].otherFile?.({ path: relativePath, ...body });
             return successResp(c, result);
         } catch (e: any) {
-            return errorResp(c, e.message || '操作失败', 500);
+            return errorResp(c, e.message || 'common.operation_failed', 500);
         }
     });
 }
@@ -340,19 +342,20 @@ async function handleShareList(c: Context, path: string, password: string, page:
     const sid = slashIdx > 0 ? trimmed.substring(0, slashIdx) : trimmed;
     const subPath = slashIdx > 0 ? trimmed.substring(slashIdx) : '/';
 
-    if (!sid) return errorResp(c, '无效的分享 ID', 400);
+        if (!sid) return errorResp(c, 'fs.invalid_share_id', 400);
 
     const shareManage = new ShareManage(c);
     const validateResult = await shareManage.validateAccess(sid, password);
-    if (!validateResult.flag) return errorResp(c, validateResult.text || '分享不存在或已失效', 500);
+    if (!validateResult.flag) return errorResp(c, validateResult.text || 'fs.share_invalid', 500);
 
     const shareData = validateResult.data![0];
     const sharePath = Array.isArray(shareData.share_path) ? shareData.share_path[0] : shareData.share_path;
-    const fullPath = subPath === '/' ? sharePath : `${sharePath}${subPath}`;
+    const fullPath = joinPathWithinRoot(sharePath, subPath);
+    if (!fullPath) return errorResp(c, 'common.invalid_path', 400);
 
     const mountManage = new MountManage(c);
     const driveLoad = await mountManage.loader(fullPath, true, true);
-    if (!driveLoad || !driveLoad[0]) return errorResp(c, '路径不存在', 404);
+    if (!driveLoad || !driveLoad[0]) return errorResp(c, 'fs.path_not_found', 404);
 
     await driveLoad[0].loadSelf();
     const relativePath = fullPath.replace(driveLoad[0].router, '') || '/';
@@ -379,19 +382,20 @@ async function handleShareGet(c: Context, path: string, password: string): Promi
     const sid = slashIdx > 0 ? trimmed.substring(0, slashIdx) : trimmed;
     const subPath = slashIdx > 0 ? trimmed.substring(slashIdx) : '/';
 
-    if (!sid) return errorResp(c, '无效的分享 ID', 400);
+    if (!sid) return errorResp(c, 'fs.invalid_share_id', 400);
 
     const shareManage = new ShareManage(c);
     const validateResult = await shareManage.validateAccess(sid, password);
-    if (!validateResult.flag) return errorResp(c, validateResult.text || '分享不存在或已失效', 500);
+    if (!validateResult.flag) return errorResp(c, validateResult.text || 'fs.share_invalid', 500);
 
     const shareData = validateResult.data![0];
     const sharePath = Array.isArray(shareData.share_path) ? shareData.share_path[0] : shareData.share_path;
-    const fullPath = subPath === '/' ? sharePath : `${sharePath}${subPath}`;
+    const fullPath = joinPathWithinRoot(sharePath, subPath);
+    if (!fullPath) return errorResp(c, 'common.invalid_path', 400);
 
     const mountManage = new MountManage(c);
     const driveLoad = await mountManage.loader(fullPath, false, false);
-    if (!driveLoad || !driveLoad[0]) return errorResp(c, '文件不存在', 404);
+    if (!driveLoad || !driveLoad[0]) return errorResp(c, 'fs.file_not_found', 404);
 
     await driveLoad[0].loadSelf();
     const relativePath = fullPath.replace(driveLoad[0].router, '') || '/';

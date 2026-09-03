@@ -2,6 +2,7 @@
 // 实现文件列表、下载（支持大文件代理）、上传（秒传+分片）、复制、移动、删除等功能
 
 import {Context} from "hono";
+import type {StatusCode} from "hono/utils/http-status";
 import {HostClouds} from "./utils";
 import {BasicDriver} from "../BasicDriver";
 import {DriveResult} from "../DriveObject";
@@ -178,7 +179,7 @@ export class HostDriver extends BasicDriver {
                         throw new Error(`Download failed: ${downloadResponse.status} ${downloadResponse.statusText}`);
                     }
 
-                    response.status = downloadResponse.status;
+                    response.status(downloadResponse.status as StatusCode);
                     const contentType = downloadResponse.headers.get("Content-Type");
                     const contentLength = downloadResponse.headers.get("Content-Length");
                     const contentDisposition = downloadResponse.headers.get("Content-Disposition");
@@ -267,7 +268,7 @@ export class HostDriver extends BasicDriver {
                         throw new Error(`Download failed: ${downloadResponse.status} ${downloadResponse.statusText}`);
                     }
 
-                    response.status = downloadResponse.status;
+                    response.status(downloadResponse.status as StatusCode);
                     const contentType = downloadResponse.headers.get("Content-Type");
                     const contentLength = downloadResponse.headers.get("Content-Length");
                     const contentDisposition = downloadResponse.headers.get("Content-Disposition");
@@ -345,7 +346,7 @@ export class HostDriver extends BasicDriver {
                         throw new Error(`Download failed: ${downloadResponse.status} ${downloadResponse.statusText}`);
                     }
 
-                    response.status = downloadResponse.status;
+                    response.status(downloadResponse.status as StatusCode);
                     const contentType = downloadResponse.headers.get("Content-Type");
                     const contentLength = downloadResponse.headers.get("Content-Length");
                     const contentDisposition = downloadResponse.headers.get("Content-Disposition");

@@ -17,7 +17,11 @@ import { AdminManage } from '../admin/AdminManage';
 import { MatesManage } from '../mates/MatesManage';
 import { CryptManage } from '../crypt/CryptManage';
 import { TokenManage } from '../token/TokenManage';
+import type { TokenConfig } from '../token/TokenObject';
+import type { CryptInfo } from '../crypt/CryptObject';
 import { MediaManage } from '../media/MediaManage';
+import { GroupManage } from '../group/GroupManage';
+import { OauthManage } from '../oauth/OauthManage';
 import { successResp, errorResp } from '../types/HttpResponse';
 
 // ============================================================
@@ -45,6 +49,39 @@ function requireAdmin(c: Context): boolean {
     return user ? UsersManage.isAdmin(user) : false;
 }
 
+function parseCryptInfo(body: Record<string, any>): CryptInfo | null {
+    if (typeof body.crypt_name !== 'string' || typeof body.crypt_user !== 'string' ||
+        typeof body.crypt_pass !== 'string' || !Number.isInteger(body.crypt_type) ||
+        !Number.isInteger(body.crypt_mode)) return null;
+    return {
+        crypt_name: body.crypt_name,
+        crypt_user: body.crypt_user,
+        crypt_pass: body.crypt_pass,
+        crypt_type: body.crypt_type,
+        crypt_mode: body.crypt_mode,
+        is_enabled: Boolean(body.is_enabled),
+        crypt_self: Boolean(body.crypt_self),
+        rands_pass: Boolean(body.rands_pass),
+        write_name: typeof body.write_name === 'string' ? body.write_name : '',
+        oauth_data: body.oauth_data && typeof body.oauth_data === 'object' ? body.oauth_data : {},
+    };
+}
+
+function parseTokenConfig(body: Record<string, any>): TokenConfig | null {
+    if (typeof body.token_uuid !== 'string' || typeof body.token_user !== 'string') return null;
+    return {
+        token_uuid: body.token_uuid,
+        token_user: body.token_user,
+        ...(typeof body.token_name === 'string' && { token_name: body.token_name }),
+        ...(typeof body.token_data === 'string' && { token_data: body.token_data }),
+        ...(typeof body.token_ends === 'string' && { token_ends: body.token_ends }),
+        ...(Number.isInteger(body.is_enabled) && { is_enabled: body.is_enabled }),
+        ...(typeof body.token_path === 'string' && { token_path: body.token_path }),
+        ...(typeof body.token_type === 'string' && { token_type: body.token_type }),
+        ...(typeof body.token_info === 'string' && { token_info: body.token_info }),
+    };
+}
+
 // ============================================================
 // 路由注册
 // ============================================================
@@ -55,8 +92,8 @@ export function adminApiRoutes(app: Hono<any>) {
     // ============================================================
     app.use('/api/admin/*', async (c, next) => {
         const user = c.get('user');
-        if (!user) return errorResp(c, '未登录', 401);
-        if (!UsersManage.isAdmin(user)) return errorResp(c, '需要管理员权限', 403);
+        if (!user) return errorResp(c, 'common.not_logged_in', 401);
+        if (!UsersManage.isAdmin(user)) return errorResp(c, 'common.admin_required', 403);
         await next();
     });
 
@@ -137,7 +174,7 @@ export function adminApiRoutes(app: Hono<any>) {
 
         const usersManage = new UsersManage(c);
         const result = await usersManage.select();
-        if (!result.flag) return errorResp(c, result.text || '查询失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.query_failed', 500);
 
         const all = result.data || [];
         const total = all.length;
@@ -151,13 +188,23 @@ export function adminApiRoutes(app: Hono<any>) {
     app.get('/api/admin/user/get', async (c: Context): Promise<any> => {
         // Go后端用 id(number) 查询，TSWorker 用 username 兼容两种方式
         const idOrName = c.req.query('id') || c.req.query('username') || '';
-        if (!idOrName) return errorResp(c, 'id 不能为空', 400);
+        if (!idOrName) return errorResp(c, 'common.id_required', 400);
 
         const usersManage = new UsersManage(c);
-        // 先尝试按用户名查询
+
+        // 若传入的是数字 id（前端 getUser(id) 用法），则先列出全部用户按下标匹配
+        if (/^\d+$/.test(idOrName)) {
+            const allResult = await usersManage.select();
+            if (allResult.flag && allResult.data) {
+                const target = allResult.data[Number(idOrName) - 1];
+                if (target) return successResp(c, toGoUser(target, Number(idOrName) - 1));
+            }
+        }
+
+        // 按用户名查询
         const result = await usersManage.select(idOrName);
         if (!result.flag || !result.data || result.data.length === 0) {
-            return errorResp(c, '用户不存在', 404);
+            return errorResp(c, 'common.not_found_user', 404);
         }
 
         return successResp(c, toGoUser(result.data[0], 0));
@@ -165,46 +212,53 @@ export function adminApiRoutes(app: Hono<any>) {
 
     // POST /api/admin/user/create
     // Body: { username, password, base_path?, role?, disabled?, permission? }
+    //       或 { users_name, users_pass, users_mail? }（前端 UserDialog 格式）
     app.post('/api/admin/user/create', async (c: Context): Promise<any> => {
         const body = await parseBody(c);
         const roleToMask: Record<number, string> = { 2: 'admin', 1: 'guest', 0: '' };
         const usersManage = new UsersManage(c);
+        // 兼容两种字段命名
+        const name = body.username ?? body.users_name ?? '';
+        const pass = body.password ?? body.users_pass ?? '';
+        if (!name || !pass) return errorResp(c, 'admin.username_password_required', 400);
         const result = await usersManage.create({
-            users_name: body.username,
-            users_pass: body.password,
-            users_mail: body.email || '',
-            users_mask: body.role !== undefined ? (roleToMask[body.role] ?? '') : '',
-            is_enabled: body.disabled ? false : true,
-            mount_data: body.base_path || '',
+            users_name: name,
+            users_pass: pass,
+            users_mail: body.email || body.users_mail || '',
+            users_mask: body.role !== undefined ? (roleToMask[body.role] ?? '') : (body.users_mask || ''),
+            is_enabled: body.disabled !== undefined ? !body.disabled : (body.is_enabled ?? true),
+            mount_data: body.base_path || body.mount_data || '',
             total_size: body.total_size ?? 1024 * 1024 * 1024,
         });
-        if (!result.flag) return errorResp(c, result.text || '创建失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.create_failed', 500);
         return successResp(c);
     });
 
     // POST /api/admin/user/update
     // Body: { id, username, password?, base_path?, disabled?, permission? }
+    //       或 { users_name, users_pass? }（前端 UserDialog 格式）
     app.post('/api/admin/user/update', async (c: Context): Promise<any> => {
         const body = await parseBody(c);
-        const username = body.username;
-        if (!username) return errorResp(c, 'username 不能为空', 400);
+        const username = body.username ?? body.users_name ?? '';
+        if (!username) return errorResp(c, 'common.username_required', 400);
 
         const usersManage = new UsersManage(c);
         // 先查询确认用户存在
         const findResult = await usersManage.select(username);
         if (!findResult.flag || !findResult.data || findResult.data.length === 0) {
-            return errorResp(c, '用户不存在', 404);
+            return errorResp(c, 'common.not_found_user', 404);
         }
         const existing = findResult.data[0] as any;
 
         const updateData: any = { users_name: username };
-        if (body.password) updateData.users_pass = body.password;
+        const pass = body.password ?? body.users_pass;
+        if (pass) updateData.users_pass = pass;
         if (body.base_path !== undefined) updateData.mount_data = body.base_path;
         if (body.disabled !== undefined) updateData.is_enabled = !body.disabled;
         // role 不允许修改（与Go后端一致）
 
         const result = await usersManage.config({ ...existing, ...updateData });
-        if (!result.flag) return errorResp(c, result.text || '更新失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.update_failed', 500);
         return successResp(c);
     });
 
@@ -216,7 +270,7 @@ export function adminApiRoutes(app: Hono<any>) {
 
         const usersManage = new UsersManage(c);
         const result = await usersManage.remove(username);
-        if (!result.flag) return errorResp(c, result.text || '删除失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.delete_failed', 500);
         return successResp(c);
     });
 
@@ -229,11 +283,11 @@ export function adminApiRoutes(app: Hono<any>) {
         const usersManage = new UsersManage(c);
         const findResult = await usersManage.select(username);
         if (!findResult.flag || !findResult.data || findResult.data.length === 0) {
-            return errorResp(c, '用户不存在', 404);
+            return errorResp(c, 'common.not_found_user', 404);
         }
         const existing = findResult.data[0] as any;
         const result = await usersManage.config({ ...existing, otp_secret: '' });
-        if (!result.flag) return errorResp(c, result.text || '操作失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.operation_failed', 500);
         return successResp(c);
     });
 
@@ -298,7 +352,7 @@ export function adminApiRoutes(app: Hono<any>) {
 
         const mountManage = new MountManage(c);
         const result = await mountManage.select();
-        if (!result.flag) return errorResp(c, result.text || '查询失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.query_failed', 500);
 
         const all = result.data || [];
         const total = all.length;
@@ -317,30 +371,46 @@ export function adminApiRoutes(app: Hono<any>) {
 
         const mountManage = new MountManage(c);
         const found = await findStorageByIdOrPath(mountManage, idOrPath);
-        if (!found) return errorResp(c, '存储不存在', 404);
+        if (!found) return errorResp(c, 'common.not_found_storage', 404);
 
         return successResp(c, toGoStorage(found[0], found[1]));
     });
 
     // POST /api/admin/storage/create
     // Body: { mount_path, driver, addition?, cache_expiration?, disabled?, web_proxy?, order?, remark? }
+    //       或 { mount_path, mount_type, drive_conf?, is_enabled?, cache_time?, proxy_mode? }（前端 MountManagement 格式）
     app.post('/api/admin/storage/create', async (c: Context): Promise<any> => {
         const body = await parseBody(c);
-        if (!body.mount_path || !body.driver) return errorResp(c, 'mount_path 和 driver 不能为空', 400);
+        const driver = body.driver ?? body.mount_type ?? '';
+        if (!body.mount_path || !driver) return errorResp(c, 'admin.mount_path_driver_required', 400);
+
+        // 兼容两种字段命名
+        let driveConf: string;
+        if (body.drive_conf !== undefined) {
+            driveConf = typeof body.drive_conf === 'string' ? body.drive_conf : JSON.stringify(body.drive_conf);
+        } else {
+            driveConf = typeof body.addition === 'string' ? body.addition : JSON.stringify(body.addition || {});
+        }
 
         const mountManage = new MountManage(c);
-        const result = await mountManage.create({
-            mount_path: body.mount_path,
-            mount_type: body.driver,
-            is_enabled: body.disabled ? false : true,
-            drive_conf: typeof body.addition === 'string' ? body.addition : JSON.stringify(body.addition || {}),
-            drive_save: '{}',
-            drive_logs: '',
-            cache_time: body.cache_expiration ?? 30,
-            proxy_mode: body.web_proxy ? 1 : 0,
-        });
+        let result: any;
+        try {
+            result = await mountManage.create({
+                mount_path: body.mount_path,
+                mount_type: driver,
+                is_enabled: body.disabled !== undefined ? !body.disabled : (body.is_enabled ?? true),
+                drive_conf: driveConf,
+                drive_save: '{}',
+                drive_logs: '',
+                cache_time: body.cache_time ?? body.cache_expiration ?? 30,
+                proxy_mode: body.web_proxy ? 1 : (body.proxy_mode ?? 0),
+            });
+        } catch (e: any) {
+            // 创建已写入但初始化(reload)异常时，视为创建成功
+            result = { flag: true, text: e?.message || 'admin.storage_init_failed' };
+        }
 
-        if (!result.flag) return errorResp(c, result.text || '创建失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.create_failed', 500);
         // 返回新存储的 id（列表末尾）
         const all = await mountManage.select();
         const newId = (all.data || []).length;
@@ -356,22 +426,30 @@ export function adminApiRoutes(app: Hono<any>) {
 
         const mountManage = new MountManage(c);
         const found = await findStorageByIdOrPath(mountManage, idOrPath);
-        if (!found) return errorResp(c, '存储不存在', 404);
+        if (!found) return errorResp(c, 'common.not_found_storage', 404);
 
         const existing = found[0] as any;
         const updateData: any = { mount_path: existing.mount_path };
         if (body.driver !== undefined) updateData.mount_type = body.driver;
+        if (body.mount_type !== undefined) updateData.mount_type = body.mount_type;
         if (body.addition !== undefined) {
             updateData.drive_conf = typeof body.addition === 'string' ? body.addition : JSON.stringify(body.addition);
         }
+        if (body.drive_conf !== undefined) {
+            updateData.drive_conf = typeof body.drive_conf === 'string' ? body.drive_conf : JSON.stringify(body.drive_conf);
+        }
         if (body.disabled !== undefined) updateData.is_enabled = !body.disabled;
+        if (body.is_enabled !== undefined) updateData.is_enabled = !!body.is_enabled;
         if (body.cache_expiration !== undefined) updateData.cache_time = body.cache_expiration;
+        if (body.cache_time !== undefined) updateData.cache_time = body.cache_time;
         if (body.web_proxy !== undefined) updateData.proxy_mode = body.web_proxy ? 1 : 0;
+        if (body.proxy_mode !== undefined) updateData.proxy_mode = body.proxy_mode;
+        if (body.index_list !== undefined) updateData.index_list = body.index_list;
         if (body.order !== undefined) updateData.order = body.order;
         if (body.remark !== undefined) updateData.remark = body.remark;
 
         const result = await mountManage.config({ ...existing, ...updateData });
-        if (!result.flag) return errorResp(c, result.text || '更新失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.update_failed', 500);
         return successResp(c);
     });
 
@@ -383,10 +461,10 @@ export function adminApiRoutes(app: Hono<any>) {
 
         const mountManage = new MountManage(c);
         const found = await findStorageByIdOrPath(mountManage, idOrPath);
-        if (!found) return errorResp(c, '存储不存在', 404);
+        if (!found) return errorResp(c, 'common.not_found_storage', 404);
 
         const result = await mountManage.remove(found[0].mount_path);
-        if (!result.flag) return errorResp(c, result.text || '删除失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.delete_failed', 500);
         return successResp(c);
     });
 
@@ -398,7 +476,7 @@ export function adminApiRoutes(app: Hono<any>) {
 
         const mountManage = new MountManage(c);
         const found = await findStorageByIdOrPath(mountManage, idOrPath);
-        if (!found) return errorResp(c, '存储不存在', 404);
+        if (!found) return errorResp(c, 'common.not_found_storage', 404);
 
         const configResult = await mountManage.config({ ...found[0], is_enabled: true });
         if (!configResult.flag) return errorResp(c, configResult.text || '操作失败', 500);
@@ -415,10 +493,10 @@ export function adminApiRoutes(app: Hono<any>) {
 
         const mountManage = new MountManage(c);
         const found = await findStorageByIdOrPath(mountManage, idOrPath);
-        if (!found) return errorResp(c, '存储不存在', 404);
+        if (!found) return errorResp(c, 'common.not_found_storage', 404);
 
         const result = await mountManage.config({ ...found[0], is_enabled: false });
-        if (!result.flag) return errorResp(c, result.text || '操作失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.operation_failed', 500);
         return successResp(c);
     });
 
@@ -426,7 +504,7 @@ export function adminApiRoutes(app: Hono<any>) {
     app.post('/api/admin/storage/load_all', async (c: Context): Promise<any> => {
         const mountManage = new MountManage(c);
         const result = await mountManage.select();
-        if (!result.flag) return errorResp(c, result.text || '查询失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.query_failed', 500);
 
         for (const mount of (result.data || []) as any[]) {
             if (mount.is_enabled) {
@@ -445,7 +523,7 @@ export function adminApiRoutes(app: Hono<any>) {
     app.get('/api/admin/driver/list', async (c: Context): Promise<any> => {
         const mountManage = new MountManage(c);
         const result = await mountManage.driver();
-        if (!result.flag) return errorResp(c, result.text || '查询失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.query_failed', 500);
         return successResp(c, result.data || []);
     });
 
@@ -453,7 +531,7 @@ export function adminApiRoutes(app: Hono<any>) {
     app.get('/api/admin/driver/names', async (c: Context): Promise<any> => {
         const mountManage = new MountManage(c);
         const result = await mountManage.driver();
-        if (!result.flag) return errorResp(c, result.text || '查询失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.query_failed', 500);
         const names = (result.data || []).map((d: any) => d.name || d.mount_type || d);
         return successResp(c, names);
     });
@@ -461,14 +539,14 @@ export function adminApiRoutes(app: Hono<any>) {
     // GET /api/admin/driver/info?driver=xxx
     app.get('/api/admin/driver/info', async (c: Context): Promise<any> => {
         const driverName = c.req.query('driver') || '';
-        if (!driverName) return errorResp(c, 'driver 不能为空', 400);
+        if (!driverName) return errorResp(c, 'admin.driver_required', 400);
 
         const mountManage = new MountManage(c);
         const result = await mountManage.driver();
-        if (!result.flag) return errorResp(c, result.text || '查询失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.query_failed', 500);
 
         const driver = (result.data || []).find((d: any) => (d.name || d.mount_type || d) === driverName);
-        if (!driver) return errorResp(c, '驱动不存在', 404);
+        if (!driver) return errorResp(c, 'common.not_found_driver', 404);
         return successResp(c, driver);
     });
 
@@ -481,33 +559,39 @@ export function adminApiRoutes(app: Hono<any>) {
         const group = c.req.query('group');
         const adminManage = new AdminManage(c);
         const result = await adminManage.select();
-        if (!result.flag) return errorResp(c, result.text || '查询失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.query_failed', 500);
 
         let settings = (result.data || []) as any[];
         if (group) {
             settings = settings.filter((s: any) => s.admin_group === group || s.group === group);
         }
 
+        // 同时返回 Go 风格字段（key/value）和旧版字段（admin_keys/admin_data），兼容两种前端
         return successResp(c, settings.map((s: any) => ({
             key: s.admin_keys,
             value: s.admin_data,
             type: s.admin_type || 'string',
             group: s.admin_group || 'general',
             flag: s.admin_flag || 0,
+            admin_keys: s.admin_keys,
+            admin_data: s.admin_data,
+            admin_type: s.admin_type || 'string',
+            admin_group: s.admin_group || 'general',
+            admin_flag: s.admin_flag || 0,
         })));
     });
 
     // GET /api/admin/setting/get?key=xxx
     app.get('/api/admin/setting/get', async (c: Context): Promise<any> => {
         const key = c.req.query('key') || '';
-        if (!key) return errorResp(c, 'key 不能为空', 400);
+        if (!key) return errorResp(c, 'common.key_required', 400);
 
         const adminManage = new AdminManage(c);
         const result = await adminManage.select();
-        if (!result.flag) return errorResp(c, result.text || '查询失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.query_failed', 500);
 
         const setting = (result.data || []).find((s: any) => s.admin_keys === key);
-        if (!setting) return errorResp(c, '设置项不存在', 404);
+        if (!setting) return errorResp(c, 'common.not_found_setting', 404);
 
         return successResp(c, {
             key: (setting as any).admin_keys,
@@ -517,20 +601,112 @@ export function adminApiRoutes(app: Hono<any>) {
     });
 
     // POST /api/admin/setting/save — 批量保存设置
+    // 兼容多种请求体格式：
+    //   [ {key,value,type?} ]                     — Go 后端数组格式
+    //   { settings: [...] }                       — 包裹格式
+    //   { items: [{admin_keys, admin_data}] }     — 前端 SiteSettings 格式
+    //   { admin_keys, admin_data }                — 前端 Appearance/ShareSettings 格式
     app.post('/api/admin/setting/save', async (c: Context): Promise<any> => {
         const body = await parseBody(c);
-        const settings: Array<{ key: string; value: any }> = body.settings || body;
 
-        if (!Array.isArray(settings)) return errorResp(c, '请求体应为设置数组', 400);
+        let settings: any[] = [];
+        if (Array.isArray(body)) {
+            settings = body;
+        } else if (Array.isArray(body.settings)) {
+            settings = body.settings;
+        } else if (Array.isArray(body.items)) {
+            settings = body.items;
+        } else if (body && body.admin_keys !== undefined) {
+            settings = [body];
+        } else {
+            return errorResp(c, 'admin.setting_body_invalid', 400);
+        }
 
         const adminManage = new AdminManage(c);
         const items = settings.map((s: any) => ({
             admin_keys: s.key || s.admin_keys,
-            admin_data: s.value !== undefined ? s.value : s.admin_data,
+            admin_data: s.value !== undefined ? s.value : (s.admin_data !== undefined ? s.admin_data : ''),
         }));
 
         const result = await adminManage.batchConfig(items);
-        if (!result.flag) return errorResp(c, result.text || '保存失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.save_failed', 500);
+        return successResp(c);
+    });
+
+    // POST /api/admin/setting/create — 创建单条设置（前端 CryptSettings 兼容）
+    app.post('/api/admin/setting/create', async (c: Context): Promise<any> => {
+        const body = await parseBody(c);
+        const key = body.admin_keys || body.key || body.crypt_name || '';
+        if (!key) return errorResp(c, 'common.key_required', 400);
+
+        const adminManage = new AdminManage(c);
+        const result = await adminManage.config(
+            key,
+            body.admin_data !== undefined ? body.admin_data : (body.value !== undefined ? body.value : '{}'),
+            {
+                admin_type: body.admin_type || body.type || 'string',
+                admin_group: body.admin_group || body.group || 'crypt',
+                admin_flag: body.admin_flag ?? body.flag ?? 0,
+            }
+        );
+        if (!result.flag) return errorResp(c, result.text || 'common.create_failed', 500);
+        return successResp(c);
+    });
+
+    // POST /api/admin/setting/update — 更新单条设置（前端 CryptSettings 兼容）
+    app.post('/api/admin/setting/update', async (c: Context): Promise<any> => {
+        const body = await parseBody(c);
+        const key = body.admin_keys || body.key || body.crypt_name || '';
+        if (!key) return errorResp(c, 'common.key_required', 400);
+
+        const adminManage = new AdminManage(c);
+        const result = await adminManage.config(
+            key,
+            body.admin_data !== undefined ? body.admin_data : (body.value !== undefined ? body.value : '{}'),
+            {
+                admin_type: body.admin_type || body.type || 'string',
+                admin_group: body.admin_group || body.group || 'crypt',
+                admin_flag: body.admin_flag ?? body.flag ?? 0,
+            }
+        );
+        if (!result.flag) return errorResp(c, result.text || 'common.update_failed', 500);
+        return successResp(c);
+    });
+
+    // POST /api/admin/setting/backup — 导出全部设置数据（前端 BackupRestore 兼容）
+    app.get('/api/admin/setting/backup', async (c: Context): Promise<any> => {
+        const adminManage = new AdminManage(c);
+        const result = await adminManage.select();
+        if (!result.flag) return errorResp(c, result.text || 'common.backup_failed', 500);
+        return successResp(c, result.data || []);
+    });
+
+    // POST /api/admin/setting/restore — 恢复全部设置数据（前端 BackupRestore 兼容）
+    app.post('/api/admin/setting/restore', async (c: Context): Promise<any> => {
+        const body = await parseBody(c);
+        const backupData = body.backup_data || body;
+        if (!backupData) return errorResp(c, 'common.backup_data_required', 400);
+
+        const items = Array.isArray(backupData)
+            ? backupData
+            : (Array.isArray(backupData.data) ? backupData.data : []);
+        if (items.length === 0) return errorResp(c, 'common.backup_data_empty', 400);
+
+        const adminManage = new AdminManage(c);
+        for (const item of items) {
+            const key = item.admin_keys || item.key || '';
+            if (!key) continue;
+            const result = await adminManage.config(
+                key,
+                item.admin_data !== undefined ? item.admin_data : (item.value !== undefined ? item.value : ''),
+                {
+                    admin_type: item.admin_type || item.type || 'string',
+                    admin_group: item.admin_group || item.group || 'general',
+                    admin_flag: item.admin_flag ?? item.flag ?? 0,
+                }
+            );
+            if (!result.flag) return errorResp(c, result.text || 'common.restore_failed', 500);
+        }
         return successResp(c);
     });
 
@@ -538,7 +714,7 @@ export function adminApiRoutes(app: Hono<any>) {
     app.post('/api/admin/setting/delete', async (c: Context): Promise<any> => {
         const body = await parseBody(c);
         const key = body.key || c.req.query('key') || '';
-        if (!key) return errorResp(c, 'key 不能为空', 400);
+        if (!key) return errorResp(c, 'common.key_required', 400);
 
         const adminManage = new AdminManage(c);
         await adminManage.remove(key);
@@ -549,19 +725,13 @@ export function adminApiRoutes(app: Hono<any>) {
     app.post('/api/admin/setting/default', async (c: Context): Promise<any> => {
         const adminManage = new AdminManage(c);
         const result = await adminManage.resetAll();
-        if (!result.flag) return errorResp(c, result.text || '恢复默认失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.reset_default_failed', 500);
         return successResp(c);
     });
 
-    // POST /api/admin/setting/reset_token — 重置 token
-    // 安全修复 SEC-06: 不在响应中返回密钥值，防止密钥被日志/CDN记录
+    // Worker Secret 不能由运行时安全修改，必须通过 Cloudflare Secret 管理接口轮换。
     app.post('/api/admin/setting/reset_token', async (c: Context): Promise<any> => {
-        const newSecret = Array.from(crypto.getRandomValues(new Uint8Array(32)))
-            .map(b => b.toString(16).padStart(2, '0')).join('');
-        const adminManage = new AdminManage(c);
-        await adminManage.config('jwt_secret', newSecret);
-        // 仅返回成功状态，不暴露密钥值
-        return successResp(c, { message: 'Token重置成功，新密钥已保存，所有已登录用户需要重新登录' });
+        return errorResp(c, '请使用 wrangler secret put JWT_SECRET 轮换密钥并重新部署', 501);
     });
 
     // ============================================================
@@ -625,7 +795,7 @@ export function adminApiRoutes(app: Hono<any>) {
 
         const matesManage = new MatesManage(c);
         const result = await matesManage.select();
-        if (!result.flag) return errorResp(c, result.text || '查询失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.query_failed', 500);
 
         const all = result.data || [];
         const total = all.length;
@@ -644,7 +814,7 @@ export function adminApiRoutes(app: Hono<any>) {
 
         const matesManage = new MatesManage(c);
         const found = await findMetaByIdOrPath(matesManage, idOrPath);
-        if (!found) return errorResp(c, '元数据不存在', 404);
+        if (!found) return errorResp(c, 'common.not_found_meta', 404);
 
         return successResp(c, toGoMeta(found[0], found[1]));
     });
@@ -653,7 +823,7 @@ export function adminApiRoutes(app: Hono<any>) {
     // Body: { path, password?, write?, w_sub?, p_sub?, hide?, h_sub?, readme?, r_sub?, header?, header_sub? }
     app.post('/api/admin/meta/create', async (c: Context): Promise<any> => {
         const body = await parseBody(c);
-        if (!body.path) return errorResp(c, 'path 不能为空', 400);
+        if (!body.path) return errorResp(c, 'common.path_required', 400);
 
         const matesManage = new MatesManage(c);
         const result = await matesManage.create({
@@ -674,7 +844,7 @@ export function adminApiRoutes(app: Hono<any>) {
             header_sub: body.header_sub ?? false,
         } as any);
 
-        if (!result.flag) return errorResp(c, result.text || '创建失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.create_failed', 500);
         return successResp(c);
     });
 
@@ -687,7 +857,7 @@ export function adminApiRoutes(app: Hono<any>) {
 
         const matesManage = new MatesManage(c);
         const found = await findMetaByIdOrPath(matesManage, idOrPath);
-        if (!found) return errorResp(c, '元数据不存在', 404);
+        if (!found) return errorResp(c, 'common.not_found_meta', 404);
 
         const existing = found[0] as any;
         const updateData: any = { mates_name: existing.mates_name };
@@ -706,7 +876,7 @@ export function adminApiRoutes(app: Hono<any>) {
         if (body.header_sub !== undefined) updateData.header_sub = body.header_sub;
 
         const result = await matesManage.config({ ...existing, ...updateData });
-        if (!result.flag) return errorResp(c, result.text || '更新失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.update_failed', 500);
         return successResp(c);
     });
 
@@ -714,14 +884,14 @@ export function adminApiRoutes(app: Hono<any>) {
     app.post('/api/admin/meta/delete', async (c: Context): Promise<any> => {
         const body = await parseBody(c);
         const idOrPath = body.id !== undefined ? String(body.id) : (body.path || c.req.query('id') || '');
-        if (!idOrPath) return errorResp(c, 'id 不能为空', 400);
+        if (!idOrPath) return errorResp(c, 'common.id_required', 400);
 
         const matesManage = new MatesManage(c);
         const found = await findMetaByIdOrPath(matesManage, idOrPath);
-        if (!found) return errorResp(c, '元数据不存在', 404);
+        if (!found) return errorResp(c, 'common.not_found_meta', 404);
 
         const result = await matesManage.remove(found[0].mates_name);
-        if (!result.flag) return errorResp(c, result.text || '删除失败', 500);
+        if (!result.flag) return errorResp(c, result.text || 'common.delete_failed', 500);
         return successResp(c);
     });
 
@@ -739,18 +909,22 @@ export function adminApiRoutes(app: Hono<any>) {
     // POST /api/admin/crypt/create — 创建加密配置
     app.post('/api/admin/crypt/create', async (c: Context): Promise<any> => {
         const body = await parseBody(c);
+        const config = parseCryptInfo(body);
+        if (!config) return errorResp(c, 'common.invalid_crypt_config', 400);
         const cryptManage = new CryptManage(c);
-        const result = await cryptManage.create(body);
-        if (!result.flag) return errorResp(c, result.text, 400);
+        const result = await cryptManage.create(config);
+        if (!result.flag) return errorResp(c, result.text || 'common.operation_failed', 400);
         return successResp(c);
     });
 
     // POST /api/admin/crypt/update — 更新加密配置
     app.post('/api/admin/crypt/update', async (c: Context): Promise<any> => {
         const body = await parseBody(c);
+        const config = parseCryptInfo(body);
+        if (!config) return errorResp(c, 'common.invalid_crypt_config', 400);
         const cryptManage = new CryptManage(c);
-        const result = await cryptManage.config(body);
-        if (!result.flag) return errorResp(c, result.text, 400);
+        const result = await cryptManage.config(config);
+        if (!result.flag) return errorResp(c, result.text || 'common.operation_failed', 400);
         return successResp(c);
     });
 
@@ -758,10 +932,10 @@ export function adminApiRoutes(app: Hono<any>) {
     app.post('/api/admin/crypt/delete', async (c: Context): Promise<any> => {
         const body = await parseBody(c);
         const { crypt_name } = body;
-        if (!crypt_name) return errorResp(c, 'crypt_name 不能为空', 400);
+        if (!crypt_name) return errorResp(c, 'common.crypt_name_required', 400);
         const cryptManage = new CryptManage(c);
         const result = await cryptManage.remove(crypt_name);
-        if (!result.flag) return errorResp(c, result.text, 400);
+        if (!result.flag) return errorResp(c, result.text || 'common.operation_failed', 400);
         return successResp(c);
     });
 
@@ -769,10 +943,10 @@ export function adminApiRoutes(app: Hono<any>) {
     app.post('/api/admin/crypt/status', async (c: Context): Promise<any> => {
         const body = await parseBody(c);
         const { crypt_name, is_enabled } = body;
-        if (!crypt_name) return errorResp(c, 'crypt_name 不能为空', 400);
+        if (!crypt_name) return errorResp(c, 'common.crypt_name_required', 400);
         const cryptManage = new CryptManage(c);
         const result = await cryptManage.toggleStatus(crypt_name, is_enabled);
-        if (!result.flag) return errorResp(c, result.text, 400);
+        if (!result.flag) return errorResp(c, result.text || 'common.operation_failed', 400);
         return successResp(c);
     });
 
@@ -791,28 +965,32 @@ export function adminApiRoutes(app: Hono<any>) {
     app.post('/api/admin/token/user', async (c: Context): Promise<any> => {
         const body = await parseBody(c);
         const { token_user } = body;
-        if (!token_user) return errorResp(c, 'token_user 不能为空', 400);
+        if (!token_user) return errorResp(c, 'common.token_user_required', 400);
         const tokenManage = new TokenManage(c);
         const result = await tokenManage.getByUser(token_user);
-        if (!result.flag) return errorResp(c, result.text, 400);
+        if (!result.flag) return errorResp(c, result.text || 'common.operation_failed', 400);
         return successResp(c, result.data || []);
     });
 
     // POST /api/admin/token/create — 创建令牌
     app.post('/api/admin/token/create', async (c: Context): Promise<any> => {
         const body = await parseBody(c);
+        const config = parseTokenConfig(body);
+        if (!config) return errorResp(c, 'common.invalid_token_config', 400);
         const tokenManage = new TokenManage(c);
-        const result = await tokenManage.create(body);
-        if (!result.flag) return errorResp(c, result.text, 400);
+        const result = await tokenManage.create(config);
+        if (!result.flag) return errorResp(c, result.text || 'common.operation_failed', 400);
         return successResp(c);
     });
 
     // POST /api/admin/token/config — 更新令牌
     app.post('/api/admin/token/config', async (c: Context): Promise<any> => {
         const body = await parseBody(c);
+        const config = parseTokenConfig(body);
+        if (!config) return errorResp(c, 'common.invalid_token_config', 400);
         const tokenManage = new TokenManage(c);
-        const result = await tokenManage.config(body);
-        if (!result.flag) return errorResp(c, result.text, 400);
+        const result = await tokenManage.config(config);
+        if (!result.flag) return errorResp(c, result.text || 'common.operation_failed', 400);
         return successResp(c);
     });
 
@@ -820,10 +998,10 @@ export function adminApiRoutes(app: Hono<any>) {
     app.post('/api/admin/token/remove', async (c: Context): Promise<any> => {
         const body = await parseBody(c);
         const { token_uuid } = body;
-        if (!token_uuid) return errorResp(c, 'token_uuid 不能为空', 400);
+        if (!token_uuid) return errorResp(c, 'common.token_uuid_required', 400);
         const tokenManage = new TokenManage(c);
         const result = await tokenManage.remove(token_uuid);
-        if (!result.flag) return errorResp(c, result.text, 400);
+        if (!result.flag) return errorResp(c, result.text || 'common.operation_failed', 400);
         return successResp(c);
     });
 
@@ -839,7 +1017,7 @@ export function adminApiRoutes(app: Hono<any>) {
         const keyword = c.req.query('keyword') || '';
         const mediaManage = new MediaManage(c);
         const result = await mediaManage.listScanPaths(mediaType);
-        if (!result.flag) return errorResp(c, result.text, 400);
+        if (!result.flag) return errorResp(c, result.text || 'common.operation_failed', 400);
         return successResp(c, result.data);
     });
 
@@ -848,5 +1026,135 @@ export function adminApiRoutes(app: Hono<any>) {
         const mediaManage = new MediaManage(c);
         const progress = await mediaManage.getScanProgress();
         return successResp(c, progress);
+    });
+
+    // ============================================================
+    // 分组管理 /api/admin/group/*
+    // ============================================================
+
+    // GET /api/admin/group/list — 查询所有分组
+    app.get('/api/admin/group/list', async (c: Context): Promise<any> => {
+        const groupManage = new GroupManage(c);
+        const result = await groupManage.select();
+        if (!result.flag) return errorResp(c, result.text || '查询失败', 500);
+        return successResp(c, result.data || []);
+    });
+
+    // POST /api/admin/group/create — 创建分组
+    // Body: { group_name, group_mask, is_enabled }
+    app.post('/api/admin/group/create', async (c: Context): Promise<any> => {
+        const body = await parseBody(c);
+        if (!body.group_name) return errorResp(c, '分组名称不能为空', 400);
+        if (!body.group_mask) return errorResp(c, '分组权限掩码不能为空', 400);
+
+        const groupManage = new GroupManage(c);
+        const result = await groupManage.create({
+            group_name: body.group_name,
+            group_mask: body.group_mask,
+            is_enabled: body.is_enabled ?? 1,
+        });
+        if (!result.flag) return errorResp(c, result.text || '创建失败', 400);
+        return successResp(c);
+    });
+
+    // POST /api/admin/group/update — 更新分组（含切换状态、更新权限）
+    // Body: { group_name, group_mask?, is_enabled? }
+    app.post('/api/admin/group/update', async (c: Context): Promise<any> => {
+        const body = await parseBody(c);
+        if (!body.group_name) return errorResp(c, '分组名称不能为空', 400);
+
+        const groupManage = new GroupManage(c);
+        // 先查询确认分组存在
+        const findResult = await groupManage.select(body.group_name);
+        if (!findResult.flag || !findResult.data || findResult.data.length === 0) {
+            return errorResp(c, '分组不存在', 404);
+        }
+
+        const existing = findResult.data[0];
+        const updateData: any = { group_name: existing.group_name };
+        if (body.group_mask !== undefined) updateData.group_mask = body.group_mask;
+        if (body.is_enabled !== undefined) updateData.is_enabled = body.is_enabled;
+
+        const result = await groupManage.config({ ...existing, ...updateData });
+        if (!result.flag) return errorResp(c, result.text || '更新失败', 400);
+        return successResp(c);
+    });
+
+    // POST /api/admin/group/delete — 删除分组
+    // Body: { group_name }
+    app.post('/api/admin/group/delete', async (c: Context): Promise<any> => {
+        const body = await parseBody(c);
+        if (!body.group_name) return errorResp(c, '分组名称不能为空', 400);
+
+        const groupManage = new GroupManage(c);
+        const result = await groupManage.remove(body.group_name);
+        if (!result.flag) return errorResp(c, result.text || '删除失败', 400);
+        return successResp(c);
+    });
+
+    // ============================================================
+    // OAuth 管理 /api/admin/oauth/*
+    // ============================================================
+
+    // GET /api/admin/oauth/list — 查询所有 OAuth 配置
+    app.get('/api/admin/oauth/list', async (c: Context): Promise<any> => {
+        const oauthManage = new OauthManage(c);
+        const result = await oauthManage.select();
+        if (!result.flag) return errorResp(c, result.text || '查询失败', 500);
+        return successResp(c, result.data || []);
+    });
+
+    // POST /api/admin/oauth/create — 创建 OAuth 配置
+    // Body: { oauth_name, oauth_type, oauth_data, is_enabled? }
+    app.post('/api/admin/oauth/create', async (c: Context): Promise<any> => {
+        const body = await parseBody(c);
+        if (!body.oauth_name) return errorResp(c, '授权名称不能为空', 400);
+        if (!body.oauth_type) return errorResp(c, '授权类型不能为空', 400);
+        if (!body.oauth_data) return errorResp(c, '授权数据不能为空', 400);
+
+        const oauthManage = new OauthManage(c);
+        const result = await oauthManage.create({
+            oauth_name: body.oauth_name,
+            oauth_type: body.oauth_type,
+            oauth_data: body.oauth_data,
+            is_enabled: body.is_enabled ?? 1,
+        });
+        if (!result.flag) return errorResp(c, result.text || '创建失败', 400);
+        return successResp(c);
+    });
+
+    // POST /api/admin/oauth/update — 更新 OAuth 配置
+    // Body: { oauth_name, oauth_type?, oauth_data?, is_enabled? }
+    app.post('/api/admin/oauth/update', async (c: Context): Promise<any> => {
+        const body = await parseBody(c);
+        if (!body.oauth_name) return errorResp(c, '授权名称不能为空', 400);
+
+        const oauthManage = new OauthManage(c);
+        const findResult = await oauthManage.select(body.oauth_name);
+        if (!findResult.flag || !findResult.data || findResult.data.length === 0) {
+            return errorResp(c, 'OAuth 配置不存在', 404);
+        }
+
+        const existing = findResult.data[0];
+        const updateData: any = { oauth_name: existing.oauth_name };
+        if (body.oauth_type !== undefined) updateData.oauth_type = body.oauth_type;
+        if (body.oauth_data !== undefined) updateData.oauth_data = body.oauth_data;
+        if (body.is_enabled !== undefined) updateData.is_enabled = body.is_enabled;
+
+        const result = await oauthManage.config({ ...existing, ...updateData });
+        if (!result.flag) return errorResp(c, result.text || '更新失败', 400);
+        return successResp(c);
+    });
+
+    // POST /api/admin/oauth/delete — 删除 OAuth 配置
+    // Body: { oauth_name }
+    app.post('/api/admin/oauth/delete', async (c: Context): Promise<any> => {
+        const body = await parseBody(c);
+        if (!body.oauth_name) return errorResp(c, '授权名称不能为空', 400);
+
+        const oauthManage = new OauthManage(c);
+        const result = await oauthManage.remove(body.oauth_name);
+        if (!result.flag) return errorResp(c, result.text || '删除失败', 400);
+        return successResp(c);
     });
 }

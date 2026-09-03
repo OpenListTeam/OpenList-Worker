@@ -87,11 +87,11 @@ export function fsWriteRoutes(app: Hono<any>) {
     // ------------------------------------------------------------------
     app.post('/api/fs/mkdir', async (c: Context): Promise<any> => {
         const user = requireAuth(c);
-        if (!user) return errorResp(c, '未登录', 401);
+        if (!user) return errorResp(c, 'common.not_logged_in', 401);
 
         const body = await parseBody(c);
         const path: string = body.path;
-        if (!path) return errorResp(c, 'path 不能为空', 400);
+        if (!path) return errorResp(c, 'common.path_required', 400);
 
         // 找到父目录的挂载点
         const parentPath = path.replace(/\/[^/]+\/?$/, '') || '/';
@@ -99,7 +99,7 @@ export function fsWriteRoutes(app: Hono<any>) {
 
         const mountManage = new MountManage(c);
         const driveLoad = await mountManage.loader(parentPath, false, false);
-        if (!driveLoad || !driveLoad[0]) return errorResp(c, '父目录不存在', 404);
+        if (!driveLoad || !driveLoad[0]) return errorResp(c, 'common.not_found_parent_dir', 404);
 
         await driveLoad[0].loadSelf();
         const relativeParent = parentPath.replace(driveLoad[0].router, '') || '/';
@@ -110,10 +110,10 @@ export function fsWriteRoutes(app: Hono<any>) {
                 dirName,
                 0 // FileType.F_DIR
             );
-            if (result && result.flag === false) return errorResp(c, result.text || '创建目录失败', 500);
+            if (result && result.flag === false) return errorResp(c, result.text || 'fs.mkdir_failed', 500);
             return successResp(c);
         } catch (e: any) {
-            return errorResp(c, e.message || '创建目录失败', 500);
+            return errorResp(c, e.message || 'fs.mkdir_failed', 500);
         }
     });
 
@@ -123,19 +123,19 @@ export function fsWriteRoutes(app: Hono<any>) {
     // ------------------------------------------------------------------
     app.post('/api/fs/rename', async (c: Context): Promise<any> => {
         const user = requireAuth(c);
-        if (!user) return errorResp(c, '未登录', 401);
+        if (!user) return errorResp(c, 'common.not_logged_in', 401);
 
         const body = await parseBody(c);
         const path: string = body.path;
         const name: string = body.name;
-        if (!path || !name) return errorResp(c, 'path 和 name 不能为空', 400);
+        if (!path || !name) return errorResp(c, 'common.path_name_required', 400);
         if (name.includes('/') || name.includes('\\') || name === '.' || name === '..') {
-            return errorResp(c, '文件名不能包含路径分隔符', 400);
+            return errorResp(c, 'fs.name_invalid', 400);
         }
 
         const mountManage = new MountManage(c);
         const driveLoad = await mountManage.loader(path, false, false);
-        if (!driveLoad || !driveLoad[0]) return errorResp(c, '文件不存在', 404);
+        if (!driveLoad || !driveLoad[0]) return errorResp(c, 'fs.file_not_found', 404);
 
         await driveLoad[0].loadSelf();
         const relativePath = path.replace(driveLoad[0].router, '') || '/';
@@ -146,7 +146,7 @@ export function fsWriteRoutes(app: Hono<any>) {
             await driveLoad[0].moveFile({ path: relativePath }, { path: destPath });
             return successResp(c);
         } catch (e: any) {
-            return errorResp(c, e.message || '重命名失败', 500);
+            return errorResp(c, e.message || 'fs.rename_failed', 500);
         }
     });
 
@@ -156,14 +156,14 @@ export function fsWriteRoutes(app: Hono<any>) {
     // ------------------------------------------------------------------
     app.post('/api/fs/move', async (c: Context): Promise<any> => {
         const user = requireAuth(c);
-        if (!user) return errorResp(c, '未登录', 401);
+        if (!user) return errorResp(c, 'common.not_logged_in', 401);
 
         const body = await parseBody(c);
         const srcDir: string = body.src_dir;
         const dstDir: string = body.dst_dir;
         const names: string[] = body.names || [];
-        if (!srcDir || !dstDir) return errorResp(c, 'src_dir 和 dst_dir 不能为空', 400);
-        if (!names.length) return errorResp(c, 'names 不能为空', 400);
+        if (!srcDir || !dstDir) return errorResp(c, 'fs.src_dst_required', 400);
+        if (!names.length) return errorResp(c, 'common.names_required', 400);
 
         const mountManage = new MountManage(c);
         const tasks: any[] = [];
@@ -196,14 +196,14 @@ export function fsWriteRoutes(app: Hono<any>) {
     // ------------------------------------------------------------------
     app.post('/api/fs/copy', async (c: Context): Promise<any> => {
         const user = requireAuth(c);
-        if (!user) return errorResp(c, '未登录', 401);
+        if (!user) return errorResp(c, 'common.not_logged_in', 401);
 
         const body = await parseBody(c);
         const srcDir: string = body.src_dir;
         const dstDir: string = body.dst_dir;
         const names: string[] = body.names || [];
-        if (!srcDir || !dstDir) return errorResp(c, 'src_dir 和 dst_dir 不能为空', 400);
-        if (!names.length) return errorResp(c, 'names 不能为空', 400);
+        if (!srcDir || !dstDir) return errorResp(c, 'fs.src_dst_required', 400);
+        if (!names.length) return errorResp(c, 'common.names_required', 400);
 
         const mountManage = new MountManage(c);
         const tasks: any[] = [];
@@ -236,13 +236,13 @@ export function fsWriteRoutes(app: Hono<any>) {
     // ------------------------------------------------------------------
     app.post('/api/fs/remove', async (c: Context): Promise<any> => {
         const user = requireAuth(c);
-        if (!user) return errorResp(c, '未登录', 401);
+        if (!user) return errorResp(c, 'common.not_logged_in', 401);
 
         const body = await parseBody(c);
         const dir: string = body.dir;
         const names: string[] = body.names || [];
-        if (!dir) return errorResp(c, 'dir 不能为空', 400);
-        if (!names.length) return errorResp(c, 'names 不能为空', 400);
+        if (!dir) return errorResp(c, 'common.dir_required', 400);
+        if (!names.length) return errorResp(c, 'common.names_required', 400);
 
         const mountManage = new MountManage(c);
 
@@ -263,7 +263,7 @@ export function fsWriteRoutes(app: Hono<any>) {
             try {
                 await driveLoad[0].killFile({ path: relativePath });
             } catch (e: any) {
-                return errorResp(c, `删除 ${name} 失败: ${e.message}`, 500);
+                return errorResp(c, 'fs.move_failed', 500, { name, error: e.message });
             }
         }
 
@@ -276,11 +276,11 @@ export function fsWriteRoutes(app: Hono<any>) {
     // ------------------------------------------------------------------
     app.post('/api/fs/remove_empty_directory', async (c: Context): Promise<any> => {
         const user = requireAuth(c);
-        if (!user) return errorResp(c, '未登录', 401);
+        if (!user) return errorResp(c, 'common.not_logged_in', 401);
 
         const body = await parseBody(c);
         const srcDir: string = body.src_dir;
-        if (!srcDir) return errorResp(c, 'src_dir 不能为空', 400);
+        if (!srcDir) return errorResp(c, 'common.src_dir_required', 400);
 
         const mountManage = new MountManage(c);
 
@@ -313,7 +313,7 @@ export function fsWriteRoutes(app: Hono<any>) {
             await removeEmptyDirs(srcDir);
             return successResp(c);
         } catch (e: any) {
-            return errorResp(c, e.message || '删除空目录失败', 500);
+            return errorResp(c, e.message || 'common.remove_empty_dir_failed', 500);
         }
     });
 
@@ -322,25 +322,25 @@ export function fsWriteRoutes(app: Hono<any>) {
     // Body: { path }
     // ------------------------------------------------------------------
     app.post('/api/fs/link', async (c: Context): Promise<any> => {
-        if (!requireAdmin(c)) return errorResp(c, '需要管理员权限', 403);
+        if (!requireAdmin(c)) return errorResp(c, 'common.admin_required', 403);
 
         const body = await parseBody(c);
         const path: string = body.path;
-        if (!path) return errorResp(c, 'path 不能为空', 400);
+        if (!path) return errorResp(c, 'common.path_required', 400);
 
         const mountManage = new MountManage(c);
         const driveLoad = await mountManage.loader(path, false, false);
-        if (!driveLoad || !driveLoad[0]) return errorResp(c, '文件不存在', 404);
+        if (!driveLoad || !driveLoad[0]) return errorResp(c, 'fs.file_not_found', 404);
 
         await driveLoad[0].loadSelf();
         const relativePath = path.replace(driveLoad[0].router, '') || '/';
 
         try {
             const links = await driveLoad[0].downFile({ path: relativePath });
-            if (!links || links.length === 0) return errorResp(c, '无法获取下载链接', 500);
+            if (!links || links.length === 0) return errorResp(c, 'common.cannot_get_link', 500);
             return successResp(c, { url: links[0].direct || links[0].url || '', header: links[0].header || {} });
         } catch (e: any) {
-            return errorResp(c, e.message || '获取链接失败', 500);
+            return errorResp(c, e.message || 'common.get_link_failed', 500);
         }
     });
 
@@ -350,18 +350,18 @@ export function fsWriteRoutes(app: Hono<any>) {
     // ------------------------------------------------------------------
     app.post('/api/fs/add_offline_download', async (c: Context): Promise<any> => {
         const user = requireAuth(c);
-        if (!user) return errorResp(c, '未登录', 401);
+        if (!user) return errorResp(c, 'common.not_logged_in', 401);
 
         const body = await parseBody(c);
         const path: string = body.path;
         const urls: string[] = body.urls || (body.url ? [body.url] : []);
-        if (!path) return errorResp(c, 'path 不能为空', 400);
-        if (!urls.length) return errorResp(c, 'urls 不能为空', 400);
+        if (!path) return errorResp(c, 'common.path_required', 400);
+        if (!urls.length) return errorResp(c, 'common.urls_required', 400);
 
         // SSRF 防护 SEC-03: 拒绝内网/本地地址
         for (const url of urls) {
             if (isPrivateUrl(url)) {
-                return errorResp(c, `不允许访问内网或本地地址: ${url}`, 400);
+                return errorResp(c, 'common.private_url_forbidden', 400);
             }
         }
 
@@ -378,21 +378,31 @@ export function fsWriteRoutes(app: Hono<any>) {
     // ------------------------------------------------------------------
     // POST /api/fs/batch_rename — 批量重命名
     // Body: { src_dir, rename_pairs: [{src_name, dst_name}] }
+    //       或 { src_dir, rename_objects: [{src_name, new_name}] }（前端兼容）
     app.post('/api/fs/batch_rename', async (c: Context): Promise<any> => {
         const body = await parseBody(c);
         const srcDir: string = body.src_dir;
-        const renamePairs: Array<{ src_name: string; dst_name: string }> = body.rename_pairs || [];
-        if (!srcDir) return errorResp(c, 'src_dir 不能为空', 400);
-        if (!renamePairs.length) return errorResp(c, 'rename_pairs 不能为空', 400);
+        // 兼容两种字段命名：后端 rename_pairs(dst_name) / 前端 rename_objects(new_name)
+        const pairs: Array<{ src_name: string; dst_name: string }> =
+            Array.isArray(body.rename_pairs)
+                ? body.rename_pairs
+                : (Array.isArray(body.rename_objects)
+                    ? body.rename_objects.map((o: any) => ({
+                        src_name: o.src_name,
+                        dst_name: o.new_name ?? o.dst_name ?? o.src_name,
+                    }))
+                    : []);
+        if (!srcDir) return errorResp(c, 'common.src_dir_required', 400);
+        if (!pairs.length) return errorResp(c, 'common.rename_pairs_required', 400);
 
         const results: any[] = [];
-        for (const pair of renamePairs) {
+        for (const pair of pairs) {
             const srcPath = srcDir.replace(/\/$/, '') + '/' + pair.src_name;
             try {
                 const mountManage = new MountManage(c);
                 const driveLoad = await mountManage.loader(srcPath, false, false);
                 if (!driveLoad || !driveLoad[0]) {
-                    results.push({ src: pair.src_name, dst: pair.dst_name, success: false, msg: '文件不存在' });
+                    results.push({ src: pair.src_name, dst: pair.dst_name, success: false, msg: 'common.not_found_file' });
                     continue;
                 }
                 await driveLoad[0].loadSelf();

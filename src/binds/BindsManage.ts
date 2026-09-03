@@ -56,6 +56,7 @@ export class BindsManage {
 
             // 创建绑定配置
             const bindsConfig: BindsConfig = {
+                oauth_uuid: bindsData.oauth_uuid || crypto.randomUUID(),
                 oauth_name: bindsData.oauth_name,
                 binds_user: bindsData.binds_user,
                 binds_data: bindsData.binds_data,
@@ -63,8 +64,12 @@ export class BindsManage {
             };
 
             // 保存到数据库
-            const result: DBResult = await this.d.config({
+            const result: DBResult = await this.d.save({
                 main: "binds",
+                keys: {
+                    oauth_name: bindsConfig.oauth_name,
+                    binds_user: bindsConfig.binds_user
+                },
                 data: bindsConfig
             });
 
@@ -151,8 +156,9 @@ export class BindsManage {
             };
 
             // 更新数据库
-            const result: DBResult = await this.d.config({
+            const result: DBResult = await this.d.save({
                 main: "binds",
+                keys: { oauth_name, binds_user },
                 data: updatedBind
             });
 
@@ -193,7 +199,7 @@ export class BindsManage {
             }
 
             // 删除绑定
-            const result: DBResult = await this.d.remove({
+            const result: DBResult = await this.d.kill({
                 main: "binds",
                 keys: {
                     oauth_name: oauth_name,

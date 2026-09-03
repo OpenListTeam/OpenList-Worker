@@ -13,7 +13,11 @@
  *   PathRuleService 负责业务逻辑（规则匹配、继承、冲突处理）
  */
 import { CryptEngine, CryptGroupConfig, CryptMode } from '../crypt/CryptEngine';
-import { CompressService, CompressConfig, CompressMethod } from '../unzip/CompressService';
+
+export interface CompressConfig {
+    method: 'store' | 'deflate';
+    level?: number;
+}
 
 // ========================================================================
 // 文件权限掩码 — 16位 (参考 docs/文件架构设计)

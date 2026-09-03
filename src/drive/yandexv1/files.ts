@@ -15,7 +15,7 @@ export class HostDriver extends BasicDriver {
     async initSelf(): Promise<DriveResult> { const r = await this.clouds.initConfig(); this.saving = this.clouds.saving; this.change = true; return r; }
     async loadSelf(): Promise<DriveResult> { await this.clouds.loadSaving(); this.change = this.clouds.change; this.saving = this.clouds.saving; return {flag: true, text: "OK"}; }
 
-    private getPath(path?: string): string { const root = this.config.root_path || "/"; const sub = path || ""; return root.endsWith("/") ? root + sub : root + "/" + sub; }
+    private getPath(path?: string | null): string { const root = this.config.root_path || "/"; const sub = path || ""; return root.endsWith("/") ? root + sub : root + "/" + sub; }
 
     async listFile(file?: fso.FileFind): Promise<fso.PathInfo> {
         try {
