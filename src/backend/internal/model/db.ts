@@ -900,9 +900,8 @@ async function saveToKv(
 
 // 已知的旧默认值 → 当前默认值迁移表。
 // 修复「开发环境(无 KV，用新默认值)与生产环境(KV 里保存了旧默认值)不一致」：
-// 早期默认 logo/favicon 为空或 res.oplist.org 旧地址
-// 现已统一为 OpenList/openlist，但已写入 KV 的旧品牌值不会被 ensureDefaultSettings
-// 的「仅补缺失 key」逻辑覆盖，导致 prod 显示旧品牌名。
+// 早期默认 logo/favicon 为空或 res.oplist.org 旧地址，已写入 KV 的旧值不会被
+// ensureDefaultSettings 的「仅补缺失 key」逻辑覆盖，导致 prod 显示旧图标。
 const LEGACY_SETTING_MIGRATIONS: Record<string, { from: any[]; to: string }> = {
   logo: {
     from: ["", "https://res.oplist.org/logo/logo.png"],
@@ -911,14 +910,6 @@ const LEGACY_SETTING_MIGRATIONS: Record<string, { from: any[]; to: string }> = {
   favicon: {
     from: ["", "https://res.oplist.org/logo/logo.svg"],
     to: "/favicon.png",
-  },
-  site_title: {
-    from: ["OpenListNext"],
-    to: "OpenList",
-  },
-  home_icon: {
-    from: ["openlistnext"],
-    to: "openlist",
   },
   // 上游 OpenList 的 home_container 默认是 max_980px（内容限宽 980px 居中），
   // 本项目早期误把默认值设为 hope_container（HopeUI Container 无 maxW，流式全宽），
