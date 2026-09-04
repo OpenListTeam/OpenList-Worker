@@ -18,6 +18,7 @@ import { DriverLenovoNasShare } from "../../drivers/lenovonas_share/driver"
 import { DriverMisskey } from "../../drivers/misskey/driver"
 import { DriverDoubao } from "../../drivers/doubao/driver"
 import { DriverQuarkOpen } from "../../drivers/quark_open/driver"
+import { DriverQuarkUcTv } from "../../drivers/quark_uc_tv/driver"
 import { Pan123Driver } from "../../drivers/123pan/driver"
 import {
   BaiduDriver,
@@ -298,6 +299,9 @@ async function createDriver(
     await driver.init?.()
   } else if (normDriver === "quarkopen" || normDriver === "quark_open" || normDriver === "quarkoa") {
     driver = new DriverQuarkOpen(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (normDriver === "quarktv" || normDriver === "uctv" || normDriver === "quark_uc_tv") {
+    driver = new DriverQuarkUcTv(parseAddition(storageConfig))
     await driver.init?.()
   } else if (
     normDriver === "123pan" ||
