@@ -16,6 +16,7 @@ import { mcpRouter } from "./mcp"
 import { debugRouter } from "./debug"
 import { shareRouter } from "./share"
 import { taskRouter } from "./task"
+import { ssoRouter } from "./sso"
 import { updatePwdHandler } from "./user"
 
 // --- 尽力而为的进程内限流 ---
@@ -183,6 +184,7 @@ export function setupRouter(app: Hono) {
   app.route("/debug", debugRouter)
   app.route("/share", shareRouter)
   app.route("/task", taskRouter)
+  app.route("/auth", ssoRouter)
 
   // Direct short-paths for compatibility
   app.route("/d", rawRouter)
