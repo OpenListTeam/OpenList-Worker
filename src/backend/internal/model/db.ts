@@ -572,22 +572,6 @@ export const defaultDb = {
 
     // Group 8: LDAP
     {
-      key: "ldap_login_enabled",
-      value: "false",
-      type: "bool",
-      help: "Enable LDAP Login",
-      group: 8,
-      flag: 0,
-    },
-    {
-      key: "ldap_auto_register",
-      value: "false",
-      type: "bool",
-      help: "Auto Register New LDAP Users",
-      group: 8,
-      flag: 0,
-    },
-    {
       key: "ldap_host",
       value: "",
       type: "string",
@@ -600,22 +584,6 @@ export const defaultDb = {
       value: "389",
       type: "number",
       help: "LDAP Server Port",
-      group: 8,
-      flag: 0,
-    },
-    {
-      key: "ldap_base_dn",
-      value: "",
-      type: "string",
-      help: "LDAP Base DN (e.g. dc=example,dc=com)",
-      group: 8,
-      flag: 0,
-    },
-    {
-      key: "ldap_login_tips",
-      value: "",
-      type: "string",
-      help: "LDAP Login Tips",
       group: 8,
       flag: 0,
     },

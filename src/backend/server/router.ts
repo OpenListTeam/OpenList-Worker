@@ -18,7 +18,6 @@ import { shareRouter } from "./share"
 import { taskRouter } from "./task"
 import { ssoRouter } from "./sso"
 import { webauthnRouter } from "./webauthn"
-import { ldapRouter } from "./ldap"
 import { updatePwdHandler } from "./user"
 
 // --- 尽力而为的进程内限流 ---
@@ -187,7 +186,6 @@ export function setupRouter(app: Hono) {
   app.route("/share", shareRouter)
   app.route("/task", taskRouter)
   app.route("/auth", ssoRouter)
-  app.route("/auth", ldapRouter)
   app.route("/authn", webauthnRouter)
 
   // Direct short-paths for compatibility
