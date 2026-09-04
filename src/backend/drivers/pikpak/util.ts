@@ -159,16 +159,19 @@ export class PikPakApiClient {
     this.captchaTokenVal = addition.captcha_token || ""
 
     const platform = addition.platform || "web"
+    // 支持通过 addition 覆盖内置 OAuth 凭据（产品化时使用自有应用）
+    const overrideClientId = addition.client_id
+    const overrideClientSecret = addition.client_secret
     if (platform === "android") {
-      this.clientId = ANDROID_CLIENT_ID
-      this.clientSecret = ANDROID_CLIENT_SECRET
+      this.clientId = overrideClientId || ANDROID_CLIENT_ID
+      this.clientSecret = overrideClientSecret || ANDROID_CLIENT_SECRET
       this.clientVersion = ANDROID_CLIENT_VERSION
       this.packageName = ANDROID_PACKAGE_NAME
       this.sdkVersion = ANDROID_SDK_VERSION
       this.algorithms = ANDROID_ALGORITHMS
     } else if (platform === "pc") {
-      this.clientId = PC_CLIENT_ID
-      this.clientSecret = PC_CLIENT_SECRET
+      this.clientId = overrideClientId || PC_CLIENT_ID
+      this.clientSecret = overrideClientSecret || PC_CLIENT_SECRET
       this.clientVersion = PC_CLIENT_VERSION
       this.packageName = PC_PACKAGE_NAME
       this.sdkVersion = PC_SDK_VERSION
@@ -177,8 +180,8 @@ export class PikPakApiClient {
         "MainWindow Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) PikPak/2.6.11.4955 Chrome/100.0.4896.160 Electron/18.3.15 Safari/537.36"
     } else {
       // web
-      this.clientId = WEB_CLIENT_ID
-      this.clientSecret = WEB_CLIENT_SECRET
+      this.clientId = overrideClientId || WEB_CLIENT_ID
+      this.clientSecret = overrideClientSecret || WEB_CLIENT_SECRET
       this.clientVersion = WEB_CLIENT_VERSION
       this.packageName = WEB_PACKAGE_NAME
       this.sdkVersion = WEB_SDK_VERSION

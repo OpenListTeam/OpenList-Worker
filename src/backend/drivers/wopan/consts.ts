@@ -1,3 +1,5 @@
+// 说明：DefaultClientSecret 是沃云与客户端之间的协议级 AES 密钥（服务器端固定），
+// 并非可替换的 OAuth secret，随意修改会导致请求加解密失败，请保持默认值。
 export const DefaultClientID = "1001000021"
 export const DefaultClientSecret = "XFmi9GS2hzk98jGX"
 export const DefaultAppID = "10000001"

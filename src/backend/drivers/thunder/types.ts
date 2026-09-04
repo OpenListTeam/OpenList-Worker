@@ -8,6 +8,9 @@ export interface ThunderAddition {
   space?: string
   order_by?: string
   order_direction?: string
+  /** 可选：覆盖内置 OAuth 客户端凭据（产品化时使用自有应用） */
+  client_id?: string
+  client_secret?: string
 }
 
 export interface ThunderExpertAddition {
