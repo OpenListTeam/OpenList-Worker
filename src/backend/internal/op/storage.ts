@@ -9,6 +9,7 @@ import { Driver115 } from "../../drivers/115/driver"
 import { DriverCloudreve } from "../../drivers/cloudreve_v4/driver"
 import { DriverOpenlist } from "../../drivers/openlist/driver"
 import { DriverTeldrive } from "../../drivers/teldrive/driver"
+import { DriverMediafire } from "../../drivers/mediafire/driver"
 import { Pan123Driver } from "../../drivers/123pan/driver"
 import {
   BaiduDriver,
@@ -256,6 +257,9 @@ async function createDriver(
     await driver.init?.()
   } else if (normDriver === "teldrive") {
     driver = new DriverTeldrive(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (normDriver === "mediafire") {
+    driver = new DriverMediafire(parseAddition(storageConfig))
     await driver.init?.()
   } else if (
     normDriver === "123pan" ||
