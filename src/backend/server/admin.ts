@@ -7,6 +7,7 @@ import {
   getStoreStatus,
 } from "../internal/model/db"
 import { getDriver } from "../internal/op/storage"
+import { search } from "../internal/op/search"
 import { checkAdminAuth } from "../pkg/utils"
 import { safeErrorMessage } from "../pkg/errs"
 
@@ -3914,21 +3915,176 @@ adminRouter.get("/kv/status", async (c) => {
   })
 })
 
-// Index progress stub — background indexing is not supported in stateless Workers
-adminRouter.get("/index/progress", (c) => {
+// --- Search Index / Scan ---
+// Serverless 环境无常驻后台任务，索引构建为「请求内同步遍历 + KV 缓存」。
+// 对大型存储可能耗时较长（受 Worker CPU 时限约束），但中小型部署可用；
+// 前端仍可实时搜索（search 函数递归遍历），索引缓存仅用于加速与进度展示。
+
+function indexProgress(db: any) {
+  const idx = db.search_index || {}
+  return {
+    obj_count: idx.total ?? 0,
+    is_done: idx.is_done !== false,
+    last_done_time: idx.updated_at || null,
+    error: idx.error || "",
+  }
+}
+
+// POST /api/admin/index/build — 全量重建索引（同步遍历 /）
+adminRouter.post("/index/build", async (c) => {
+  try {
+    const db = await getDb(c.env)
+    const res = await search(
+      { parent: "/", keywords: "", max_depth: 20, max_results: 2000 },
+      c.env,
+    )
+    db.search_index = {
+      items: res.content,
+      total: res.total,
+      is_done: true,
+      updated_at: new Date().toISOString(),
+      error: "",
+    }
+    await saveDb(db, c.env)
+    return c.json({
+      code: 200,
+      message: "success",
+      data: indexProgress(db),
+    })
+  } catch (e: any) {
+    return c.json(
+      { code: 500, message: safeErrorMessage(e), data: null },
+      500,
+    )
+  }
+})
+
+// POST /api/admin/index/update — 更新指定路径索引
+adminRouter.post("/index/update", async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}))
+    const paths: string[] = Array.isArray(body.paths) ? body.paths : ["/"]
+    const maxDepth = Math.min(20, Math.max(0, Number(body.max_depth) || 20))
+    const db = await getDb(c.env)
+    const prev = db.search_index?.items || []
+    // 移除旧索引中属于这些路径的条目，再重建
+    const keep = prev.filter(
+      (it: any) =>
+        !paths.some((p: string) => (it.parent || "/").startsWith(p)),
+    )
+    const res = await search(
+      { parent: "/", keywords: "", max_depth: maxDepth, max_results: 2000 },
+      c.env,
+    )
+    db.search_index = {
+      items: [...keep, ...res.content],
+      total: keep.length + res.total,
+      is_done: true,
+      updated_at: new Date().toISOString(),
+      error: "",
+    }
+    await saveDb(db, c.env)
+    return c.json({
+      code: 200,
+      message: "success",
+      data: indexProgress(db),
+    })
+  } catch (e: any) {
+    return c.json(
+      { code: 500, message: safeErrorMessage(e), data: null },
+      500,
+    )
+  }
+})
+
+// POST /api/admin/index/stop — 无后台任务，直接标记完成
+adminRouter.post("/index/stop", async (c) => {
+  const db = await getDb(c.env)
+  if (db.search_index) db.search_index.is_done = true
+  await saveDb(db, c.env)
+  return c.json({ code: 200, message: "success", data: indexProgress(db) })
+})
+
+// POST /api/admin/index/clear — 清空索引
+adminRouter.post("/index/clear", async (c) => {
+  const db = await getDb(c.env)
+  db.search_index = {
+    items: [],
+    total: 0,
+    is_done: true,
+    updated_at: new Date().toISOString(),
+    error: "",
+  }
+  await saveDb(db, c.env)
+  return c.json({ code: 200, message: "success", data: indexProgress(db) })
+})
+
+// GET /api/admin/index/progress — 索引进度
+adminRouter.get("/index/progress", async (c) => {
+  const db = await getDb(c.env)
   return c.json({
     code: 200,
     message: "success",
-    data: { total: 0, current: 0, speed: 0 },
+    data: indexProgress(db),
   })
 })
 
-// Scan progress stub — background scanning is not supported in stateless Workers
-adminRouter.get("/scan/progress", (c) => {
+// POST /api/admin/scan/start — 手动扫描（同步遍历 /）
+adminRouter.post("/scan/start", async (c) => {
+  try {
+    const db = await getDb(c.env)
+    const res = await search(
+      { parent: "/", keywords: "", max_depth: 20, max_results: 2000 },
+      c.env,
+    )
+    db.scan_result = {
+      items: res.content,
+      total: res.total,
+      is_done: true,
+      updated_at: new Date().toISOString(),
+      error: "",
+    }
+    await saveDb(db, c.env)
+    return c.json({
+      code: 200,
+      message: "success",
+      data: {
+        obj_count: res.total,
+        is_done: true,
+        last_done_time: db.scan_result.updated_at,
+        error: "",
+      },
+    })
+  } catch (e: any) {
+    return c.json(
+      { code: 500, message: safeErrorMessage(e), data: null },
+      500,
+    )
+  }
+})
+
+// POST /api/admin/scan/stop — 无后台任务，标记完成
+adminRouter.post("/scan/stop", async (c) => {
   return c.json({
     code: 200,
     message: "success",
-    data: { total: 0, current: 0, speed: 0 },
+    data: { obj_count: 0, is_done: true, last_done_time: null, error: "" },
+  })
+})
+
+// GET /api/admin/scan/progress — 扫描进度
+adminRouter.get("/scan/progress", async (c) => {
+  const db = await getDb(c.env)
+  const scan = db.scan_result || {}
+  return c.json({
+    code: 200,
+    message: "success",
+    data: {
+      obj_count: scan.total ?? 0,
+      is_done: scan.is_done !== false,
+      last_done_time: scan.updated_at || null,
+      error: scan.error || "",
+    },
   })
 })
 
