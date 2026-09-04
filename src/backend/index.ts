@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { setupRouter } from "./server/router"
 import { rawRouter } from "./server/raw"
 import { assetsRouter } from "./server/assets"
+import { webdavRouter } from "./server/webdav"
 import { setEnvCtx } from "./internal/model/db"
 
 const app = new Hono()
@@ -29,6 +30,9 @@ app.route("/p", rawRouter)
 
 // 内嵌品牌资源（logo/favicon），必须在 SPA 兜底 app.all("*") 之前挂载
 app.route("/", assetsRouter)
+
+// WebDAV 协议服务（/dav/*），必须在 SPA 兜底之前挂载
+app.route("/dav", webdavRouter)
 
 // SPA 兜底 HTML（由 EdgeOne 入口 api/_makers.ts 在构建期注入 dist/index.html；
 // 其他平台入口不注入，保持原有 ASSETS / 404 行为）
