@@ -1,164 +1,161 @@
-# 前端统一方案：GO / TS 双后端兼容
+# 前端统一：OpenListNext 后端使用官方前端产物
 
-> 目标：以官方前端 `OpenList-Frontend` 为基准，统一成**一套前端代码**，通过"后端模式"机制同时兼容
-> **Go 版 OpenList 后端**（端口 5244）与 **OpenList 的 Hono 后端**（TSWorker），避免两套前端各自漂移。
-
----
-
-## 1. 背景与目标
-
-当前存在两份前端：
-
-| 前端     | 仓库                                | 对接后端                           | 版本             |
-| -------- | ----------------------------------- | ---------------------------------- | ---------------- |
-| 官方前端 | `OpenList-Frontend`                 | Go 版 OpenList（`localhost:5244`） | 4.2.4 / MIT      |
-| 当前前端 | `OpenList-TSWorker/src`（前端部分） | Hono 后端（内嵌 dev server）       | 4.2.3 / AGPL-3.0 |
-
-两者已**双向分叉**：官方新增了 S3 设置、任务管理；TS 新增了插件、分片上传、中文翻译。
-
-**目标**：把 TS 前端换成官方前端，并反向把 TS 独有功能合并进官方前端，最终通过运行时"模式探测"让同一份构建产物在两种后端下正确显示/屏蔽功能。
+> 目标：OpenListNext（TSWorker / Cloudflare Workers）后端**不再维护内嵌前端源码**，
+> 前端统一由官方仓库 `OpenList-Frontend` 提供，通过后端 `/api/public/settings` 返回的
+> `backend` 字段在运行时探测 **GO / TS 模式**，同一份前端产物兼容两种后端。
 
 ---
 
-## 2. 差异分析
-
-### 2.1 文件结构差异（前端 `src/`，排除 backend）
-
-- 官方 243 文件，TS 前端 254 文件。
-- 内容有差异的文件共 **108+ 个**：
+## 1. 架构
 
 ```
-app        : 5 文件   +233/-55
-components : 10 文件  +399/-266
-hooks      : 6 文件   +97/-96
-pages      : 66 文件  +2887/-2776  ← 最大
-store      : 3 文件   +96/-36
-types      : 6 文件   +65/-6
-utils      : 12 文件  +832/-64
+┌─────────────────────────────────────────────────────────┐
+│  官方前端 OpenList-Frontend（唯一前端源码）              │
+│  · src/utils/backend.ts   运行时探测 GO/TS 模式          │
+│  · 构建产物 dist/ 是通用的                                │
+└────────────────────────┬────────────────────────────────┘
+                         │ 构建产物 dist/
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│  OpenListNext (TSWorker) 后端                            │
+│  · src/backend/   Hono worker（自包含，不依赖前端源码）   │
+│  · dist/          前端静态资源（由 fetch-frontend 拉取）  │
+│  · build-edge.mjs esbuild 打包后端 + 内联 dist/index.html │
+└─────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 官方独有（TS 无）
+### 模式探测
 
-- `pages/manage/settings/S3.tsx`、`S3BucketItem.tsx`、`S3Buckets.tsx` — S3 设置
-- `pages/manage/tasks/`（10 文件）— 任务管理 UI（Aria2/Qbit/离线下载/复制/移动/解压/上传）
-- `lang/en/tasks.json`、`pages/test/index.tsx`
+后端 `/api/public/settings` 返回 `backend: "ts-worker"`（Go 后端不返回该字段，前端缺省视为 `"go"`）。
 
-### 2.3 TS 独有（官方无）
-
-- `lang/zh-CN/`（18 文件）— 中文翻译
-- `pages/manage/plugins/`（4 文件）+ `types/plugin.ts` + `utils/plugin_engine.ts` + `utils/zip_plugin.ts` — 插件系统
-- `pages/home/uploads/chunked.ts` — 分片上传
-- `components/Face404.tsx`
-
-### 2.4 关键契约差异
-
-| 项            | 官方                     | TS                       |
-| ------------- | ------------------------ | ------------------------ |
-| 全局配置对象  | `window.OPENLIST_CONFIG` | `window.OPENLIST_CONFIG` |
-| 后端 API 前缀 | `/api`（proxy → 5244）   | `/api`（内嵌 Hono）      |
-| `r` 导出位置  | `~/utils`（index.ts）    | `~/utils/request.ts`     |
-| 防缓存参数    | `openlist_ts`            | `openlist_ts`            |
-| 默认语言      | `en`                     | `zh-CN`                  |
+- **TS 模式**：启用插件、会话分片上传、Face404；屏蔽 S3 设置、任务管理、multipart。
+- **GO 模式**：启用 S3、任务管理、multipart；屏蔽插件、会话分片上传、Face404。
 
 ---
 
-## 3. 模式机制设计（核心）
+## 2. 前端产物获取（`scripts/fetch-frontend.mjs`）
 
-### 3.1 探测方式
+优先级（高 → 低）：
 
-**后端 `/api/public/settings` 返回里新增 `backend` 字段**，零额外请求：
+| 来源           | 环境变量                                   | 说明                                                  |
+| -------------- | ------------------------------------------ | ----------------------------------------------------- |
+| 本地已构建产物 | `FRONTEND_DIST=/path/to/dist`              | 最快，CI 缓存场景                                     |
+| 本地前端仓库   | `FRONTEND_REPO=/path/to/OpenList-Frontend` | 显式指定，自动 `install + build`                      |
+| 同级目录探测   | （自动）                                   | `../OpenList-Frontend`，monorepo 布局自动复用         |
+| Git 克隆       | （默认兜底）                               | 克隆 `OpenListTeam/OpenList-Frontend.git#main` 并构建 |
 
-- TS 后端：`backend: "ts-worker"`（见 `src/backend/server/public.ts`）
-- GO 后端：不返回该字段（缺省视为 `"go"`）
+```bash
+# 使用本地官方前端仓库（开发常用，显式指定）
+FRONTEND_REPO=../OpenList-Frontend npm run fetch:frontend
 
-前端在 `setSettings()` 里读取该字段，写入 `src/utils/backend.ts` 的单例状态。
+# 或直接用已构建好的产物
+FRONTEND_DIST=../OpenList-Frontend/dist npm run fetch:frontend
 
-### 3.2 API
+# 或什么都不指定：自动探测同级 ../OpenList-Frontend，否则 Git 克隆 main
+npm run fetch:frontend
 
-```ts
-// src/utils/backend.ts
-export type BackendKind = "go" | "ts-worker"
-export const setBackendKind = (k: BackendKind): void
-export const getBackendKind = (): BackendKind       // 默认 "go"
-export const isTsWorker = (): boolean
-export const isGo = (): boolean
+# CI/部署：指定官方前端分支（例如功能未合并进 main 时）
+FRONTEND_GIT_REF=feat/ts-backend-compat npm run fetch:frontend
 ```
 
-> 兜底：若 settings 未返回 `backend`，也可在 `detectBackendKind()` 里探测 TS 独有接口
-> `/api/public/plugins`（存在即 `ts-worker`）。当前首选字段探测，接口探测作为回退。
+> 注意：`fetch-frontend.mjs` 始终以仓库根目录为基准（基于 `__dirname`），
+> 与调用时的 cwd 无关，因此 `deploy.js` 通过 `run()` 调用时也能正确工作。
 
-### 3.3 使用方式
+---
 
-```tsx
-// 菜单/路由里屏蔽
-import { isTsWorker, isGo } from "~/utils/backend"
+## 3. 构建流程
 
-const items = baseItems.filter((item) => (item.tsOnly ? isTsWorker() : true))
+```bash
+npm run build          # fetch-frontend + build-edge（新流程，后端 + 官方前端）
+npm run build:edge     # 仅 esbuild 打包后端（假设 dist/ 已就绪）
+npm run build:local    # 旧流程（本地 vite build 前端 + build-edge），过渡期回退
 ```
 
----
+### 部署
 
-## 4. 功能对照与屏蔽策略
+```bash
+npm run deploy          # scripts/deploy.js：确保 KV + fetch-frontend + wrangler deploy
+npm run deploy:worker   # 直接 wrangler deploy（跳过 KV 确保与前端构建）
+node scripts/deploy.js --skip-build   # 跳过前端获取（dist/ 已就绪时）
+```
 
-| 功能                | GO 模式        | TS 模式        | 处理                                                                 |
-| ------------------- | -------------- | -------------- | -------------------------------------------------------------------- |
-| 插件（plugins）     | 隐藏           | 显示           | TS 独有，合并进统一前端，GO 模式屏蔽                                 |
-| 分片上传（chunked） | 隐藏/回退      | 显示           | 两边都支持，都保留；TS 用会话分片，GO 用流式。文档注明以 GO 接口为准 |
-| S3 设置             | 显示           | 隐藏           | GO 独有，TS 模式屏蔽                                                 |
-| 任务管理（tasks）   | 显示           | 隐藏           | GO 独有，TS 模式屏蔽（TS 后端无后台任务）                            |
-| Face404             | 隐藏           | 显示           | TS 独有，GO 模式屏蔽                                                 |
-| 中文翻译（zh-CN）   | 用官方自动翻译 | 用官方自动翻译 | 去除本地手写 zh-CN，走官方 crowdin 流程                              |
+> `deploy.js` 已从前端迁移前的老前端构建（`npx vite build`）切换为
+> `fetch-frontend.mjs`（官方前端产物）。老前端源码仍保留在 `src/`，供 `build:local` 回退。
 
-### 4.1 屏蔽实现点
+`build-edge.mjs` 输出：
 
-- `pages/manage/sidemenu_items.tsx`：按 `isTsWorker()`/`isGo()` 过滤菜单项。
-- `pages/manage/routes.tsx`：按模式过滤路由。
-- 上传入口：根据模式选择 `ChunkedUpload` 或 `StreamUpload`。
+- `dist-server/api/[...route].js`（EdgeOne / Vercel / Serverless）
+- `cloud-functions/[[default]].js`（内联 `dist/index.html` 作 SPA 兜底）
+- `dist/esa-entry.js`（阿里云 ESA，若 `esa-entry.ts` 存在）
 
----
-
-## 5. 分阶段实施计划
-
-1. **阶段 0 — 基础设施**（低风险）
-   - [x] 后端 `/public/settings` 增加 `backend` 字段
-   - [x] 新增 `src/utils/backend.ts` 模式模块
-   - [x] `setSettings` 接入模式写入
-   - [x] 本方案文档
-2. **阶段 1 — 以官方前端为基准同步**（高风险，需逐步 + 编译验证）
-   - 用官方前端 `src/`（app/components/hooks/pages/store/types/utils/lang）覆盖 TS 对应目录
-   - 保留 TS 独有目录：`pages/manage/plugins/`、`utils/plugin_engine.ts`、`utils/zip_plugin.ts`、`types/plugin.ts`、`pages/home/uploads/chunked.ts`、`components/Face404.tsx`
-   - 适配 `vite.config.ts`（保留 TS 的 `@hono/vite-dev-server`，叠加官方的 `dynamicBase` 等）
-3. **阶段 2 — 模式屏蔽**：菜单/路由/上传入口按模式开关
-4. **阶段 3 — 翻译**：去除 `lang/zh-CN`，接入官方 crowdin（或拉取官方翻译产物）
-5. **阶段 4 — 插件调整**：复核插件引擎在统一前端下的可用性（接口/权限模型）
+`wrangler.toml` 的 `[assets] directory = "./dist"` 直接提供前端静态资源，无需改动。
 
 ---
 
-## 6. 翻译方案
+## 4. 开发（dev）流程
 
-- 官方采用 crowdin 自动翻译（`lang/en` 为源，其他语言由 CI 生成）。
-- TS 本地手写的 `lang/zh-CN` 将被**移除**，改由官方翻译流程产出。
-- 过渡期：若 crowdin 尚未产出中文，可临时保留 zh-CN 字典作为 fallback，但标记为待废弃。
+### 方式 A：后端一体化（`dev:unified`）
+
+```bash
+npm run dev:unified   # fetch-frontend + wrangler dev（serve dist + worker，默认 8787）
+```
+
+### 方式 B：前后端分离（前端热更新）
+
+```bash
+# 终端 1：后端
+npm run dev:worker    # wrangler dev，监听 8787
+
+# 终端 2：官方前端（在 OpenList-Frontend 仓库）
+DEV_PROXY_TARGET=http://localhost:8787 pnpm dev   # vite dev，/api 代理到 TS 后端
+```
+
+> 官方前端 `vite.config.ts` 已支持 `DEV_PROXY_TARGET`；不设置时默认代理到 Go 后端 `5244`。
 
 ---
 
-## 7. 插件调整（TS 独有，保留）
+## 5. 以 GO 为准的原则
 
-- 插件系统（`plugin_engine.ts` + `pages/manage/plugins`）整体保留，仅 TS 模式启用。
-- 需复核：统一前端后 `r`、`bus`、`notify` 的导入路径；插件权限模型与后端 `/api/public/plugins`、`/api/admin/plugin/*` 的契约。
-- 实现方式后续可能调整（对齐 GO 后端若将来引入插件能力）。
-
----
-
-## 8. 以 GO 为准的原则
-
-- **分片上传 / S3**：两边都实现时，统一后以 **GO 后端的接口与逻辑为准**；TS 后端逐步对齐 GO 接口。
-- 后续新增能力，优先遵循 GO 版 OpenList 的 API 契约，TS 后端适配之。
+- **分片上传 / S3**：两边都实现时，统一后以 **Go 后端的接口与逻辑为准**；TS 后端逐步对齐。
+  - Go：`multipart.ts`（MultipartUpload）
+  - TS：`chunked.ts`（ChunkedUpload，会话式，为 Workers 环境设计）
+- 新增能力优先遵循 Go 版 API 契约，TS 后端适配之。
 
 ---
 
-## 9. 风险与回滚
+## 6. 待办（渐进迁移）
 
-- 覆盖 100+ 文件，务必在 git 干净状态下分阶段提交，每阶段 `npm run lint` + `npm run build` 验证。
-- 保留 TS 独有目录，避免功能丢失。
-- `window.OPENLIST_CONFIG` 与 `OPENLIST_CONFIG` 统一：保留官方名 `OPENLIST_CONFIG`，TS 的 `index.html` 同步改名。
+> 老前端源码（`src/` 前端部分 + `index.html` + `vite.config.ts` + `build.sh` + 前端发布 CI）
+> **暂时保留**作为回退，待官方前端产物在线上稳定运行后再移除。
+
+- [ ] 前端源码移除（`src/` 中除 `backend/` 外的文件、`index.html`）
+- [ ] 移除前端发布 CI（`build_pr.yml` / `build_rolling.yml` / `build_release.yml`）与 `build.sh`
+- [ ] 移除 `vite.config.ts` 前端插件与 `build:local` / `build:lite`（过渡期后）
+- [ ] 翻译：官方 crowdin 流程产出，TS 后端不再本地维护 `lang/zh-CN`
+- [ ] CI 部署时设置 `FRONTEND_GIT_REF`（或 `FRONTEND_REPO`），确保拉取含双后端兼容的官方前端版本
+
+---
+
+## 7. 测试清单
+
+```bash
+# 1. 官方前端：类型检查 + 构建
+cd OpenList-Frontend
+pnpm install
+pnpm run lint        # tsc --noEmit
+pnpm run build       # 产出 dist/
+
+# 2. 后端：拉取前端产物 + 打包后端
+cd ../OpenList-TSWorker
+pnpm install
+FRONTEND_REPO=../OpenList-Frontend npm run fetch:frontend
+npm run build:edge
+
+# 3. 本地端到端（Cloudflare Workers 模拟）
+npm run dev:worker   # wrangler dev → http://localhost:8787
+#   浏览器打开，验证：登录、文件浏览、上传（会话分片）、插件菜单（TS 模式）
+#   并确认 S3 / 任务管理菜单在 TS 模式下被隐藏
+
+# 4. 单元测试
+npm run test:189
+```

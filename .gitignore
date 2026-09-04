@@ -17,3 +17,5 @@ public_data/
 .env
 .env.local
 .env.*.local
+.wrangler
+wrangler_dev.log
