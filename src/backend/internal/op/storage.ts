@@ -25,6 +25,7 @@ import { DriverChaoXing } from "../../drivers/chaoxing/driver"
 import { DriverGooglePhoto } from "../../drivers/google_photo/driver"
 import { DriverFebBox } from "../../drivers/febbox/driver"
 import { DriverDegoo } from "../../drivers/degoo/driver"
+import { DriverNeteaseMusic } from "../../drivers/netease_music/driver"
 import { Pan123Driver } from "../../drivers/123pan/driver"
 import {
   BaiduDriver,
@@ -344,6 +345,14 @@ async function createDriver(
     await driver.init?.()
   } else if (normDriver === "teambition" || normDriver === "tb") {
     driver = new DriverTeambition(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (
+    normDriver === "neteasemusic" ||
+    normDriver === "netease" ||
+    normDriver === "neteasecloudmusic" ||
+    normDriver === "netease_music"
+  ) {
+    driver = new DriverNeteaseMusic(parseAddition(storageConfig))
     await driver.init?.()
   } else if (normDriver === "degoo") {
     const addition = parseAddition(storageConfig)
