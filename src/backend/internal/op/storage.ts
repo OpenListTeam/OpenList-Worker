@@ -22,6 +22,7 @@ import { DriverQuarkUcTv } from "../../drivers/quark_uc_tv/driver"
 import { Driver123Open } from "../../drivers/123_open/driver"
 import { DriverTeambition } from "../../drivers/teambition/driver"
 import { DriverChaoXing } from "../../drivers/chaoxing/driver"
+import { DriverGooglePhoto } from "../../drivers/google_photo/driver"
 import { Pan123Driver } from "../../drivers/123pan/driver"
 import {
   BaiduDriver,
@@ -228,6 +229,14 @@ async function createDriver(
   ) {
     // 统一只保留阿里云盘 OAuth2 (AliyundriveOpen)
     driver = new AliyundriveOpen(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (
+    normDriver === "googlephoto" ||
+    normDriver === "googlephotos" ||
+    normDriver === "gphoto" ||
+    normDriver === "google_photo"
+  ) {
+    driver = new DriverGooglePhoto(parseAddition(storageConfig))
     await driver.init?.()
   } else if (
     normDriver === "googledrive" ||
