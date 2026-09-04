@@ -21,6 +21,7 @@ import { DriverQuarkOpen } from "../../drivers/quark_open/driver"
 import { DriverQuarkUcTv } from "../../drivers/quark_uc_tv/driver"
 import { Driver123Open } from "../../drivers/123_open/driver"
 import { DriverTeambition } from "../../drivers/teambition/driver"
+import { DriverChaoXing } from "../../drivers/chaoxing/driver"
 import { Pan123Driver } from "../../drivers/123pan/driver"
 import {
   BaiduDriver,
@@ -272,7 +273,10 @@ async function createDriver(
   } else if (normDriver === "mediafire") {
     driver = new DriverMediafire(parseAddition(storageConfig))
     await driver.init?.()
-  } else if (normDriver === "githubreleases" || normDriver === "github_releases") {
+  } else if (
+    normDriver === "githubreleases" ||
+    normDriver === "github_releases"
+  ) {
     driver = new DriverGithubReleases(parseAddition(storageConfig))
     await driver.init?.()
   } else if (normDriver === "cnbreleases" || normDriver === "cnb_releases") {
@@ -281,10 +285,17 @@ async function createDriver(
   } else if (normDriver === "kodbox" || normDriver === "kodo") {
     driver = new DriverKodbox(parseAddition(storageConfig))
     await driver.init?.()
-  } else if (normDriver === "ipfs" || normDriver === "ipfsapi" || normDriver === "ipfs_api") {
+  } else if (
+    normDriver === "ipfs" ||
+    normDriver === "ipfsapi" ||
+    normDriver === "ipfs_api"
+  ) {
     driver = new DriverIpfs(parseAddition(storageConfig))
     await driver.init?.()
-  } else if (normDriver === "lenovonasshare" || normDriver === "lenovonas_share") {
+  } else if (
+    normDriver === "lenovonasshare" ||
+    normDriver === "lenovonas_share"
+  ) {
     driver = new DriverLenovoNasShare(parseAddition(storageConfig))
     await driver.init?.()
   } else if (normDriver === "misskey") {
@@ -299,17 +310,55 @@ async function createDriver(
   ) {
     driver = new DriverDoubao(parseAddition(storageConfig))
     await driver.init?.()
-  } else if (normDriver === "quarkopen" || normDriver === "quark_open" || normDriver === "quarkoa") {
+  } else if (
+    normDriver === "quarkopen" ||
+    normDriver === "quark_open" ||
+    normDriver === "quarkoa"
+  ) {
     driver = new DriverQuarkOpen(parseAddition(storageConfig))
     await driver.init?.()
-  } else if (normDriver === "quarktv" || normDriver === "uctv" || normDriver === "quark_uc_tv") {
+  } else if (
+    normDriver === "quarktv" ||
+    normDriver === "uctv" ||
+    normDriver === "quark_uc_tv"
+  ) {
     driver = new DriverQuarkUcTv(parseAddition(storageConfig))
     await driver.init?.()
-  } else if (normDriver === "123open" || normDriver === "123_open" || normDriver === "123cloudopen") {
+  } else if (
+    normDriver === "123open" ||
+    normDriver === "123_open" ||
+    normDriver === "123cloudopen"
+  ) {
     driver = new Driver123Open(parseAddition(storageConfig))
     await driver.init?.()
   } else if (normDriver === "teambition" || normDriver === "tb") {
     driver = new DriverTeambition(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (
+    normDriver === "chaoxing" ||
+    normDriver === "chaoxinggroupdrive" ||
+    normDriver === "chaoxinggroup" ||
+    normDriver.startsWith("chaoxing")
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new DriverChaoXing(addition, async (cookie: string) => {
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        stAddition.cookie = cookie
+        st.addition = JSON.stringify(stAddition)
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[chaoxing] failed to persist cookie:", e)
+      }
+    })
     await driver.init?.()
   } else if (
     normDriver === "123pan" ||

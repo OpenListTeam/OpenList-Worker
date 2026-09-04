@@ -245,3 +245,51 @@ export function randomString(length: number): string {
   const bytes = crypto.getRandomValues(new Uint8Array(Math.ceil(length / 2)))
   return hexEncode(bytes.buffer).slice(0, length)
 }
+
+/**
+ * AES-CBC + PKCS7 encrypt, returns base64.
+ * Used by chaoxing login (key = "u2oh6Vu^HWe4_AES", IV = key).
+ * Web Crypto supports AES-CBC with 128/192/256-bit keys.
+ *
+ * NOTE: the standard WebCrypto (Cloudflare Workers, browsers) does NOT apply
+ * PKCS#7 padding automatically — non-block-aligned input throws. Node's
+ * `crypto.subtle` (undici/webcrypto) DOES auto-pad. To behave identically in
+ * both runtimes, we pad manually only outside Node.
+ */
+export async function aesCbcEncryptBase64(
+  plaintext: string,
+  key: string,
+  iv?: string,
+): Promise<string> {
+  const keyBytes = toBytes(key)
+  const ivBytes = iv ? toBytes(iv) : keyBytes
+  const keyMat = await crypto.subtle.importKey(
+    "raw",
+    keyBytes,
+    { name: "AES-CBC" },
+    false,
+    ["encrypt"],
+  )
+  const pt = toBytes(plaintext) as Uint8Array
+  const isNode =
+    typeof process !== "undefined" && process?.release?.name === "node"
+  const data = isNode ? pt : pkcs7Pad(pt)
+  const cipherBuf = await crypto.subtle.encrypt(
+    { name: "AES-CBC", iv: ivBytes as any },
+    keyMat,
+    data as any,
+  )
+  const bytes = new Uint8Array(cipherBuf)
+  let binary = ""
+  for (const b of bytes) binary += String.fromCharCode(b)
+  return btoa(binary)
+}
+
+/** PKCS#7 padding for AES-CBC (block size 16). */
+function pkcs7Pad(pt: Uint8Array, blockSize = 16): Uint8Array {
+  const padLen = blockSize - (pt.length % blockSize)
+  const padded = new Uint8Array(pt.length + padLen)
+  padded.set(pt)
+  padded.fill(padLen, pt.length)
+  return padded
+}
