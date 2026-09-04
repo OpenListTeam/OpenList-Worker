@@ -14,6 +14,7 @@ import { DriverGithubReleases } from "../../drivers/github_releases/driver"
 import { DriverCnbReleases } from "../../drivers/cnb_releases/driver"
 import { DriverKodbox } from "../../drivers/kodbox/driver"
 import { DriverIpfs } from "../../drivers/ipfs_api/driver"
+import { DriverLenovoNasShare } from "../../drivers/lenovonas_share/driver"
 import { Pan123Driver } from "../../drivers/123pan/driver"
 import {
   BaiduDriver,
@@ -276,6 +277,9 @@ async function createDriver(
     await driver.init?.()
   } else if (normDriver === "ipfs" || normDriver === "ipfsapi" || normDriver === "ipfs_api") {
     driver = new DriverIpfs(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (normDriver === "lenovonasshare" || normDriver === "lenovonas_share") {
+    driver = new DriverLenovoNasShare(parseAddition(storageConfig))
     await driver.init?.()
   } else if (
     normDriver === "123pan" ||
