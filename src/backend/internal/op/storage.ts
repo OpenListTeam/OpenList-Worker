@@ -69,6 +69,7 @@ import { VirtualDriver } from "../../drivers/virtual/driver"
 import { AListV3Driver } from "../../drivers/alist_v3/driver"
 import { UrlTreeDriver } from "../../drivers/url_tree/driver"
 import { StrmDriver } from "../../drivers/strm/driver"
+import { ChunkDriver } from "../../drivers/chunk/driver"
 import { AzureBlobDriver } from "../../drivers/azure_blob/driver"
 import { UssDriver } from "../../drivers/uss/driver"
 
@@ -989,6 +990,10 @@ async function createDriver(
   } else if (normDriver === "strm") {
     const addition = parseAddition(storageConfig)
     driver = new StrmDriver(addition)
+    await driver.init?.()
+  } else if (normDriver === "chunk") {
+    const addition = parseAddition(storageConfig)
+    driver = new ChunkDriver(addition)
     await driver.init?.()
   } else if (
     normDriver === "azureblob" ||
