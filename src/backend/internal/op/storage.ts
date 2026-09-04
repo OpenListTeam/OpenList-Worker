@@ -6,6 +6,7 @@ import { AliyundriveOpen } from "../../drivers/aliyundrive_open/driver"
 import { GoogleDrive } from "../../drivers/google_drive/driver"
 import { QuarkDriver } from "../../drivers/quark/driver"
 import { Driver115 } from "../../drivers/115/driver"
+import { DriverCloudreve } from "../../drivers/cloudreve_v4/driver"
 import { Pan123Driver } from "../../drivers/123pan/driver"
 import {
   BaiduDriver,
@@ -236,6 +237,13 @@ async function createDriver(
     normDriver === "115netdisk"
   ) {
     driver = new Driver115(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (
+    normDriver === "cloudreve" ||
+    normDriver === "cloudrevev4" ||
+    normDriver === "cloudreve_v4"
+  ) {
+    driver = new DriverCloudreve(parseAddition(storageConfig))
     await driver.init?.()
   } else if (
     normDriver === "123pan" ||
