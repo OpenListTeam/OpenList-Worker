@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import { getDb } from "../internal/model/db"
+import { getDb, getStoreStatus } from "../internal/model/db"
 import { checkAdminAuth } from "../pkg/utils"
 
 export const debugRouter = new Hono()
@@ -14,6 +14,7 @@ debugRouter.get("/info", async (c) => {
   }
 
   if (isAdmin) {
+    responseData.store = await getStoreStatus(c.env)
     responseData.db_state = {
       storages_count: db.storages?.length || 0,
       users_count: db.users?.length || 0,

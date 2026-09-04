@@ -126,7 +126,8 @@
     "solid-transition-group": "^0.3.0",
     "ssh2": "^1.17.0",
     "streamsaver": "^2.0.6",
-    "typescript-natural-sort": "^0.7.2"
+    "typescript-natural-sort": "^0.7.2",
+    "mysql2": "^3.11.0"
   },
   "lint-staged": {
     "**/*.{js,ts,css,tsx,jsx,md,html,yml,yaml}": "prettier --write"

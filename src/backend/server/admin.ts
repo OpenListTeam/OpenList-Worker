@@ -1,5 +1,11 @@
 import { Hono } from "hono"
-import { getDb, saveDb, defaultDb, getKvStatus } from "../internal/model/db"
+import {
+  getDb,
+  saveDb,
+  defaultDb,
+  getKvStatus,
+  getStoreStatus,
+} from "../internal/model/db"
 import { getDriver } from "../internal/op/storage"
 import { checkAdminAuth } from "../pkg/utils"
 import { safeErrorMessage } from "../pkg/errs"
@@ -16,12 +22,60 @@ adminRouter.use("*", async (c, next) => {
   await next()
 })
 
+// ---- 敏感字段脱敏工具 ----
+// 网盘 token/secret/cookie 等敏感字段不应在管理接口中明文回显，
+// 列表/详情统一脱敏，仅保留首尾片段便于辨识。
+const SENSITIVE_KEY_PATTERN = /token|secret|password|passwd|cookie|credit|key/i
+
+function maskSecretValue(value: unknown): unknown {
+  if (typeof value !== "string" || value.length === 0) return value
+  if (value.length <= 8) return "******"
+  return `${value.slice(0, 4)}******${value.slice(-4)}`
+}
+
+function maskAddition(addition: any): any {
+  if (!addition || typeof addition !== "object") return addition
+  const copy = Array.isArray(addition) ? [...addition] : { ...addition }
+  for (const k of Object.keys(copy)) {
+    if (SENSITIVE_KEY_PATTERN.test(k)) {
+      copy[k] = maskSecretValue(copy[k])
+    }
+  }
+  return copy
+}
+
+// 生成密码学安全的随机 token（替代 Math.random）
+function generateSecureToken(length = 32): string {
+  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+  const bytes = new Uint8Array(length)
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.getRandomValues === "function"
+  ) {
+    crypto.getRandomValues(bytes)
+  } else {
+    // 极端兜底（几乎不会走到）：混入时间戳降低可预测性
+    for (let i = 0; i < length; i++) {
+      bytes[i] = ((Math.random() * 256) | 0) ^ (Date.now() & 0xff)
+    }
+  }
+  let res = ""
+  for (let i = 0; i < length; i++) {
+    res += chars.charAt(bytes[i] % chars.length)
+  }
+  return res
+}
+
 adminRouter.get("/storage/list", async (c) => {
   const db = await getDb(c.env)
+  const content = (db.storages || []).map((s: any) => ({
+    ...s,
+    addition: maskAddition(s.addition),
+  }))
   return c.json({
     code: 200,
     message: "success",
-    data: { content: db.storages, total: db.storages.length },
+    data: { content, total: content.length },
   })
 })
 
@@ -68,7 +122,11 @@ adminRouter.get("/storage/get", async (c) => {
   if (!storage) {
     return c.json({ code: 404, message: "storage not found", data: null })
   }
-  return c.json({ code: 200, message: "success", data: storage })
+  return c.json({
+    code: 200,
+    message: "success",
+    data: { ...storage, addition: maskAddition(storage.addition) },
+  })
 })
 
 export const normalizeDriver = (driverName: string): string => {
@@ -3533,24 +3591,52 @@ adminRouter.get("/setting/list", async (c) => {
     settings = settings.filter((s: any) => groupNums.includes(s.group))
   }
 
-  return c.json({ code: 200, message: "success", data: settings })
+  // 敏感设置项（token / sso_client_secret 等）脱敏，避免明文回显
+  const data = settings.map((s: any) =>
+    SENSITIVE_KEY_PATTERN.test(String(s.key || ""))
+      ? { ...s, value: maskSecretValue(s.value) }
+      : s,
+  )
+
+  return c.json({ code: 200, message: "success", data })
 })
 
 adminRouter.post("/setting/save", async (c) => {
   const body = await c.req.json().catch(() => [])
+  if (!Array.isArray(body)) {
+    return c.json({ code: 400, message: "body must be an array", data: null })
+  }
   const db = await getDb(c.env)
   if (!db.settings) {
     db.settings = []
   }
   for (const item of body) {
-    const idx = db.settings.findIndex((s: any) => s.key === item.key)
+    // 仅接受已知字段与基本类型，防止类型混淆 / 原型污染 / 嵌套对象注入
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue
+    const key = item.key
+    if (typeof key !== "string" || key.length === 0 || key.length > 128)
+      continue
+
+    let value = item.value
+    if (value !== null && typeof value === "object") {
+      value = JSON.stringify(value)
+    }
+
+    const idx = db.settings.findIndex((s: any) => s.key === key)
     if (idx !== -1) {
-      db.settings[idx].value = item.value
-      if (item.group !== undefined) {
+      db.settings[idx].value = value
+      if (typeof item.group === "number") {
         db.settings[idx].group = item.group
       }
     } else {
-      db.settings.push(item)
+      db.settings.push({
+        key,
+        value,
+        type: typeof item.type === "string" ? item.type : "string",
+        help: typeof item.help === "string" ? item.help : "",
+        group: typeof item.group === "number" ? item.group : 0,
+        flag: typeof item.flag === "number" ? item.flag : 0,
+      })
     }
   }
 
@@ -3596,41 +3682,6 @@ adminRouter.post("/setting/delete", async (c) => {
   db.settings = (db.settings || []).filter((s: any) => s.key !== key)
   await saveDb(db, c.env)
   return c.json({ code: 200, message: "success", data: null })
-})
-
-function randomAdminToken(length = 32): string {
-  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-  let res = ""
-  for (let i = 0; i < length; i++) {
-    res += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return res
-}
-
-adminRouter.post("/setting/reset_token", async (c) => {
-  const db = await getDb(c.env)
-  const token = randomAdminToken(32)
-
-  const idx = (db.settings || []).findIndex((s: any) => s.key === "token")
-  if (idx !== -1) {
-    db.settings[idx].value = token
-    if (db.settings[idx].group !== 5 && db.settings[idx].group !== 0) {
-      db.settings[idx].group = 5
-    }
-  } else {
-    if (!db.settings) db.settings = []
-    db.settings.push({
-      key: "token",
-      value: token,
-      type: "string",
-      help: "115 / PikPak / Thunder Token",
-      group: 5,
-      flag: 0,
-    })
-  }
-
-  await saveDb(db, c.env)
-  return c.json({ code: 200, message: "success", data: token })
 })
 
 const updateSettingValue = async (
@@ -3718,11 +3769,7 @@ adminRouter.post("/setting/set_thunderx", async (c) => {
 })
 
 adminRouter.post("/setting/reset_token", async (c) => {
-  const newToken =
-    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? crypto.randomUUID().replace(/-/g, "")
-      : Math.random().toString(36).substring(2) +
-        Math.random().toString(36).substring(2)
+  const newToken = generateSecureToken(32)
   await updateSettingValue(c.env, { token: newToken })
   return c.json({ code: 200, message: "success", data: newToken })
 })
@@ -3856,11 +3903,14 @@ import { userRouter } from "./user"
 adminRouter.route("/user", userRouter)
 
 adminRouter.get("/kv/status", async (c) => {
-  const statusData = await getKvStatus(c.env)
+  const [statusData, storeStatus] = await Promise.all([
+    getKvStatus(c.env),
+    getStoreStatus(c.env),
+  ])
   return c.json({
     code: 200,
     message: "success",
-    data: statusData,
+    data: { ...statusData, store: storeStatus },
   })
 })
 

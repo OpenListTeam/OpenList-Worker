@@ -19,8 +19,11 @@ const emptyNodeDriverPlugin = {
     build.onResolve({ filter: /drivers[\\/](sftp|ftp)([\\/].*)?$/ }, (args) => {
       return { path: args.path, namespace: "empty-node-driver" }
     })
-    // 拦截直接引用 ssh2 / cpu-features / iconv-lite
+    // 拦截直接引用 ssh2 / cpu-features / iconv-lite / mysql2
     build.onResolve({ filter: /^(ssh2|cpu-features|iconv-lite)(\/.*)?$/ }, (args) => {
+      return { path: args.path, namespace: "empty-node-driver" }
+    })
+    build.onResolve({ filter: /^mysql2(\/.*)?$/ }, (args) => {
       return { path: args.path, namespace: "empty-node-driver" }
     })
     build.onLoad(
@@ -28,13 +31,14 @@ const emptyNodeDriverPlugin = {
       () => {
         return {
           contents: `
-// Empty stub for Edge/CloudFunction build — Node-only drivers (sftp/ftp/ssh2) are not available in edge/serverless isolates.
+// Empty stub for Edge/CloudFunction build — Node-only drivers (sftp/ftp/ssh2/mysql2) are not available in edge/serverless isolates.
 export const SFTPDriver = class { constructor() { throw new Error("[Edge/Serverless] SFTP driver requires full Node.js runtime"); } };
 export const normalizeSFTPAddition = (v) => v;
 export const FTPDriver = class { constructor() { throw new Error("[Edge/Serverless] FTP driver requires full Node.js runtime"); } };
 export const SFTPClient = class { constructor() { throw new Error("[Edge/Serverless] SFTP client requires full Node.js runtime"); } };
 export const parseAddress = () => ({ host: "127.0.0.1", port: 22 });
 export const Client = class { constructor() { throw new Error("[Edge/Serverless] ssh2 is not available in edge/serverless runtime"); } };
+export const createPool = () => { throw new Error("[Edge/Serverless] mysql2 is not available in edge/serverless runtime"); };
 export default {};
 `,
           loader: "js",
@@ -54,7 +58,7 @@ async function build() {
     outfile: "dist-server/api/[...route].js",
     minify: true,
     format: "esm",
-    external: ["ssh2", "cpu-features", "iconv-lite"],
+    external: ["ssh2", "cpu-features", "iconv-lite", "mysql2"],
     loader: { ".node": "empty" },
     plugins: [emptyNodeDriverPlugin],
   })
@@ -67,7 +71,7 @@ async function build() {
     outfile: "cloud-functions/[[default]].js",
     minify: true,
     format: "esm",
-    external: ["ssh2", "cpu-features", "iconv-lite"],
+    external: ["ssh2", "cpu-features", "iconv-lite", "mysql2"],
     // 内联 dist/index.html 作为 SPA 兜底壳（需在 vite build 之后运行）
     loader: { ".html": "text", ".node": "empty" },
     plugins: [emptyNodeDriverPlugin],
@@ -82,7 +86,7 @@ async function build() {
       outfile: "dist/esa-entry.js",
       minify: true,
       format: "esm",
-      external: ["ssh2", "cpu-features", "iconv-lite"],
+      external: ["ssh2", "cpu-features", "iconv-lite", "mysql2"],
       loader: { ".html": "text", ".node": "empty" },
       plugins: [emptyNodeDriverPlugin],
     })

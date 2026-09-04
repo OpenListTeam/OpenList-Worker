@@ -21,6 +21,14 @@ VITE_API_URL = "/api"
 [[kv_namespaces]]
 binding = "OPENLIST_KV"
 
+# 可选：使用 Cloudflare D1 作为持久化后端（设置 DB_DRIVER=d1）。
+# 将 database_id 替换为实际 D1 数据库 ID 后取消注释。
+# 相关说明见 docs/database-backend-multi-support.md
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "openlist"
+# database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
 
 
 
