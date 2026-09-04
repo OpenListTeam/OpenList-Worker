@@ -19,24 +19,15 @@
   ],
   "homepage": "https://doc.oplist.org",
   "scripts": {
-    "crowdin:upload": "crowdin upload sources --auto-update",
-    "crowdin:download": "crowdin download --verbose",
-    "crowdin": "npm run crowdin:upload && npm run crowdin:download",
-    "i18n:build": "npm run crowdin && node ./scripts/i18n.mjs",
-    "i18n:release": "npm run crowdin:download && node ./scripts/i18n.mjs",
     "start": "node dist-server/api/[...route].js",
-    "dev": "vite --port 3000 --host 0.0.0.0",
     "fetch:frontend": "node scripts/fetch-frontend.mjs",
     "build": "node scripts/fetch-frontend.mjs && node scripts/build-edge.mjs",
-    "build:local": "vite build && node scripts/build-edge.mjs",
     "build:edge": "node scripts/build-edge.mjs",
-    "build:lite": "cross-env VITE_LITE=true vite build && node scripts/build-edge.mjs",
     "dev:unified": "node scripts/fetch-frontend.mjs && wrangler dev",
     "dev:worker": "wrangler dev",
     "deploy:worker": "wrangler deploy --yes",
     "deploy": "node scripts/deploy.js",
     "build:all": "npm run build",
-    "serve": "vite preview",
     "test:189": "tsx --test src/backend/drivers/189/*.test.ts",
     "sls:deploy": "serverless deploy",
     "sls:package": "serverless package",
@@ -44,7 +35,7 @@
     "sls:remove": "serverless remove",
     "prepare": "node -e \"if (require('fs').existsSync('.git')) { try { require('child_process').execSync('husky'); } catch(e) {} }\"",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "format": "prettier --ignore-path .gitignore -w \"src/**/*.{js,ts,json,css,tsx,jsx}\""
+    "format": "prettier --ignore-path .gitignore -w \"src/backend/**/*.ts\""
   },
   "license": "AGPL-3.0",
   "devDependencies": {
