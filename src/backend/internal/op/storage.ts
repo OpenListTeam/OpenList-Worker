@@ -28,6 +28,7 @@ import { DriverGooglePhoto } from "../../drivers/google_photo/driver"
 import { DriverFebBox } from "../../drivers/febbox/driver"
 import { DriverDegoo } from "../../drivers/degoo/driver"
 import { DriverNeteaseMusic } from "../../drivers/netease_music/driver"
+import { DriverHalalCloudOpen } from "../../drivers/halalcloud_open/driver"
 import { Pan123Driver } from "../../drivers/123pan/driver"
 import {
   BaiduDriver,
@@ -380,6 +381,34 @@ async function createDriver(
     normDriver === "netease_music"
   ) {
     driver = new DriverNeteaseMusic(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (
+    normDriver === "halalcloudopen" ||
+    normDriver === "halalcloud_open" ||
+    normDriver === "halalcloudopenapi"
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new DriverHalalCloudOpen(
+      addition,
+      async (refreshToken: string) => {
+        try {
+          const db = await getDb()
+          const st = (db.storages || []).find(
+            (s: any) => s.id === storageConfig?.id,
+          )
+          if (!st) return
+          const stAddition =
+            typeof st.addition === "string"
+              ? JSON.parse(st.addition || "{}")
+              : st.addition || {}
+          stAddition.refresh_token = refreshToken
+          st.addition = JSON.stringify(stAddition)
+          await saveDb(db)
+        } catch (e) {
+          console.warn("[HalalCloud] failed to persist refresh_token:", e)
+        }
+      },
+    )
     await driver.init?.()
   } else if (normDriver === "degoo") {
     const addition = parseAddition(storageConfig)
