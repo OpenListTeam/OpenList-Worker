@@ -12,6 +12,7 @@ import { DriverTeldrive } from "../../drivers/teldrive/driver"
 import { DriverMediafire } from "../../drivers/mediafire/driver"
 import { DriverGithubReleases } from "../../drivers/github_releases/driver"
 import { DriverCnbReleases } from "../../drivers/cnb_releases/driver"
+import { DriverKodbox } from "../../drivers/kodbox/driver"
 import { Pan123Driver } from "../../drivers/123pan/driver"
 import {
   BaiduDriver,
@@ -268,6 +269,9 @@ async function createDriver(
     await driver.init?.()
   } else if (normDriver === "cnbreleases" || normDriver === "cnb_releases") {
     driver = new DriverCnbReleases(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (normDriver === "kodbox" || normDriver === "kodo") {
+    driver = new DriverKodbox(parseAddition(storageConfig))
     await driver.init?.()
   } else if (
     normDriver === "123pan" ||
