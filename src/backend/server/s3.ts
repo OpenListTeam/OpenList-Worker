@@ -119,7 +119,7 @@ s3Router.get("/*", async (c) => {
 })
 
 // HEAD /s3/{bucket}/{key} → HeadObject
-s3Router.head("/*", async (c) => {
+s3Router.on("HEAD", "/*", async (c) => {
   const user = await authUser(c)
   if (!user) return s3Error("AccessDenied", "Authentication required", 403)
   const { bucket, key } = parseS3Path(c)
