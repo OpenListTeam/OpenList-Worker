@@ -41,6 +41,7 @@ import {
 } from "../../drivers/thunder/driver"
 import { LanzouDriver } from "../../drivers/lanzou/driver"
 import { Cloud189Driver } from "../../drivers/189/driver"
+import { Driver189TV } from "../../drivers/189_tv/driver"
 import { WebdavDriver } from "../../drivers/webdav/driver"
 import { WoPanDriver, normalizeWoPanAddition } from "../../drivers/wopan/driver"
 import { S3Driver, normalizeS3Addition } from "../../drivers/s3/driver"
@@ -649,6 +650,32 @@ async function createDriver(
         await saveDb(db)
       } catch (e) {
         console.warn("[Lanzou] failed to persist cookie:", e)
+      }
+    })
+    await driver.init?.()
+  } else if (
+    normDriver === "189tv" ||
+    normDriver === "cloud189tv" ||
+    normDriver === "189tvcloud" ||
+    normDriver === "189_tv"
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new Driver189TV(addition, async (accessToken: string) => {
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        stAddition.access_token = accessToken
+        st.addition = JSON.stringify(stAddition)
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[189TV] failed to persist access_token:", e)
       }
     })
     await driver.init?.()
