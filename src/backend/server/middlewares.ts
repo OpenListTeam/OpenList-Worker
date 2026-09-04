@@ -41,11 +41,11 @@ async function readKvSecret(env: any): Promise<string | null> {
   }
 }
 
-async function writeKvSecret(env: any, secret: string): Promise<void> {
+async function writeKvSecret(env: any, secret: string): Promise<boolean> {
   try {
     const { getKvBinding } = await import("../internal/model/db")
     const kvInfo = await getKvBinding(env)
-    if (kvInfo.mode === "none" || !kvInfo.binding) return
+    if (kvInfo.mode === "none" || !kvInfo.binding) return false
     const { binding, mode } = kvInfo
     if (mode === "blob") {
       if (typeof binding.set === "function")
@@ -58,8 +58,10 @@ async function writeKvSecret(env: any, secret: string): Promise<void> {
       else if (typeof binding.set === "function")
         await binding.set(JWT_SECRET_KV_KEY, secret)
     }
+    return true
   } catch (e) {
     console.warn("[JWT] Failed to persist secret to KV:", e)
+    return false
   }
 }
 
@@ -86,7 +88,12 @@ export async function getJwtSecret(c?: Context | any): Promise<string> {
   // 3. 生成随机密钥并持久化到 KV（若无 KV 则仅内存）
   if (!cachedJwtSecret) {
     cachedJwtSecret = generateRandomSecret()
-    await writeKvSecret(env, cachedJwtSecret)
+    const persisted = await writeKvSecret(env, cachedJwtSecret)
+    if (!persisted) {
+      console.warn(
+        "[JWT] JWT_SECRET 未配置且无法持久化到 KV：密钥仅存于当前进程，多实例/冷启动会导致已签发 token 失效。生产环境请配置 >=16 字符的 JWT_SECRET。",
+      )
+    }
   }
   return cachedJwtSecret
 }

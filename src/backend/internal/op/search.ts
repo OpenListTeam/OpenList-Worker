@@ -39,8 +39,8 @@ export async function search(
   const scope = opts.scope ?? 0
   const page = Math.max(1, opts.page || 1)
   const perPage = Math.max(1, Math.min(100, opts.per_page || 30))
-  const maxDepth = opts.max_depth ?? 10
-  const maxResults = opts.max_results ?? 500
+  const maxDepth = Math.min(20, Math.max(0, opts.max_depth ?? 10))
+  const maxResults = Math.min(2000, Math.max(1, opts.max_results ?? 500))
 
   const matches: SearchResultItem[] = []
 
