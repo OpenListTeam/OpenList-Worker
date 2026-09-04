@@ -56,33 +56,36 @@
 | S3 网关  | `/s3/*`                    | ✅ ListBuckets/Get/Put/Head/DeleteObject（Bearer 认证）        |
 | 品牌资源 | `/logo.png` + `/favicon.*` | ✅ 内嵌 SVG                                                    |
 
-### 2.5 新增存储驱动（23 个）
+### 2.5 新增存储驱动（26 个）
 
-| 驱动                          | 类型                                  | commit    |
-| ----------------------------- | ------------------------------------- | --------- |
-| 115（Open API）               | Bearer token                          | `0282f32` |
-| cloudreve_v4                  | session token                         | `89d9ed5` |
-| openlist（挂载实例）          | 对端 /api/fs 调用                     | `95ffbec` |
-| teldrive                      | Bearer token                          | `2fb3788` |
-| mediafire                     | session_token + form POST             | `1bb5245` |
-| github_releases               | 只读发布源                            | `6825d76` |
-| cnb_releases                  | 发布管理                              | `48ccfea` |
-| kodbox                        | form POST + accessToken               | `7d19c42` |
-| ipfs_api                      | HTTP JSON-RPC（ipfs/ipns/mfs）        | `ab45f57` |
-| lenovonas_share               | 只读分享（stoken）                    | `59c1291` |
-| misskey                       | JSON POST + Bearer                    | `2e47f91` |
-| doubao（含 doubao_new/share） | Cookie + 签名                         | `2ee9a0e` |
-| quark_open                    | SHA256 签名（x-pan-token）            | `0ef09d7` |
-| quark_uc_tv（只读）           | SHA256+MD5 签名                       | `39a2f22` |
-| 123_open                      | Bearer token                          | `f473d59` |
-| teambition                    | Cookie                                | `944d0cd` |
-| chaoxing（超星小组网盘）      | AES-CBC 登录 + Cookie                 | `4c51cc0` |
-| google_photo                  | OAuth2 + REST                         | `a21b569` |
-| febbox                        | OAuth2 client_credentials + multipart | `7873522` |
-| degoo                         | GraphQL + JWT                         | `914f81e` |
-| netease_music                 | weapi/linuxapi 加密                   | `c59c50b` |
-| cloudreve（V3 旧版）          | session cookie（`/api/v3`）           | `26370bd` |
-| openlist_share（只读分享）    | 分享 API（`/@s/{sid}`）               | `a9fbd0b` |
+| 驱动                          | 类型                                    | commit    |
+| ----------------------------- | --------------------------------------- | --------- |
+| 115（Open API）               | Bearer token                            | `0282f32` |
+| cloudreve_v4                  | session token                           | `89d9ed5` |
+| openlist（挂载实例）          | 对端 /api/fs 调用                       | `95ffbec` |
+| teldrive                      | Bearer token                            | `2fb3788` |
+| mediafire                     | session_token + form POST               | `1bb5245` |
+| github_releases               | 只读发布源                              | `6825d76` |
+| cnb_releases                  | 发布管理                                | `48ccfea` |
+| kodbox                        | form POST + accessToken                 | `7d19c42` |
+| ipfs_api                      | HTTP JSON-RPC（ipfs/ipns/mfs）          | `ab45f57` |
+| lenovonas_share               | 只读分享（stoken）                      | `59c1291` |
+| misskey                       | JSON POST + Bearer                      | `2e47f91` |
+| doubao（含 doubao_new/share） | Cookie + 签名                           | `2ee9a0e` |
+| quark_open                    | SHA256 签名（x-pan-token）              | `0ef09d7` |
+| quark_uc_tv（只读）           | SHA256+MD5 签名                         | `39a2f22` |
+| 123_open                      | Bearer token                            | `f473d59` |
+| teambition                    | Cookie                                  | `944d0cd` |
+| chaoxing（超星小组网盘）      | AES-CBC 登录 + Cookie                   | `4c51cc0` |
+| google_photo                  | OAuth2 + REST                           | `a21b569` |
+| febbox                        | OAuth2 client_credentials + multipart   | `7873522` |
+| degoo                         | GraphQL + JWT                           | `914f81e` |
+| netease_music                 | weapi/linuxapi 加密                     | `c59c50b` |
+| cloudreve（V3 旧版）          | session cookie（`/api/v3`）             | `26370bd` |
+| openlist_share（只读分享）    | 分享 API（`/@s/{sid}`）                 | `a9fbd0b` |
+| chunk（分片打包）             | 跨存储 `resolvePath` + 分片合并         | `f0a0fe2` |
+| 189_tv（天翼 TV/家庭云）      | HMAC-SHA1 签名 + AccessToken            | `71418b4` |
+| halalcloud_open（Open API）   | HL6-HMAC-SHA256（SigV4）+ refresh_token | `92fb8bb` |
 
 ---
 
@@ -93,6 +96,8 @@
 - 新增驱动单测：
   - `chaoxing/util.test.ts`：AES-CBC 登录加密与 Node crypto 一致（2 用例）
   - `netease_music/crypto.test.ts`：raw RSA 与 Node crypto 一致 + weapi/linuxapi 输出格式（3 用例）
+  - `189_tv/util.test.ts`：HMAC-SHA1 签名与 Node crypto 一致（2 用例）
+  - `halalcloud_open/util.test.ts`：HL6-HMAC-SHA256 SigV4 签名与 Node crypto 一致（2 用例）
 - 冒烟测试（wrangler dev 实际启动）：
   - 认证端点（SSO/LDAP/WebAuthn）未启用时正确返回 403
   - S3 未认证 403、WebDAV 未认证 401
@@ -103,19 +108,16 @@
 
 ## 4. 剩余工作（未完成）
 
-### 4.1 剩余缺失驱动（7 个）
+### 4.1 剩余缺失驱动（4 个）
 
-| 分类               | 驱动            | 说明                                                                   |
-| ------------------ | --------------- | ---------------------------------------------------------------------- |
-| Worker 环境限制    | halalcloud      | gRPC + protobuf，需要 TCP socket（同 LDAP/SFTP/FTP），仅 Node 容器可用 |
-| Worker 环境限制    | autoindex       | 用户自定义 XPath 解析 HTML，Worker 无 DOM/XPath 引擎                   |
-| Worker 环境限制    | chunk           | 分片打包存储 + OnlyProxy，需要常驻代理（仅 Node 容器）                 |
-| 高难度（交互登录） | 189_tv          | 二维码扫码登录 + HMAC 签名 + 批量任务 + 断点上传                       |
-| 高难度（签名）     | halalcloud_open | 官方 SDK 封装，签名算法需逆向 golang-sdk-lite                          |
-| 高难度（SDK 逆向） | mopan           | mopan-sdk-go 逆向，登录含短信验证码                                    |
-| 高难度（E2E 加密） | proton_drive    | Proton Drive E2E 加密（PGP/session key 协议）                          |
+| 分类               | 驱动         | 说明                                                                   |
+| ------------------ | ------------ | ---------------------------------------------------------------------- |
+| Worker 环境限制    | halalcloud   | gRPC + protobuf，需要 TCP socket（同 LDAP/SFTP/FTP），仅 Node 容器可用 |
+| Worker 环境限制    | autoindex    | 用户自定义 XPath 解析 HTML，Worker 无 DOM/XPath 引擎                   |
+| 高难度（SDK 逆向） | mopan        | mopan-sdk-go 逆向，登录含短信验证码（需交互式验证码，Worker 无法处理） |
+| 高难度（E2E 加密） | proton_drive | Proton Drive E2E 加密（PGP/session key 协议，需完整 PGP 库）           |
 
-> 纯 REST、主流签名、AES/weapi/GraphQL、session-cookie 类驱动（doubao/quark_open/quark_uc_tv/123_open/teambition/chaoxing/google_photo/degoo/febbox/netease_music/cloudreve/openlist_share）已全部移植完成。
+> 纯 REST、主流签名、AES/weapi/GraphQL、session-cookie、SigV4、HMAC 类驱动（doubao/quark_open/quark_uc_tv/123_open/teambition/chaoxing/google_photo/degoo/febbox/netease_music/cloudreve/openlist_share/chunk/189_tv/halalcloud_open）已全部移植完成。
 
 ### 4.2 部署验证
 
@@ -137,6 +139,9 @@
 ## 6. 提交历史（本次工程）
 
 ```
+92fb8bb feat(driver): add halalcloud_open storage driver
+71418b4 feat(driver): add 189_tv (family cloud) storage driver
+f0a0fe2 feat(driver): add chunk storage driver
 a9fbd0b feat(driver): add openlist_share storage driver
 26370bd feat(driver): add cloudreve (v3) storage driver
 c59c50b feat(driver): add netease_music storage driver
