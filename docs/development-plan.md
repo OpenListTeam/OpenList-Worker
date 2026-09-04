@@ -2,6 +2,19 @@
 
 > 依据 `feature-gap-analysis.md`。目标仓库：`OpenList-TSWorker/`（后端），`OpenList-Frontend/`（前端，仅在分片上传 API 对齐时可能无需改动）。
 
+## 执行状态总览
+
+| Phase | 内容                      | 状态                                                       |
+| ----- | ------------------------- | ---------------------------------------------------------- |
+| 0     | logo/favicon              | ✅ 完成（内嵌 SVG）                                        |
+| 1     | 认证（LDAP/SSO/WebAuthn） | ✅ 完成；LDAP 撤销（Worker 无 TCP），SSO/WebAuthn 手写实现 |
+| 2     | FS/Admin/WebDAV/S3        | ✅ 完成（归档/批量/索引/WebDAV/S3 网关）                   |
+| 3     | 分片上传 API 统一         | ✅ 完成（`/fs/multipart/*` 桥接会话分片）                  |
+| 4     | 驱动补齐                  | ✅ 完成 26 个；剩余 4 个为环境限制/极高难度（见下）        |
+| 5     | 部署流程验证              | ⚠️ 构建链路已验证，真实云凭证部署待执行                    |
+
+**Phase 4 剩余 4 个驱动（无法在 Serverless 实现）**：`halalcloud`（gRPC/TCP）、`autoindex`（XPath/DOM）、`mopan`（SDK 逆向 + 短信验证码交互）、`proton_drive`（E2E PGP 协议）。详见 `implementation-summary.md`。
+
 ---
 
 ## Phase 0：修复 logo/favicon（前置，影响面小）
@@ -24,14 +37,9 @@
 
 ## Phase 1：认证端点（LDAP / SSO / WebAuthn）
 
-### 1.1 LDAP
+### 1.1 LDAP（已撤销）
 
-**任务**：新增 `POST /api/auth/login/ldap`
-
-- 复用现有 `ldap_login_enabled` 设置；实现 `HandleLdapLogin`（bind 校验）+ 失败自动注册 `LdapRegister`。
-- 依赖：`ldapts`（纯 TS，兼容 Workers）。
-
-**文件**：`src/backend/server/auth.ts`（新增端点）、`src/backend/internal/auth/ldap.ts`（新增）
+> **状态**：❌ 已撤销。LDAP 需要 TCP socket（BER Simple Bind 到 389/636 端口），Cloudflare Workers 无 TCP，无法实现。与 SFTP/FTP 同理，仅 Node 容器模式可用。Go 端 LDAP 亦不要求 TS 对齐。
 
 ### 1.2 SSO
 
@@ -130,13 +138,11 @@
 
 ---
 
-## Phase 4：驱动补齐（43 个）
+## Phase 4：驱动补齐（已完成 26 个，剩余 4 个）
 
-**分三批**：
+**已完成 26 个**：115、123_open、cloudreve（V3）、cloudreve_v4、openlist、openlist_share、teldrive、mediafire、github_releases、cnb_releases、kodbox、ipfs_api、lenovonas_share、misskey、doubao、quark_open、quark_uc_tv、teambition、chaoxing、google_photo、febbox、degoo、netease_music、chunk、189_tv、halalcloud_open。
 
-- **P0（13）**：115、123_link、123_open、doubao、doubao_share、doubao_new、quark_open、quark_uc_tv、mediafire、cloudreve、cloudreve_v4、thunder_browser、thunderx
-- **P1（10）**：aliyundrive、baidu_photo、chaoxing、google_photo、ilanzou、kodbox、teambition、proton_drive、github_releases、cnb_releases
-- **P2（20）**：189_tv、189pc、degoo、febbox、halalcloud、halalcloud_open、ipfs_api、lenovonas_share、misskey、mopan、netease_music、teldrive、openlist、openlist_share、autoindex、chunk 等
+**剩余 4 个（无法在 Serverless 实现）**：halalcloud（gRPC/TCP）、autoindex（XPath/DOM）、mopan（SDK 逆向 + 短信验证码交互）、proton_drive（E2E PGP）。
 
 **每个驱动**
 
