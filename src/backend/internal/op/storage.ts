@@ -7,7 +7,9 @@ import { GoogleDrive } from "../../drivers/google_drive/driver"
 import { QuarkDriver } from "../../drivers/quark/driver"
 import { Driver115 } from "../../drivers/115/driver"
 import { DriverCloudreve } from "../../drivers/cloudreve_v4/driver"
+import { DriverCloudreveV3 } from "../../drivers/cloudreve_v3/driver"
 import { DriverOpenlist } from "../../drivers/openlist/driver"
+import { DriverOpenlistShare } from "../../drivers/openlist_share/driver"
 import { DriverTeldrive } from "../../drivers/teldrive/driver"
 import { DriverMediafire } from "../../drivers/mediafire/driver"
 import { DriverGithubReleases } from "../../drivers/github_releases/driver"
@@ -267,16 +269,39 @@ async function createDriver(
     await driver.init?.()
   } else if (
     normDriver === "cloudreve" ||
-    normDriver === "cloudrevev4" ||
-    normDriver === "cloudreve_v4"
+    normDriver === "cloudrevev3" ||
+    normDriver === "cloudreve_v3"
   ) {
+    const addition = parseAddition(storageConfig)
+    driver = new DriverCloudreveV3(addition, async (cookie: string) => {
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        stAddition.cookie = cookie
+        st.addition = JSON.stringify(stAddition)
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[cloudreve] failed to persist cookie:", e)
+      }
+    })
+    await driver.init?.()
+  } else if (normDriver === "cloudrevev4" || normDriver === "cloudreve_v4") {
     driver = new DriverCloudreve(parseAddition(storageConfig))
     await driver.init?.()
   } else if (
-    normDriver === "openlist" ||
     normDriver === "openlistshare" ||
     normDriver === "openlist_share"
   ) {
+    driver = new DriverOpenlistShare(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (normDriver === "openlist") {
     driver = new DriverOpenlist(parseAddition(storageConfig))
     await driver.init?.()
   } else if (normDriver === "teldrive") {
