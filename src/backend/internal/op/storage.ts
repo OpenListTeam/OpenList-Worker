@@ -19,6 +19,7 @@ import { DriverMisskey } from "../../drivers/misskey/driver"
 import { DriverDoubao } from "../../drivers/doubao/driver"
 import { DriverQuarkOpen } from "../../drivers/quark_open/driver"
 import { DriverQuarkUcTv } from "../../drivers/quark_uc_tv/driver"
+import { Driver123Open } from "../../drivers/123_open/driver"
 import { Pan123Driver } from "../../drivers/123pan/driver"
 import {
   BaiduDriver,
@@ -302,6 +303,9 @@ async function createDriver(
     await driver.init?.()
   } else if (normDriver === "quarktv" || normDriver === "uctv" || normDriver === "quark_uc_tv") {
     driver = new DriverQuarkUcTv(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (normDriver === "123open" || normDriver === "123_open" || normDriver === "123cloudopen") {
+    driver = new Driver123Open(parseAddition(storageConfig))
     await driver.init?.()
   } else if (
     normDriver === "123pan" ||
