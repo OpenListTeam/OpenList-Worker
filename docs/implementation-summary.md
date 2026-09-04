@@ -56,7 +56,7 @@
 | S3 网关  | `/s3/*`                    | ✅ ListBuckets/Get/Put/Head/DeleteObject（Bearer 认证）        |
 | 品牌资源 | `/logo.png` + `/favicon.*` | ✅ 内嵌 SVG                                                    |
 
-### 2.5 新增存储驱动（21 个）
+### 2.5 新增存储驱动（23 个）
 
 | 驱动                          | 类型                                  | commit    |
 | ----------------------------- | ------------------------------------- | --------- |
@@ -81,6 +81,8 @@
 | febbox                        | OAuth2 client_credentials + multipart | `7873522` |
 | degoo                         | GraphQL + JWT                         | `914f81e` |
 | netease_music                 | weapi/linuxapi 加密                   | `c59c50b` |
+| cloudreve（V3 旧版）          | session cookie（`/api/v3`）           | `26370bd` |
+| openlist_share（只读分享）    | 分享 API（`/@s/{sid}`）               | `a9fbd0b` |
 
 ---
 
@@ -101,18 +103,19 @@
 
 ## 4. 剩余工作（未完成）
 
-### 4.1 剩余缺失驱动（6 个）
+### 4.1 剩余缺失驱动（7 个）
 
 | 分类               | 驱动            | 说明                                                                   |
 | ------------------ | --------------- | ---------------------------------------------------------------------- |
 | Worker 环境限制    | halalcloud      | gRPC + protobuf，需要 TCP socket（同 LDAP/SFTP/FTP），仅 Node 容器可用 |
 | Worker 环境限制    | autoindex       | 用户自定义 XPath 解析 HTML，Worker 无 DOM/XPath 引擎                   |
+| Worker 环境限制    | chunk           | 分片打包存储 + OnlyProxy，需要常驻代理（仅 Node 容器）                 |
 | 高难度（交互登录） | 189_tv          | 二维码扫码登录 + HMAC 签名 + 批量任务 + 断点上传                       |
-| 高难度（签名）     | halalcloud_open | open API，涉及签名 + 上传协议                                          |
+| 高难度（签名）     | halalcloud_open | 官方 SDK 封装，签名算法需逆向 golang-sdk-lite                          |
 | 高难度（SDK 逆向） | mopan           | mopan-sdk-go 逆向，登录含短信验证码                                    |
 | 高难度（E2E 加密） | proton_drive    | Proton Drive E2E 加密（PGP/session key 协议）                          |
 
-> 纯 REST、主流签名、AES/weapi/GraphQL 类驱动（doubao/quark_open/quark_uc_tv/123_open/teambition/chaoxing/google_photo/degoo/febbox/netease_music）已全部移植完成。
+> 纯 REST、主流签名、AES/weapi/GraphQL、session-cookie 类驱动（doubao/quark_open/quark_uc_tv/123_open/teambition/chaoxing/google_photo/degoo/febbox/netease_music/cloudreve/openlist_share）已全部移植完成。
 
 ### 4.2 部署验证
 
@@ -134,6 +137,8 @@
 ## 6. 提交历史（本次工程）
 
 ```
+a9fbd0b feat(driver): add openlist_share storage driver
+26370bd feat(driver): add cloudreve (v3) storage driver
 c59c50b feat(driver): add netease_music storage driver
 914f81e feat(driver): add degoo storage driver
 7873522 feat(driver): add febbox storage driver
