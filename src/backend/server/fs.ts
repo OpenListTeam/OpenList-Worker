@@ -18,6 +18,8 @@ import { canWrite, getActualPath, isAdmin } from "../pkg/permission"
 import { getSignPolicy, signDownloadPath } from "../pkg/sign"
 import { safeErrorMessage } from "../pkg/errs"
 import { search } from "../internal/op/search"
+import { parseZip, extractZipEntry, ZipArchive } from "../internal/archive/zip"
+import { assertSafeUrl } from "../pkg/http"
 import {
   clampChunkSize,
   deleteSession,
@@ -1439,4 +1441,217 @@ fsRouter.get("/multipart/status", async (c) => {
     )
   }
   return c.json({ code: 200, message: "success", data: mpSnapshot(session) })
+})
+
+// ---- 归档（Archive）----
+// 仅支持 ZIP（Store/Deflate，Worker 内置 DecompressionStream）；
+// rar/7z/tar 等格式明确返回「不支持」。归档内容在内存中解析，
+// 受 Worker 内存限制，适合中小型归档。
+
+function isSupportedArchive(name: string): boolean {
+  return /\.zip$/i.test(name)
+}
+
+/** 下载归档文件字节（复用驱动 get() 的 raw_url + SSRF 防护） */
+async function fetchArchiveBytes(
+  c: any,
+  user: any,
+  virtualPath: string,
+): Promise<ArrayBuffer> {
+  const actual = getActualPath(user, virtualPath)
+  const resolved = await resolvePath(actual)
+  if (resolved.isVirtual) throw new Error("failed get storage: storage not found")
+  const driver = await getDriver(resolved.storage!.driver, resolved.storage)
+  let item: any
+  try {
+    item = await driver.get(virtualPath, resolved.physical!)
+  } finally {
+    await flushPendingDriverState(
+      resolved.storage!.driver,
+      resolved.storage,
+      driver,
+      getStorageRequestContext(c),
+    )
+  }
+  if (!item || !item.raw_url) {
+    throw new Error("archive driver did not return download link")
+  }
+  assertSafeUrl(item.raw_url, "Archive download")
+  const resp = await fetch(item.raw_url, {
+    headers: item.raw_url_headers || {},
+  })
+  if (!resp.ok) throw new Error(`archive download failed: HTTP ${resp.status}`)
+  return await resp.arrayBuffer()
+}
+
+/** 将扁平条目构建为树形结构（对齐 Go ArchiveContentResp） */
+function buildArchiveTree(archive: ZipArchive): any[] {
+  const root: any[] = []
+  const dirMap = new Map<string, any>()
+
+  for (const e of archive.entries) {
+    const parts = e.name.split("/").filter(Boolean)
+    if (parts.length === 0) continue
+
+    let current = root
+    let currentPath = ""
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]
+      const isLast = i === parts.length - 1
+      currentPath = currentPath ? `${currentPath}/${part}` : `/${part}`
+
+      if (isLast) {
+        current.push({
+          name: part,
+          size: e.size,
+          is_dir: false,
+          modified: e.modified || new Date().toISOString(),
+          type: calcFileTypeSafe(part, false),
+          children: [] as any[],
+        })
+      } else {
+        let dir = dirMap.get(currentPath)
+        if (!dir) {
+          dir = {
+            name: part,
+            size: 0,
+            is_dir: true,
+            modified: e.modified || new Date().toISOString(),
+            type: 1,
+            children: [] as any[],
+          }
+          dirMap.set(currentPath, dir)
+          current.push(dir)
+        }
+        current = dir.children
+      }
+    }
+  }
+  return root
+}
+
+function calcFileTypeSafe(name: string, isDir: boolean): number {
+  const ext = name.split(".").pop()?.toLowerCase() || ""
+  if (isDir) return 1
+  const video = ["mp4", "mkv", "webm", "avi", "mov", "flv", "m3u8"]
+  const audio = ["mp3", "flac", "wav", "aac", "ogg", "m4a"]
+  const image = ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico"]
+  const text = ["txt", "md", "json", "js", "ts", "css", "html", "xml", "yml", "log"]
+  if (video.includes(ext)) return 2
+  if (audio.includes(ext)) return 3
+  if (image.includes(ext)) return 4
+  if (text.includes(ext)) return 5
+  return 6
+}
+
+fsRouter.post("/archive/meta", async (c) => {
+  const user = await getUserFromContext(c)
+  if (!user || user.disabled) return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  const body = await c.req.json().catch(() => ({}))
+  const path = String(body.path || c.req.query("path") || "").trim()
+  if (!path) return c.json({ code: 400, message: "path is required", data: null }, 400)
+  if (!isSupportedArchive(path)) {
+    return c.json({ code: 400, message: "unsupported archive format (only ZIP is supported)", data: null }, 400)
+  }
+  try {
+    const bytes = await fetchArchiveBytes(c, user, path)
+    const archive = parseZip(bytes)
+    const tree = buildArchiveTree(archive)
+    return c.json({
+      code: 200,
+      message: "success",
+      data: {
+        comment: "",
+        encrypted: false,
+        content: tree,
+        raw_url: "",
+        sign: "",
+      },
+    })
+  } catch (e: any) {
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
+  }
+})
+
+fsRouter.post("/archive/list", async (c) => {
+  const user = await getUserFromContext(c)
+  if (!user || user.disabled) return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  const body = await c.req.json().catch(() => ({}))
+  const path = String(body.path || c.req.query("path") || "").trim()
+  const innerPath = String(body.inner_path || "").trim().replace(/\/+/g, "/")
+  if (!path) return c.json({ code: 400, message: "path is required", data: null }, 400)
+  if (!isSupportedArchive(path)) {
+    return c.json({ code: 400, message: "unsupported archive format (only ZIP is supported)", data: null }, 400)
+  }
+  try {
+    const bytes = await fetchArchiveBytes(c, user, path)
+    const archive = parseZip(bytes)
+    const prefix = innerPath ? innerPath.replace(/^\/+|\/+$/g, "") + "/" : ""
+    const items = archive.entries
+      .filter((e) => {
+        if (!prefix) return !e.name.includes("/")
+        return e.name.startsWith(prefix) && e.name !== prefix.slice(0, -1)
+      })
+      .map((e) => {
+        const rel = prefix ? e.name.slice(prefix.length) : e.name
+        return {
+          name: rel.split("/")[0],
+          size: e.size,
+          is_dir: false,
+          modified: e.modified || new Date().toISOString(),
+          type: calcFileTypeSafe(rel.split("/")[0], false),
+        }
+      })
+    // 去重（扁平列表）
+    const seen = new Set<string>()
+    const content = items.filter((it) => {
+      if (seen.has(it.name)) return false
+      seen.add(it.name)
+      return true
+    })
+    return c.json({
+      code: 200,
+      message: "success",
+      data: { content, total: content.length },
+    })
+  } catch (e: any) {
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
+  }
+})
+
+fsRouter.post("/archive/decompress", async (c) => {
+  const user = await getUserFromContext(c)
+  if (!canWrite(user)) return c.json({ code: 403, message: "Permission denied", data: null }, 403)
+  const body = await c.req.json().catch(() => ({}))
+  const srcDir = String(body.src_dir || "").trim()
+  const dstDir = String(body.dst_dir || "").trim()
+  const names: string[] = Array.isArray(body.name) ? body.name : body.name ? [String(body.name)] : []
+  const innerPath = String(body.inner_path || "").trim().replace(/\/+/g, "/")
+  if (!names.length || !dstDir) {
+    return c.json({ code: 400, message: "src_dir/dst_dir/name are required", data: null }, 400)
+  }
+  try {
+    let count = 0
+    for (const name of names) {
+      const srcPath = srcDir ? `${srcDir}/${name}` : `/${name}`
+      if (!isSupportedArchive(name)) {
+        return c.json({ code: 400, message: `unsupported archive format: ${name} (only ZIP is supported)`, data: null }, 400)
+      }
+      const bytes = await fetchArchiveBytes(c, user, srcPath)
+      const archive = parseZip(bytes)
+      const prefix = innerPath ? innerPath.replace(/^\/+|\/+$/g, "") + "/" : ""
+      for (const entry of archive.entries) {
+        if (prefix && !entry.name.startsWith(prefix)) continue
+        const rel = prefix ? entry.name.slice(prefix.length) : entry.name
+        if (!rel || rel.endsWith("/")) continue
+        const targetPath = `${dstDir.replace(/\/+$/, "")}/${rel}`
+        const content = await extractZipEntry(bytes, entry)
+        await putItem(targetPath, Buffer.from(content), getStorageRequestContext(c))
+        count++
+      }
+    }
+    return c.json({ code: 200, message: "success", data: { task: null, count } })
+  } catch (e: any) {
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
+  }
 })
