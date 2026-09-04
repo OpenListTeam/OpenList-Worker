@@ -24,6 +24,7 @@ import { DriverTeambition } from "../../drivers/teambition/driver"
 import { DriverChaoXing } from "../../drivers/chaoxing/driver"
 import { DriverGooglePhoto } from "../../drivers/google_photo/driver"
 import { DriverFebBox } from "../../drivers/febbox/driver"
+import { DriverDegoo } from "../../drivers/degoo/driver"
 import { Pan123Driver } from "../../drivers/123pan/driver"
 import {
   BaiduDriver,
@@ -343,6 +344,32 @@ async function createDriver(
     await driver.init?.()
   } else if (normDriver === "teambition" || normDriver === "tb") {
     driver = new DriverTeambition(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (normDriver === "degoo") {
+    const addition = parseAddition(storageConfig)
+    driver = new DriverDegoo(
+      addition,
+      async (tokens: { accessToken?: string; refreshToken?: string }) => {
+        try {
+          const db = await getDb()
+          const st = (db.storages || []).find(
+            (s: any) => s.id === storageConfig?.id,
+          )
+          if (!st) return
+          const stAddition =
+            typeof st.addition === "string"
+              ? JSON.parse(st.addition || "{}")
+              : st.addition || {}
+          if (tokens.accessToken) stAddition.access_token = tokens.accessToken
+          if (tokens.refreshToken)
+            stAddition.refresh_token = tokens.refreshToken
+          st.addition = JSON.stringify(stAddition)
+          await saveDb(db)
+        } catch (e) {
+          console.warn("[degoo] failed to persist tokens:", e)
+        }
+      },
+    )
     await driver.init?.()
   } else if (normDriver === "febbox" || normDriver === "febboxpan") {
     const addition = parseAddition(storageConfig)
