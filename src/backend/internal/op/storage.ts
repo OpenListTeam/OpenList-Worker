@@ -17,6 +17,7 @@ import { DriverIpfs } from "../../drivers/ipfs_api/driver"
 import { DriverLenovoNasShare } from "../../drivers/lenovonas_share/driver"
 import { DriverMisskey } from "../../drivers/misskey/driver"
 import { DriverDoubao } from "../../drivers/doubao/driver"
+import { DriverQuarkOpen } from "../../drivers/quark_open/driver"
 import { Pan123Driver } from "../../drivers/123pan/driver"
 import {
   BaiduDriver,
@@ -294,6 +295,9 @@ async function createDriver(
     normDriver === "doubao_share"
   ) {
     driver = new DriverDoubao(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (normDriver === "quarkopen" || normDriver === "quark_open" || normDriver === "quarkoa") {
+    driver = new DriverQuarkOpen(parseAddition(storageConfig))
     await driver.init?.()
   } else if (
     normDriver === "123pan" ||
