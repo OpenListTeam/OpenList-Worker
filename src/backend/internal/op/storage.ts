@@ -20,6 +20,7 @@ import { DriverDoubao } from "../../drivers/doubao/driver"
 import { DriverQuarkOpen } from "../../drivers/quark_open/driver"
 import { DriverQuarkUcTv } from "../../drivers/quark_uc_tv/driver"
 import { Driver123Open } from "../../drivers/123_open/driver"
+import { DriverTeambition } from "../../drivers/teambition/driver"
 import { Pan123Driver } from "../../drivers/123pan/driver"
 import {
   BaiduDriver,
@@ -306,6 +307,9 @@ async function createDriver(
     await driver.init?.()
   } else if (normDriver === "123open" || normDriver === "123_open" || normDriver === "123cloudopen") {
     driver = new Driver123Open(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (normDriver === "teambition" || normDriver === "tb") {
+    driver = new DriverTeambition(parseAddition(storageConfig))
     await driver.init?.()
   } else if (
     normDriver === "123pan" ||
