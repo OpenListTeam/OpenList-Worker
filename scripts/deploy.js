@@ -9,7 +9,7 @@
  * 本脚本额外做两件事：
  *   1. 检测云端是否已有 OPENLIST_KV namespace；没有则显式创建
  *      （确保资源存在；兼容不支持自动配置的旧版 wrangler）
- *   2. 构建前端 + wrangler deploy
+ *   2. 获取官方前端产物 + wrangler deploy
  *
  * 用法：
  *   node scripts/deploy.js          # 自动部署（构建 + 确保 KV + deploy）
@@ -136,10 +136,10 @@ function main() {
     return
   }
 
-  // 构建前端（可选）
+  // 获取前端产物（可选）：从官方前端 OpenList-Frontend 获取构建产物
   if (!skipBuild) {
-    console.log("\n[构建] 正在构建前端静态资源 ...")
-    run("npx vite build")
+    console.log("\n[构建] 正在获取官方前端构建产物 ...")
+    run("node scripts/fetch-frontend.mjs")
   } else {
     console.log("\n[构建] 跳过前端构建（--skip-build）")
   }

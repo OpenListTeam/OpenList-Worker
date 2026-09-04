@@ -7,7 +7,8 @@
  * 产物来源优先级（高 -> 低）：
  *   1. FRONTEND_DIST 环境变量：已构建好的 dist 目录路径（最快，CI 缓存场景）
  *   2. FRONTEND_REPO 环境变量：本地官方前端仓库路径（自动 install + build）
- *   3. 默认：从 Git 克隆官方仓库并构建
+ *   3. 同级目录 ../OpenList-Frontend（monorepo 布局，自动探测，自动 install + build）
+ *   4. 默认：从 Git 克隆官方仓库并构建
  *
  * 用法：
  *   FRONTEND_DIST=/path/to/dist node scripts/fetch-frontend.mjs
@@ -19,8 +20,11 @@ import { execSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 
-const ROOT = process.cwd()
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+// 始终以仓库根目录为基准（无论从哪个 cwd 调用）
+const ROOT = path.resolve(__dirname, "..")
 const DEST = path.join(ROOT, "dist")
 
 const OFFICIAL_REPO_URL =
@@ -50,10 +54,22 @@ function replaceDist(src) {
   console.log(`✓ 前端产物已就绪 (${DEST})`)
 }
 
+/** 在本地前端仓库中 install + build，并取 dist 产物 */
+function buildLocalRepo(repo) {
+  const abs = path.resolve(repo)
+  if (!fs.existsSync(path.join(abs, "package.json"))) {
+    throw new Error(`目录不是前端仓库: ${abs}`)
+  }
+  const pm = detectPackageManager(abs)
+  run(`${pm} install`, { cwd: abs })
+  run(`${pm} run build`, { cwd: abs })
+  replaceDist(path.join(abs, "dist"))
+}
+
 function main() {
   console.log("[fetch-frontend] 获取官方前端构建产物...")
 
-  // 1. 本地已构建产物目录
+  // 1. 本地已构建产物目录（显式指定）
   const localDist = process.env.FRONTEND_DIST
   if (localDist) {
     const src = path.resolve(localDist)
@@ -62,21 +78,22 @@ function main() {
     return
   }
 
-  // 2. 本地前端仓库目录（自动 install + build）
+  // 2. 本地前端仓库目录（显式指定）
   const localRepo = process.env.FRONTEND_REPO
   if (localRepo) {
-    const repo = path.resolve(localRepo)
-    if (!fs.existsSync(path.join(repo, "package.json"))) {
-      throw new Error(`FRONTEND_REPO 指向的目录不是前端仓库: ${repo}`)
-    }
-    const pm = detectPackageManager(repo)
-    run(`${pm} install`, { cwd: repo })
-    run(`${pm} run build`, { cwd: repo })
-    replaceDist(path.join(repo, "dist"))
+    buildLocalRepo(localRepo)
     return
   }
 
-  // 3. 从 Git 克隆并构建（默认）
+  // 3. 同级目录 ../OpenList-Frontend（monorepo 布局，自动探测）
+  const siblingRepo = path.resolve(ROOT, "..", "OpenList-Frontend")
+  if (fs.existsSync(path.join(siblingRepo, "package.json"))) {
+    console.log(`  检测到同级官方前端仓库: ${siblingRepo}`)
+    buildLocalRepo(siblingRepo)
+    return
+  }
+
+  // 4. 从 Git 克隆并构建（默认兜底）
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openlist-frontend-"))
   console.log(`  克隆官方前端: ${OFFICIAL_REPO_URL}#${OFFICIAL_REPO_REF}`)
   try {
