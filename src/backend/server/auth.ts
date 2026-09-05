@@ -6,7 +6,6 @@ import {
   getUserFromContext,
   revokeToken,
   isTokenRevoked,
-  generateCSRFToken,
 } from "./middlewares"
 import {
   generateTotpSecret,
@@ -20,6 +19,13 @@ import {
   addUserSshKey,
   deleteUserSshKey,
 } from "../internal/op/sshkey"
+import {
+  hashPassword as bcryptHashPassword,
+  verifyPassword,
+  needsRehash,
+} from "../pkg/password"
+import { setCSRFToken, clearCSRFToken } from "../pkg/csrf"
+import { getAuditLogger } from "../pkg/audit"
 
 export const authRouter = new Hono()
 export const meRouter = new Hono()
@@ -73,13 +79,19 @@ function clearLoginFailures(c: Context, username: string) {
   loginFailures.delete(loginKey(c, username))
 }
 
-// Helper to hash password matching OpenList/AList specification
-export async function hashPassword(plainPassword: string): Promise<string> {
+// Helper to hash password matching OpenList/AList specification (SHA256 - 旧版本)
+// 保留此函数用于兼容旧的 /login/hash 端点
+export async function hashPasswordSHA256(plainPassword: string): Promise<string> {
   const hash_salt = "https://github.com/alist-org/alist"
   const msgBuffer = new TextEncoder().encode(`${plainPassword}-${hash_salt}`)
   const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer)
   const hashArray = Array.from(new Uint8Array(hashBuffer))
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
+}
+
+// 新的密码哈希函数（使用 bcrypt）
+export async function hashPassword(plainPassword: string): Promise<string> {
+  return bcryptHashPassword(plainPassword)
 }
 
 /**
@@ -255,9 +267,9 @@ authRouter.post("/login", async (c) => {
     )
   }
 
-  const hashedPassword = await hashPassword(rawPassword)
+  const hashedPassword = await hashPasswordSHA256(rawPassword)
 
-  const { users } = await getOrInitUsers(c.env)
+  const { users, db } = await getOrInitUsers(c.env)
 
   const matchedUser = users.find(
     (u: any) => u.username === username && !u.disabled,
@@ -265,10 +277,19 @@ authRouter.post("/login", async (c) => {
 
   if (matchedUser) {
     const userPass = matchedUser.password || ""
-    const isPasswordValid =
-      userPass !== "" && userPass.length === 64 && userPass === hashedPassword
+    
+    // 使用新的 verifyPassword 支持 bcrypt 和 SHA256
+    const isPasswordValid = await verifyPassword(rawPassword, userPass)
 
     if (isPasswordValid) {
+      // 自动升级密码哈希：从 SHA256 迁移到 bcrypt
+      if (needsRehash(userPass)) {
+        console.log(`[Auth] Upgrading password hash for user: ${username}`)
+        matchedUser.password = await hashPassword(rawPassword)
+        matchedUser.pwd_update_at = new Date().toISOString()
+        await saveDb(db, c.env)
+      }
+
       const otpCheck = await checkUserOtp(matchedUser, body)
       if (!otpCheck.ok) {
         return c.json(
@@ -277,6 +298,8 @@ authRouter.post("/login", async (c) => {
         )
       }
       clearLoginFailures(c, username)
+      
+      // 生成 JWT Token
       const payload = {
         id: matchedUser.id,
         username: matchedUser.username,
@@ -286,14 +309,26 @@ authRouter.post("/login", async (c) => {
       }
       const secret = await getJwtSecret(c)
       const token = await sign(payload, secret)
+      
+      // 生成 CSRF Token
+      const csrfToken = setCSRFToken(c)
+      
+      // 记录审计日志
+      const auditLogger = getAuditLogger()
+      await auditLogger.logLoginSuccess(c, username)
+      
       return c.json({
         code: 200,
         message: "success",
-        data: { token },
+        data: { token, csrf_token: csrfToken },
       })
     }
   }
 
+  // 登录失败 - 记录审计日志
+  const auditLogger = getAuditLogger()
+  await auditLogger.logLoginFailure(c, username, "Invalid credentials")
+  
   recordLoginFailure(c, username)
   return c.json({ code: 401, message: "Invalid credentials", data: null }, 401)
 })
@@ -340,6 +375,8 @@ authRouter.post("/login/hash", async (c) => {
         )
       }
       clearLoginFailures(c, username)
+      
+      // 生成 JWT Token
       const payload = {
         id: matchedUser.id,
         username: matchedUser.username,
@@ -349,14 +386,26 @@ authRouter.post("/login/hash", async (c) => {
       }
       const secret = await getJwtSecret(c)
       const token = await sign(payload, secret)
+      
+      // 生成 CSRF Token
+      const csrfToken = setCSRFToken(c)
+      
+      // 记录审计日志
+      const auditLogger = getAuditLogger()
+      await auditLogger.logLoginSuccess(c, username)
+      
       return c.json({
         code: 200,
         message: "success",
-        data: { token },
+        data: { token, csrf_token: csrfToken },
       })
     }
   }
 
+  // 登录失败 - 记录审计日志
+  const auditLogger = getAuditLogger()
+  await auditLogger.logLoginFailure(c, username, "Invalid credentials")
+  
   recordLoginFailure(c, username)
   return c.json({ code: 401, message: "Invalid credentials", data: null }, 401)
 })
@@ -444,6 +493,14 @@ export const logoutHandler = async (c: any) => {
       // token 无效则无需注销
     }
   }
+  
+  // 清除 CSRF Token
+  clearCSRFToken(c)
+  
+  // 记录审计日志
+  const auditLogger = getAuditLogger()
+  await auditLogger.logLogout(c)
+  
   return c.json({
     code: 200,
     message: "success",
