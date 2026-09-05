@@ -6,6 +6,7 @@
 
 ### [0-Getting-Started](./0-Getting-Started/) - 快速开始
 新用户必读，包含部署指南和贡献指南：
+- `0-00001-Contributing.md` - 贡献指南
 - `0-00002-Deploy-Cloudflare-Workers.md` - Cloudflare Workers 部署指南
 - `0-00003-Deploy-EdgeOne.md` - 腾讯云 EdgeOne 部署指南
 
@@ -38,11 +39,8 @@
 
 ### [4-Archives](./4-Archives/) - 历史归档
 已完成或过时的文档归档：
-- `4-00000-Progress-Report.md` - 进度报告
-- `4-00001-Security-Fix-Plan.md` - 安全修复计划
-- `4-00002-Security-Fix-Checklist.md` - 安全修复清单
-- `4-00003-Evaluation-And-Migration-Plan.md` - 评估与迁移计划
-- `4-00004-Acceptance-Criteria.md` - 验收标准
+- `4-00000-Historical-Records.md` - 历史记录合集（已合并5个文档）
+- `4-00001-Progress-Report.md` - 原始进度报告（补充参考）
 
 ### [superpowers](./superpowers/) - 高级功能
 高级功能计划和实现方案。
