@@ -48,20 +48,15 @@ export const PC_ALGORITHMS = [
   "vk7hBjawK/rOSrSWajtbMk95nfgf3",
 ]
 
-export const ANDROID_CLIENT_ID = "YNxT9w7GMdWvEOKa"
-export const ANDROID_CLIENT_SECRET = "dbw2OtmVEeuUvIptb1Coyg"
+// client_id / client_secret 已移除内置默认值，须通过 addition.client_id / addition.client_secret 提供自有 OAuth 应用凭据。
 export const ANDROID_CLIENT_VERSION = "1.53.2"
 export const ANDROID_PACKAGE_NAME = "com.pikcloud.pikpak"
 export const ANDROID_SDK_VERSION = "2.0.6.206003"
 
-export const WEB_CLIENT_ID = "YUMx5nI8ZU8Ap8pm"
-export const WEB_CLIENT_SECRET = "dbw2OtmVEeuUvIptb1Coyg"
 export const WEB_CLIENT_VERSION = "2.0.0"
 export const WEB_PACKAGE_NAME = "mypikpak.com"
 export const WEB_SDK_VERSION = "8.0.3"
 
-export const PC_CLIENT_ID = "YvtoWO6GNHiuCl7x"
-export const PC_CLIENT_SECRET = "1NIH5R1IEe2pAxZE3hv3uA"
 export const PC_CLIENT_VERSION = "undefined"
 export const PC_PACKAGE_NAME = "mypikpak.com"
 export const PC_SDK_VERSION = "8.0.3"
@@ -163,15 +158,15 @@ export class PikPakApiClient {
     const overrideClientId = addition.client_id
     const overrideClientSecret = addition.client_secret
     if (platform === "android") {
-      this.clientId = overrideClientId || ANDROID_CLIENT_ID
-      this.clientSecret = overrideClientSecret || ANDROID_CLIENT_SECRET
+      this.clientId = overrideClientId || ""
+      this.clientSecret = overrideClientSecret || ""
       this.clientVersion = ANDROID_CLIENT_VERSION
       this.packageName = ANDROID_PACKAGE_NAME
       this.sdkVersion = ANDROID_SDK_VERSION
       this.algorithms = ANDROID_ALGORITHMS
     } else if (platform === "pc") {
-      this.clientId = overrideClientId || PC_CLIENT_ID
-      this.clientSecret = overrideClientSecret || PC_CLIENT_SECRET
+      this.clientId = overrideClientId || ""
+      this.clientSecret = overrideClientSecret || ""
       this.clientVersion = PC_CLIENT_VERSION
       this.packageName = PC_PACKAGE_NAME
       this.sdkVersion = PC_SDK_VERSION
@@ -180,8 +175,8 @@ export class PikPakApiClient {
         "MainWindow Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) PikPak/2.6.11.4955 Chrome/100.0.4896.160 Electron/18.3.15 Safari/537.36"
     } else {
       // web
-      this.clientId = overrideClientId || WEB_CLIENT_ID
-      this.clientSecret = overrideClientSecret || WEB_CLIENT_SECRET
+      this.clientId = overrideClientId || ""
+      this.clientSecret = overrideClientSecret || ""
       this.clientVersion = WEB_CLIENT_VERSION
       this.packageName = WEB_PACKAGE_NAME
       this.sdkVersion = WEB_SDK_VERSION

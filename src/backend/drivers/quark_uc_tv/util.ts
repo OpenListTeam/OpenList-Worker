@@ -29,6 +29,8 @@ interface Conf {
   codeApi: string
 }
 
+// 说明：clientID 与 signKey 是夸克/UC 服务端固定的协议参数（签名密钥），
+// 并非可申请替换的 OAuth 凭据，删除会导致请求签名失败、驱动不可用，请保持默认值。
 const CONFS: Record<"quark" | "uc", Conf> = {
   quark: {
     api: "https://open-api-drive.quark.cn",
@@ -68,10 +70,15 @@ export class ClientQuarkUcTv {
     await this.refreshToken()
   }
 
-  private async generateSign(method: string, pathname: string): Promise<{ tm: string; token: string; reqId: string }> {
+  private async generateSign(
+    method: string,
+    pathname: string,
+  ): Promise<{ tm: string; token: string; reqId: string }> {
     const tm = String(Date.now())
     const reqId = md5(this.deviceId + tm)
-    const token = await sha256(`${method}&${pathname}&${tm}&${this.conf.signKey}`)
+    const token = await sha256(
+      `${method}&${pathname}&${tm}&${this.conf.signKey}`,
+    )
     return { tm, token, reqId }
   }
 
@@ -91,7 +98,11 @@ export class ClientQuarkUcTv {
     }
   }
 
-  private async request<T = any>(pathname: string, method: string, extraQuery: Record<string, string> = {}): Promise<T> {
+  private async request<T = any>(
+    pathname: string,
+    method: string,
+    extraQuery: Record<string, string> = {},
+  ): Promise<T> {
     const { tm, token, reqId } = await this.generateSign(method, pathname)
     const qs = new URLSearchParams({
       req_id: reqId,
@@ -109,7 +120,9 @@ export class ClientQuarkUcTv {
         "x-pan-client-id": this.conf.clientID,
       },
     })
-    const data: QuarkTvCommonResp = await resp.json().catch(() => ({ status: -1, errno: -1 } as any))
+    const data: QuarkTvCommonResp = await resp
+      .json()
+      .catch(() => ({ status: -1, errno: -1 }) as any)
     const errInfo = (data.error_info || "").toLowerCase()
     const tokenInvalid =
       (data.status === -1 && (data.errno === 10001 || data.errno === 11001)) ||
@@ -145,7 +158,8 @@ export class ClientQuarkUcTv {
       body: JSON.stringify(body),
     })
     const data: any = await resp.json().catch(() => ({}))
-    if (data?.code !== 200) throw new Error(`[QuarkTV] ${data?.message || "token refresh failed"}`)
+    if (data?.code !== 200)
+      throw new Error(`[QuarkTV] ${data?.message || "token refresh failed"}`)
     const d = data.data || {}
     if (!d.access_token) throw new Error("[QuarkTV] refresh token empty")
     this.accessToken = d.access_token

@@ -56,7 +56,7 @@
 | S3 网关  | `/s3/*`                    | ✅ ListBuckets/Get/Put/Head/DeleteObject（Bearer 认证）        |
 | 品牌资源 | `/logo.png` + `/favicon.*` | ✅ 内嵌 SVG                                                    |
 
-### 2.5 新增存储驱动（26 个）
+### 2.5 新增存储驱动（27 个）
 
 | 驱动                          | 类型                                    | commit    |
 | ----------------------------- | --------------------------------------- | --------- |
@@ -86,6 +86,7 @@
 | chunk（分片打包）             | 跨存储 `resolvePath` + 分片合并         | `f0a0fe2` |
 | 189_tv（天翼 TV/家庭云）      | HMAC-SHA1 签名 + AccessToken            | `71418b4` |
 | halalcloud_open（Open API）   | HL6-HMAC-SHA256（SigV4）+ refresh_token | `92fb8bb` |
+| baidu_photo（百度相册）       | Cookie + 相册/文件双结构 + 分片上传     | `deb01ef` |
 
 ---
 
@@ -117,7 +118,7 @@
 | 高难度（SDK 逆向） | mopan        | mopan-sdk-go 逆向，登录含短信验证码（需交互式验证码，Worker 无法处理） |
 | 高难度（E2E 加密） | proton_drive | Proton Drive E2E 加密（PGP/session key 协议，需完整 PGP 库）           |
 
-> 纯 REST、主流签名、AES/weapi/GraphQL、session-cookie、SigV4、HMAC 类驱动（doubao/quark_open/quark_uc_tv/123_open/teambition/chaoxing/google_photo/degoo/febbox/netease_music/cloudreve/openlist_share/chunk/189_tv/halalcloud_open）已全部移植完成。
+> 纯 REST、主流签名、AES/weapi/GraphQL、session-cookie、SigV4、HMAC 类驱动（doubao/quark_open/quark_uc_tv/123_open/teambition/chaoxing/google_photo/degoo/febbox/netease_music/cloudreve/openlist_share/chunk/189_tv/halalcloud_open/baidu_photo）已全部移植完成。
 
 ### 4.2 部署验证
 
@@ -139,6 +140,7 @@
 ## 6. 提交历史（本次工程）
 
 ```
+deb01ef feat(driver): add baidu_photo storage driver
 92fb8bb feat(driver): add halalcloud_open storage driver
 71418b4 feat(driver): add 189_tv (family cloud) storage driver
 f0a0fe2 feat(driver): add chunk storage driver

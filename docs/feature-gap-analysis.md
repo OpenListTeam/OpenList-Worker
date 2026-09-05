@@ -3,7 +3,7 @@
 > 对比对象：`OpenList/`（Go 后端，v4，85 驱动）vs `OpenList-TSWorker/`（TS/Hono 后端，Cloudflare Workers / EdgeOne / Serverless，42 驱动）
 > 本文档为**权威差异清单**，开发计划与验收标准以此为准。
 >
-> **进度状态**：认证/FS/Admin/协议/驱动已全部补齐（26 个新增驱动），当前仅剩 4 个环境限制/极高难度驱动未移植（halalcloud gRPC、autoindex XPath、mopan SDK、proton_drive E2E）。最新进度详见 `implementation-summary.md`。
+> **进度状态**：认证/FS/Admin/协议/驱动已全部补齐（27 个新增驱动），当前仅剩 4 个环境限制/极高难度驱动未移植（halalcloud gRPC、autoindex XPath、mopan SDK、proton_drive E2E）。最新进度详见 `implementation-summary.md`。
 
 ---
 

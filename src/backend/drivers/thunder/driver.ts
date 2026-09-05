@@ -83,8 +83,8 @@ export class ThunderDriver implements StorageDriver {
 
     this.client = new ThunderClient({
       deviceId,
-      clientId: addition.client_id || "Xp6vsxz_7IYVw2BB",
-      clientSecret: addition.client_secret || "Xp6vsy4tN9toTVdMSpomVdXpRmES",
+      clientId: addition.client_id || "",
+      clientSecret: addition.client_secret || "",
       clientVersion: "8.31.0.9726",
       packageName: "com.xunlei.downloadprovider",
       userAgent:
@@ -379,8 +379,8 @@ export class ThunderExpertDriver extends ThunderDriver {
 
     this.client = new ThunderClient({
       deviceId,
-      clientId: addition.client_id || "Xp6vsxz_7IYVw2BB",
-      clientSecret: addition.client_secret || "Xp6vsy4tN9toTVdMSpomVdXpRmES",
+      clientId: addition.client_id || "",
+      clientSecret: addition.client_secret || "",
       clientVersion: addition.client_version || "8.31.0.9726",
       packageName: addition.package_name || "com.xunlei.downloadprovider",
       userAgent:

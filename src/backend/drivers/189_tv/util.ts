@@ -14,6 +14,8 @@ import {
 } from "./types"
 import { hmacSha1Hex, md5Hex, randomUUID189 } from "../189/crypto"
 
+// 协议级固定签名密钥：从天翼云盘 TV/家庭云客户端逆向得到，服务端固定校验、全网共享，
+// 并非可申请替换的 OAuth 凭据，删除会导致 HMAC 签名校验失败、驱动不可用。
 const TVAppKey = "600100885"
 const TVAppSignatureSecre = "fe5734c74c2f96a38157f420b32dc995"
 const TvVersion = "6.5.5"

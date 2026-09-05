@@ -1135,8 +1135,7 @@ const driverConfigs: Record<string, any> = {
       {
         name: "access_token",
         type: "string",
-        default:
-          "e4mvi.43f51ee687247d07f386048e903ae6b7.3a9175e14e8e4b254ab81462866f9111e2bdc9984324da30a2b8e2bdfad74ff1",
+        default: "",
         required: true,
         help: "访问令牌（必填）。通过 115 开放平台获取；失效时自动用 refresh_token 刷新并持久化。",
       },
@@ -1411,14 +1410,16 @@ const driverConfigs: Record<string, any> = {
       {
         name: "client_id",
         type: "string",
-        default: "Xp6vsxz_7IYVw2BB",
+        default: "",
         required: true,
+        help: "迅雷开放平台 OAuth client_id（必填）。",
       },
       {
         name: "client_secret",
         type: "string",
-        default: "Xp6vsy4tN9toTVdMSpomVdXpRmES",
+        default: "",
         required: true,
+        help: "迅雷开放平台 OAuth client_secret（必填）。",
       },
       {
         name: "client_version",
@@ -3952,10 +3953,7 @@ adminRouter.post("/index/build", async (c) => {
       data: indexProgress(db),
     })
   } catch (e: any) {
-    return c.json(
-      { code: 500, message: safeErrorMessage(e), data: null },
-      500,
-    )
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
   }
 })
 
@@ -3969,8 +3967,7 @@ adminRouter.post("/index/update", async (c) => {
     const prev = db.search_index?.items || []
     // 移除旧索引中属于这些路径的条目，再重建
     const keep = prev.filter(
-      (it: any) =>
-        !paths.some((p: string) => (it.parent || "/").startsWith(p)),
+      (it: any) => !paths.some((p: string) => (it.parent || "/").startsWith(p)),
     )
     const res = await search(
       { parent: "/", keywords: "", max_depth: maxDepth, max_results: 2000 },
@@ -3990,10 +3987,7 @@ adminRouter.post("/index/update", async (c) => {
       data: indexProgress(db),
     })
   } catch (e: any) {
-    return c.json(
-      { code: 500, message: safeErrorMessage(e), data: null },
-      500,
-    )
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
   }
 })
 
@@ -4056,10 +4050,7 @@ adminRouter.post("/scan/start", async (c) => {
       },
     })
   } catch (e: any) {
-    return c.json(
-      { code: 500, message: safeErrorMessage(e), data: null },
-      500,
-    )
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
   }
 })
 

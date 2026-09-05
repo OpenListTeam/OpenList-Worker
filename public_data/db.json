@@ -785,7 +785,7 @@
       "driver": "Onedrive",
       "remark": "",
       "status": "work",
-      "addition": "{\"root_folder_path\":\"/\",\"region\":\"global\",\"is_sharepoint\":false,\"use_online_api\":true,\"api_url_address\":\"https://api.oplist.org/onedrive/renewapi\",\"client_id\":\"\",\"client_secret\":\"\",\"redirect_uri\":\"https://api.oplist.org/onedrive/callback\",\"refresh_token\":\"M.C546_SN1.0.U.MsaArtifacts.-Cn2rS37op6jmOH9EXoENXMZJnjib*J8gvGSyWskUHgFcbiszg*5FCMtSYSKfguZ99cGBLcfOEaC24VN*Gm2aC5uynioCD3piWChIqt1qAnijv48EKu1n4GgSrMuH!cSjH1PrMcnRQq!YsYQ7kKtD5XR4nk7hjDIs8MizNl!m2tQnFq95Wanvexji*Xf6xYVWOUHozd6B9zAUUks4kGgRKhtUQKlDh!SPZrbNW2AhcU2osIKr3fomfk4m0Wsj1kFea0wUkyaKzSN2oQ2SwIj9CEpRp1z1pV4HPD4AZiMeLS1J2whFtzsmI7GrYOGFg5GjktrpR0W28d6vjvdhlm33A4XVDF0Ltbb1JKW9xlhcDlw4TMziSrJfPpW77vGm60242w$$\",\"site_id\":\"\",\"chunk_size\":5,\"custom_host\":\"\",\"disable_disk_usage\":false,\"enable_direct_upload\":false}",
+      "addition": "{\"root_folder_path\":\"/\",\"region\":\"global\",\"is_sharepoint\":false,\"use_online_api\":true,\"api_url_address\":\"https://api.oplist.org/onedrive/renewapi\",\"client_id\":\"\",\"client_secret\":\"\",\"redirect_uri\":\"https://api.oplist.org/onedrive/callback\",\"refresh_token\":\"\",\"site_id\":\"\",\"chunk_size\":5,\"custom_host\":\"\",\"disable_disk_usage\":false,\"enable_direct_upload\":false}",
       "modified": "2026-07-11T05:23:04.972Z",
       "mount_path": "/onedrive"
     }
