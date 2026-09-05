@@ -6,14 +6,32 @@ public_data
 
 # temp file
 *.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
 
 # ide files
 .DS_Store
 .idea
 .test
 .codebuddy
+.vscode
 .env
 .env.local
 .env.*.local
 .wrangler
 .reasonix
+
+# build artifacts
+*.tsbuildinfo
+.rollup.cache
+
+# OS files
+Thumbs.db
+desktop.ini
+
+# test coverage
+coverage/
+.nyc_output/

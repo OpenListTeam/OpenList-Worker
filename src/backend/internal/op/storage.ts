@@ -46,6 +46,7 @@ import { Cloud189Driver } from "../../drivers/189/driver"
 import { Driver189TV } from "../../drivers/189_tv/driver"
 import { WebdavDriver } from "../../drivers/webdav/driver"
 import { WoPanDriver, normalizeWoPanAddition } from "../../drivers/wopan/driver"
+import { MoPanDriver } from "../../drivers/mopan/driver"
 import { S3Driver, normalizeS3Addition } from "../../drivers/s3/driver"
 import {
   WeiyunDriver,
@@ -927,6 +928,36 @@ async function createDriver(
   ) {
     const addition = parseAddition(storageConfig)
     driver = new WpsDriver(addition)
+    await driver.init?.()
+  } else if (
+    normDriver === "mopan" ||
+    normDriver === "mobilecloud" ||
+    normDriver === "cmcc" ||
+    normDriver === "chinamobile" ||
+    normDriver.includes("mopan")
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new MoPanDriver(addition, async (deviceInfo, token) => {
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        stAddition.device_info = deviceInfo
+        // Extract Bearer token if present
+        const cleanToken = token.replace(/^Bearer\s+/i, "")
+        stAddition.token = cleanToken
+        st.addition = JSON.stringify(stAddition)
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[MoPan] failed to persist tokens:", e)
+      }
+    })
     await driver.init?.()
   } else if (
     normDriver === "139" ||
