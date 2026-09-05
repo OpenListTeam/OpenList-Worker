@@ -13,10 +13,16 @@ binding = "ASSETS"
 [vars]
 ENVIRONMENT = "production"
 # 注意：不要在这里硬编码管理员密码！部署时请通过
-#   `wrangler secret put ADMIN_PASSWORD`  配置强密码，
-#   未配置时使用默认 admin/admin，首次登录后请立即修改。
+#   `wrangler secret put ADMIN_PASSWORD`  配置强密码。
+# 若未配置 ADMIN_PASSWORD，全新部署会生成一个随机初始密码，
+# 仅打印到启动日志一次（[SECURITY] Initial admin password: xxxx），
+# 之后不再打印；请从日志复制并登录后立即修改。
 # JWT 签名密钥同理：`wrangler secret put JWT_SECRET`
 VITE_API_URL = "/api"
+
+# 持久化后端选择：json（默认，KV/Blob）| d1 | mysql
+# 详见 docs/database-backend-multi-support.md
+# DB_DRIVER = "d1"
 
 [[kv_namespaces]]
 binding = "OPENLIST_KV"
