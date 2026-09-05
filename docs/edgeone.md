@@ -22,7 +22,7 @@
 
 1. **导入仓库**：登录 [EdgeOne Makers 控制台](https://console.edgeone.ai/makers)，点击 **新建项目** -> **导入 Git 仓库**。
 2. **构建设置**（平台将自动读取项目根目录的 `edgeone.json`）：
-   - **Node 版本**：`22.11.0`
+   - **Node 版本**：`22.21.1`（官方前端仓库锁定的 pnpm@11 要求 Node ≥ 22.13；须使用 EdgeOne 预装版本列表中的值，由 `edgeone.json` 的 `nodeVersion` 控制）
    - **安装命令**：`pnpm install --no-frozen-lockfile`
    - **构建命令**：`pnpm run build`
    - **输出目录**：`dist`

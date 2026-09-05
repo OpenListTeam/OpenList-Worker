@@ -42,29 +42,24 @@ function detectPackageManager(dir) {
 }
 
 /**
- * 目标仓库可能锁定独立的包管理器版本（packageManager 字段，如前端仓库的 pnpm@11），
- * 与本仓库/全局的 pnpm 大版本不兼容时（例如 pnpm 9 要求 pnpm-workspace.yaml 必须含
- * packages 字段），改用 corepack 按目标仓库 cwd 解析锁定版本执行。
+ * 目标仓库锁定了独立的 pnpm 版本（packageManager 字段，如前端仓库 pnpm@11.24.0），
+ * 用 npx 按精确版本执行。
+ *
+ * 不走 corepack：旧版 Node（如 EdgeOne 构建环境的 22.11.0）自带的 corepack
+ * 内置 npm 签名密钥已过期（2025-04 registry 密钥轮换），`corepack pnpm` 会报
+ * "Cannot find matching keyid" 直接失败；npx 只经 npm 下载，无此问题。
  */
 function resolvePmCommand(dir, pm) {
   if (pm !== "pnpm") return pm
   let pinned
   try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf-8"))
-    pinned = pkg.packageManager
+    pinned = JSON.parse(
+      fs.readFileSync(path.join(dir, "package.json"), "utf-8"),
+    ).packageManager
   } catch {
     return pm
   }
-  if (!pinned || !pinned.startsWith("pnpm@")) return pm
-  try {
-    execSync("corepack --version", { stdio: "ignore" })
-    return "corepack pnpm"
-  } catch {
-    console.warn(
-      `  [fetch-frontend] 未检测到 corepack，回退全局 pnpm（目标仓库锁定 ${pinned}，可能不兼容）`,
-    )
-    return pm
-  }
+  return pinned?.startsWith("pnpm@") ? `npx -y ${pinned}` : pm
 }
 
 function requireDist(src) {
@@ -88,8 +83,8 @@ function buildLocalRepo(repo) {
   }
   const pm = detectPackageManager(abs)
   const cmd = resolvePmCommand(abs, pm)
-  const env = { ...process.env, COREPACK_ENABLE_DOWNLOAD_PROMPT: "0" }
-  const install = (extra = "") => run(`${cmd} install${extra}`, { cwd: abs, env })
+  const install = (extra = "") =>
+    run(`${cmd} install${extra}`, { cwd: abs })
   try {
     install()
   } catch {
@@ -100,7 +95,7 @@ function buildLocalRepo(repo) {
     console.warn("  [fetch-frontend] pnpm install 失败（lockfile 供应链复核或网络问题），--trust-lockfile 重试一次...")
     install(" --trust-lockfile")
   }
-  run(`${cmd} run build`, { cwd: abs, env })
+  run(`${cmd} run build`, { cwd: abs })
   replaceDist(path.join(abs, "dist"))
 }
 
