@@ -897,11 +897,15 @@ const loadDb = async (envCtx?: any) => {
   }
 
   // Priority 1: 持久化后端（json/KV/Blob、D1、MySQL）
-  const backend = await getStoreBackend(envCtx)
+  // 注意：envCtx 可能为空（如 resolvePath 等内部调用 getDb() 不传 env）。
+  // 此时必须回退到请求级 globalEnvCtx，否则 readDriver 读不到 DB_DRIVER、
+  // getD1 读不到 DB binding，会错误回退到 json 后端读到旧的 KV 数据。
+  const activeEnv = envCtx || globalEnvCtx
+  const backend = await getStoreBackend(activeEnv)
   try {
-    const persisted = await backend.load(envCtx)
+    const persisted = await backend.load(activeEnv)
     if (persisted) {
-      await unsealDb(persisted, getEncryptionKey(envCtx))
+      await unsealDb(persisted, getEncryptionKey(activeEnv))
       memoryDb = persisted
       ensureDefaultSettings(memoryDb)
       ensureDefaultStorages(memoryDb)
@@ -1105,9 +1109,10 @@ export const saveDb = async (data: any, envCtx?: any): Promise<boolean> => {
   // the write rather than a pre-write snapshot.
   if (envCtx) dbCache.set(envCtx, { ts: Date.now(), db: data })
 
-  const backend = await getStoreBackend(envCtx)
+  const activeEnv = envCtx || globalEnvCtx
+  const backend = await getStoreBackend(activeEnv)
   const configured = backend.isConfigured
-    ? await backend.isConfigured(envCtx)
+    ? await backend.isConfigured(activeEnv)
     : true
   if (!configured) {
     // No persistence configured — not a failed write, just an unpersisted
@@ -1120,8 +1125,8 @@ export const saveDb = async (data: any, envCtx?: any): Promise<boolean> => {
 
   try {
     // 落盘前对敏感字段做静态加密（H-1），内存中的 data 保持明文
-    const sealed = await sealDb(data, getEncryptionKey(envCtx))
-    await backend.save(sealed, envCtx)
+    const sealed = await sealDb(data, getEncryptionKey(activeEnv))
+    await backend.save(sealed, activeEnv)
   } catch (err: any) {
     throw new Error(
       `[DB] Failed to persist config (${backend.name}); the change was NOT saved: ${err?.message || err}`,
