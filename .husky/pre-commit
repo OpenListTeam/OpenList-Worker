@@ -1,6 +1,0 @@
-#!/usr/bin/env sh
-if type pnpm > /dev/null 2>&1; then
-  pnpm lint-staged
-else
-  npx lint-staged
-fi

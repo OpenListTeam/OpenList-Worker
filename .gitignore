@@ -1,15 +1,13 @@
+# runtime dir
 node_modules
 dist
 dist-server
+public_data
 
-# 本地运行时数据：含网盘凭据（refresh_token / cookie / 密码），禁止入库。
-# public_data/db.json 曾提交过一枚真实的 OneDrive refresh_token。
-public_data/
+# temp file
+*.log
 
-/src/lang/*
-!/src/lang/en/
-!/src/lang/zh/
-!/src/lang/zh-CN/
+# ide files
 .DS_Store
 .idea
 .test
@@ -18,4 +16,4 @@ public_data/
 .env.local
 .env.*.local
 .wrangler
-wrangler_dev.log
+.reasonix
