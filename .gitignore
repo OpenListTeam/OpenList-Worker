@@ -74,3 +74,9 @@ pages/.env
 .env.production
 .env.development
 *.secret
+
+# Security audit reports (contain sensitive information)
+docs/3-Audit-Reports/
+docs/*AUDIT*.md
+docs/*SECURITY*.md
+docs/TASK-COMPLETION-REPORT.md
