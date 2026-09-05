@@ -48,6 +48,21 @@ export default {};
   },
 }
 
+/**
+ * dist/index.html 的换行符随获取途径而变（Windows 上 git autocrlf 克隆官方前端
+ * 会产生 CRLF，CI/Linux 为 LF），esbuild 嵌入模板字符串时 CRLF 会变成
+ * `\r` 转义 + LF，导致产物哈希跨平台不一致。统一归一为 LF。
+ */
+const normalizeHtmlEolPlugin = {
+  name: "normalize-html-eol",
+  setup(build) {
+    build.onLoad({ filter: /\.html$/ }, async (args) => {
+      const contents = await fs.promises.readFile(args.path, "utf8")
+      return { contents: contents.replace(/\r\n?/g, "\n"), loader: "text" }
+    })
+  },
+}
+
 async function build() {
   await esbuild.build({
     entryPoints: ["api/[...route].ts"],
@@ -80,7 +95,7 @@ async function build() {
     external: ["ssh2", "cpu-features", "iconv-lite", "mysql2"],
     // 内联 dist/index.html 作为 SPA 兜底壳（需在 vite build 之后运行）
     loader: { ".html": "text", ".node": "empty" },
-    plugins: [emptyNodeDriverPlugin],
+    plugins: [emptyNodeDriverPlugin, normalizeHtmlEolPlugin],
   })
 
   // 阿里云 ESA（边缘安全加速）边缘函数入口（仅在源文件存在时构建）
@@ -95,7 +110,7 @@ async function build() {
       mainFields: ["module", "main"],
       external: ["ssh2", "cpu-features", "iconv-lite", "mysql2", "node:*"],
       loader: { ".html": "text", ".node": "empty" },
-      plugins: [emptyNodeDriverPlugin],
+      plugins: [emptyNodeDriverPlugin, normalizeHtmlEolPlugin],
     })
   }
 

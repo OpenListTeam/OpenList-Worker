@@ -136,7 +136,10 @@ function main() {
   console.log(`  克隆官方前端: ${OFFICIAL_REPO_URL}#${OFFICIAL_REPO_REF}`)
   try {
     run(
-      `git clone --depth 1 --branch ${OFFICIAL_REPO_REF} ${OFFICIAL_REPO_URL} ${tmp}`,
+      // -c core.autocrlf=false：禁用克隆端的换行符转换。Windows 上 autocrlf
+      // 会把前端源码（含 index.html）检出为 CRLF，改变 vite 构建出的
+      // dist/index.html 内容，进而导致产物哈希跨平台不一致。
+      `git -c core.autocrlf=false clone --depth 1 --branch ${OFFICIAL_REPO_REF} ${OFFICIAL_REPO_URL} ${tmp}`,
     )
     buildLocalRepo(tmp)
   } finally {
