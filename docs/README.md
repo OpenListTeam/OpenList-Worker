@@ -25,6 +25,7 @@
 - `2-00005-MoPan-Driver-Implementation.md` - MoPan 驱动实现
 - `2-00006-MoPan-Implementation-Report.md` - MoPan 实现报告
 - `2-00007-Driver-Status.md` - 驱动实现状态
+- `2-00008-Incomplete-Drivers.md` - 半成品驱动说明
 
 ### [3-Audit-Reports](./3-Audit-Reports/) - 审计报告
 代码审计和安全分析报告（已完成）：

@@ -1,4 +1,4 @@
-// MoPan (中国移动和彩云) driver
+w// MoPan (中国移动和彩云) driver
 // Ported from: https://github.com/OpenListTeam/OpenList/tree/main/drivers/mopan
 import {
   StorageDriver,

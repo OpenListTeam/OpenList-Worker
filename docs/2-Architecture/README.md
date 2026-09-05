@@ -32,6 +32,11 @@
   - **当前驱动实现状态**
   - **覆盖率: 85.9% (73/85 驱动)**
 
+- **[2-00008-Incomplete-Drivers.md](./2-00008-Incomplete-Drivers.md)**
+  - **半成品驱动说明**（~1050 行代码）
+  - 189PC（重复实现）、AutoIndex、ProtonDrive
+  - 清理建议和未来实现指南
+
 ### MoPan 驱动实现
 
 - **[2-00005-MoPan-Driver-Implementation.md](./2-00005-MoPan-Driver-Implementation.md)**
