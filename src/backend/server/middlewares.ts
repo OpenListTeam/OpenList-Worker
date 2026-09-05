@@ -253,6 +253,147 @@ export async function matchCronSecret(c: Context): Promise<boolean> {
  * - 无凭证时，仅当数据库中存在且未禁用的 guest 用户时才返回该游客信息；
  * - 若 guest 用户不存在（被删除）或被禁用，则返回 null（未授权状态）。
  */
+// ============ CSRF 防护 (添加日期: 2026-09-05) ============
+/**
+ * 生成 CSRF Token（短期有效，1小时过期）
+ */
+export async function generateCSRFToken(c: Context): Promise<string> {
+  const { sign } = await import("hono/jwt")
+  const secret = await getJwtSecret(c)
+  const token = await sign(
+    {
+      type: "csrf",
+      jti: crypto.randomUUID ? crypto.randomUUID() : generateRandomSecret().slice(0, 16),
+      exp: Math.floor(Date.now() / 1000) + 3600, // 1 小时过期
+    },
+    secret,
+  )
+  return token
+}
+
+/**
+ * CSRF 保护中间件：对 POST/PUT/DELETE/PATCH 请求验证 CSRF token
+ * GET/HEAD/OPTIONS 请求豁免检查
+ */
+export async function csrfProtection(
+  c: Context,
+  next: () => Promise<void>,
+) {
+  const method = c.req.method.toUpperCase()
+
+  // GET/HEAD/OPTIONS 请求无需 CSRF 验证
+  if (["GET", "HEAD", "OPTIONS"].includes(method)) {
+    return next()
+  }
+
+  // 获取 CSRF token（支持 Header、Query、Body 三种方式）
+  let token =
+    c.req.header("x-csrf-token") ||
+    c.req.header("X-CSRF-Token") ||
+    c.req.query("csrf_token")
+
+  // 尝试从 JSON body 中获取
+  if (!token) {
+    try {
+      const body = await c.req.json()
+      token = body?.csrf_token
+      // 重要：重新设置 body 供后续处理（Hono 的 req.json() 会消耗 body）
+      ;(c.req as any).bodyCache = body
+    } catch {
+      // 非 JSON body，继续
+    }
+  }
+
+  if (!token) {
+    return c.json(
+      {
+        code: 403,
+        message: "CSRF token missing. Please include X-CSRF-Token header or csrf_token parameter.",
+        data: null,
+      },
+      403,
+    )
+  }
+
+  try {
+    const { verify } = await import("hono/jwt")
+    const secret = await getJwtSecret(c)
+    const payload: any = await verify(token, secret, "HS256")
+
+    if (payload.type !== "csrf") {
+      throw new Error("Invalid token type")
+    }
+
+    // Token 有效，继续处理
+    await next()
+  } catch (err: any) {
+    return c.json(
+      {
+        code: 403,
+        message: "Invalid or expired CSRF token",
+        data: null,
+      },
+      403,
+    )
+  }
+}
+
+// ============ 审计日志中间件 (添加日期: 2026-09-05) ============
+/**
+ * 审计日志中间件：记录所有状态修改操作
+ * 仅记录 POST/PUT/DELETE/PATCH 请求
+ */
+export async function auditMiddleware(
+  c: Context,
+  next: () => Promise<void>,
+) {
+  const startTime = Date.now()
+  const method = c.req.method.toUpperCase()
+  const path = c.req.path
+
+  // 仅记录状态修改操作
+  const shouldAudit = ["POST", "PUT", "DELETE", "PATCH"].includes(method)
+
+  await next()
+
+  if (shouldAudit) {
+    try {
+      const { logAudit } = await import("../internal/model/audit")
+      const user = await getUserFromContext(c).catch(() => null)
+      const duration = Date.now() - startTime
+      const statusCode = c.res.status || 200
+      const status = statusCode >= 200 && statusCode < 400 ? "success" : "failure"
+
+      // 获取客户端 IP
+      const ip =
+        c.req.header("cf-connecting-ip") ||
+        c.req.header("x-real-ip") ||
+        c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+        "unknown"
+
+      await logAudit(
+        {
+          user_id: user?.id,
+          username: user?.username || "anonymous",
+          ip,
+          action: `${method} ${path}`,
+          resource: path,
+          method,
+          status,
+          status_code: statusCode,
+          details: JSON.stringify({ duration_ms: duration }),
+          user_agent: c.req.header("user-agent"),
+          duration_ms: duration,
+        },
+        c.env,
+      )
+    } catch (err) {
+      // 审计日志失败不影响业务流程
+      console.warn("[Audit] Failed to log:", err)
+    }
+  }
+}
+
 export async function getUserFromContext(c: Context): Promise<{
   id?: number
   role: number

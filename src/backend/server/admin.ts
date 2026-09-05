@@ -4373,3 +4373,97 @@ adminRouter.post("/message/get", (c) => {
   }
   return c.json({ code: 200, message: "success", data: message })
 })
+
+// ============ 审计日志接口 (添加日期: 2026-09-05) ============
+
+// GET /api/admin/audit/logs - 查询审计日志
+adminRouter.get("/audit/logs", async (c) => {
+  try {
+    const { queryAuditLogs } = await import("../internal/model/audit")
+    
+    const username = c.req.query("username")
+    const action = c.req.query("action")
+    const method = c.req.query("method")
+    const status = c.req.query("status") as "success" | "failure" | undefined
+    const startDate = c.req.query("start_date")
+    const endDate = c.req.query("end_date")
+    const limit = parseInt(c.req.query("limit") || "100", 10)
+
+    const logs = queryAuditLogs({
+      username,
+      action,
+      method,
+      status,
+      startDate,
+      endDate,
+      limit: Math.min(limit, 1000), // 最多返回 1000 条
+    })
+
+    return c.json({
+      code: 200,
+      message: "success",
+      data: {
+        content: logs,
+        total: logs.length,
+      },
+    })
+  } catch (err: any) {
+    return c.json(
+      {
+        code: 500,
+        message: err.message || "Failed to query audit logs",
+        data: null,
+      },
+      500,
+    )
+  }
+})
+
+// GET /api/admin/audit/stats - 获取审计日志统计
+adminRouter.get("/audit/stats", async (c) => {
+  try {
+    const { getAuditStats } = await import("../internal/model/audit")
+    const stats = getAuditStats()
+
+    return c.json({
+      code: 200,
+      message: "success",
+      data: stats,
+    })
+  } catch (err: any) {
+    return c.json(
+      {
+        code: 500,
+        message: err.message || "Failed to get audit stats",
+        data: null,
+      },
+      500,
+    )
+  }
+})
+
+// POST /api/admin/audit/cleanup - 清理过期日志
+adminRouter.post("/audit/cleanup", async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}))
+    const retentionDays = parseInt(body.retention_days || "30", 10)
+
+    const { cleanupExpiredLogs } = await import("../internal/model/audit")
+    cleanupExpiredLogs(retentionDays)
+
+    return c.json({
+      code: 200,
+      message: `Cleaned up logs older than ${retentionDays} days`,
+      data: null,
+    })
+  } catch (err: any) {
+    return c.json(
+      {
+        code: 500,
+        message: err.message || "Failed to cleanup logs",
+        data: null,
+      },
+      500,
+    )
+  }
+})

@@ -119,6 +119,12 @@ export function setupRouter(app: Hono) {
   // 限流：读取管理后台 ip_limit / traffic_limit 设置，尽力而为
   app.use("*", rateLimitMiddleware)
 
+  // 审计日志：记录所有状态修改操作 (添加日期: 2026-09-05)
+  app.use("*", async (c, next) => {
+    const { auditMiddleware } = await import("./middlewares")
+    return auditMiddleware(c, next)
+  })
+
   // 安全响应头：防止点击劫持 / MIME 嗅探 / XSS / 引用泄露
   app.use("*", async (c, next) => {
     await next()

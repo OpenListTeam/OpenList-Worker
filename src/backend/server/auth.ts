@@ -6,6 +6,7 @@ import {
   getUserFromContext,
   revokeToken,
   isTokenRevoked,
+  generateCSRFToken,
 } from "./middlewares"
 import {
   generateTotpSecret,
@@ -452,6 +453,23 @@ export const logoutHandler = async (c: any) => {
 
 authRouter.get("/logout", logoutHandler)
 authRouter.post("/logout", logoutHandler)
+
+// GET /api/auth/csrf — 获取 CSRF token（添加日期: 2026-09-05）
+authRouter.get("/csrf", async (c) => {
+  try {
+    const token = await generateCSRFToken(c)
+    return c.json({
+      code: 200,
+      message: "success",
+      data: { csrf_token: token },
+    })
+  } catch (err: any) {
+    return c.json(
+      { code: 500, message: "Failed to generate CSRF token", data: null },
+      500,
+    )
+  }
+})
 
 // POST /api/auth/2fa/generate — returns a fresh TOTP secret + QR image
 authRouter.post("/2fa/generate", async (c) => {

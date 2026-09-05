@@ -61,3 +61,16 @@ yarn.lock
 # cleanup scripts are tracked
 !cleanup.bat
 !cleanup.sh
+
+# Security: Prevent sensitive files from being committed (Added: 2026-09-05)
+*.key
+*.pem
+*.p12
+*.pfx
+*.cer
+*.crt
+**/.env
+pages/.env
+.env.production
+.env.development
+*.secret
