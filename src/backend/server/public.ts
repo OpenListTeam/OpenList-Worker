@@ -1,5 +1,6 @@
 import { Hono } from "hono"
-import { getDb } from "../internal/model/db"
+import { getDb, saveDb } from "../internal/model/db"
+import { hashPassword } from "./auth"
 
 export const publicRouter = new Hono()
 
@@ -195,4 +196,92 @@ publicRouter.get("/plugins", async (c) => {
     message: "success",
     data: activePlugins,
   })
+})
+
+// 系统是否已初始化：存在已设置密码的管理员账号即为已初始化。
+publicRouter.get("/init_status", async (c) => {
+  const db = await getDb(c.env)
+  const admin = (db.users || []).find((u: any) => u.role === 2)
+  const initialized = Boolean(
+    admin && String(admin.password || "").trim() !== "",
+  )
+  return c.json({
+    code: 200,
+    message: "success",
+    data: { initialized },
+  })
+})
+
+// 执行系统初始化：创建管理员账号并设置站点名称等初始参数。
+publicRouter.post("/init/setup", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const username = String(body.username || "admin").trim()
+  const password = String(body.password || "").trim()
+  const siteTitle = String(body.site_title || "").trim()
+
+  if (!username) {
+    return c.json({ code: 400, message: "username is required", data: null }, 400)
+  }
+  if (!password) {
+    return c.json({ code: 400, message: "password is required", data: null }, 400)
+  }
+  if (password.length < 4) {
+    return c.json(
+      { code: 400, message: "password must be at least 4 characters", data: null },
+      400,
+    )
+  }
+
+  const db = await getDb(c.env)
+  if (!db.users) db.users = []
+  const hashed = await hashPassword(password)
+  const existing = db.users.find((u: any) => u.role === 2)
+
+  if (existing && String(existing.password || "").trim() !== "") {
+    return c.json(
+      { code: 400, message: "system has already been initialized", data: null },
+      400,
+    )
+  }
+
+  if (existing) {
+    // admin 账号已存在但尚未设置密码（未初始化）：直接更新
+    existing.username = username
+    existing.password = hashed
+    existing.pwd_update_at = new Date().toISOString()
+  } else {
+    // 首次创建 admin 账号
+    db.users.push({
+      id: 1,
+      username,
+      password: hashed,
+      role: 2,
+      permission: 0,
+      base_path: "/",
+      disabled: false,
+      sso_id: "",
+      allow_ldap: false,
+      pwd_update_at: new Date().toISOString(),
+    })
+  }
+
+  if (siteTitle) {
+    if (!db.settings) db.settings = []
+    const site = db.settings.find((s: any) => s.key === "site_title")
+    if (site) {
+      site.value = siteTitle
+    } else {
+      db.settings.push({
+        key: "site_title",
+        value: siteTitle,
+        type: "string",
+        help: "Site Title",
+        group: 1,
+        flag: 0,
+      })
+    }
+  }
+
+  await saveDb(db, c.env)
+  return c.json({ code: 200, message: "success", data: null })
 })

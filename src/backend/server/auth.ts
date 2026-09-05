@@ -110,30 +110,28 @@ function generateJti(): string {
 export async function getOrInitUsers(envCtx: any) {
   const db = await getDb(envCtx)
   if (!db.users || db.users.length === 0) {
-    // FIX(F-11): a fresh deployment must never start with a well-known
-    // password. ADMIN_PASSWORD (wrangler secret / platform env) takes
-    // precedence; without it a random password is generated and printed to
-    // the startup log once — the same pattern Jenkins/GitLab use for their
-    // initial admin credentials.
     const envPass =
       (envCtx && envCtx.ADMIN_PASSWORD) ||
       (typeof process !== "undefined" ? process.env?.ADMIN_PASSWORD : "") ||
       ""
-    let initialPassword = envPass
-    if (!initialPassword) {
-      initialPassword = generateRandomPassword()
-      console.warn(
-        "[SECURITY] No ADMIN_PASSWORD configured — generated a random initial admin password. " +
-          "Copy it from the next log line, log in, and change it immediately. It is not printed again.",
-      )
-      console.log(`[SECURITY] Initial admin password: ${initialPassword}`)
+    const guest = {
+      id: 2,
+      username: "guest",
+      password: "",
+      role: 1,
+      permission: 0,
+      base_path: "/",
+      disabled: false,
+      sso_id: "",
+      allow_ldap: false,
+      pwd_update_at: new Date().toISOString(),
     }
-    const defaultAdminHash = await hashPassword(initialPassword)
-    db.users = [
-      {
+    if (envPass) {
+      // 显式配置了 ADMIN_PASSWORD：自动初始化 admin（保持兼容）
+      const admin = {
         id: 1,
         username: "admin",
-        password: defaultAdminHash,
+        password: await hashPassword(envPass),
         role: 2,
         permission: 0,
         base_path: "/",
@@ -141,23 +139,15 @@ export async function getOrInitUsers(envCtx: any) {
         sso_id: "",
         allow_ldap: false,
         pwd_update_at: new Date().toISOString(),
-      },
-      {
-        id: 2,
-        username: "guest",
-        password: "",
-        role: 1,
-        permission: 0,
-        base_path: "/",
-        disabled: false,
-        sso_id: "",
-        allow_ldap: false,
-        pwd_update_at: new Date().toISOString(),
-      },
-    ]
+      }
+      db.users = [admin, guest]
+    } else {
+      // 未初始化：仅创建 guest，admin 由 Web 安装向导（POST /api/public/init/setup）创建
+      db.users = [guest]
+    }
     await saveDb(db, envCtx)
   } else {
-    const adminUser = db.users.find((u: any) => u.username === "admin")
+    const adminUser = db.users.find((u: any) => u.role === 2)
     // FIX(F-11): the old logic silently reset any non-64-hex password (e.g. a
     // legacy PBKDF2 hash) back to admin/admin — meaning a routine upgrade
     // could quietly reopen the admin account to the world. New behavior:
@@ -178,15 +168,12 @@ export async function getOrInitUsers(envCtx: any) {
         adminUser.pwd_update_at = new Date().toISOString()
         await saveDb(db, envCtx)
       } else if (!adminPass) {
-        const random = generateRandomPassword()
+        // 未初始化：不再自动生成随机密码，交由 Web 安装向导（POST /api/public/init/setup）完成。
+        // 前端会在 /api/public/init_status 返回未初始化时自动跳转到安装向导。
         console.warn(
-          "[SECURITY] Admin password is empty and no ADMIN_PASSWORD is set — generated a random one. " +
-            "Copy it from the next log line and change it after login. It is not printed again.",
+          "[SECURITY] Admin password is empty and no ADMIN_PASSWORD is set — the system is NOT initialized. " +
+            "Open the site in a browser to run the setup wizard, or set ADMIN_PASSWORD to initialize automatically.",
         )
-        console.log(`[SECURITY] New admin password: ${random}`)
-        adminUser.password = await hashPassword(random)
-        adminUser.pwd_update_at = new Date().toISOString()
-        await saveDb(db, envCtx)
       } else {
         console.warn(
           "[SECURITY] Admin password uses a legacy hash format this build cannot verify; " +

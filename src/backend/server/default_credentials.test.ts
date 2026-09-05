@@ -26,17 +26,15 @@ const currentAdmin = async () => {
   return db.users.find((u: any) => u.username === "admin")
 }
 
-test("Security(F-11): a fresh deployment must not get the well-known admin/admin password", async () => {
+test("Initialization: a fresh deployment stays uninitialized without ADMIN_PASSWORD", async () => {
   await seed([])
   await getOrInitUsers(env)
   const admin = await currentAdmin()
-  assert.ok(admin, "admin must be created")
-  assert.notEqual(
-    admin.password,
-    await hashPassword("admin"),
-    "a fresh deployment must never start with admin/admin",
+  assert.equal(
+    admin,
+    undefined,
+    "admin must NOT be auto-created before the setup wizard runs",
   )
-  assert.match(admin.password, /^[0-9a-f]{64}$/, "hash format must stay valid")
 })
 
 test("Security(F-11): a legacy-format hash is left untouched (no silent reset on upgrade)", async () => {
@@ -54,15 +52,14 @@ test("Security(F-11): a legacy-format hash is left untouched (no silent reset on
   assert.notEqual(admin.password, await hashPassword("admin"))
 })
 
-test("Security(F-11): an empty admin password gets a random password, not 'admin'", async () => {
+test("Initialization: an empty admin password stays empty (uninitialized), not a random one", async () => {
   await seed([adminUser("")])
   await getOrInitUsers(env)
   const admin = await currentAdmin()
-  assert.match(admin.password, /^[0-9a-f]{64}$/, "must be a real hash")
-  assert.notEqual(
+  assert.equal(
     admin.password,
-    await hashPassword("admin"),
-    "must not fall back to the well-known password",
+    "",
+    "empty password must stay empty until the setup wizard runs",
   )
 })
 
