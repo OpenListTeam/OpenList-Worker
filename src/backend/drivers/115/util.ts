@@ -1,5 +1,11 @@
 // 115 Open API 客户端
-import { Driver115Addition, Cloud115File, Cloud115ListResp, Cloud115UserInfoResp, Cloud115DownResp } from "./types"
+import {
+  Driver115Addition,
+  Cloud115File,
+  Cloud115ListResp,
+  Cloud115UserInfoResp,
+  Cloud115DownResp,
+} from "./types"
 
 const API_BASE = "https://proapi.115.com/open"
 const PASSPORT_BASE = "https://passportapi.115.com"
@@ -48,11 +54,17 @@ export class Client115 {
     const data: any = await resp.json().catch(() => ({}))
     if (data?.state === false || data?.errno) {
       // token 过期尝试刷新
-      if (data.errno === 990001 || data.errcode === 990001 || data.errno === 10008) {
-        await this.refreshToken()
+      if (
+        data.errno === 990001 ||
+        data.errcode === 990001 ||
+        data.errno === 10008
+      ) {
+        await this.refreshAccessToken()
         return this.request<T>(path, body, base)
       }
-      throw new Error(`[115] ${data.error || data.errmsg || "API error"} (${data.errno || data.errcode || ""})`)
+      throw new Error(
+        `[115] ${data.error || data.errmsg || "API error"} (${data.errno || data.errcode || ""})`,
+      )
     }
     return data as T
   }
@@ -61,12 +73,15 @@ export class Client115 {
     return this.request<Cloud115UserInfoResp>("/user/info", {}, PASSPORT_BASE)
   }
 
-  async refreshToken(): Promise<void> {
+  async refreshAccessToken(): Promise<void> {
     const url = `${API_BASE}/oauth2/token`
     const resp = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": UA },
-      body: JSON.stringify({ grant_type: "refresh_token", refresh_token: this.refreshToken }),
+      body: JSON.stringify({
+        grant_type: "refresh_token",
+        refresh_token: this.refreshToken,
+      }),
     })
     const data: any = await resp.json().catch(() => ({}))
     if (data?.access_token) {
@@ -97,7 +112,9 @@ export class Client115 {
       return resp.files.map((f: any) => ({
         Fid: f.fid ?? f.id,
         Fn: f.n ?? f.file_name ?? f.name,
-        Fc: String(f.fc ?? f.category ?? (f.pid !== undefined && !f.pid ? "0" : "1")),
+        Fc: String(
+          f.fc ?? f.category ?? (f.pid !== undefined && !f.pid ? "0" : "1"),
+        ),
         FS: Number(f.s ?? f.size ?? 0),
         Sha1: f.sha1,
         Pc: f.pc ?? f.pick_code,
