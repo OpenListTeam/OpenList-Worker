@@ -34,6 +34,7 @@ import {
   BaiduDriver,
   normalizeBaiduAddition,
 } from "../../drivers/baidu_netdisk/driver"
+import { DriverBaiduPhoto } from "../../drivers/baidu_photo/driver"
 import { Pan115Driver } from "../../drivers/115open/driver"
 import { GithubDriver } from "../../drivers/github/driver"
 import {
@@ -513,10 +514,16 @@ async function createDriver(
     })
     await driver.init?.()
   } else if (
+    normDriver === "baiduphoto" ||
+    normDriver === "baidu_photo" ||
+    normDriver === "baiduphotos"
+  ) {
+    driver = new DriverBaiduPhoto(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (
     normDriver === "baidunetdisk" ||
     normDriver === "baidu" ||
     normDriver === "baiduyun" ||
-    normDriver === "baiduphoto" ||
     normDriver === "baidushare" ||
     normDriver.startsWith("baidu")
   ) {
