@@ -87,6 +87,7 @@
     "@solidjs/router": "^0.9.1",
     "@stitches/core": "^1.2.8",
     "@viselect/vanilla": "^3.9.0",
+    "@xmldom/xmldom": "^0.9.12",
     "aplayer": "^1.10.1",
     "artplayer": "^5.4.0",
     "artplayer-plugin-danmuku": "^5.3.0",
@@ -111,6 +112,7 @@
     "mitt": "^3.0.1",
     "monaco-editor": "0.55.1",
     "mpegts.js": "github:OpenListTeam/mpegts.js#1e51e0f6f918cf08e05dfae9c7bfcf658d6b4ac2",
+    "mysql2": "^3.11.0",
     "qrcode": "^1.5.4",
     "rehype-katex": "7.0.1",
     "rehype-raw": "^7.0.0",
@@ -127,7 +129,7 @@
     "ssh2": "^1.17.0",
     "streamsaver": "^2.0.6",
     "typescript-natural-sort": "^0.7.2",
-    "mysql2": "^3.11.0"
+    "xpath": "^0.0.34"
   },
   "lint-staged": {
     "**/*.{js,ts,css,tsx,jsx,md,html,yml,yaml}": "prettier --write"

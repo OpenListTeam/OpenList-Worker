@@ -28,6 +28,9 @@ public_data
 *.tsbuildinfo
 .rollup.cache
 
+# local-only dev config (D1 backend testing; not for deployment)
+wrangler.d1.toml
+
 # OS files
 Thumbs.db
 desktop.ini
@@ -35,3 +38,26 @@ desktop.ini
 # test coverage
 coverage/
 .nyc_output/
+
+# build output (keep in gitignore, should not commit)
+pages/dist/
+dist-server/
+*.tsbuildinfo
+
+# source maps (optional, can be removed)
+*.map
+*.js.map
+*.css.map
+
+# lock files (keep pnpm-lock.yaml only)
+package-lock.json
+yarn.lock
+
+# misc
+.cache/
+.parcel-cache/
+.turbo/
+
+# cleanup scripts are tracked
+!cleanup.bat
+!cleanup.sh
