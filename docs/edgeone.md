@@ -22,7 +22,7 @@
 
 1. **导入仓库**：登录 [EdgeOne Makers 控制台](https://console.edgeone.ai/makers)，点击 **新建项目** -> **导入 Git 仓库**。
 2. **构建设置**（平台将自动读取项目根目录的 `edgeone.json`）：
-   - **Node 版本**：`22.11.0`
+   - **Node 版本**：`22.21.1`（官方前端仓库锁定的 pnpm@11 要求 Node ≥ 22.13；须使用 EdgeOne 预装版本列表中的值，由 `edgeone.json` 的 `nodeVersion` 控制）
    - **安装命令**：`pnpm install --no-frozen-lockfile`
    - **构建命令**：`pnpm run build`
    - **输出目录**：`dist`
@@ -46,6 +46,19 @@ edgeone makers dev
 # 构建并部署到生产
 edgeone makers deploy
 ```
+
+---
+
+## 产物同步守卫（GitHub Actions）
+
+`cloud-functions/[[default]].js` 是构建产物（打包了全部后端源码 + 内联的前端 `index.html`），却又必须提交进仓库，因此容易随源码演进而过期。仓库内置了守卫工作流 `.github/workflows/edgeone-artifact-guard.yml`：
+
+- **触发**：push 到 `main` 或 PR 中涉及 `src/**`、`api/**`、`scripts/build-edge.mjs`、`cloud-functions/**` 等路径时自动运行，也可在 Actions 页手动触发（workflow_dispatch）。
+- **逻辑**：按与部署一致的流程重新构建（`pnpm install` → `fetch-frontend` → `build-edge`），将重建产物与已提交版本 `git diff` 比对。
+- **过期处理**：
+  - push 到 `main` / 手动触发：**自动重建并提交**最新产物（提交者为 `edgeone-deploy[bot]`，提交信息形如 `chore(edgeone): refresh cloud-functions artifact (after <sha>)`）。bot 提交不会再次触发 workflow，无循环风险；但也不会触发 `sync_repo.yml` 的 Gitee 同步，产物镜像需等下一次人工推送。
+  - pull request：仅检查并失败（fork 无法自动提交，且产物变更应留在 PR 中可审查）。修复方式：本地 `pnpm run build` 后提交，或下载失败任务上传的 `cloud-functions-refreshed` 产物覆盖提交。
+- **绕过场景**：使用 `edgeone makers deploy`（CLI 部署）时，只要在部署前跑过 `pnpm run build:edge`，产物在检测时即为最新，可不受此守卫约束。
 
 ---
 

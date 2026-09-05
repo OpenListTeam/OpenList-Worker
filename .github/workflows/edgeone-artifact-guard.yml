@@ -1,0 +1,115 @@
+name: EdgeOne Artifact Guard
+
+# cloud-functions/[[default]].js 是 EdgeOne Makers 平台在检出仓库时扫描的
+# Node 云函数产物（缺失会报 "No server-handler detected" 并退化为纯静态项目，
+# 详见 docs/edgeone.md），因此必须提交进仓库并与后端源码、前端产物保持同步。
+#
+# 本工作流按与部署一致的流程重新构建该产物并与已提交版本比对：
+# - push 到 main / 手动触发：产物过期时自动重建并提交（bot 提交不会再次触发
+#   workflow，无循环风险）
+# - pull request：仅检查并失败，由 PR 作者本地重建后提交（便于审查）
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "api/**"
+      - "scripts/build-edge.mjs"
+      - "scripts/fetch-frontend.mjs"
+      - "cloud-functions/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/edgeone-artifact-guard.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "api/**"
+      - "scripts/build-edge.mjs"
+      - "scripts/fetch-frontend.mjs"
+      - "cloud-functions/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/edgeone-artifact-guard.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: edgeone-artifact-guard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    name: Rebuild and sync cloud-functions artifact
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Fetch official frontend dist
+        run: node scripts/fetch-frontend.mjs
+
+      - name: Rebuild EdgeOne artifact
+        run: node scripts/build-edge.mjs
+
+      - name: Check artifact freshness
+        id: check
+        run: |
+          if [ -n "$(git status --porcelain -- cloud-functions)" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff --stat -- cloud-functions
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Auto-commit refreshed artifact
+        id: autocommit
+        if: steps.check.outputs.changed == 'true' && github.event_name != 'pull_request'
+        run: |
+          TRIGGERED=$(git rev-parse --short HEAD)
+          git config user.name "edgeone-deploy[bot]"
+          git config user.email "edgeone-deploy-bot@users.noreply.github.com"
+          git add cloud-functions
+          git commit -m "chore(edgeone): refresh cloud-functions artifact (after $TRIGGERED)"
+          git pull --rebase origin "$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME"
+          echo "committed=$TRIGGERED" >> "$GITHUB_OUTPUT"
+
+      - name: Job summary
+        if: always()
+        run: |
+          if [ "${{ steps.check.outputs.changed }}" = "false" ]; then
+            echo "✅ cloud-functions/[[default]].js 与源码同步，无需更新" >> "$GITHUB_STEP_SUMMARY"
+          elif [ -n "${{ steps.autocommit.outputs.committed }}" ]; then
+            echo "🤖 产物已过期，已自动重建并提交（触发提交：${{ steps.autocommit.outputs.committed }}）" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Fail on out-of-sync artifact (pull request)
+        if: steps.check.outputs.changed == 'true' && github.event_name == 'pull_request'
+        run: |
+          echo "::error::cloud-functions/[[default]].js 与源码不同步（后端代码或官方前端产物已更新）。"
+          echo "::error::请在本地运行 pnpm run build 后提交更新后的 cloud-functions/[[default]].js；也可下载本任务上传的 cloud-functions-refreshed 产物覆盖提交。"
+          exit 1
+
+      - name: Upload refreshed artifact on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-functions-refreshed
+          path: cloud-functions/
+          retention-days: 7

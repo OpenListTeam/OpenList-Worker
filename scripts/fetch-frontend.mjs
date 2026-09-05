@@ -41,6 +41,27 @@ function detectPackageManager(dir) {
   return fs.existsSync(path.join(dir, "pnpm-lock.yaml")) ? "pnpm" : "npm"
 }
 
+/**
+ * 目标仓库锁定了独立的 pnpm 版本（packageManager 字段，如前端仓库 pnpm@11.24.0），
+ * 用 npx 按精确版本执行。
+ *
+ * 不走 corepack：旧版 Node（如 EdgeOne 构建环境的 22.11.0）自带的 corepack
+ * 内置 npm 签名密钥已过期（2025-04 registry 密钥轮换），`corepack pnpm` 会报
+ * "Cannot find matching keyid" 直接失败；npx 只经 npm 下载，无此问题。
+ */
+function resolvePmCommand(dir, pm) {
+  if (pm !== "pnpm") return pm
+  let pinned
+  try {
+    pinned = JSON.parse(
+      fs.readFileSync(path.join(dir, "package.json"), "utf-8"),
+    ).packageManager
+  } catch {
+    return pm
+  }
+  return pinned?.startsWith("pnpm@") ? `npx -y ${pinned}` : pm
+}
+
 function requireDist(src) {
   if (!fs.existsSync(path.join(src, "index.html"))) {
     throw new Error(`前端产物目录缺少 index.html: ${src}`)
@@ -61,8 +82,20 @@ function buildLocalRepo(repo) {
     throw new Error(`目录不是前端仓库: ${abs}`)
   }
   const pm = detectPackageManager(abs)
-  run(`${pm} install`, { cwd: abs })
-  run(`${pm} run build`, { cwd: abs })
+  const cmd = resolvePmCommand(abs, pm)
+  const install = (extra = "") =>
+    run(`${cmd} install${extra}`, { cwd: abs })
+  try {
+    install()
+  } catch {
+    // 重试一次并加 --trust-lockfile：pnpm 11 默认对 lockfile 逐项重跑
+    // minimumReleaseAge / trustPolicy 供应链复核，registry manifest 缺少
+    // 平台子包时会误报（如 @crowdin/cli-*-arm64）。lockfile 来自刚克隆的
+    // 官方前端仓库（HTTPS + 官方分支），属于可信来源，跳过复核安全。
+    console.warn("  [fetch-frontend] pnpm install 失败（lockfile 供应链复核或网络问题），--trust-lockfile 重试一次...")
+    install(" --trust-lockfile")
+  }
+  run(`${cmd} run build`, { cwd: abs })
   replaceDist(path.join(abs, "dist"))
 }
 
@@ -98,12 +131,12 @@ function main() {
   console.log(`  克隆官方前端: ${OFFICIAL_REPO_URL}#${OFFICIAL_REPO_REF}`)
   try {
     run(
-      `git clone --depth 1 --branch ${OFFICIAL_REPO_REF} ${OFFICIAL_REPO_URL} ${tmp}`,
+      // -c core.autocrlf=false：禁用克隆端的换行符转换。Windows 上 autocrlf
+      // 会把前端源码（含 index.html）检出为 CRLF，改变 vite 构建出的
+      // dist/index.html 内容，进而导致产物哈希跨平台不一致。
+      `git -c core.autocrlf=false clone --depth 1 --branch ${OFFICIAL_REPO_REF} ${OFFICIAL_REPO_URL} ${tmp}`,
     )
-    const pm = detectPackageManager(tmp)
-    run(`${pm} install`, { cwd: tmp })
-    run(`${pm} run build`, { cwd: tmp })
-    replaceDist(path.join(tmp, "dist"))
+    buildLocalRepo(tmp)
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true })
   }

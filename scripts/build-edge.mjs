@@ -48,6 +48,21 @@ export default {};
   },
 }
 
+/**
+ * dist/index.html 的换行符随获取途径而变（Windows 上 git autocrlf 克隆官方前端
+ * 会产生 CRLF，CI/Linux 为 LF），esbuild 嵌入模板字符串时 CRLF 会变成
+ * `\r` 转义 + LF，导致产物哈希跨平台不一致。统一归一为 LF。
+ */
+const normalizeHtmlEolPlugin = {
+  name: "normalize-html-eol",
+  setup(build) {
+    build.onLoad({ filter: /\.html$/ }, async (args) => {
+      const contents = await fs.promises.readFile(args.path, "utf8")
+      return { contents: contents.replace(/\r\n?/g, "\n"), loader: "text" }
+    })
+  },
+}
+
 async function build() {
   await esbuild.build({
     entryPoints: ["api/[...route].ts"],
@@ -58,7 +73,13 @@ async function build() {
     outfile: "dist-server/api/[...route].js",
     minify: true,
     format: "esm",
-    external: ["ssh2", "cpu-features", "iconv-lite", "mysql2"],
+    // neutral 平台默认不读 package.json 的 main/module 字段，必须显式配置，
+    // 否则依赖 hash-wasm 等无 exports 映射的包会报 Could not resolve
+    mainFields: ["module", "main"],
+    // node:* 内置模块交由运行时解析（消费方为 Node 运行时：start 脚本 / Vercel /
+    // 云函数容器）。neutral 平台无法静态解析 node: 导入，而新增驱动中的
+    // node:crypto 均有运行时门控（isNode / try-catch），保持动态导入原样即可
+    external: ["ssh2", "cpu-features", "iconv-lite", "mysql2", "node:*"],
     loader: { ".node": "empty" },
     plugins: [emptyNodeDriverPlugin],
   })
@@ -74,7 +95,7 @@ async function build() {
     external: ["ssh2", "cpu-features", "iconv-lite", "mysql2"],
     // 内联 dist/index.html 作为 SPA 兜底壳（需在 vite build 之后运行）
     loader: { ".html": "text", ".node": "empty" },
-    plugins: [emptyNodeDriverPlugin],
+    plugins: [emptyNodeDriverPlugin, normalizeHtmlEolPlugin],
   })
 
   // 阿里云 ESA（边缘安全加速）边缘函数入口（仅在源文件存在时构建）
@@ -86,9 +107,10 @@ async function build() {
       outfile: "dist/esa-entry.js",
       minify: true,
       format: "esm",
-      external: ["ssh2", "cpu-features", "iconv-lite", "mysql2"],
+      mainFields: ["module", "main"],
+      external: ["ssh2", "cpu-features", "iconv-lite", "mysql2", "node:*"],
       loader: { ".html": "text", ".node": "empty" },
-      plugins: [emptyNodeDriverPlugin],
+      plugins: [emptyNodeDriverPlugin, normalizeHtmlEolPlugin],
     })
   }
 
