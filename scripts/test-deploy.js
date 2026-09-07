@@ -8,7 +8,7 @@ const mockList = `
 ┌──────────────────────────────────────┬──────────────────────────────┐
 │ id                                   │ title                        │
 ├──────────────────────────────────────┼──────────────────────────────┤
-│ 0e48234248a84d4dbdc5a70e886773ea    │ openlist-OPENLIST_KV │
+│ 0e48234248a84d4dbdc5a70e886773ea    │ openlist-KV │
 └──────────────────────────────────────┴──────────────────────────────┘
 `
 const re = /\|\s*([0-9a-fA-F]{32})\s*\|\s*([^|\n]+?)\s*\|/g
@@ -16,16 +16,16 @@ const map = {}
 let m
 while ((m = re.exec(mockList)) !== null) map[m[2].trim()] = m[1].trim()
 console.log("解析 namespace:", JSON.stringify(map))
-const found = Object.keys(map).find((t) => t.includes("OPENLIST_KV"))
+const found = Object.keys(map).find((t) => t.includes("KV"))
 console.log("匹配:", found, "→ id:", found ? map[found] : null)
 
 // 2. 模拟 create 输出
 const mockCreate = `
-🌀 Creating namespace with title "OPENLIST_KV"
+🌀 Creating namespace with title "KV"
 ✨ Success!
 Add the following to your configuration file in your kv_namespaces array:
 [[kv_namespaces]]
-binding = "OPENLIST_KV"
+binding = "KV"
 id = "abc123def456abc123def456abc123def4"
 `
 const idM = mockCreate.match(/id\s*=\s*"([0-9a-fA-F]{32})"/)
@@ -40,12 +40,12 @@ console.log("toml 更新后含新 id:", updated.includes(newId))
 console.log(
   "toml 其他内容保留:",
   updated.includes('name = "openlist"') &&
-    updated.includes('binding = "OPENLIST_KV"'),
+    updated.includes('binding = "KV"'),
 )
 
 // 4. 无 kv 块时追加
 const noKv = 'name = "test"\nmain = "src/backend/worker.ts"\n'
-const block = `\n[[kv_namespaces]]\nbinding = "OPENLIST_KV"\nid = "${newId}"\n`
+const block = `\n[[kv_namespaces]]\nbinding = "KV"\nid = "${newId}"\n`
 const appended = noKv.replace(/\s*$/, "") + block
 console.log(
   "无块追加成功:",

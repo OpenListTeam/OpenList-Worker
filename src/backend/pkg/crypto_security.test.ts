@@ -2,7 +2,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 import { Hono } from "hono"
 import { encrypt, decrypt } from "./crypto"
-import { hashPassword, authRouter, getOrInitUsers } from "../server/auth"
+import { hashPasswordSHA256, authRouter, getOrInitUsers } from "../server/auth"
 import { saveDb, getDb } from "../internal/model/db"
 
 test("AES encrypt/decrypt produces 3-segment format and decrypts correctly", async () => {
@@ -58,10 +58,11 @@ test("AES decrypt backwards compatibility with 2-segment legacy format", async (
   )
 })
 
-test("Password hashing produces consistent 64-char sha256 output", async () => {
-  const hash = await hashPassword("admin")
+test("StaticHash produces consistent 64-char sha256 output (Go StaticHash)", async () => {
+  const hash = await hashPasswordSHA256("admin")
   assert.equal(typeof hash, "string")
   assert.equal(hash.length, 64)
+  assert.equal(await hashPasswordSHA256("admin"), hash)
 })
 
 test("getOrInitUsers preserves a legacy PBKDF2 admin hash instead of silently resetting to admin/admin", async () => {
@@ -113,7 +114,7 @@ test("getOrInitUsers preserves a legacy PBKDF2 admin hash instead of silently re
     fakePdkdf2Hash,
     "a legacy-format hash must be preserved, never silently reset",
   )
-  assert.notEqual(admin.password, await hashPassword("admin"))
+  assert.notEqual(admin.password, await hashPasswordSHA256("admin"))
 
   const app = new Hono()
   app.route("/api/auth", authRouter)

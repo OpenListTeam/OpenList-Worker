@@ -20,9 +20,12 @@ import {
   deleteUserSshKey,
 } from "../internal/op/sshkey"
 import {
-  hashPassword as bcryptHashPassword,
   verifyPassword,
-  needsRehash,
+  staticHash,
+  saltedHash,
+  generateSalt,
+  setUserPassword,
+  isHex64,
 } from "../pkg/password"
 import { setCSRFToken, clearCSRFToken } from "../pkg/csrf"
 import { getAuditLogger } from "../pkg/audit"
@@ -79,19 +82,47 @@ function clearLoginFailures(c: Context, username: string) {
   loginFailures.delete(loginKey(c, username))
 }
 
-// Helper to hash password matching OpenList/AList specification (SHA256 - 旧版本)
-// 保留此函数用于兼容旧的 /login/hash 端点
+// OpenList/AList StaticHash —— 前端 /login/hash 提交的哈希算法。
+// 与新密码模块 pkg/password.staticHash 一致，保留旧名以兼容既有调用。
 export async function hashPasswordSHA256(plainPassword: string): Promise<string> {
-  const hash_salt = "https://github.com/alist-org/alist"
-  const msgBuffer = new TextEncoder().encode(`${plainPassword}-${hash_salt}`)
-  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer)
-  const hashArray = Array.from(new Uint8Array(hashBuffer))
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
+  return staticHash(plainPassword)
 }
 
-// 新的密码哈希函数（使用 bcrypt）
-export async function hashPassword(plainPassword: string): Promise<string> {
-  return bcryptHashPassword(plainPassword)
+/**
+ * 校验前端提交的静态哈希是否匹配该用户（等价 Go User.ValidatePwdStaticHash）。
+ * 兼容的存储格式：
+ *   - Go 双层（user.salt 存在）：password === saltedHash(inputStatic, salt)
+ *   - 早期 TSWorker 单层（无 salt）：password === inputStatic
+ *   - bcrypt 遗留：返回 false（无明文不可还原），仅明文 /login 可逃生
+ */
+export async function verifyUserStaticHash(
+  user: any,
+  inputStatic: string,
+): Promise<boolean> {
+  const stored = String(user?.password || "").trim().toLowerCase()
+  const input = String(inputStatic || "").trim().toLowerCase()
+  if (!stored || !isHex64(input) || !isHex64(stored)) return false
+  if (user?.salt) {
+    const expect = (await saltedHash(input, String(user.salt))).toLowerCase()
+    return stored === expect
+  }
+  return stored === input
+}
+
+/**
+ * 校验明文密码（/login、改密旧密码校验、WebDAV Basic Auth 共用）。
+ * 对 bcrypt 遗留记录仍可逃生（验证通过后由调用方迁移）。
+ */
+export async function verifyUserPassword(
+  user: any,
+  plain: string,
+): Promise<boolean> {
+  const stored = String(user?.password || "").trim()
+  if (!stored) return false
+  if (/^\$2[aby]\$/.test(stored)) {
+    return verifyPassword(plain, stored)
+  }
+  return verifyUserStaticHash(user, await staticHash(plain))
 }
 
 /**
@@ -141,10 +172,10 @@ export async function getOrInitUsers(envCtx: any) {
     }
     if (envPass) {
       // 显式配置了 ADMIN_PASSWORD：自动初始化 admin（保持兼容）
-      const admin = {
+      const admin: any = {
         id: 1,
         username: "admin",
-        password: await hashPassword(envPass),
+        password: "",
         role: 2,
         permission: 0,
         base_path: "/",
@@ -153,6 +184,7 @@ export async function getOrInitUsers(envCtx: any) {
         allow_ldap: false,
         pwd_update_at: new Date().toISOString(),
       }
+      await setUserPassword(admin, envPass)
       db.users = [admin, guest]
     } else {
       // 未初始化：仅创建 guest，admin 由 Web 安装向导（POST /api/public/init/setup）创建
@@ -177,8 +209,7 @@ export async function getOrInitUsers(envCtx: any) {
         (typeof process !== "undefined" ? process.env?.ADMIN_PASSWORD : "") ||
         ""
       if (envPass) {
-        adminUser.password = await hashPassword(envPass)
-        adminUser.pwd_update_at = new Date().toISOString()
+        await setUserPassword(adminUser, envPass)
         await saveDb(db, envCtx)
       } else if (!adminPass) {
         // 未初始化：不再自动生成随机密码，交由 Web 安装向导（POST /api/public/init/setup）完成。
@@ -267,8 +298,6 @@ authRouter.post("/login", async (c) => {
     )
   }
 
-  const hashedPassword = await hashPasswordSHA256(rawPassword)
-
   const { users, db } = await getOrInitUsers(c.env)
 
   const matchedUser = users.find(
@@ -276,17 +305,17 @@ authRouter.post("/login", async (c) => {
   )
 
   if (matchedUser) {
-    const userPass = matchedUser.password || ""
-    
-    // 使用新的 verifyPassword 支持 bcrypt 和 SHA256
-    const isPasswordValid = await verifyPassword(rawPassword, userPass)
+    // 明文登录：服务端先 StaticHash，再比对存储哈希（兼容单层/双层/bcrypt 遗留）
+    const isPasswordValid = await verifyUserPassword(matchedUser, rawPassword)
 
     if (isPasswordValid) {
-      // 自动升级密码哈希：从 SHA256 迁移到 bcrypt
-      if (needsRehash(userPass)) {
+      // 遗留格式（bcrypt / 无盐单层 SHA256）登录成功后自动升级为 Go 双层哈希
+      const stored = String(matchedUser.password || "").trim()
+      const needsMigrate =
+        /^\$2[aby]\$/.test(stored) || (!matchedUser.salt && isHex64(stored))
+      if (needsMigrate) {
         console.log(`[Auth] Upgrading password hash for user: ${username}`)
-        matchedUser.password = await hashPassword(rawPassword)
-        matchedUser.pwd_update_at = new Date().toISOString()
+        await setUserPassword(matchedUser, rawPassword)
         await saveDb(db, c.env)
       }
 
@@ -354,19 +383,25 @@ authRouter.post("/login/hash", async (c) => {
     )
   }
 
-  const { users } = await getOrInitUsers(c.env)
+  const { users, db } = await getOrInitUsers(c.env)
 
   const matchedUser = users.find(
     (u: any) => u.username === username && !u.disabled,
   )
 
   if (matchedUser && inputHash.length === 64) {
-    const userPass = String(matchedUser.password || "")
-      .trim()
-      .toLowerCase()
-    const isHashValid = userPass.length === 64 && inputHash === userPass
+    const isHashValid = await verifyUserStaticHash(matchedUser, inputHash)
 
     if (isHashValid) {
+      // 无盐单层 SHA256 旧数据 -> 升级为 Go 双层哈希（无需明文）
+      if (!matchedUser.salt) {
+        console.log(`[Auth] Upgrading password hash for user: ${username}`)
+        matchedUser.salt = generateSalt()
+        matchedUser.password = await saltedHash(inputHash, matchedUser.salt)
+        matchedUser.pwd_update_at = new Date().toISOString()
+        await saveDb(db, c.env)
+      }
+
       const otpCheck = await checkUserOtp(matchedUser, body)
       if (!otpCheck.ok) {
         return c.json(
@@ -434,8 +469,7 @@ export const meUpdateHandler = async (c: any) => {
   }
 
   if (body.password && body.password.trim() !== "") {
-    user.password = await hashPassword(body.password.trim())
-    user.pwd_update_at = new Date().toISOString()
+    await setUserPassword(user, body.password.trim())
   }
 
   await saveDb(db, c.env)

@@ -3,6 +3,7 @@ import { sign } from "hono/jwt"
 import { getDb, saveDb } from "../internal/model/db"
 import { getJwtSecret } from "./middlewares"
 import { generateRandomPassword } from "./auth"
+import { setUserPassword } from "../pkg/password"
 
 /**
  * SSO 登录（OAuth2 授权码流 + OIDC）。
@@ -192,10 +193,10 @@ async function autoRegister(db: any, username: string, ssoId: string): Promise<a
   const id = db.users.length
     ? Math.max(...db.users.map((u: any) => Number(u.id) || 0)) + 1
     : 1
-  const user = {
+  const user: any = {
     id,
     username: uname,
-    password: generateRandomPassword(),
+    password: "",
     role: 0,
     permission: 0,
     base_path: "/",
@@ -204,6 +205,8 @@ async function autoRegister(db: any, username: string, ssoId: string): Promise<a
     allow_ldap: false,
     pwd_update_at: new Date().toISOString(),
   }
+  // SSO 用户不通过本地口令登录，但仍以双层哈希存储随机口令，避免存明文
+  await setUserPassword(user, generateRandomPassword())
   db.users.push(user)
   await saveDb(db, db.env)
   return user

@@ -39,7 +39,7 @@ test("json backend: roundtrip via mock KV binding", async () => {
       store.set(key, v)
     },
   }
-  const env: any = { OPENLIST_KV: binding }
+  const env: any = { KV: binding }
   assert.equal(await jsonBackend.isConfigured!(env), true)
 
   const data = {

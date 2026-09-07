@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import { authUserFromReq, getOrInitUsers, hashPassword } from "./auth"
+import { authUserFromReq, getOrInitUsers, verifyUserPassword } from "./auth"
 import { can, PermissionBit } from "../pkg/permission"
 import {
   listItems,
@@ -52,8 +52,7 @@ async function webdavAuth(c: any): Promise<any> {
       if (!user.password) {
         return password === "" ? user : null
       }
-      const hashed = await hashPassword(password)
-      if (user.password.length === 64 && user.password === hashed) return user
+      if (await verifyUserPassword(user, password)) return user
       return null
     } catch {
       return null

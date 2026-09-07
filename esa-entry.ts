@@ -6,7 +6,7 @@
  *    而 Hono app.fetch 期望 (request, env, executionCtx)，需要调整参数顺序。
  * 2. ESA 的 KV 存储使用 new EdgeKV({ namespace }) API，与 Cloudflare Workers
  *    的 KV namespace binding 不同；此处将 EdgeKV 包装成项目期望的
- *    { get, put, delete } 接口，并挂载到 env.OPENLIST_KV 和 globalThis.OPENLIST_KV，
+ *    { get, put, delete } 接口，并挂载到 env.KV 和 globalThis.KV，
  *    使项目的通用 KV 适配层（getKvBinding）能自动检测并使用。
  * 3. ESA 不提供 ASSETS binding，前端 SPA 路由（如 /login、/@manage/*）
  *    无法通过静态资源回退；此处内联 dist/index.html 并通过 setSpaFallbackHtml
@@ -190,21 +190,21 @@ export default {
           // 同时挂载到 env 和 globalThis：ESA 的 env 对象可能是 Proxy/frozen，
           // 直接属性赋值可能不生效；项目 getKvBinding 会同时检查 env[key] 和 globalThis[key]
           try {
-            env.OPENLIST_KV = wrappedKv
+            env.KV = wrappedKv
           } catch (e) {
             console.warn(
-              `[ESA/req:${reqId}] env.OPENLIST_KV assign failed (env may be frozen):`,
+              `[ESA/req:${reqId}] env.KV assign failed (env may be frozen):`,
               e,
             )
           }
-          ;(globalThis as any).OPENLIST_KV = wrappedKv
+          ;(globalThis as any).KV = wrappedKv
           if (isApiRequest) {
-            const envHasKv = !!(env && env.OPENLIST_KV)
-            const globalHasKv = !!(globalThis as any).OPENLIST_KV
+            const envHasKv = !!(env && env.KV)
+            const globalHasKv = !!(globalThis as any).KV
             console.log(
               `[ESA/req:${reqId}] EdgeKV initialized namespace=${namespace}, ` +
                 `probe=${kvTestOk ? "ok" : "FAIL:" + kvTestErr}, ` +
-                `env.OPENLIST_KV=${envHasKv}, globalThis.OPENLIST_KV=${globalHasKv}, ` +
+                `env.KV=${envHasKv}, globalThis.KV=${globalHasKv}, ` +
                 `JWT_SECRET set=${!!env.JWT_SECRET}`,
             )
           }

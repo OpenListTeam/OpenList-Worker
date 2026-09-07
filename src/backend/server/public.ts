@@ -1,6 +1,6 @@
 import { Hono } from "hono"
 import { getDb, saveDb } from "../internal/model/db"
-import { hashPassword } from "./auth"
+import { setUserPassword } from "../pkg/password"
 
 export const publicRouter = new Hono()
 
@@ -234,7 +234,6 @@ publicRouter.post("/init/setup", async (c) => {
 
   const db = await getDb(c.env)
   if (!db.users) db.users = []
-  const hashed = await hashPassword(password)
   const existing = db.users.find((u: any) => u.role === 2)
 
   if (existing && String(existing.password || "").trim() !== "") {
@@ -247,14 +246,13 @@ publicRouter.post("/init/setup", async (c) => {
   if (existing) {
     // admin 账号已存在但尚未设置密码（未初始化）：直接更新
     existing.username = username
-    existing.password = hashed
-    existing.pwd_update_at = new Date().toISOString()
+    await setUserPassword(existing, password)
   } else {
-    // 首次创建 admin 账号
-    db.users.push({
+    // 首次创建 admin 账号（Go User.SetPassword 双层哈希）
+    const admin: any = {
       id: 1,
       username,
-      password: hashed,
+      password: "",
       role: 2,
       permission: 0,
       base_path: "/",
@@ -262,7 +260,9 @@ publicRouter.post("/init/setup", async (c) => {
       sso_id: "",
       allow_ldap: false,
       pwd_update_at: new Date().toISOString(),
-    })
+    }
+    await setUserPassword(admin, password)
+    db.users.push(admin)
   }
 
   if (siteTitle) {

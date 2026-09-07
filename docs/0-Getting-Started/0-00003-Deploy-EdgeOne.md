@@ -11,7 +11,7 @@
 - **SPA 兜底双保险**：Node 云函数内没有 `ASSETS` 绑定，因此构建时会把 `dist/index.html` 内联进函数包——即使边缘中间件未生效、或请求直达云函数，前端路由（如 `/add`、`/@manage/*`）也会由函数直接返回页面壳（`Cache-Control: no-cache`），不会再出现整站 404。
 - **配置持久化**：
   - **Blob 存储**（推荐）：自动使用 `@edgeone/pages-blob` SDK（HTTP API），无需手动配置，避免 Redis RESP 协议崩溃。
-  - **KV 存储**（兼容）：自动适配 `OPENLIST_KV` / `EDGEONE_KV` / `EO_KV` 命名空间（仅 Cloudflare 环境）。
+  - **KV 存储**（兼容）：自动适配 `KV` / `EDGEONE_KV` / `EO_KV` 命名空间（仅 Cloudflare 环境）。
 - **定时任务 (Schedules)**：已内置 `/api/task/refresh` 定时调度（每天凌晨 2:00 自动刷新一次已启用的网盘 Token，完全兼容 EdgeOne 免费版定时任务规则；并在每次实际请求时结合按需检测保障 Token 实时有效）。调度请求需通过 `CRON_SECRET` 环境变量鉴权，配置方法见下文「定时任务与长时任务」。
 
 ---

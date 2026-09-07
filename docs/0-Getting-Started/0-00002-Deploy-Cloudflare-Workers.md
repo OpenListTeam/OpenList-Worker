@@ -56,7 +56,7 @@ ENVIRONMENT = "production"
 VITE_API_URL = "/api"
 
 [[kv_namespaces]]
-binding = "OPENLIST_KV"
+binding = "KV"
 ```
 
 - **`main`**: 指定 Worker 入口文件，OpenList 导出 Worker 标准 `fetch` 接口的入口为 [src/backend/worker.ts](../src/backend/worker.ts)。
@@ -67,12 +67,12 @@ binding = "OPENLIST_KV"
 
 ### 关于 KV 命名空间绑定
 
-wrangler.toml 中的 `[[kv_namespaces]]` **不需要填写 `id`**。Wrangler 4.x 支持 Automatic Provisioning——部署时会自动检测或创建名为 `OPENLIST_KV` 的命名空间并关联绑定。你只需在 Makers 控制台或 Cloudflare Dashboard 中确保该命名空间存在，或让 Wrangler 自动处理。
+wrangler.toml 中的 `[[kv_namespaces]]` **不需要填写 `id`**。Wrangler 4.x 支持 Automatic Provisioning——部署时会自动检测或创建名为 `KV` 的命名空间并关联绑定。你只需在 Makers 控制台或 Cloudflare Dashboard 中确保该命名空间存在，或让 Wrangler 自动处理。
 
 若需手动创建命名空间（可选）：
 
 ```bash
-npx wrangler kv:namespace create OPENLIST_KV
+npx wrangler kv:namespace create KV
 ```
 
 > [!NOTE]
@@ -86,7 +86,7 @@ OpenList 在 Serverless 环境中使用 Cloudflare KV 来存储配置数据和�
 
 **推荐方式：Automatic Provisioning（无需手动配置）**
 
-Wrangler 4.x 支持自动配置——部署时会自动检测或创建名为 `OPENLIST_KV` 的命名空间并关联绑定。你只需：
+Wrangler 4.x 支持自动配置——部署时会自动检测或创建名为 `KV` 的命名空间并关联绑定。你只需：
 
 1. 确保 wrangler.toml 中有 `[[kv_namespaces]]` 配置（已内置）
 2. 直接运行 `npx wrangler deploy`，Wrangler 会自动处理命名空间创建和关联
@@ -96,18 +96,18 @@ Wrangler 4.x 支持自动配置——部署时会自动检测或创建名为 `OP
 如果你想手动控制命名空间的创建：
 
 ```bash
-npx wrangler kv:namespace create OPENLIST_KV
+npx wrangler kv:namespace create KV
 ```
 
 命令行将输出类似以下的信息：
 
 ```text
-🌀 Creating namespace with title "openlist-OPENLIST_KV"
-✨ Success! Created namespace openlist-OPENLIST_KV with ID "a1b2c3d4e5f67890abcdef1234567890"
+🌀 Creating namespace with title "openlist-KV"
+✨ Success! Created namespace openlist-KV with ID "a1b2c3d4e5f67890abcdef1234567890"
 ```
 
 > [!NOTE]
-> 即使手动创建了命名空间，wrangler.toml 中也无需填入 `id`。Wrangler 4.x 会根据绑定名称 `OPENLIST_KV` 自动关联正确的命名空间。
+> 即使手动创建了命名空间，wrangler.toml 中也无需填入 `id`。Wrangler 4.x 会根据绑定名称 `KV` 自动关联正确的命名空间。
 
 ---
 
@@ -190,7 +190,7 @@ npx wrangler secret put JWT_SECRET
 > Cloudflare Workers 运行在无状态边缘计算节点上，因此：
 >
 > 1. 本地硬盘存储驱动 (`Local` Driver) 在 Worker 部署环境下无法作为长期存储使用，推荐配置并使用对象存储（如 **AWS S3 / Cloudflare R2 / 阿里云 OSS / WebDAV** 等云存储驱动）。
-> 2. 系统配置及用户状态会自动持久化到绑定的 `OPENLIST_KV` 数据库中。
+> 2. 系统配置及用户状态会自动持久化到绑定的 `KV` 数据库中。
 
 > [!TIP]
 > **资源配额**：

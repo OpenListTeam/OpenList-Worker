@@ -106,8 +106,6 @@ export async function getKvBinding(envCtx?: any): Promise<{
     ...(customKvName ? [{ key: customKvName, name: customKvName }] : []),
     { key: "EDGEONE_KV", name: "EDGEONE_KV" },
     { key: "EO_KV", name: "EO_KV" },
-    { key: "OPENLIST_KV", name: "OPENLIST_KV" },
-    { key: "OPENLIST_KV_ID", name: "OPENLIST_KV_ID" },
     { key: "KV", name: "KV" },
     { key: "CF_KV", name: "CF_KV" },
     { key: "DATABASE_KV", name: "DATABASE_KV" },

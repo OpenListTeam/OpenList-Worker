@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import { Hono } from "hono"
 import { getUserFromContext } from "./middlewares"
-import { authRouter, hashPassword } from "./auth"
+import { authRouter, hashPasswordSHA256 } from "./auth"
 import { fsRouter } from "./fs"
 import { publicRouter } from "./public"
 import { rawRouter } from "./raw"
@@ -11,7 +11,7 @@ import { saveDb } from "../internal/model/db"
 test("Security: getUserFromContext returns null when guest is deleted or disabled and no token is provided", async () => {
   // Setup DB with only admin (guest deleted)
   const env: any = {}
-  const adminHash = await hashPassword("admin123")
+  const adminHash = await hashPasswordSHA256("admin123")
   const dbOnlyAdmin = {
     settings: [],
     users: [
@@ -79,7 +79,7 @@ test("Security: getUserFromContext returns null when guest is deleted or disable
 
 test("Security: /api/me returns 401 when unauthenticated and guest is deleted or disabled", async () => {
   const env: any = {}
-  const adminHash = await hashPassword("admin123")
+  const adminHash = await hashPasswordSHA256("admin123")
   await saveDb(
     {
       settings: [],

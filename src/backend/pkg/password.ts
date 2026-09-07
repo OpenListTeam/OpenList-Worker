@@ -202,3 +202,78 @@ export async function migratePasswordHash(
   // 生成新哈希
   return hashPassword(plainPassword)
 }
+
+/* =====================================================================
+ * Go (OpenList/AList) 兼容双层密码哈希 —— 推荐存储方案
+ * 对齐 OpenList/internal/model/user.go：
+ *   StaticHash(pwd)          = sha256(`${pwd}-${STATIC_HASH_SALT}`) —— 前端 /login/hash 提交值
+ *   saltedHash(static, salt) = sha256(`${static}-${salt}`)          —— per-user 盐二次哈希
+ *   PwdHash = saltedHash(StaticHash(pwd), salt)                     —— 数据库存储值
+ *
+ * 存储字段：user.password（64位 hex）+ user.salt（16位随机）。
+ * 历史格式兼容（读兼容，登录成功后自动迁移到本格式）：
+ *   - 单层 sha256（无 salt 字段，早期 TSWorker）：password 直接等于 StaticHash(pwd)
+ *   - bcrypt（曾误用于本仓库初始化）：仅明文 /login 可逃生，成功后自动迁移
+ * ===================================================================== */
+
+export const STATIC_HASH_SALT = "https://github.com/alist-org/alist"
+
+async function sha256Hex(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(input),
+  )
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+}
+
+/** 明文 -> 传输用静态哈希（对应 Go StaticHash） */
+export async function staticHash(plain: string): Promise<string> {
+  return sha256Hex(`${plain}-${STATIC_HASH_SALT}`)
+}
+
+/** 静态哈希 + 用户盐 -> 最终存储值（对应 Go HashPwd） */
+export async function saltedHash(
+  staticHex: string,
+  salt: string,
+): Promise<string> {
+  return sha256Hex(`${staticHex}-${salt}`)
+}
+
+/** 明文 + 用户盐 -> 最终存储值（对应 Go TwoHashPwd / SetPassword） */
+export async function twoStepHash(
+  plain: string,
+  salt: string,
+): Promise<string> {
+  return saltedHash(await staticHash(plain), salt)
+}
+
+/** 生成用户盐（16 位 [A-Za-z0-9]，对应 Go random.String(16)） */
+export function generateSalt(length: number = 16): string {
+  const chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+  const bytes = new Uint8Array(length)
+  crypto.getRandomValues(bytes)
+  let out = ""
+  for (let i = 0; i < length; i++) out += chars[bytes[i] % chars.length]
+  return out
+}
+
+/** 是否为 64 位 hex（双层/单层 SHA256 存储值均符合） */
+export function isHex64(value: string): boolean {
+  return /^[0-9a-f]{64}$/i.test(String(value || ""))
+}
+
+/**
+ * 统一写入口令（对应 Go User.SetPassword）：
+ * 生成新盐并写入双层哈希。调用方负责 saveDb 持久化。
+ */
+export async function setUserPassword(
+  user: any,
+  plain: string,
+): Promise<void> {
+  user.salt = generateSalt()
+  user.password = await twoStepHash(plain, user.salt)
+  user.pwd_update_at = new Date().toISOString()
+}
