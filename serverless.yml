@@ -10,7 +10,6 @@ provider:
   memorySize: 1024
   timeout: 29 # API Gateway has a max 30s timeout
   environment:
-    VITE_API_URL: /api
     ADMIN_USERNAME: ${env:ADMIN_USERNAME, 'admin'}
     # FIX(F-11): no 'admin' fallback — leave empty so the app generates a
     # random initial password instead of a world-known one.

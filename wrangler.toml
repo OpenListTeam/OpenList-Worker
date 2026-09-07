@@ -12,7 +12,6 @@ binding = "ASSETS"
 
 [vars]
 ENVIRONMENT = "production"
-VITE_API_URL = "/api"
 
 # ===================== 数据库后端（DB_DRIVER）=====================
 # json  - 默认后端，整对象存单个 key，内部自动检测 KV/Blob/CF REST/内存
@@ -20,7 +19,7 @@ VITE_API_URL = "/api"
 #         避免大 JSON 读写与单 key 过大（需下方 KV binding 或 EdgeOne Blob）
 # d1    - Cloudflare D1（需下方 [[d1_databases]] 绑定）
 # mysql - 外部 MySQL（仅 Node 容器运行时，需 MYSQL_URL 或 MYSQL_* 分项）
-DB_DRIVER = "d1"
+DB_DRIVER = "json"
 
 # ===================== json 后端存储方案（DB_JSON_BACKEND）=====================
 # 仅 DB_DRIVER = "json" 时生效；取值（大小写不敏感）：
@@ -67,10 +66,12 @@ ENCRYPTION_SECRET = ""
 [[kv_namespaces]]
 binding = "KV"
 
-[[d1_databases]]
-binding = "DB"
-database_name = "openlist"
-database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"  # 替换为你的实际 database_id
+# ===================== D1（可选）=====================
+# 如需使用 Cloudflare D1，取消注释并按需填写你自己的 database_id：
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "openlist"
+# database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
 
 
 

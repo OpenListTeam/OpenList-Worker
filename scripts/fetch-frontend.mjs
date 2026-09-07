@@ -130,7 +130,15 @@ function buildLocalRepo(repo) {
     install(" --trust-lockfile")
   }
   fetchI18n(abs)
-  run(`${cmd} run build`, { cwd: abs })
+  // 关键修复：前后端默认同源部署，官方前端 VITE_API_URL 的语义是「API 服务器
+  // 基础 URL」，正确值为 "/"（同源，config.ts 会转成 location.origin）。若外部
+  // 环境（如 EdgeOne 控制台环境变量）误设 VITE_API_URL=/api，官方前端会拼成
+  // baseURL=/api/api，导致 API 请求双前缀、落到 SPA 兜底返回 HTML。
+  // 这里构建前端时强制覆盖为 "/"，杜绝外部污染。
+  run(`${cmd} run build`, {
+    cwd: abs,
+    env: { ...process.env, VITE_API_URL: "/" },
+  })
   replaceDist(path.join(abs, "dist"))
 }
 

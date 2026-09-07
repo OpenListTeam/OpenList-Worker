@@ -53,7 +53,6 @@ binding = "ASSETS"
 
 [vars]
 ENVIRONMENT = "production"
-VITE_API_URL = "/api"
 
 [[kv_namespaces]]
 binding = "KV"
@@ -64,6 +63,9 @@ binding = "KV"
 - **`workers_dev = false`**: 禁用默认的 `*.workers.dev` 子域名，仅通过自定义域名访问。
 - **`[assets]`**: 配置前端静态资源托管，构建产物从 `dist/` 目录提供。
 - **`[[kv_namespaces]]`**: 用于数据库与配置在边缘侧的持久化存储。
+
+> [!WARNING]
+> **不要设置 `VITE_API_URL = "/api"`**。官方前端 `VITE_API_URL` 的语义是「API 服务器基础 URL」，正确值为 `"/"`（同源）或完整 API 域名；若设成 `/api`，前端会拼成 `baseURL=/api/api`，导致所有 API 请求双前缀、落到 SPA 兜底返回 HTML 页面（表现为「获取设置失败」）。后端不会读取该变量，`fetch-frontend.mjs` 在构建前端时已强制将其覆盖为 `/`。
 
 ### 关于 KV 命名空间绑定
 
