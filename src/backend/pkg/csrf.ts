@@ -244,7 +244,7 @@ function setCookie(
     secure?: boolean
     sameSite?: "strict" | "lax" | "none"
     path?: string
-  } = ,
+  } = {},
 ) {
   const parts = [`${name}=${encodeURIComponent(value)}`]
 
