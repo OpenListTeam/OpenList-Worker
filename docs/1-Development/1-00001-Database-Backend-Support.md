@@ -31,6 +31,7 @@ db.ts   ── 加密边界(sealDb/unsealDb) + 缓存(dbCache/dbInflight) ──
         ▼  委托给后端
 store/backend.ts  ── 工厂：按 DB_DRIVER 选择后端（单例） ──
         ├── json.ts   (默认) 现有 KV/Blob/CF-REST/内存逻辑原样迁移
+        ├── kv.ts     KV 分表存储（每实体一条 key，见 1.5）
         ├── d1.ts     Cloudflare D1 分表存储
         └── mysql.ts  MySQL 分表存储 (mysql2, 动态 import)
 ```
@@ -38,14 +39,14 @@ store/backend.ts  ── 工厂：按 DB_DRIVER 选择后端（单例） ──
 收益：
 
 - 业务层 100+ 调用点**零改动**，回归风险最小
-- 三个后端各自独立文件，互不侵入，新增 PG 等只需再加一个文件
+- 四个后端各自独立文件，互不侵入，新增 PG 等只需再加一个文件
 - 加密、缓存、默认值迁移（`ensureDefault*`）对所有后端统一生效
 
 ### 1.3 后端接口
 
 ```ts
 export interface StoreBackend {
-  readonly name: string // "json" | "d1" | "mysql"
+  readonly name: string // "json" | "kv" | "d1" | "mysql"
   load(env?: any): Promise<any | null> // 返回完整配置（已加密）或 null
   save(data: any, env?: any): Promise<boolean> // 写入完整配置（已加密）
   isConfigured?(env?: any): Promise<boolean> // 是否配置了真实持久化目标
@@ -79,14 +80,24 @@ export interface StoreBackend {
 - **save**：全量替换 —— 每张表 `DELETE` 后逐行 `INSERT`（幂等 upsert）。
   - D1：用 `db.batch()` 批量执行（≤100 条/批）。
   - MySQL：用事务 `beginTransaction` → 执行 → `commit`（真原子）。
+  - KV：按前缀 `list` → 删除旧 key → 逐实体写入，最后写 `schema_info` 标记（KV 无事务，见 1.8 已知边界）。
 - **init**：幂等 `CREATE TABLE IF NOT EXISTS`，每个后端实例首次 load/save 前执行一次。
+
+#### KV 分表后端（`DB_DRIVER=kv`）
+
+为避免整对象读写带来的「大 JSON + 单 key 过大」问题，`kv.ts` 把 6 张表拆成多条 KV 记录：
+
+- 每条实体一条记录：key = `openlist_tbl:<table>:<主键>`，value = 该实体完整 JSON（敏感字段已由 `db.ts` 在持久化边界 seal）。
+- `openlist_tbl:schema_info` 作为初始化标记，`load` 时据此区分「空库」与「未初始化」。
+- 复用 `store/json.ts` 的 `getKvBinding()` 探测 KV binding / EdgeOne Blob（均具备 `list`/`delete`）；CF REST / 无绑定时视为未配置。
 
 ### 1.6 环境变量
 
 | 变量                                                                             | 取值                                                 | 说明                                    |
 | -------------------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------- |
-| `DB_DRIVER`                                                                      | `json`（默认）\| `d1` \| `mysql`                     | 后端开关                                |
+| `DB_DRIVER`                                                                      | `json`（默认）\| `kv` \| `d1` \| `mysql`             | 后端开关                                |
 | `DB_JSON_BACKEND`                                                                | `auto`（默认）\| `blob` \| `kv` \| `cf_rest`         | json 后端内的存储方案显式切换（见下）   |
+| （kv）                                                                           | KV binding（`KV` / `EDGEONE_KV` / `EO_KV`）或 Blob   | 分表分 key，复用 `getKvBinding` 探测     |
 | （d1）                                                                           | wrangler 绑定名 `DB`（标准），兼容别名 `OPENLIST_DB` | `env.DB`                                |
 | `MYSQL_URL`                                                                      | `mysql://user:pass@host:3306/db`                     | 或拆成下列分项                          |
 | `MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_USER` / `MYSQL_PASSWORD` / `MYSQL_DATABASE` | —                                                    | MySQL 分项配置                          |
@@ -116,6 +127,7 @@ export interface StoreBackend {
 ### 1.8 已知边界
 
 - JWT 签名密钥与注销黑名单（`middlewares.ts`）仍走 KV 持久化（`getKvBinding`），不随主配置后端切换。D1/MySQL 模式下若未同时配置 KV，则退回进程内随机密钥（冷启动变化）。后续可将其一并纳入 `store` 后端。
+- **KV 分表后端无事务**：`save` 采用「list 前缀 → 逐个删除 → 逐实体写入」，非原子。极端并发写或 `list` 最终一致性延迟下可能短暂读到中间态或残留旧 key（旧实体可能「复活」）。配置类数据写频率低，风险可接受；对强一致/原子性有要求请用 D1 或 MySQL。
 
 ---
 
@@ -124,14 +136,15 @@ export interface StoreBackend {
 1. 新增 `store/types.ts`：`StoreBackend` 接口。
 2. 新增 `store/schema.ts`：D1 / MySQL 两套 DDL。
 3. 新增 `store/json.ts`：从 `db.ts` 原样迁移 KV/Blob/CF REST 逻辑（`getBlobStore` / `installRespSafetyNet` / `getKvBinding` / `readFromKv` / `saveToKv` / `getKvStatus`），并实现 `jsonBackend`。
-4. 新增 `store/d1.ts`：D1 后端（建表 / load / save / health）。
-5. 新增 `store/mysql.ts`：MySQL 后端（建表 / load / save / health，动态 import mysql2）。
-6. 新增 `store/backend.ts`：按 `DB_DRIVER` 选择后端的工厂 + 单例缓存 + `getStoreStatus`。
-7. 改造 `db.ts`：`loadDb` / `saveDb` 委托后端；re-export `getKvBinding` / `getKvStatus`；`setEnvCtx` 同步 json 后端上下文；导出 `getStoreStatus`。
-8. `package.json` 增加 `mysql2`。
-9. `wrangler.toml` 增加 `d1_databases` 绑定示例（注释，按需启用）。
-10. `debug.ts` / `admin.ts` 的 `/kv/status` 展示当前后端与健康状态。
-11. 补测试：json / d1 / mysql 后端往返测试。
+4. 新增 `store/kv.ts`：KV 分表后端（每实体一条 key，复用 `getKvBinding` 探测）。
+5. 新增 `store/d1.ts`：D1 后端（建表 / load / save / health）。
+6. 新增 `store/mysql.ts`：MySQL 后端（建表 / load / save / health，动态 import mysql2）。
+7. 新增 `store/backend.ts`：按 `DB_DRIVER` 选择后端的工厂 + 单例缓存 + `getStoreStatus`。
+8. 改造 `db.ts`：`loadDb` / `saveDb` 委托后端；re-export `getKvBinding` / `getKvStatus`；`setEnvCtx` 同步 json 后端上下文；导出 `getStoreStatus`。
+9. `package.json` 增加 `mysql2`。
+10. `wrangler.toml` 增加 `d1_databases` 绑定示例（注释，按需启用）。
+11. `debug.ts` / `admin.ts` 的 `/kv/status` 展示当前后端与健康状态。
+12. 补测试：json / kv / d1 / mysql 后端往返测试。
 
 ---
 
@@ -146,6 +159,10 @@ export interface StoreBackend {
    - `DB_DRIVER=mysql` + 连接串（Node 容器模式）下，读写往返正确；
    - 保存走事务，失败不残留半写数据；
    - 无 `mysql2` 依赖的 CF/边缘构建不报错（动态 import 路径不触发）。
-4. **加密兼容**：`ENCRYPTION_SECRET`/`JWT_SECRET` 存在时，敏感字段在 D1/MySQL 落盘为 `enc:v1:` 密文，读回后内存为明文。
-5. **接口兼容**：`getKvBinding` / `getKvStatus` / `resolvePath` / `setEnvCtx` / `defaultDb` / `User` 导出不变，业务层零改动。
-6. **可观测**：`/api/debug/info` 与 `/api/admin/kv/status` 能返回当前后端名与连接状态。
+4. **KV 后端**：
+   - `DB_DRIVER=kv` + KV binding 下，读写往返正确，数据落在 `openlist_tbl:<table>:<主键>` 多条 key；
+   - 删除实体后下次 `save` 会清除残留旧 key；
+   - 无 KV binding / Blob 时 `isConfigured()` 为 `false`，不静默回退。
+5. **加密兼容**：`ENCRYPTION_SECRET`/`JWT_SECRET` 存在时，敏感字段在 KV/D1/MySQL 落盘为 `enc:v1:` 密文，读回后内存为明文。
+6. **接口兼容**：`getKvBinding` / `getKvStatus` / `resolvePath` / `setEnvCtx` / `defaultDb` / `User` 导出不变，业务层零改动。
+7. **可观测**：`/api/debug/info` 与 `/api/admin/kv/status` 能返回当前后端名与连接状态。

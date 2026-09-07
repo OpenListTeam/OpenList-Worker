@@ -15,7 +15,9 @@ ENVIRONMENT = "production"
 VITE_API_URL = "/api"
 
 # ===================== 数据库后端（DB_DRIVER）=====================
-# json  - 默认后端，内部自动检测 KV/Blob/CF REST/内存
+# json  - 默认后端，整对象存单个 key，内部自动检测 KV/Blob/CF REST/内存
+# kv    - KV 分表后端，每实体一条 key（openlist_tbl:<table>:<主键>），
+#         避免大 JSON 读写与单 key 过大（需下方 KV binding 或 EdgeOne Blob）
 # d1    - Cloudflare D1（需下方 [[d1_databases]] 绑定）
 # mysql - 外部 MySQL（仅 Node 容器运行时，需 MYSQL_URL 或 MYSQL_* 分项）
 DB_DRIVER = "d1"

@@ -3,6 +3,7 @@ import { test } from "node:test"
 import { jsonBackend, readJsonBackend, getKvBinding } from "./json"
 import { d1Backend } from "./d1"
 import { mysqlBackend } from "./mysql"
+import { kvBackend } from "./kv"
 import { readDriver, getStoreBackend } from "./backend"
 import {
   TABLE_NAMES,
@@ -26,6 +27,7 @@ test("backend factory: defaults to json and normalizes driver", async () => {
   assert.equal(readDriver({}), "json")
   assert.equal(readDriver({ DB_DRIVER: "d1" }), "d1")
   assert.equal(readDriver({ DB_DRIVER: "MYSQL" }), "mysql")
+  assert.equal(readDriver({ DB_DRIVER: "KV" }), "kv")
   assert.equal(readDriver({ DB_DRIVER: "unknown" }), "unknown")
   const b = await getStoreBackend({})
   assert.equal(b.name, "json")
@@ -93,4 +95,87 @@ test("mysql backend: detects config without loading mysql2", async () => {
     true,
   )
   assert.equal(await mysqlBackend.isConfigured!({}), false)
+})
+
+test("kv backend: roundtrip via mock KV binding (per-table keys)", async () => {
+  const store = new Map<string, string>()
+  const binding = {
+    get: async (key: string) => store.get(key) ?? null,
+    put: async (key: string, v: string) => {
+      store.set(key, v)
+    },
+    delete: async (key: string) => {
+      store.delete(key)
+    },
+    list: async (opts?: any) => {
+      const prefix = opts?.prefix || ""
+      const keys = [...store.keys()]
+        .filter((k) => k.startsWith(prefix))
+        .map((name) => ({ name }))
+      return { keys, list_complete: true }
+    },
+  }
+  const env: any = { KV: binding }
+  assert.equal(kvBackend.name, "kv")
+  assert.equal(await kvBackend.isConfigured!(env), true)
+
+  const data = {
+    settings: [{ key: "site_title", value: "OpenList" }],
+    storages: [{ id: 1, mount_path: "/x", driver: "local" }],
+    users: [{ id: 1, username: "admin" }],
+    shares: [],
+    metas: [],
+    plugins: [],
+  }
+  assert.equal(await kvBackend.save(data, env), true)
+  // 应写入分表 key（而非单个 openlist_config）
+  assert.ok(store.has("openlist_tbl:settings:site_title"))
+  assert.ok(store.has("openlist_tbl:storages:1"))
+  assert.ok(store.has("openlist_tbl:users:1"))
+  assert.ok(store.has("openlist_tbl:schema_info"))
+  assert.deepEqual(await kvBackend.load(env), data)
+})
+
+test("kv backend: unconfigured env -> isConfigured=false, load=null", async () => {
+  assert.equal(await kvBackend.isConfigured!({}), false)
+  assert.equal(await kvBackend.load({}), null)
+})
+
+test("kv backend: deleting an entity removes its stale key on next save", async () => {
+  const store = new Map<string, string>()
+  const binding = {
+    get: async (key: string) => store.get(key) ?? null,
+    put: async (key: string, v: string) => {
+      store.set(key, v)
+    },
+    delete: async (key: string) => {
+      store.delete(key)
+    },
+    list: async (opts?: any) => {
+      const prefix = opts?.prefix || ""
+      return {
+        keys: [...store.keys()]
+          .filter((k) => k.startsWith(prefix))
+          .map((name) => ({ name })),
+        list_complete: true,
+      }
+    },
+  }
+  const env: any = { KV: binding }
+  const two = {
+    settings: [],
+    storages: [
+      { id: 1, mount_path: "/a", driver: "local" },
+      { id: 2, mount_path: "/b", driver: "local" },
+    ],
+    users: [],
+    shares: [],
+    metas: [],
+    plugins: [],
+  }
+  await kvBackend.save(two, env)
+  const one = { ...two, storages: [{ id: 1, mount_path: "/a", driver: "local" }] }
+  await kvBackend.save(one, env)
+  assert.ok(!store.has("openlist_tbl:storages:2"))
+  assert.deepEqual(await kvBackend.load(env), one)
 })

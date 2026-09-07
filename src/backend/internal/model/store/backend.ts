@@ -5,6 +5,7 @@ import type { StoreBackend } from "./types"
 import { jsonBackend } from "./json"
 import { d1Backend } from "./d1"
 import { mysqlBackend } from "./mysql"
+import { kvBackend } from "./kv"
 
 export function readDriver(env?: any): string {
   const e = env || (typeof process !== "undefined" ? process.env : {}) || {}
@@ -21,6 +22,8 @@ function resolveBackend(driver: string): StoreBackend {
       return d1Backend
     case "mysql":
       return mysqlBackend
+    case "kv":
+      return kvBackend
     case "json":
     default:
       return jsonBackend
@@ -61,4 +64,4 @@ export async function getStoreStatus(env?: any): Promise<any> {
   return { driver: backend.name, ...(health || {}) }
 }
 
-export { jsonBackend, d1Backend, mysqlBackend }
+export { jsonBackend, d1Backend, mysqlBackend, kvBackend }

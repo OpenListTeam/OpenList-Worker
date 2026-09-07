@@ -8,7 +8,7 @@
  * 关键约定：后端收到/返回的 data 均为「已加密」的完整配置对象（加密由
  * db.ts 的 sealDb/unsealDb 在持久化边界完成），因此后端无需关心加密细节。
  */
-export type StoreDriver = "json" | "d1" | "mysql"
+export type StoreDriver = "json" | "d1" | "mysql" | "kv"
 
 export interface StoreBackend {
   /** 后端标识名 */
