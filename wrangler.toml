@@ -50,9 +50,9 @@ DB_DRIVER = "d1"
 
 # ===================== 安全 / 鉴权 =====================
 # JWT 签名密钥（推荐 >=16 字符；未配置时自动生成并持久化到 KV）
-# JWT_SECRET = ""
+JWT_SECRET = ""
 # 静态加密密钥（优先于 JWT_SECRET；未配置时网盘 token 等敏感字段将明文落盘）
-# ENCRYPTION_SECRET = ""
+ENCRYPTION_SECRET = ""
 # 跳过安装向导、自动以该密码初始化 admin（可选兼容项）
 # ADMIN_PASSWORD = ""
 # 定时刷新任务鉴权密钥（仅 EdgeOne Schedules 需要）
