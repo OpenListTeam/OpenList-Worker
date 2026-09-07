@@ -2822,7 +2822,7 @@ const driverConfigs: Record<string, any> = {
       },
       {
         name: "password",
-        type: "password",
+        type: "string",
         default: "",
         required: true,
       },
@@ -3159,7 +3159,7 @@ const driverConfigs: Record<string, any> = {
       },
       {
         name: "password",
-        type: "password",
+        type: "string",
         default: "",
         required: false,
       },
@@ -3215,14 +3215,14 @@ const driverConfigs: Record<string, any> = {
       },
       {
         name: "password",
-        type: "password",
+        type: "string",
         default: "",
         required: true,
         help: "主密码（用于派生加密密钥）",
       },
       {
         name: "salt",
-        type: "password",
+        type: "string",
         default: "",
         required: false,
         help: "盐（第二密码）。可选但推荐，提高密钥强度",
@@ -3332,7 +3332,7 @@ const driverConfigs: Record<string, any> = {
       },
       { name: "meta_password", type: "string", default: "", required: false },
       { name: "username", type: "string", default: "", required: false },
-      { name: "password", type: "password", default: "", required: false },
+      { name: "password", type: "string", default: "", required: false },
       {
         name: "token",
         type: "string",
@@ -3528,7 +3528,7 @@ const driverConfigs: Record<string, any> = {
       { name: "operator_name", type: "string", default: "", required: true },
       {
         name: "operator_password",
-        type: "password",
+        type: "string",
         default: "",
         required: true,
       },
