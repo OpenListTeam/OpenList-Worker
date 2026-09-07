@@ -2,6 +2,56 @@ import esbuild from "esbuild"
 import fs from "fs"
 
 /**
+ * Node 内置模块列表（裸模块名，无 node: 前缀）。
+ *
+ * 部分驱动（mopan / 189pc / proton_drive 等）与依赖（otplib / qrcode / sha256 /
+ * pngjs）使用 `require('crypto')` 或 `import ... from "crypto"` 这类裸模块名
+ * 引用 Node 内置模块，而 esbuild 的 external 通配符 `node:*` 只能匹配带
+ * `node:` 前缀的引用，无法覆盖裸模块名。
+ *
+ * dist-server 与 esa-entry 产物由 Node 运行时消费（start 脚本 / Node 云函数 /
+ * 阿里云 ESA），这些内置模块应在运行时解析，故在此显式 external。
+ */
+const NODE_BUILTINS = [
+  "assert",
+  "buffer",
+  "child_process",
+  "cluster",
+  "console",
+  "constants",
+  "crypto",
+  "dgram",
+  "dns",
+  "domain",
+  "events",
+  "fs",
+  "http",
+  "http2",
+  "https",
+  "module",
+  "net",
+  "os",
+  "path",
+  "perf_hooks",
+  "process",
+  "punycode",
+  "querystring",
+  "readline",
+  "repl",
+  "stream",
+  "string_decoder",
+  "timers",
+  "tls",
+  "tty",
+  "url",
+  "util",
+  "v8",
+  "vm",
+  "worker_threads",
+  "zlib",
+]
+
+/**
  * 边缘与 Serverless 构建专用插件：把 sftp / ftp 驱动及 ssh2 相关依赖替换为空模块。
  *
  * 原因：sftp 驱动依赖 ssh2（需 crypto/net/http/https/tls 等 Node 内置模块以及 cpufeatures.node / sshcrypto.node 原生二进制），
@@ -79,7 +129,14 @@ async function build() {
     // node:* 内置模块交由运行时解析（消费方为 Node 运行时：start 脚本 / Vercel /
     // 云函数容器）。neutral 平台无法静态解析 node: 导入，而新增驱动中的
     // node:crypto 均有运行时门控（isNode / try-catch），保持动态导入原样即可
-    external: ["ssh2", "cpu-features", "iconv-lite", "mysql2", "node:*"],
+    external: [
+      "ssh2",
+      "cpu-features",
+      "iconv-lite",
+      "mysql2",
+      "node:*",
+      ...NODE_BUILTINS,
+    ],
     loader: { ".node": "empty" },
     plugins: [emptyNodeDriverPlugin],
   })
@@ -108,7 +165,14 @@ async function build() {
       minify: true,
       format: "esm",
       mainFields: ["module", "main"],
-      external: ["ssh2", "cpu-features", "iconv-lite", "mysql2", "node:*"],
+      external: [
+      "ssh2",
+      "cpu-features",
+      "iconv-lite",
+      "mysql2",
+      "node:*",
+      ...NODE_BUILTINS,
+    ],
       loader: { ".html": "text", ".node": "empty" },
       plugins: [emptyNodeDriverPlugin, normalizeHtmlEolPlugin],
     })
