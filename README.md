@@ -181,6 +181,8 @@ OpenList-TSWorker/
 | :---: | :---: | :---: |
 | [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=ENCRYPTION_SECRET,JWT_SECRET) | [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=ENCRYPTION_SECRET,JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
 
+备注：若Cloudflare提示`无法获取存储库内容`，则您需要前往[Github Applications](https://github.com/settings/installations)，找到
+Cloudflare Workers and Pages，确保选中`All repositories`，如果还是无效，请考虑先`Uninstall`再重新授权，或Fork后手动连接仓库
 部署完成后，请登录对应平台后台配置环境变量与存储：
 
 - **EdgeOne**：[国际站后台](https://console.edgeone.ai/makers) · [中国站后台](https://console.cloud.tencent.com/edgeone/makers)

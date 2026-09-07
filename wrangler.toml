@@ -66,12 +66,14 @@ ENCRYPTION_SECRET = ""
 [[kv_namespaces]]
 binding = "KV"
 
-# ===================== D1（可选）=====================
-# 如需使用 Cloudflare D1，取消注释并按需填写你自己的 database_id：
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "openlist"
-# database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+# ===================== D1 =====================
+# 使用 Cloudflare 的 Automatic resource provisioning：
+# 省略 database_id，部署时 wrangler（>= 4.45.0）会自动创建同名 D1 库并回写 id。
+# 若你的 wrangler 版本较旧，可取消下方注释并填入你自己的 database_id。
+[[d1_databases]]
+binding = "DB"
+database_name = "openlist"
+# database_id = ""
 
 
 
