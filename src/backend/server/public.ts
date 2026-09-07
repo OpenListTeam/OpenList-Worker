@@ -25,8 +25,8 @@ publicRouter.get("/settings", async (c) => {
     robots_txt: "User-agent: *\nAllow: /",
 
     // --- Appearance ---
-    logo: "/logo.png",
-    favicon: "/favicon.png",
+    logo: "https://res.oplist.org/logo/logo.svg",
+    favicon: "https://res.oplist.org/logo/logo.svg",
     main_color: "#1890ff",
     hide_storage_details: "false",
     hide_storage_details_in_manage_page: "false",

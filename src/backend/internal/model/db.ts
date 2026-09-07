@@ -80,7 +80,7 @@ export const defaultDb = {
     // Group 2: STYLE (https://doc.oplist.org/configuration/style)
     {
       key: "logo",
-      value: "/logo.png",
+      value: "https://res.oplist.org/logo/logo.svg",
       type: "string",
       help: "Site Logo URL",
       group: 2,
@@ -88,7 +88,7 @@ export const defaultDb = {
     },
     {
       key: "favicon",
-      value: "/favicon.png",
+      value: "https://res.oplist.org/logo/logo.svg",
       type: "string",
       help: "Favicon URL",
       group: 2,
@@ -755,12 +755,12 @@ export function setEnvCtx(env: any) {
 // ensureDefaultSettings 的「仅补缺失 key」逻辑覆盖，导致 prod 显示旧图标。
 const LEGACY_SETTING_MIGRATIONS: Record<string, { from: any[]; to: string }> = {
   logo: {
-    from: ["", "https://res.oplist.org/logo/logo.png"],
-    to: "/logo.png",
+    from: ["", "/logo.png", "https://res.oplist.org/logo/logo.png"],
+    to: "https://res.oplist.org/logo/logo.svg",
   },
   favicon: {
-    from: ["", "https://res.oplist.org/logo/logo.svg"],
-    to: "/favicon.png",
+    from: ["", "/favicon.png"],
+    to: "https://res.oplist.org/logo/logo.svg",
   },
   // 上游 OpenList 的 home_container 默认是 max_980px（内容限宽 980px 居中），
   // 本项目早期误把默认值设为 hope_container（HopeUI Container 无 maxW，流式全宽），
