@@ -62,9 +62,35 @@ export function setJsonEnvCtx(env: any) {
 }
 
 /**
+ * 读取 json 后端内的显式存储方案开关（DB_JSON_BACKEND）。
+ *
+ * 取值（大小写不敏感）：
+ *   - "auto"（默认）：按 blob → kv → cf_rest → 内存 顺序自动检测
+ *   - "blob"：强制使用 EdgeOne Blob（@edgeone/pages-blob）
+ *   - "kv"：强制使用 KV namespace binding（含 "binding" 别名）
+ *   - "cf_rest"：强制使用 Cloudflare KV REST API（含 "cf-rest"/"rest"/"api" 别名）
+ *
+ * 未知取值原样返回，由 getKvBinding 告警并回退到 auto。
+ */
+export function readJsonBackend(env?: any): string {
+  const e = env || (typeof process !== "undefined" ? process.env : {}) || {}
+  const raw = String(e?.DB_JSON_BACKEND || "")
+    .trim()
+    .toLowerCase()
+  if (!raw) return "auto"
+  if (raw === "cf_rest" || raw === "cf-rest" || raw === "rest" || raw === "api")
+    return "cf_rest"
+  if (raw === "kv" || raw === "binding") return "kv"
+  if (raw === "blob" || raw === "auto") return raw
+  return raw
+}
+
+const JSON_BACKENDS = new Set(["auto", "blob", "kv", "cf_rest"])
+
+/**
  * Universal KV / Blob Storage Adapter for EdgeOne Makers & Cloudflare Workers
  *
- * Detection order:
+ * 可通过 DB_JSON_BACKEND 显式指定方案；默认（auto）按以下顺序检测：
  *   1. @edgeone/pages-blob SDK (EdgeOne — HTTP API, no RESP crashes)
  *   2. KV namespace binding (Cloudflare Workers native)
  *   3. CF REST API (env vars)
@@ -82,81 +108,120 @@ export async function getKvBinding(envCtx?: any): Promise<{
     envCtx || jsonEnvCtx || (typeof process !== "undefined" ? process.env : {})
   const g = typeof globalThis !== "undefined" ? (globalThis as any) : {}
 
+  const forcedRaw = readJsonBackend(env)
+  const forced = JSON_BACKENDS.has(forcedRaw) ? forcedRaw : "auto"
+  if (forced !== forcedRaw) {
+    console.warn(
+      `[DB] unknown DB_JSON_BACKEND "${forcedRaw}", falling back to auto detection`,
+    )
+  }
+
   // 1. EdgeOne Blob SDK (HTTP API — avoids RESP protocol crashes)
-  try {
-    const blobStore = await getBlobStore()
-    if (blobStore) {
-      // Blob SDK only initializes inside the EdgeOne Makers runtime
-      installRespSafetyNet()
+  if (forced === "auto" || forced === "blob") {
+    try {
+      const blobStore = await getBlobStore()
+      if (blobStore) {
+        // Blob SDK only initializes inside the EdgeOne Makers runtime
+        installRespSafetyNet()
+        return {
+          binding: blobStore,
+          platform: "EdgeOne Blob (@edgeone/pages-blob, strong consistency)",
+          mode: "blob",
+        }
+      }
+    } catch {}
+    if (forced === "blob") {
       return {
-        binding: blobStore,
-        platform: "EdgeOne Blob (@edgeone/pages-blob, strong consistency)",
-        mode: "blob",
+        binding: null,
+        platform:
+          "EdgeOne Blob (unavailable — @edgeone/pages-blob not initialized outside Makers)",
+        mode: "none",
       }
     }
-  } catch {}
+  }
 
   // 2. KV namespace binding (Cloudflare Workers native — no RESP issues)
-  const customKvName =
-    (env && (env.EDGEONE_KV_NAME || env.KV_NAMESPACE || env.KV_NAME)) ||
-    g.EDGEONE_KV_NAME ||
-    g.KV_NAMESPACE
+  if (forced === "auto" || forced === "kv") {
+    const customKvName =
+      (env && (env.EDGEONE_KV_NAME || env.KV_NAMESPACE || env.KV_NAME)) ||
+      g.EDGEONE_KV_NAME ||
+      g.KV_NAMESPACE
 
-  const candidates = [
-    ...(customKvName ? [{ key: customKvName, name: customKvName }] : []),
-    { key: "EDGEONE_KV", name: "EDGEONE_KV" },
-    { key: "EO_KV", name: "EO_KV" },
-    { key: "KV", name: "KV" },
-    { key: "CF_KV", name: "CF_KV" },
-    { key: "DATABASE_KV", name: "DATABASE_KV" },
-  ]
+    const candidates = [
+      ...(customKvName ? [{ key: customKvName, name: customKvName }] : []),
+      { key: "EDGEONE_KV", name: "EDGEONE_KV" },
+      { key: "EO_KV", name: "EO_KV" },
+      { key: "KV", name: "KV" },
+      { key: "CF_KV", name: "CF_KV" },
+      { key: "DATABASE_KV", name: "DATABASE_KV" },
+    ]
 
-  for (const c of candidates) {
-    const b = (env && env[c.key]) || g[c.key]
-    if (
-      b &&
-      typeof b.get === "function" &&
-      (typeof b.put === "function" || typeof b.set === "function")
-    ) {
-      const isEdgeOne =
-        c.key.startsWith("EDGEONE") ||
-        c.key.startsWith("EO") ||
-        Boolean(env && (env.EDGEONE || env.EO_REGION || env.EDGEONE_KV_NAME)) ||
-        Boolean(g.EDGEONE_KV || g.EO_KV)
-      if (isEdgeOne) installRespSafetyNet()
-      const platformName = isEdgeOne
-        ? `EdgeOne KV (${c.name})`
-        : `Cloudflare / EdgeOne KV (${c.name})`
+    for (const c of candidates) {
+      const b = (env && env[c.key]) || g[c.key]
+      if (
+        b &&
+        typeof b.get === "function" &&
+        (typeof b.put === "function" || typeof b.set === "function")
+      ) {
+        const isEdgeOne =
+          c.key.startsWith("EDGEONE") ||
+          c.key.startsWith("EO") ||
+          Boolean(env && (env.EDGEONE || env.EO_REGION || env.EDGEONE_KV_NAME)) ||
+          Boolean(g.EDGEONE_KV || g.EO_KV)
+        if (isEdgeOne) installRespSafetyNet()
+        const platformName = isEdgeOne
+          ? `EdgeOne KV (${c.name})`
+          : `Cloudflare / EdgeOne KV (${c.name})`
 
+        return {
+          binding: b,
+          platform: platformName,
+          mode: "binding",
+        }
+      }
+    }
+
+    if (forced === "kv") {
       return {
-        binding: b,
-        platform: platformName,
-        mode: "binding",
+        binding: null,
+        platform: "KV namespace binding (not found)",
+        mode: "none",
       }
     }
   }
 
   // 3. Cloudflare REST API 模式
-  const cfAccountId =
-    env.CF_ACCOUNT_ID ||
-    (typeof process !== "undefined" ? process.env.CF_ACCOUNT_ID : "")
-  const cfNamespaceId =
-    env.CF_KV_NAMESPACE_ID ||
-    (typeof process !== "undefined" ? process.env.CF_KV_NAMESPACE_ID : "")
-  const cfApiToken =
-    env.CF_API_TOKEN ||
-    (typeof process !== "undefined" ? process.env.CF_API_TOKEN : "")
+  if (forced === "auto" || forced === "cf_rest") {
+    const cfAccountId =
+      env.CF_ACCOUNT_ID ||
+      (typeof process !== "undefined" ? process.env.CF_ACCOUNT_ID : "")
+    const cfNamespaceId =
+      env.CF_KV_NAMESPACE_ID ||
+      (typeof process !== "undefined" ? process.env.CF_KV_NAMESPACE_ID : "")
+    const cfApiToken =
+      env.CF_API_TOKEN ||
+      (typeof process !== "undefined" ? process.env.CF_API_TOKEN : "")
 
-  if (cfAccountId && cfNamespaceId && cfApiToken) {
-    return {
-      binding: {
-        type: "cf_rest",
-        accountId: cfAccountId,
-        namespaceId: cfNamespaceId,
-        token: cfApiToken,
-      },
-      platform: "Cloudflare KV (REST API)",
-      mode: "api",
+    if (cfAccountId && cfNamespaceId && cfApiToken) {
+      return {
+        binding: {
+          type: "cf_rest",
+          accountId: cfAccountId,
+          namespaceId: cfNamespaceId,
+          token: cfApiToken,
+        },
+        platform: "Cloudflare KV (REST API)",
+        mode: "api",
+      }
+    }
+
+    if (forced === "cf_rest") {
+      return {
+        binding: null,
+        platform:
+          "Cloudflare KV (REST API) — missing CF_ACCOUNT_ID / CF_KV_NAMESPACE_ID / CF_API_TOKEN",
+        mode: "none",
+      }
     }
   }
 

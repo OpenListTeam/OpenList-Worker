@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { jsonBackend } from "./json"
+import { jsonBackend, readJsonBackend, getKvBinding } from "./json"
 import { d1Backend } from "./d1"
 import { mysqlBackend } from "./mysql"
 import { readDriver, getStoreBackend } from "./backend"
@@ -57,6 +57,26 @@ test("json backend: roundtrip via mock KV binding", async () => {
 test("json backend: unconfigured env -> isConfigured=false, load=null", async () => {
   assert.equal(await jsonBackend.isConfigured!({}), false)
   assert.equal(await jsonBackend.load({}), null)
+})
+
+test("json backend: DB_JSON_BACKEND normalizes explicit storage mode", () => {
+  assert.equal(readJsonBackend({}), "auto")
+  assert.equal(readJsonBackend({ DB_JSON_BACKEND: "BLOB" }), "blob")
+  assert.equal(readJsonBackend({ DB_JSON_BACKEND: "kv" }), "kv")
+  assert.equal(readJsonBackend({ DB_JSON_BACKEND: "CF-REST" }), "cf_rest")
+  assert.equal(readJsonBackend({ DB_JSON_BACKEND: "api" }), "cf_rest")
+  assert.equal(readJsonBackend({ DB_JSON_BACKEND: "unknown" }), "unknown")
+})
+
+test("json backend: forced kv without binding -> none (no silent fallback)", async () => {
+  // 显式指定 kv 但环境无 KV binding 时，应返回 none 而非静默回退到 blob/内存
+  const info = await getKvBinding({ DB_JSON_BACKEND: "kv" })
+  assert.equal(info.mode, "none")
+})
+
+test("json backend: forced cf_rest without credentials -> none", async () => {
+  const info = await getKvBinding({ DB_JSON_BACKEND: "cf_rest" })
+  assert.equal(info.mode, "none")
 })
 
 test("d1 backend: detects binding without touching D1 API", async () => {

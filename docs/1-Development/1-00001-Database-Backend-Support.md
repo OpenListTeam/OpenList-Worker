@@ -86,10 +86,27 @@ export interface StoreBackend {
 | 变量                                                                             | 取值                                                 | 说明                                    |
 | -------------------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------- |
 | `DB_DRIVER`                                                                      | `json`（默认）\| `d1` \| `mysql`                     | 后端开关                                |
-| —（json）                                                                        | —                                                    | 走现有 KV/Blob/CF REST/内存，无需新变量 |
+| `DB_JSON_BACKEND`                                                                | `auto`（默认）\| `blob` \| `kv` \| `cf_rest`         | json 后端内的存储方案显式切换（见下）   |
 | （d1）                                                                           | wrangler 绑定名 `DB`（标准），兼容别名 `OPENLIST_DB` | `env.DB`                                |
 | `MYSQL_URL`                                                                      | `mysql://user:pass@host:3306/db`                     | 或拆成下列分项                          |
 | `MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_USER` / `MYSQL_PASSWORD` / `MYSQL_DATABASE` | —                                                    | MySQL 分项配置                          |
+
+#### json 后端内部的存储方案（`DB_JSON_BACKEND`）
+
+`DB_DRIVER=json`（默认）时，`store/json.ts` 内部仍可在多种持久化目标间选择。默认按 `blob → kv → cf_rest → 内存` 顺序自动检测；如需**显式指定**，用 `DB_JSON_BACKEND` 覆盖（大小写不敏感）：
+
+| `DB_JSON_BACKEND`          | 含义与所需配置                                                                        |
+| -------------------------- | ------------------------------------------------------------------------------------- |
+| `auto`（默认，不设即此值） | 自动检测：Blob → KV binding → CF REST → 内存回退                                      |
+| `blob`                     | EdgeOne Blob（`@edgeone/pages-blob`）。需运行在 EdgeOne Makers Pages Functions 环境   |
+| `kv`（别名 `binding`）     | KV namespace binding（`KV` / `EDGEONE_KV` / `EO_KV` 等，可经 `KV_NAME` 等自定义名称） |
+| `cf_rest`（别名 `cf-rest`/`rest`/`api`） | Cloudflare KV REST API，需 `CF_ACCOUNT_ID` / `CF_KV_NAMESPACE_ID` / `CF_API_TOKEN`   |
+
+行为约定：
+
+- 显式指定某个方案但该方案未配置时，`getKvBinding` 返回 `mode: "none"`（`isConfigured()` 为 `false`），**不静默回退**到其他方案，便于在 `/api/admin/kv/status` 中排障。
+- 未知取值会 `console.warn` 并回退到 `auto`。
+- `auto` 模式下维持原有逐级回退行为不变。
 
 ### 1.7 依赖与运行时
 

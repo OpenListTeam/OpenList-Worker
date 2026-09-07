@@ -12,6 +12,7 @@
 - **配置持久化**：
   - **Blob 存储**（推荐）：自动使用 `@edgeone/pages-blob` SDK（HTTP API），无需手动配置，避免 Redis RESP 协议崩溃。
   - **KV 存储**（兼容）：自动适配 `KV` / `EDGEONE_KV` / `EO_KV` 命名空间（仅 Cloudflare 环境）。
+  - **显式指定方案**：如需强制指定存储方案（而非自动检测），可设置环境变量 `DB_JSON_BACKEND`：`blob` / `kv` / `cf_rest`（`DB_DRIVER` 须为 `json`，即默认值）。EdgeOne 部署默认不设该变量，自动走 Blob；详见《1-00001-Database-Backend-Support》。
 - **定时任务 (Schedules)**：已内置 `/api/task/refresh` 定时调度（每天凌晨 2:00 自动刷新一次已启用的网盘 Token，完全兼容 EdgeOne 免费版定时任务规则；并在每次实际请求时结合按需检测保障 Token 实时有效）。调度请求需通过 `CRON_SECRET` 环境变量鉴权，配置方法见下文「定时任务与长时任务」。
 
 ---
