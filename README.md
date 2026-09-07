@@ -173,6 +173,30 @@ OpenList-TSWorker/
 └── package.json             # 项目依赖
 ```
 
+## 一键部署
+
+点击下方按钮，即可将本项目一键部署到对应平台（EdgeOne 会自动读取仓库根目录的 `edgeone.json` 完成构建配置）：
+
+| EdgeOne Makers · 国际站 | EdgeOne Makers · 中国站 | Cloudflare Workers · 全球站 |
+| :---: | :---: | :---: |
+| [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist) | [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
+
+部署完成后，请登录对应平台后台配置环境变量与存储：
+
+- **EdgeOne**：[国际站后台](https://console.edgeone.ai/makers) · [中国站后台](https://console.cloud.tencent.com/edgeone/makers)
+- **Cloudflare**：[Worker 后台](https://dash.cloudflare.com/)
+
+> [!IMPORTANT]
+> 部署完成后，首次访问站点会自动进入**安装向导**，在浏览器中设置管理员账号与密码即可完成初始化，无需预先配置 `ADMIN_PASSWORD`。
+>
+> 可选环境变量 / Secrets：
+> - `JWT_SECRET`：JWT 签名密钥（推荐配置；未配置时自动生成并持久化到 KV）
+> - `CRON_SECRET`：定时刷新任务鉴权密钥（可选，仅 EdgeOne 定时任务需要）
+>
+> 详细部署指南：[Cloudflare Workers](./docs/0-Getting-Started/0-00002-Deploy-Cloudflare-Workers.md) · [EdgeOne](./docs/0-Getting-Started/0-00003-Deploy-EdgeOne.md)
+
+---
+
 ## 快速开始
 
 > 完整部署说明请参考上游官方文档：[https://doc.oplist.org](https://doc.oplist.org)

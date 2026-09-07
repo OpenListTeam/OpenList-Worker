@@ -162,17 +162,16 @@ npx wrangler deploy
 生产环境敏感配置推荐使用 Secrets 安全存储：
 
 ```bash
-# 设置管理员密码（首次部署必须，否则系统生成随机密码并打印到日志）
-npx wrangler secret put ADMIN_PASSWORD
-
-# 设置 JWT 签名密钥
+# 设置 JWT 签名密钥（推荐，未配置时自动生成并持久化到 KV）
 npx wrangler secret put JWT_SECRET
 ```
 
 系统会提示你输入 Secret 值。
 
 > [!IMPORTANT]
-> 如果不设置 `ADMIN_PASSWORD`，系统会在首次启动时生成一个随机密码并打印到启动日志。请务必查看日志获取初始密码，登录后立即修改。
+> **初始化说明**：首次部署后系统处于未初始化状态，无需配置管理员密码。直接访问站点，前端会检测到未初始化并自动跳转到**安装向导**，在浏览器中设置管理员账号与密码即可完成初始化（`POST /api/public/init/setup`）。
+>
+> `ADMIN_PASSWORD` 环境变量现为可选的兼容选项：仅当需要「跳过安装向导、自动以指定密码初始化 admin」时才配置。
 
 ### 2. 绑定自定义域名
 

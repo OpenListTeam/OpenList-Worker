@@ -32,6 +32,12 @@ const OFFICIAL_REPO_URL =
   "https://github.com/OpenListTeam/OpenList-Frontend.git"
 const OFFICIAL_REPO_REF = process.env.FRONTEND_GIT_REF || "main"
 
+// 多语言翻译包：官方前端仓库不提交非英文翻译（由 Crowdin 维护），随 release 发布。
+// 直接 pnpm build 只会得到英文界面，因此 CF/EO 构建时需在此拉取后再构建。
+const I18N_TAR_URL =
+  process.env.I18N_URL ||
+  "https://github.com/OpenListTeam/OpenList-Frontend/releases/download/edge/i18n.tar.gz"
+
 function run(cmd, opts = {}) {
   console.log(`  > ${cmd}`)
   execSync(cmd, { stdio: "inherit", shell: true, ...opts })
@@ -64,22 +70,50 @@ function resolvePmCommand(dir, pm) {
 
 function requireDist(src) {
   if (!fs.existsSync(path.join(src, "index.html"))) {
-    throw new Error(`前端产物目录缺少 index.html: ${src}`)
+    throw new Error(`Frontend dist missing index.html: ${src}`)
   }
 }
 
 function replaceDist(src) {
-  console.log(`  复制前端产物: ${src} -> ${DEST}`)
+  console.log(`  Copying frontend dist: ${src} -> ${DEST}`)
   fs.rmSync(DEST, { recursive: true, force: true })
   fs.cpSync(src, DEST, { recursive: true })
-  console.log(`✓ 前端产物已就绪 (${DEST})`)
+  console.log(`✓ Frontend dist ready (${DEST})`)
+}
+
+/**
+ * 拉取官方前端发布的多语言翻译包，解压到前端仓库 src/lang/ 后运行
+ * i18n.mjs 补齐 entry.ts 与缺失翻译，保证构建产物包含完整多语言。
+ *
+ * 翻译下载失败不阻塞构建（回退为英文），与前端 build.sh 的 `|| true` 语义一致。
+ */
+function fetchI18n(repo) {
+  const langDir = path.join(repo, "src", "lang")
+  if (!fs.existsSync(langDir)) {
+    console.warn("  [fetch-frontend] repo missing src/lang, skipping i18n fetch")
+    return
+  }
+  const tmpTar = path.join(os.tmpdir(), `openlist-i18n-${process.pid}.tar.gz`)
+  console.log(`  Fetching i18n translations: ${I18N_TAR_URL}`)
+  try {
+    run(`curl -fL --retry 3 -o "${tmpTar}" "${I18N_TAR_URL}"`)
+    run(`tar -xzf "${tmpTar}" -C "${langDir}"`)
+  } catch (err) {
+    console.warn(
+      `  [fetch-frontend] i18n fetch failed (falling back to English): ${err?.message || err}`,
+    )
+  } finally {
+    fs.rmSync(tmpTar, { force: true })
+  }
+  // 无论翻译是否下载成功，都补齐 entry.ts 与缺失翻译（与前端 build.sh 一致）
+  run(`node ./scripts/i18n.mjs`, { cwd: repo })
 }
 
 /** 在本地前端仓库中 install + build，并取 dist 产物 */
 function buildLocalRepo(repo) {
   const abs = path.resolve(repo)
   if (!fs.existsSync(path.join(abs, "package.json"))) {
-    throw new Error(`目录不是前端仓库: ${abs}`)
+    throw new Error(`Directory is not a frontend repo: ${abs}`)
   }
   const pm = detectPackageManager(abs)
   const cmd = resolvePmCommand(abs, pm)
@@ -92,15 +126,16 @@ function buildLocalRepo(repo) {
     // minimumReleaseAge / trustPolicy 供应链复核，registry manifest 缺少
     // 平台子包时会误报（如 @crowdin/cli-*-arm64）。lockfile 来自刚克隆的
     // 官方前端仓库（HTTPS + 官方分支），属于可信来源，跳过复核安全。
-    console.warn("  [fetch-frontend] pnpm install 失败（lockfile 供应链复核或网络问题），--trust-lockfile 重试一次...")
+    console.warn("  [fetch-frontend] pnpm install failed (lockfile supply-chain recheck or network issue), retrying once with --trust-lockfile...")
     install(" --trust-lockfile")
   }
+  fetchI18n(abs)
   run(`${cmd} run build`, { cwd: abs })
   replaceDist(path.join(abs, "dist"))
 }
 
 function main() {
-  console.log("[fetch-frontend] 获取官方前端构建产物...")
+  console.log("[fetch-frontend] Fetching official frontend build artifacts...")
 
   // 1. 本地已构建产物目录（显式指定）
   const localDist = process.env.FRONTEND_DIST
@@ -121,14 +156,14 @@ function main() {
   // 3. 同级目录 ../OpenList-Frontend（monorepo 布局，自动探测）
   const siblingRepo = path.resolve(ROOT, "..", "OpenList-Frontend")
   if (fs.existsSync(path.join(siblingRepo, "package.json"))) {
-    console.log(`  检测到同级官方前端仓库: ${siblingRepo}`)
+    console.log(`  Detected sibling official frontend repo: ${siblingRepo}`)
     buildLocalRepo(siblingRepo)
     return
   }
 
   // 4. 从 Git 克隆并构建（默认兜底）
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openlist-frontend-"))
-  console.log(`  克隆官方前端: ${OFFICIAL_REPO_URL}#${OFFICIAL_REPO_REF}`)
+  console.log(`  Cloning official frontend: ${OFFICIAL_REPO_URL}#${OFFICIAL_REPO_REF}`)
   try {
     run(
       // -c core.autocrlf=false：禁用克隆端的换行符转换。Windows 上 autocrlf
@@ -145,6 +180,6 @@ function main() {
 try {
   main()
 } catch (err) {
-  console.error("[fetch-frontend] 失败:", err?.message || err)
+  console.error("[fetch-frontend] Failed:", err?.message || err)
   process.exit(1)
 }
