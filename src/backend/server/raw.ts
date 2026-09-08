@@ -7,6 +7,10 @@ import { getUserFromContext } from "./middlewares"
 import { getSignPolicy, verifyDownloadSign } from "../pkg/sign"
 import { safeErrorMessage } from "../pkg/errs"
 import { assertSafeUrl } from "../pkg/http"
+import {
+  isCloud189DirectDownload,
+  directDownloadResponse,
+} from "./download-policy"
 
 let fsPromises: any = null
 let createReadStream: any = null
@@ -145,6 +149,15 @@ rawRouter.get("/*", async (c) => {
           }
 
           if (fileItem && fileItem.raw_url) {
+            // 189 /d is always a redirect; preview traffic must use /p.
+            if (isCloud189DirectDownload(c.req.path, normDriver)) {
+              try {
+                assertSafeUrl(fileItem.raw_url, "Redirect download")
+              } catch (ssrfErr: any) {
+                return c.text(ssrfErr.message || "SSRF blocked", 403)
+              }
+              return directDownloadResponse(fileItem.raw_url)
+            }
             // WebDAV 等需要认证的驱动：强制使用代理模式，避免重定向导致认证丢失
             const needsProxy =
               isProxy ||
