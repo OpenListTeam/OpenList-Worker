@@ -392,6 +392,14 @@ export const defaultDb = {
       flag: 0,
     },
     {
+      key: "seed_default_trackers",
+      value: "",
+      type: "text",
+      help: "Default tracker list offered when generating torrent seeds (one tracker per line)",
+      group: 4,
+      flag: 1,
+    },
+    {
       key: "privacy_regs",
       value: "",
       type: "text",
