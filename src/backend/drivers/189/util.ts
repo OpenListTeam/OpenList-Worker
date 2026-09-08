@@ -660,53 +660,74 @@ export class Pan189Client {
   ): Promise<{ files: FileItem189[]; folders: FolderItem189[] }> {
     const allFiles: FileItem189[] = []
     const allFolders: FolderItem189[] = []
-    let pageNum = 1
     const pageSize = "60"
 
-    while (true) {
+    const loadPage = async (pageNum: number) => {
       if (options?.budget) {
-        if (options.budget.used >= options.budget.limit) {
-          console.warn(
-            "[189Cloud] Cloudflare Worker subrequest budget limit reached.",
-          )
-          break
-        }
+        if (options.budget.used >= options.budget.limit) return null
         options.budget.used++
       }
+      return this.getFilesPage(folderId, pageNum, pageSize)
+    }
 
-      const resp = await this.getFilesPage(folderId, pageNum, pageSize)
+    const first = await loadPage(1)
+    if (!first) return { files: allFiles, folders: allFolders }
+    const firstAO = first.fileListAO!
+    const firstFiles = firstAO.fileList || []
+    const firstFolders = firstAO.folderList || []
+    allFiles.push(...firstFiles)
+    allFolders.push(...firstFolders)
 
-      const fileListAO = resp.fileListAO!
-      if (Number(fileListAO.count) === 0) {
-        break
-      }
-
-      const files = fileListAO.fileList || []
-      const folders = fileListAO.folderList || []
-
-      allFolders.push(...folders)
-      allFiles.push(...files)
-
-      // Early-exit check if searching for a specific item
-      if (options?.findName) {
+    // Name lookup must remain sequential so it can stop as soon as the target
+    // is found. Ordinary directory listing can load the remaining pages in
+    // small parallel batches, avoiding a long serial tail on large folders.
+    if (options?.findName) {
+      if (
+        (options.findIsDir &&
+          firstFolders.some((f) => f.name === options.findName)) ||
+        (!options.findIsDir &&
+          firstFiles.some((f) => f.name === options.findName))
+      )
+        return { files: allFiles, folders: allFolders }
+      let pageNum = 2
+      while (firstFiles.length + firstFolders.length >= Number(pageSize)) {
+        const page = await loadPage(pageNum++)
+        if (!page) break
+        const ao = page.fileListAO!
+        const files = ao.fileList || []
+        const folders = ao.folderList || []
+        allFiles.push(...files)
+        allFolders.push(...folders)
         if (
-          options.findIsDir &&
-          folders.some((f) => f.name === options.findName)
-        ) {
+          (options.findIsDir &&
+            folders.some((f) => f.name === options.findName)) ||
+          (!options.findIsDir &&
+            files.some((f) => f.name === options.findName)) ||
+          files.length + folders.length < Number(pageSize)
+        )
           break
-        }
-        if (
-          !options.findIsDir &&
-          files.some((f) => f.name === options.findName)
-        ) {
-          break
-        }
       }
+      return { files: allFiles, folders: allFolders }
+    }
 
-      if (files.length + folders.length < parseInt(pageSize, 10)) {
-        break
+    const total = Math.max(0, Number(firstAO.count) || 0)
+    const pageCount = Math.ceil(total / Number(pageSize))
+    const limit = options?.budget?.limit ?? 45
+    for (let start = 2; start <= pageCount; start += 6) {
+      const end = Math.min(
+        pageCount,
+        start + 5,
+        start + Math.max(0, limit - (options?.budget?.used ?? 0)),
+      )
+      if (start > end) break
+      const pages = await Promise.all(
+        Array.from({ length: end - start + 1 }, (_, i) => loadPage(start + i)),
+      )
+      for (const page of pages) {
+        if (!page) continue
+        allFiles.push(...(page.fileListAO!.fileList || []))
+        allFolders.push(...(page.fileListAO!.folderList || []))
       }
-      pageNum++
     }
 
     return { files: allFiles, folders: allFolders }
