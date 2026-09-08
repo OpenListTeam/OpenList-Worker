@@ -346,6 +346,17 @@ async function loadDefaultMatrix(): Promise<Record<string, any> | undefined> {
   return undefined
 }
 
+async function resolveSeedSiteUrl(c: any): Promise<string> {
+  try {
+    const settings = await getSettings()
+    const configured = String(settings["seed_site_url"] || "").trim()
+    if (configured) return configured.replace(/\/+$/, "")
+  } catch {
+    // fall through to the request origin
+  }
+  return new URL(c.req.url).origin
+}
+
 async function resolveSeedMatrix(c: any, input: unknown, formats: SeedFormat[]) {
   const explicit = input && typeof input === "object" ? (input as Record<string, any>) : null
   const hasExplicit = !!explicit?.md5 || !!explicit?.sha1 || !!explicit?.sha256
@@ -385,6 +396,7 @@ async function generateSeed(
     throw new Error(`Seed input exceeds the ${maxBytes} byte hashing limit`)
   }
   const torrentHasher = await TorrentPieceHasher.create(pieceSize)
+  const siteUrl = await resolveSeedSiteUrl(c)
   const files: SeedFile[] = []
   for (const file of sourceFiles) {
     const response = await fetchSafe(c, new URL(file.rawUrl, c.req.url), { headers: file.headers })
@@ -403,7 +415,7 @@ async function generateSeed(
       missing_channels: [],
       sources: body.include_direct_source === true || body.include_sources === true ? [{
         type: "openlist-direct",
-        url: `${new URL(c.req.url).origin}/d${file.virtualPath}`,
+        url: `${siteUrl}/d${file.virtualPath}`,
         expires_at: "",
         share_id: "",
       }] : [],

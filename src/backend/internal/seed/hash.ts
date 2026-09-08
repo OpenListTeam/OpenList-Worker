@@ -34,6 +34,12 @@ function digestSet(set: HashSet): { md5: string; sha1: string; sha256: string } 
   }
 }
 
+function resetSet(set: HashSet): void {
+  set.md5.init()
+  set.sha1.init()
+  set.sha256.init()
+}
+
 export class TorrentPieceHasher {
   private hasher: IHasher
   private written = 0
@@ -81,7 +87,7 @@ export async function hashReadableStream(
     throw new Error(`File exceeds the hashing limit of ${maxBytes} bytes`)
   }
   const whole = await createHashSet()
-  let piece = await createHashSet()
+  const piece = await createHashSet()
   const pieces = { md5: [] as string[], sha1: [] as string[], sha256: [] as string[] }
   const reader = stream.getReader()
   let size = 0
@@ -108,7 +114,7 @@ export async function hashReadableStream(
           pieces.md5.push(digest.md5)
           pieces.sha1.push(digest.sha1)
           pieces.sha256.push(digest.sha256)
-          piece = await createHashSet()
+          resetSet(piece)
           pieceWritten = 0
         }
       }

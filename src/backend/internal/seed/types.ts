@@ -74,9 +74,18 @@ function text(value: unknown): string {
   return typeof value === "string" ? value : ""
 }
 
+const MAX_SEED_PATH_DEPTH = 64
+const MAX_SEED_PATH_LENGTH = 4096
+
 function normalizeRelativePath(value: unknown): string {
   const raw = text(value).trim()
+  if (raw.length > MAX_SEED_PATH_LENGTH) {
+    throw new Error("Seed file path exceeds the maximum length")
+  }
   const parts = raw.split("/")
+  if (parts.length > MAX_SEED_PATH_DEPTH) {
+    throw new Error("Seed file path exceeds the maximum depth")
+  }
   if (
     raw.includes("\0") ||
     raw.includes("\\") ||

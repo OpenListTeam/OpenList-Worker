@@ -18,7 +18,7 @@ function sampleSeed() {
     comment: "fixture",
     created_at: "2026-09-08T00:00:00.000Z",
     created_by: "test",
-    piece_size: 4,
+    piece_size: 16384,
     trackers: ["https://tracker.example/announce"],
     channels: [{ driver: "openlist", mount_path: "/public" }],
     files: [{
@@ -31,9 +31,9 @@ function sampleSeed() {
         sha1: "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d",
         sha256: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
         pieces: {
-          md5: ["4229d691b07b13341da53f17ab9f2416", "865c0c0b4ab0e063e5caa3387c1a8741"],
-          sha1: ["a5cec7af5f7aab769cf0d4aa440e01c7bfc371b2", "07c342be6e560e7f43842e2e21b774e61d85f047"],
-          sha256: ["0ebdc3317d6a93c50a3c6c3a75ea36581a7d279477b4b18c909a0f2d6c8a1eb8", "e3b98a4da31a127d4bde6e43033f66ba274bc3620e3a8a759bfe76d0f5d5f854"],
+          md5: ["5d41402abc4b2a76b9719d911017c592"],
+          sha1: ["aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d"],
+          sha256: ["2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"],
         },
       },
       sources: [{ type: "openlist-direct", url: "https://files.example/api/p/hello.txt", expires_at: "", share_id: "" }],

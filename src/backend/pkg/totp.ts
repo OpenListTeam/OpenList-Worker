@@ -83,6 +83,9 @@ export function isValidTOTPSecret(secret: string): boolean {
  * 备用码应该由调用方生成并加密存储
  */
 export function generateBackupCodes(count: number = 10): string[] {
+  if (!Number.isInteger(count) || count < 1 || count > 1000) {
+    throw new Error("Backup code count must be an integer between 1 and 1000")
+  }
   // 使用 CSPRNG 生成恢复码，避免 Math.random 可预测导致 2FA 被绕过
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // 去除易混淆字符 I/O/0/1
   const bytes = new Uint8Array(count * 8)
