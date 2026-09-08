@@ -20,6 +20,7 @@ import { safeErrorMessage } from "../pkg/errs"
 import { search } from "../internal/op/search"
 import { parseZip, extractZipEntry, ZipArchive } from "../internal/archive/zip"
 import { assertSafeUrl } from "../pkg/http"
+import { seedRouter } from "./seed"
 import {
   clampChunkSize,
   deleteSession,
@@ -33,6 +34,7 @@ import {
 } from "../internal/upload/multipart"
 
 export const fsRouter = new Hono()
+fsRouter.route("/seed", seedRouter)
 
 const getStorageRequestContext = (c: any) => {
   try {
@@ -897,19 +899,15 @@ fsRouter.post("/add_offline_download", async (c) => {
     return c.json({ code: 400, message: "No URLs provided" })
   }
 
-  /* 
-  // Offline download is not supported in stateless Serverless environments 
-  // as it requires a long-running background process or specialized task queue.
-  downloadOfflineFile(urls, reqPath).catch((err) => {
-    console.error("Async offline download background job failed:", err)
-  })
-  */
-  return c.json({
-    code: 200,
-    message:
-      "Offline download task received (Note: background processing limited in Serverless mode)",
-    data: null,
-  })
+  return c.json(
+    {
+      code: 501,
+      message:
+        "capability unavailable: this runtime has no durable offline-download adapter; use /fs/seed/offline_download with an approved source and a streaming-capable target driver",
+      data: { path: reqPath, accepted: 0 },
+    },
+    501,
+  )
 })
 
 fsRouter.post("/search", async (c) => {
@@ -1144,7 +1142,7 @@ fsRouter.post("/link", async (c) => {
     }
     const driver = await getDriver(resolved.storage.driver, resolved.storage)
     try {
-      const item = await driver.get(reqPath, resolved.physical)
+      const item = await driver.get(reqPath, resolved.physical ?? "/")
       if (item && item.raw_url) {
         return c.json({
           code: 200,

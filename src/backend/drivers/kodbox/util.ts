@@ -100,7 +100,7 @@ export class ClientKodbox {
     const form = new FormData()
     form.append("accessToken", this.authorization)
     form.append("path", dirPath)
-    form.append("file", new Blob([content]), fileName)
+    form.append("file", new Blob([content as unknown as BlobPart]), fileName)
     const resp = await fetch(`${this.address}/?explorer/upload/fileUpload`, {
       method: "POST",
       body: form,

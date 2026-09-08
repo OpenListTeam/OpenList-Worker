@@ -194,7 +194,7 @@ export class ClientHalalCloudOpen {
     const resp = await fetch(sign.url, {
       method: "POST",
       headers: sign.headers,
-      body: bodyRaw,
+      body: bodyRaw as unknown as BodyInit,
     })
     const data = (await resp.json().catch(() => ({}))) as HCloudTokenResponse
     if (!data.access_token) {
@@ -227,7 +227,7 @@ export class ClientHalalCloudOpen {
     const resp = await fetch(sign.url, {
       method: "POST",
       headers: sign.headers,
-      body: bodyRaw.length > 0 ? bodyRaw : undefined,
+      body: bodyRaw.length > 0 ? (bodyRaw as unknown as BodyInit) : undefined,
     })
 
     if (resp.status === 401 && !retry) {

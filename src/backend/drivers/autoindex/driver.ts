@@ -1,5 +1,5 @@
-// AutoIndex driver - Nginx AutoIndex adapter
-// Ported from: https://github.com/OpenListTeam/OpenList/tree/main/drivers/autoindex
+// AutoIndex driver - Nginx/静态目录索引适配器
+// Ported from: OpenList-Backends/drivers/autoindex
 import {
   StorageDriver,
   FileItem,
@@ -16,7 +16,10 @@ const DefaultModifiedXPath = "string(following-sibling::text()[2])"
 
 export function normalizeAutoIndexAddition(a: any): AutoIndexAddition {
   const norm = { ...(a || {}) } as any
-  norm.url = (norm.url || "").trim().replace(/\/$/, "")
+  norm.url = (norm.url || "").trim()
+  // Go: 无 scheme 则补 https://，无尾斜杠则补 /
+  if (norm.url && !/:\/\//.test(norm.url)) norm.url = "https://" + norm.url
+  if (norm.url && !norm.url.endsWith("/")) norm.url += "/"
   norm.item_xpath = norm.item_xpath || DefaultItemXPath
   norm.name_xpath = norm.name_xpath || DefaultNameXPath
   norm.size_xpath = norm.size_xpath || DefaultSizeXPath
@@ -26,72 +29,58 @@ export function normalizeAutoIndexAddition(a: any): AutoIndexAddition {
   return norm as AutoIndexAddition
 }
 
-function autoIndexNodeToFileItem(
-  node: AutoIndexNode,
-  baseURL: string,
-  timeFormat: string
-): FileItem {
-  let fullURL = node.url
-  if (!fullURL.startsWith("http")) {
-    fullURL = new URL(node.url, baseURL).toString()
-  }
-
-  return {
-    name: node.name,
-    size: node.size ? parseSize(node.size) : 0,
-    is_dir: node.isDir,
-    modified: node.modified ? parseTime(node.modified, timeFormat) : new Date().toISOString(),
-    sign: fullURL,
-    type: calcFileType(node.name, node.isDir),
-    thumb: "",
-    raw_url: node.isDir ? "" : fullURL,
-  }
-}
-
 export class AutoIndexDriver implements StorageDriver {
   private addition: AutoIndexAddition
   private ignoreNames: string[] = []
 
-  get config() {
-    return {
-      name: "AutoIndex",
-      localSort: false,
-      onlyLocal: false,
-      onlyProxy: false,
-      noCache: false,
-      noUpload: true,
-      defaultRoot: "",
-    }
-  }
-
   constructor(addition: any) {
     this.addition = normalizeAutoIndexAddition(addition)
+    // Go 用换行分隔 ignore 列表；兼容逗号分隔
     if (this.addition.ignore_file_names) {
       this.ignoreNames = this.addition.ignore_file_names
-        .split(",")
+        .split(/\r?\n|,/)
         .map((s) => s.trim())
         .filter((s) => s)
     }
   }
 
   async init(): Promise<void> {
-    // No initialization needed
+    if (!this.addition.url) throw new Error("url is required")
   }
 
-  async drop(): Promise<void> {
-    // No cleanup needed
+  private cleanRel(p: string): string {
+    return (p || "").split("/").filter(Boolean).join("/")
   }
 
-  async list(dir: string): Promise<FileItem[]> {
-    const urlPath = dir.startsWith("/") ? dir.slice(1) : dir
-    const url = urlPath ? `${this.addition.url}/${urlPath}` : this.addition.url
+  // 目录 URL（带尾斜杠，供相对 href 正确拼接）
+  private buildDirURL(physicalPath: string): string {
+    const rel = this.cleanRel(physicalPath)
+    return this.addition.url + rel + (rel ? "/" : "")
+  }
 
-    const response = await fetch(url)
-    if (!response.ok) {
-      throw new Error(`Failed to fetch ${url}: ${response.statusText}`)
+  private nodeToFileItem(node: AutoIndexNode, baseURL: string): FileItem {
+    const fullURL = new URL(node.url, baseURL).toString()
+    const isDir = node.isDir
+    return {
+      name: node.name,
+      size: node.size ? parseSize(node.size) : 0,
+      is_dir: isDir,
+      modified: node.modified
+        ? parseTime(node.modified, this.addition.modified_time_format || "")
+        : new Date().toISOString(),
+      sign: fullURL,
+      type: calcFileType(node.name, isDir),
+      raw_url: isDir ? "" : fullURL,
     }
+  }
 
-    const html = await response.text()
+  async list(virtualPath: string, physicalPath: string): Promise<FileItem[]> {
+    const baseURL = this.buildDirURL(physicalPath)
+    const res = await fetch(baseURL)
+    if (!res.ok) {
+      throw new Error(`Failed to fetch ${baseURL}: HTTP ${res.status}`)
+    }
+    const html = await res.text()
 
     const nodes = parseAutoIndexHTML(
       html,
@@ -99,65 +88,89 @@ export class AutoIndexDriver implements StorageDriver {
       this.addition.name_xpath || DefaultNameXPath,
       this.addition.size_xpath || DefaultSizeXPath,
       this.addition.modified_xpath || DefaultModifiedXPath,
-      this.ignoreNames
+      this.ignoreNames,
     )
 
-    const items = nodes
-      .filter((node) => node.name !== ".." && node.name !== ".")
-      .map((node) =>
-        autoIndexNodeToFileItem(
-          node,
-          url,
-          this.addition.modified_time_format || ""
-        )
-      )
+    const items: FileItem[] = nodes
+      .filter((n) => n.name !== ".." && n.name !== ".")
+      .map((n) => this.nodeToFileItem(n, baseURL))
 
-    return sortFileItems(items, {
-      orderBy: "name",
-      orderDirection: "asc",
-    })
+    return sortFileItems(items, "name", "asc")
   }
 
-  async link(file: FileItem): Promise<{ url: string; headers?: Record<string, string> }> {
-    if (file.is_dir) {
-      throw new Error("Cannot get link for directory")
+  async get(virtualPath: string, physicalPath: string): Promise<FileItem> {
+    const rel = this.cleanRel(physicalPath)
+    const name = rel.split("/").filter(Boolean).pop() || "root"
+
+    if (!rel) {
+      return {
+        name: "root",
+        size: 0,
+        is_dir: true,
+        modified: new Date().toISOString(),
+        sign: this.addition.url,
+        type: 1,
+      }
     }
-    return { url: file.raw_url }
+
+    // 静态服务：文件 URL 即 根 URL + 相对路径
+    const fullURL = this.addition.url + rel
+    return {
+      name,
+      size: 0,
+      is_dir: false,
+      modified: new Date().toISOString(),
+      sign: fullURL,
+      type: calcFileType(name, false),
+      raw_url: fullURL,
+    }
   }
 
-  async get(_path: string): Promise<FileItem | null> {
-    throw new Error("Get operation not supported for AutoIndex")
+  async mkdir(virtualPath: string, physicalPath: string): Promise<void> {
+    throw new Error("AutoIndex is read-only")
   }
 
-  async makeDir(_parentDir: string, _dirName: string): Promise<void> {
-    throw new Error("Write operations not supported for AutoIndex")
+  async rename(
+    virtualPath: string,
+    physicalPath: string,
+    newName: string,
+  ): Promise<void> {
+    throw new Error("AutoIndex is read-only")
   }
 
-  async move(_srcPath: string, _dstDirPath: string): Promise<void> {
-    throw new Error("Write operations not supported for AutoIndex")
+  async remove(
+    virtualPath: string,
+    physicalPath: string,
+    names: string[],
+  ): Promise<void> {
+    throw new Error("AutoIndex is read-only")
   }
 
-  async rename(_srcPath: string, _newName: string): Promise<void> {
-    throw new Error("Write operations not supported for AutoIndex")
+  async move(
+    srcDir: string,
+    dstDir: string,
+    names: string[],
+    srcPhys: string,
+    dstPhys: string,
+  ): Promise<void> {
+    throw new Error("AutoIndex is read-only")
   }
 
-  async copy(_srcPath: string, _dstDirPath: string): Promise<void> {
-    throw new Error("Write operations not supported for AutoIndex")
-  }
-
-  async remove(_path: string): Promise<void> {
-    throw new Error("Write operations not supported for AutoIndex")
+  async copy(
+    srcDir: string,
+    dstDir: string,
+    names: string[],
+    srcPhys: string,
+    dstPhys: string,
+  ): Promise<void> {
+    throw new Error("AutoIndex is read-only")
   }
 
   async put(
-    _dstDirPath: string,
-    _content: ReadableStream,
-    _fileName: string
+    virtualPath: string,
+    physicalPath: string,
+    content: Buffer,
   ): Promise<void> {
-    throw new Error("Write operations not supported for AutoIndex")
-  }
-
-  async other(_method: string, _data: Record<string, any>): Promise<any> {
-    throw new Error(`Unsupported operation: ${_method}`)
+    throw new Error("AutoIndex is read-only")
   }
 }

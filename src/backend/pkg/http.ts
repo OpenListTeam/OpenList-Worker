@@ -196,6 +196,15 @@ export function isSafeUrl(urlStr: string): boolean {
       return false
     }
 
+    // Reject IP-like hosts with leading-zero octets (octal/decimal SSRF bypass,
+    // e.g. "0177.0.0.1" is interpreted as 127.0.0.1 by many URL parsers).
+    if (
+      /^\d{1,3}(\.\d{1,3}){1,3}$/.test(host) &&
+      /(^|\.)0\d+/.test(host)
+    ) {
+      return false
+    }
+
     // Check IPv4 matches
     const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
     const match = host.match(ipv4Regex)

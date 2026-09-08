@@ -556,7 +556,7 @@ export class Client189TV {
 
     // 3. 提交上传
     if (isFamily) {
-      await this.request(fileCommitUrl, "POST", {
+      await this.request(fileCommitUrl!, "POST", {
         query: {
           ResumePolicy: "1",
           UploadFileId: String(uploadFileId),
@@ -565,7 +565,7 @@ export class Client189TV {
         isFamily,
       })
     } else {
-      await this.request(fileCommitUrl, "POST", {
+      await this.request(fileCommitUrl!, "POST", {
         form: {
           opertype: "3",
           resumePolicy: "1",

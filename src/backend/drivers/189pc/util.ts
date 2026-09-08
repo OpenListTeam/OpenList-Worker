@@ -70,7 +70,7 @@ export class Cloud189PCClient {
     } = {}
   ): Promise<any> {
     const method = options.method || "GET"
-    const headers = {
+    const headers: Record<string, string> = {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
       "Accept": "application/json",
       ...options.headers,

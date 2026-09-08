@@ -74,7 +74,7 @@ export class StrmDriver implements StorageDriver {
     }
     if (this.pathMap.size === 1) {
       this.autoFlatten = true
-      this.oneKey = this.pathMap.keys().next().value
+      this.oneKey = this.pathMap.keys().next().value ?? ""
     }
 
     const supportTypes = (
@@ -239,7 +239,7 @@ export class StrmDriver implements StorageDriver {
       return item
     }
 
-    const { root, sub } = getRootAndPath(path)
+    const [root, sub] = getRootAndPath(path)
     const dsts = this.pathMap.get(root)
     if (!dsts) throw new Error(`[Strm] path not found: ${path}`)
     for (const dst of dsts) {
