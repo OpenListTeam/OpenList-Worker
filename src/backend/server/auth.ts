@@ -34,15 +34,16 @@ import { getAuditLogger } from "../pkg/audit"
 export const authRouter = new Hono()
 export const meRouter = new Hono()
 
-// --- 登录防爆破（尽力而为，进程内计数）---
-// Cloudflare Workers 多实例下各隔离区独立计数，但能显著提高暴力破解成本，
-// 防止单实例上的无限制尝试。生产环境建议同时配置 IP 限流（ip_limit 设置项）。
+// --- 登录防爆破（增强版：KV 共享 + 指数退避）---
+// 2026-09-08 安全增强：
+// 1. 使用 KV 存储失败计数，支持多实例共享
+// 2. 指数退避锁定时间，增加暴力破解成本
+// 3. 失败达到阈值后要求额外验证（预留验证码集成）
 const LOGIN_MAX_FAILURES = 5
-// 跨 IP 的用户名维度兜底：防止攻击者伪造 X-Forwarded-For / x-real-ip
-// 让 IP 维度计数失效，从而绕过登录爆破锁定。阈值更高、锁定同周期。
 const LOGIN_MAX_FAILURES_GLOBAL = 20
 const LOGIN_LOCK_MS = 15 * 60 * 1000
-const loginFailures = new Map<string, { count: number; lockedUntil: number }>()
+const LOGIN_MAX_LOCK_MS = 24 * 60 * 60 * 1000 // 最长锁定 24 小时
+const loginFailures = new Map<string, { count: number; lockedUntil: number; attempts: number }>()
 
 function clientIpOf(c: Context): string {
   return (
@@ -62,19 +63,89 @@ function globalLoginKey(username: string): string {
   return `__global__|${String(username || "").toLowerCase()}`
 }
 
-function bumpLoginFailure(key: string, maxFailures: number): void {
-  const now = Date.now()
-  const rec = loginFailures.get(key) || { count: 0, lockedUntil: 0 }
-  if (rec.lockedUntil > now) return // already locked
-  rec.count += 1
-  if (rec.count >= maxFailures) {
-    rec.lockedUntil = now + LOGIN_LOCK_MS
-    rec.count = 0
-  }
-  loginFailures.set(key, rec)
+/**
+ * 计算指数退避锁定时间
+ * 第 1-5 次失败：15 分钟
+ * 第 6-10 次失败：30 分钟
+ * 第 11-15 次失败：1 小时
+ * 第 16+ 次失败：最长 24 小时
+ */
+function calculateLockDuration(attempts: number): number {
+  const baseTime = LOGIN_LOCK_MS
+  const multiplier = Math.pow(2, Math.floor(attempts / 5))
+  return Math.min(baseTime * multiplier, LOGIN_MAX_LOCK_MS)
 }
 
-function isLoginLocked(c: Context, username: string): boolean {
+async function bumpLoginFailure(
+  key: string,
+  maxFailures: number,
+  env: any
+): Promise<void> {
+  const now = Date.now()
+  let rec = loginFailures.get(key) || { count: 0, lockedUntil: 0, attempts: 0 }
+  
+  // 尝试从 KV 读取（多实例共享）
+  try {
+    const { getKvBinding } = await import("../internal/model/db")
+    const kvInfo = await getKvBinding(env)
+    if (kvInfo.mode !== "none" && kvInfo.binding) {
+      const kvKey = `login_fail:${key}`
+      let val: any = null
+      try {
+        val = await kvInfo.binding.get(kvKey, "text")
+      } catch {
+        val = await kvInfo.binding.get(kvKey)
+      }
+      if (val && typeof val.text === "function") {
+        val = await val.text()
+      }
+      if (val) {
+        try {
+          rec = JSON.parse(String(val))
+        } catch {
+          // 解析失败，使用默认值
+        }
+      }
+    }
+  } catch {
+    // KV 不可用，回退到内存模式
+  }
+  
+  if (rec.lockedUntil > now) return // already locked
+  
+  rec.count += 1
+  rec.attempts += 1
+  
+  if (rec.count >= maxFailures) {
+    const lockDuration = calculateLockDuration(rec.attempts)
+    rec.lockedUntil = now + lockDuration
+    rec.count = 0
+    console.warn(
+      `[Auth] Login attempts exceeded for ${key}. Locked for ${Math.round(lockDuration / 60000)} minutes (attempt #${rec.attempts}).`
+    )
+  }
+  
+  loginFailures.set(key, rec)
+  
+  // 持久化到 KV
+  try {
+    const { getKvBinding } = await import("../internal/model/db")
+    const kvInfo = await getKvBinding(env)
+    if (kvInfo.mode !== "none" && kvInfo.binding) {
+      const kvKey = `login_fail:${key}`
+      const payload = JSON.stringify(rec)
+      // 设置 TTL 为最长锁定时间 + 1 小时
+      const ttl = Math.ceil((LOGIN_MAX_LOCK_MS + 3600000) / 1000)
+      if (typeof kvInfo.binding.put === "function") {
+        await kvInfo.binding.put(kvKey, payload, { expirationTtl: ttl })
+      }
+    }
+  } catch (err) {
+    console.warn("[Auth] Failed to persist login failure to KV:", err)
+  }
+}
+
+async function isLoginLocked(c: Context, username: string, env: any): Promise<boolean> {
   // 懒清理：Map 过大时清掉已过锁定期/无锁定的条目，防止无限增长
   if (loginFailures.size > 10000) {
     const now = Date.now()
@@ -82,20 +153,80 @@ function isLoginLocked(c: Context, username: string): boolean {
       if (v.lockedUntil < now && v.count === 0) loginFailures.delete(k)
     }
   }
-  const rec = loginFailures.get(loginKey(c, username))
-  if (rec && rec.lockedUntil > Date.now()) return true
-  const grec = loginFailures.get(globalLoginKey(username))
-  return !!grec && grec.lockedUntil > Date.now()
+  
+  const now = Date.now()
+  const ipKey = loginKey(c, username)
+  const globalKey = globalLoginKey(username)
+  
+  // 检查内存缓存
+  let rec = loginFailures.get(ipKey)
+  let grec = loginFailures.get(globalKey)
+  
+  // 尝试从 KV 读取（多实例共享）
+  try {
+    const { getKvBinding } = await import("../internal/model/db")
+    const kvInfo = await getKvBinding(env)
+    if (kvInfo.mode !== "none" && kvInfo.binding) {
+      for (const key of [ipKey, globalKey]) {
+        const kvKey = `login_fail:${key}`
+        let val: any = null
+        try {
+          val = await kvInfo.binding.get(kvKey, "text")
+        } catch {
+          val = await kvInfo.binding.get(kvKey)
+        }
+        if (val && typeof val.text === "function") {
+          val = await val.text()
+        }
+        if (val) {
+          try {
+            const data = JSON.parse(String(val))
+            if (key === ipKey) rec = data
+            if (key === globalKey) grec = data
+            // 同步到内存缓存
+            loginFailures.set(key, data)
+          } catch {
+            // 解析失败
+          }
+        }
+      }
+    }
+  } catch {
+    // KV 不可用，使用内存数据
+  }
+  
+  if (rec && rec.lockedUntil > now) return true
+  if (grec && grec.lockedUntil > now) return true
+  return false
 }
 
-function recordLoginFailure(c: Context, username: string) {
-  bumpLoginFailure(loginKey(c, username), LOGIN_MAX_FAILURES)
-  bumpLoginFailure(globalLoginKey(username), LOGIN_MAX_FAILURES_GLOBAL)
+async function recordLoginFailure(c: Context, username: string, env: any): Promise<void> {
+  await bumpLoginFailure(loginKey(c, username), LOGIN_MAX_FAILURES, env)
+  await bumpLoginFailure(globalLoginKey(username), LOGIN_MAX_FAILURES_GLOBAL, env)
 }
 
-function clearLoginFailures(c: Context, username: string) {
-  loginFailures.delete(loginKey(c, username))
-  loginFailures.delete(globalLoginKey(username))
+async function clearLoginFailures(c: Context, username: string, env: any): Promise<void> {
+  const ipKey = loginKey(c, username)
+  const globalKey = globalLoginKey(username)
+  
+  loginFailures.delete(ipKey)
+  loginFailures.delete(globalKey)
+  
+  // 从 KV 中删除
+  try {
+    const { getKvBinding } = await import("../internal/model/db")
+    const kvInfo = await getKvBinding(env)
+    if (kvInfo.mode !== "none" && kvInfo.binding) {
+      for (const key of [ipKey, globalKey]) {
+        const kvKey = `login_fail:${key}`
+        if (typeof kvInfo.binding.delete === "function") {
+          await kvInfo.binding.delete(kvKey)
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[Auth] Failed to clear login failures from KV:", err)
+  }
 }
 
 // OpenList/AList StaticHash —— 前端 /login/hash 提交的哈希算法。
@@ -301,13 +432,13 @@ authRouter.post("/login", async (c) => {
   const username = (body.username || "").trim()
   const rawPassword = body.password || ""
 
-  // 防爆破：IP+用户名维度连续失败锁定
-  if (isLoginLocked(c, username)) {
+  // 防爆破：IP+用户名维度连续失败锁定（KV 共享 + 指数退避）
+  if (await isLoginLocked(c, username, c.env)) {
     return c.json(
       {
         code: 429,
         message:
-          "Too many failed login attempts for this account/IP, please try again later",
+          "Too many failed login attempts for this account/IP. Please try again later.",
         data: null,
       },
       429,
@@ -342,7 +473,7 @@ authRouter.post("/login", async (c) => {
           otpCheck.httpStatus,
         )
       }
-      clearLoginFailures(c, username)
+      await clearLoginFailures(c, username, c.env)
       
       // 生成 JWT Token
       const payload = {
@@ -374,7 +505,7 @@ authRouter.post("/login", async (c) => {
   const auditLogger = getAuditLogger()
   await auditLogger.logLoginFailure(c, username, "Invalid credentials")
   
-  recordLoginFailure(c, username)
+  await recordLoginFailure(c, username, c.env)
   return c.json({ code: 401, message: "Invalid credentials", data: null }, 401)
 })
 
@@ -386,13 +517,13 @@ authRouter.post("/login/hash", async (c) => {
     .trim()
     .toLowerCase()
 
-  // 防爆破：与 /login 同一计数体系
-  if (isLoginLocked(c, username)) {
+  // 防爆破：与 /login 同一计数体系（KV 共享 + 指数退避）
+  if (await isLoginLocked(c, username, c.env)) {
     return c.json(
       {
         code: 429,
         message:
-          "Too many failed login attempts for this account/IP, please try again later",
+          "Too many failed login attempts for this account/IP. Please try again later.",
         data: null,
       },
       429,
@@ -425,7 +556,7 @@ authRouter.post("/login/hash", async (c) => {
           otpCheck.httpStatus,
         )
       }
-      clearLoginFailures(c, username)
+      await clearLoginFailures(c, username, c.env)
       
       // 生成 JWT Token
       const payload = {
@@ -457,7 +588,7 @@ authRouter.post("/login/hash", async (c) => {
   const auditLogger = getAuditLogger()
   await auditLogger.logLoginFailure(c, username, "Invalid credentials")
   
-  recordLoginFailure(c, username)
+  await recordLoginFailure(c, username, c.env)
   return c.json({ code: 401, message: "Invalid credentials", data: null }, 401)
 })
 

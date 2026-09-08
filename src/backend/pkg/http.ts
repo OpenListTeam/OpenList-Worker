@@ -160,6 +160,12 @@ export async function download(
  * Validate that a target URL is safe against SSRF attacks:
  * 1. Protocol must be http: or https:
  * 2. Hostname/IP must not point to loopback, private RFC 1918 networks, link-local, or cloud metadata endpoints.
+ * 
+ * 2026-09-08 安全增强：
+ * - 扩展 IPv6 检测（包括 IPv4-mapped IPv6）
+ * - 检测 DNS 重绑定特征
+ * - 阻止整数/十六进制 IP 表示
+ * - 检测混淆 IP 格式
  */
 export function isSafeUrl(urlStr: string): boolean {
   try {
@@ -171,33 +177,46 @@ export function isSafeUrl(urlStr: string): boolean {
     const host = parsed.hostname.toLowerCase().trim()
     if (!host) return false
 
-    // Check dangerous hostnames
-    if (
-      host === "localhost" ||
-      host.endsWith(".localhost") ||
-      host.endsWith(".local") ||
-      host.endsWith(".internal") ||
-      host === "metadata.google.internal"
-    ) {
-      return false
+    // 1. 检查危险主机名
+    const dangerousHosts = [
+      "localhost",
+      ".localhost",
+      ".local",
+      ".internal",
+      "metadata.google.internal",
+      "169.254.169.254", // AWS/GCP/Azure metadata
+      "metadata.azure.com",
+      "metadata",
+    ]
+    for (const dangerous of dangerousHosts) {
+      if (host === dangerous || host.endsWith(dangerous)) {
+        return false
+      }
     }
 
-    // Check IPv6 loopback and private
-    if (
-      host === "::1" ||
-      host === "[::1]" ||
-      host.startsWith("fe80:") ||
-      host.startsWith("fc") ||
-      host.startsWith("fd") ||
-      host.startsWith("[fe80:") ||
-      host.startsWith("[fc") ||
-      host.startsWith("[fd")
-    ) {
-      return false
+    // 2. 扩展 IPv6 检测（包括 IPv4-mapped IPv6）
+    const ipv6Patterns = [
+      "::1", // loopback
+      "[::1]",
+      "::ffff:127.", // IPv4-mapped IPv6 loopback
+      "::ffff:10.", // IPv4-mapped IPv6 private
+      "::ffff:172.", // IPv4-mapped IPv6 private
+      "::ffff:192.168.", // IPv4-mapped IPv6 private
+      "::ffff:169.254.", // IPv4-mapped IPv6 link-local
+      "fe80:", // link-local
+      "fc00:", // unique local
+      "fd00:", // unique local
+      "[fe80:",
+      "[fc",
+      "[fd",
+    ]
+    for (const pattern of ipv6Patterns) {
+      if (host.includes(pattern)) {
+        return false
+      }
     }
 
-    // Reject IP-like hosts with leading-zero octets (octal/decimal SSRF bypass,
-    // e.g. "0177.0.0.1" is interpreted as 127.0.0.1 by many URL parsers).
+    // 3. 检测前导零八进制绕过（0177.0.0.1 = 127.0.0.1）
     if (
       /^\d{1,3}(\.\d{1,3}){1,3}$/.test(host) &&
       /(^|\.)0\d+/.test(host)
@@ -205,7 +224,7 @@ export function isSafeUrl(urlStr: string): boolean {
       return false
     }
 
-    // Check IPv4 matches
+    // 4. 检测 IPv4 地址
     const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
     const match = host.match(ipv4Regex)
     if (match) {
@@ -216,25 +235,38 @@ export function isSafeUrl(urlStr: string): boolean {
       const d = parseInt(dStr, 10)
       if (a > 255 || b > 255 || c > 255 || d > 255) return false
 
-      // 0.0.0.0/8
-      if (a === 0) return false
-      // 127.0.0.0/8 Loopback
-      if (a === 127) return false
-      // 10.0.0.0/8 Private
-      if (a === 10) return false
-      // 172.16.0.0/12 Private (172.16.x.x - 172.31.x.x)
-      if (a === 172 && b >= 16 && b <= 31) return false
-      // 192.168.0.0/16 Private
-      if (a === 192 && b === 168) return false
-      // 169.254.0.0/16 Link-local & AWS/GCP/Azure Metadata (169.254.169.254)
-      if (a === 169 && b === 254) return false
-      // 100.64.0.0/10 Carrier-grade NAT & Aliyun metadata 100.100.100.200
-      if (a === 100 && ((b >= 64 && b <= 127) || b === 100)) return false
+      // RFC 1918 私有网络和特殊用途地址
+      if (a === 0) return false // 0.0.0.0/8 (This network)
+      if (a === 127) return false // 127.0.0.0/8 (Loopback)
+      if (a === 10) return false // 10.0.0.0/8 (Private)
+      if (a === 172 && b >= 16 && b <= 31) return false // 172.16.0.0/12 (Private)
+      if (a === 192 && b === 168) return false // 192.168.0.0/16 (Private)
+      if (a === 169 && b === 254) return false // 169.254.0.0/16 (Link-local + metadata)
+      if (a === 100 && b >= 64 && b <= 127) return false // 100.64.0.0/10 (CGNAT)
+      if (a === 100 && b === 100) return false // Aliyun metadata 100.100.100.200
+      if (a === 224 && b === 0 && c === 0) return false // 224.0.0.0/24 (Multicast)
+      if (a >= 240) return false // 240.0.0.0/4 (Reserved)
     }
 
-    // Reject pure integer representations of IPs (e.g. 2130706433 = 127.0.0.1)
-    if (/^\d+$/.test(host) || /^0x[0-9a-fA-F]+$/i.test(host)) {
+    // 5. 阻止整数/十六进制 IP 表示（2130706433 = 127.0.0.1, 0x7f000001 = 127.0.0.1）
+    if (/^\d{8,}$/.test(host) || /^0x[0-9a-fA-F]{6,}$/i.test(host)) {
       return false
+    }
+
+    // 6. 检测 DNS 重绑定特征域名（攻击者常用模式）
+    const dnsRebindPatterns = [
+      /\d{1,3}-\d{1,3}-\d{1,3}-\d{1,3}/, // 127-0-0-1.example.com
+      /0x[0-9a-f]{8}/i, // 0x7f000001.example.com
+      /\d{10}/, // 2130706433.example.com (整数IP)
+      /127\.0\.0\.1\.nip\.io/, // nip.io DNS rebinding service
+      /localtest\.me/, // localtest.me resolves to 127.0.0.1
+      /vcap\.me/, // vcap.me resolves to 127.0.0.1
+      /\.xip\.io/, // xip.io DNS rebinding service
+    ]
+    for (const pattern of dnsRebindPatterns) {
+      if (pattern.test(host)) {
+        return false
+      }
     }
 
     return true

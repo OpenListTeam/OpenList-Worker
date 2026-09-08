@@ -1050,7 +1050,15 @@ export const getDb = async (envCtx?: any) => {
 // ============================================================
 const ENCRYPTION_PREFIX = "enc:v1:"
 
-const SENSITIVE_SETTING_KEYS = new Set(["token", "sso_client_secret"])
+const SENSITIVE_SETTING_KEYS = new Set([
+  "token",
+  "sso_client_secret",
+  "sso_client_id",
+  "ldap_bind_password",
+  "ldap_bind_dn",
+  "ocr_api",
+  "handle_hook_after_writing",
+])
 
 let encryptionKeyWarned = false
 
@@ -1096,6 +1104,8 @@ async function unsealValue(value: string, key: string): Promise<string> {
 async function sealDb(data: any, key: string | null): Promise<any> {
   if (!key || !data) return data
   const copy = JSON.parse(JSON.stringify(data))
+  
+  // 1. 加密存储配置中的 addition 字段（网盘凭据）
   for (const s of copy.storages || []) {
     if (!s || !s.addition) continue
     const str =
@@ -1104,21 +1114,33 @@ async function sealDb(data: any, key: string | null): Promise<any> {
       s.addition = await sealValue(str, key)
     }
   }
+  
+  // 2. 加密敏感的系统设置
   for (const st of copy.settings || []) {
     if (st && SENSITIVE_SETTING_KEYS.has(st.key) && st.value) {
       st.value = await sealValue(String(st.value), key)
     }
   }
+  
+  // 3. 加密用户敏感信息
   for (const u of copy.users || []) {
+    // OTP 密钥
     if (u && u.otp_secret) {
       u.otp_secret = await sealValue(String(u.otp_secret), key)
     }
+    // 密码二次加密（defense-in-depth，即使已哈希也加密存储）
+    if (u && u.password) {
+      u.password = await sealValue(String(u.password), key)
+    }
   }
+  
   return copy
 }
 
 async function unsealDb(data: any, key: string | null): Promise<void> {
   if (!key || !data) return
+  
+  // 1. 解密存储配置
   for (const s of data.storages || []) {
     if (
       s &&
@@ -1128,6 +1150,8 @@ async function unsealDb(data: any, key: string | null): Promise<void> {
       s.addition = await unsealValue(s.addition, key)
     }
   }
+  
+  // 2. 解密系统设置
   for (const st of data.settings || []) {
     if (
       st &&
@@ -1138,13 +1162,24 @@ async function unsealDb(data: any, key: string | null): Promise<void> {
       st.value = await unsealValue(st.value, key)
     }
   }
+  
+  // 3. 解密用户信息
   for (const u of data.users || []) {
+    // OTP 密钥
     if (
       u &&
       typeof u.otp_secret === "string" &&
       u.otp_secret.startsWith(ENCRYPTION_PREFIX)
     ) {
       u.otp_secret = await unsealValue(u.otp_secret, key)
+    }
+    // 密码解密
+    if (
+      u &&
+      typeof u.password === "string" &&
+      u.password.startsWith(ENCRYPTION_PREFIX)
+    ) {
+      u.password = await unsealValue(u.password, key)
     }
   }
 }
@@ -1191,25 +1226,65 @@ export const saveDb = async (data: any, envCtx?: any): Promise<boolean> => {
 export async function resolvePath(virtualPath: string) {
   const db = await getDb()
 
+  // ============ 路径遍历防护增强 (2026-09-08) ============
+  // 1. URL 解码（防止 %2e%2e 等编码绕过）
+  let path = virtualPath
+  try {
+    path = decodeURIComponent(String(path || ""))
+  } catch {
+    // 解码失败，使用原始值
+  }
+  
+  // 2. 多重解码检测（防止双重编码绕过）
+  let prevPath = ""
+  let decodeAttempts = 0
+  while (path !== prevPath && decodeAttempts < 3) {
+    prevPath = path
+    try {
+      const decoded = decodeURIComponent(path)
+      if (decoded === path) break // 没有更多编码
+      path = decoded
+      decodeAttempts++
+    } catch {
+      break
+    }
+  }
+  
+  // 3. 规范化路径分隔符和特殊字符
+  path = path
+    .replace(/\\/g, "/")              // 反斜杠 -> 正斜杠
+    .replace(/%5c/gi, "/")            // URL 编码的反斜杠
+    .replace(/%2f/gi, "/")            // URL 编码的正斜杠
+    .replace(/\.{3,}/g, "..")         // 多个点规范化为 ..
+    .replace(/\/+/g, "/")             // 多个斜杠合并为一个
+  
+  // 4. 检测非法字符
+  const illegalChars = ["\0", "\r", "\n", "\t"]
+  for (const ch of illegalChars) {
+    if (path.includes(ch)) {
+      throw new Error(`invalid path: illegal character detected (0x${ch.charCodeAt(0).toString(16)})`)
+    }
+  }
+  
+  // 5. Windows 绝对路径检测
+  if (/^[A-Za-z]:/.test(path)) {
+    throw new Error("invalid path: absolute Windows path not allowed")
+  }
+  
+  // 6. UNC 路径检测
+  if (path.startsWith("//") || path.startsWith("\\\\")) {
+    throw new Error("invalid path: UNC path not allowed")
+  }
+
   // Normalize ".." / "." segments so callers cannot escape the storage
   // mount root (path traversal). A leading ".." that pops an empty stack
   // is clamped to the root instead of escaping upward.
   const stack: string[] = []
-  // FIX(C-2): backslashes must be normalized BEFORE segmenting, not after.
-  // The old code split on "/" only, so "..\..\.." stayed a single opaque
-  // segment and was pushed verbatim onto the stack; the later
-  // .replace(/\\/g,"/") on physicalPath then turned it into real "..",
-  // escaping the storage root (CWE-22, verified at runtime).
-  for (const seg of String(virtualPath || "")
-    .replace(/\\/g, "/")
-    .split("/")) {
+  for (const seg of path.split("/")) {
     if (seg === "" || seg === ".") continue
     if (seg === "..") {
       stack.pop()
       continue
-    }
-    if (seg.includes("\0")) {
-      throw new Error("invalid path: null byte")
     }
     stack.push(seg)
   }

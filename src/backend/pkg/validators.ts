@@ -38,12 +38,17 @@ export const emailSchema = z
 
 /**
  * 路径验证（防止路径遍历攻击）
+ * 2026-09-08 增强：添加更多安全检查
  */
 export const pathSchema = z
   .string()
   .max(4096, "Path too long")
   .refine((path) => !path.includes(".."), "Path traversal detected")
   .refine((path) => !path.includes("\0"), "Null byte detected")
+  .refine((path) => !path.includes("\r"), "Carriage return detected")
+  .refine((path) => !path.includes("\n"), "Line feed detected")
+  .refine((path) => !/^[A-Za-z]:/.test(path), "Absolute Windows path not allowed")
+  .refine((path) => !path.startsWith("//") && !path.startsWith("\\\\"), "UNC path not allowed")
 
 /**
  * TOTP 令牌验证（6 位数字）

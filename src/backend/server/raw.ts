@@ -126,7 +126,7 @@ rawRouter.get("/*", async (c) => {
           ?.split("=")
           .slice(1)
           .join("=") || ""
-      let cookiePwd = ""
+      let cookiePwd: string
       try {
         cookiePwd = cookiePwdRaw ? decodeURIComponent(cookiePwdRaw) : ""
       } catch {
@@ -142,9 +142,16 @@ rawRouter.get("/*", async (c) => {
       }
       reqPath = shareRes.realPath
     } else {
+      // 非分享路径：需要用户认证
+      // getUserFromContext 会尝试以下顺序：
+      // 1. Authorization header 中的 Bearer token
+      // 2. query 参数中的 token/access_token
+      // 3. guest 用户（如果启用）
+      // 
+      // 修复：即使 guest 被禁用/删除，已登录用户（通过 token）仍可访问
       const user = await getUserFromContext(c)
       if (!user || user.disabled) {
-        return c.text("Unauthorized", 401)
+        return c.text("Unauthorized: Please login to access this file", 401)
       }
     }
 
