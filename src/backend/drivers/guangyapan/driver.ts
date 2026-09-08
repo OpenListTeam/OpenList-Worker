@@ -129,6 +129,28 @@ export class GuangYaPanDriver implements StorageDriver {
     return curId
   }
 
+  /** 解析任意条目（文件或文件夹）的 ID，末段不限定为文件夹 */
+  private async resolveItemId(path: string): Promise<string> {
+    const clean = this.cleanPath(path)
+    if (clean === "/") return ""
+    const cached = this.idCache.get(clean)
+    if (cached) return cached
+
+    const parentPath = clean.split("/").slice(0, -1).join("/") || "/"
+    const name = clean.split("/").pop() || ""
+    const parentId = await this.resolveId(parentPath)
+    const resp = await this.client.getFileList(
+      parentId,
+      this.addition.page_size,
+      this.addition.order_by,
+      this.addition.sort_type,
+    )
+    const found = resp.data?.list?.find((i) => i.fileName === name)
+    if (!found) throw new Error(`item not found: ${name}`)
+    this.idCache.set(clean, found.fileId)
+    return found.fileId
+  }
+
   async list(virtualPath: string, physicalPath: string): Promise<FileItem[]> {
     const id = await this.resolveId(physicalPath)
     const clean = this.cleanPath(physicalPath)
@@ -207,7 +229,7 @@ export class GuangYaPanDriver implements StorageDriver {
     physicalPath: string,
     newName: string,
   ): Promise<void> {
-    const id = await this.resolveId(physicalPath)
+    const id = await this.resolveItemId(physicalPath)
     await this.client.postAPI("/nd.bizuserres.s/v1/file/rename", {
       fileId: id,
       newName,
@@ -221,8 +243,10 @@ export class GuangYaPanDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const srcId = await this.resolveId(srcPhys)
-    const dstId = await this.resolveId(dstPhys)
+    const srcId = await this.resolveItemId(srcPhys)
+    const dstParent =
+      this.cleanPath(dstPhys).split("/").slice(0, -1).join("/") || "/"
+    const dstId = await this.resolveId(dstParent)
     const out = await this.client.postAPI<{ data?: { taskId?: string } }>(
       "/nd.bizuserres.s/v1/file/move_file",
       { fileIds: [srcId], parentId: dstId },
@@ -237,8 +261,10 @@ export class GuangYaPanDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const srcId = await this.resolveId(srcPhys)
-    const dstId = await this.resolveId(dstPhys)
+    const srcId = await this.resolveItemId(srcPhys)
+    const dstParent =
+      this.cleanPath(dstPhys).split("/").slice(0, -1).join("/") || "/"
+    const dstId = await this.resolveId(dstParent)
     const out = await this.client.postAPI<{ data?: { taskId?: string } }>(
       "/nd.bizuserres.s/v1/file/copy_file",
       { fileIds: [srcId], parentId: dstId },
@@ -251,7 +277,7 @@ export class GuangYaPanDriver implements StorageDriver {
     physicalPath: string,
     names: string[],
   ): Promise<void> {
-    const id = await this.resolveId(physicalPath)
+    const id = await this.resolveItemId(physicalPath)
     const out = await this.client.postAPI<{ data?: { taskId?: string } }>(
       "/nd.bizuserres.s/v1/file/delete_file",
       { fileIds: [id] },

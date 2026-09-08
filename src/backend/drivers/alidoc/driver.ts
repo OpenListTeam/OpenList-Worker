@@ -80,6 +80,23 @@ export class AliDocDriver implements StorageDriver {
     return curId
   }
 
+  /** 解析任意条目（文件或文件夹）的 dentryUuid，末段不限定为文件夹 */
+  private async resolveItemId(path: string): Promise<string> {
+    const clean = this.cleanPath(path)
+    if (clean === "/") return this.addition.root_folder_id
+    const cached = this.idCache.get(clean)
+    if (cached) return cached
+
+    const parentPath = clean.split("/").slice(0, -1).join("/") || "/"
+    const name = clean.split("/").pop() || ""
+    const parentId = await this.resolveId(parentPath)
+    const children = await this.client.list(parentId)
+    const found = children.find((c) => c.name === name)
+    if (!found) throw new Error(`item not found: ${name}`)
+    this.idCache.set(clean, found.dentryUuid)
+    return found.dentryUuid
+  }
+
   async list(virtualPath: string, physicalPath: string): Promise<FileItem[]> {
     const id = await this.resolveId(physicalPath)
     const children = await this.client.list(id)
@@ -152,7 +169,7 @@ export class AliDocDriver implements StorageDriver {
     physicalPath: string,
     newName: string,
   ): Promise<void> {
-    const id = await this.resolveId(physicalPath)
+    const id = await this.resolveItemId(physicalPath)
     await this.client.post("/box/api/v2/dentry/rename", {
       dentryUuid: id,
       name: newName,
@@ -166,8 +183,10 @@ export class AliDocDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const srcId = await this.resolveId(srcPhys)
-    const dstId = await this.resolveId(dstPhys)
+    const srcId = await this.resolveItemId(srcPhys)
+    const dstParent =
+      this.cleanPath(dstPhys).split("/").slice(0, -1).join("/") || "/"
+    const dstId = await this.resolveId(dstParent)
     await this.client.post("/box/api/v2/dentry/move", {
       targetParentDentryUuid: dstId,
       sourceDentryUuid: srcId,
@@ -182,8 +201,10 @@ export class AliDocDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const srcId = await this.resolveId(srcPhys)
-    const dstId = await this.resolveId(dstPhys)
+    const srcId = await this.resolveItemId(srcPhys)
+    const dstParent =
+      this.cleanPath(dstPhys).split("/").slice(0, -1).join("/") || "/"
+    const dstId = await this.resolveId(dstParent)
     await this.client.post("/box/api/v2/dentry/copy", {
       sourceDentryUuid: srcId,
       targetParentDentryUuid: dstId,
@@ -197,7 +218,7 @@ export class AliDocDriver implements StorageDriver {
     physicalPath: string,
     names: string[],
   ): Promise<void> {
-    const id = await this.resolveId(physicalPath)
+    const id = await this.resolveItemId(physicalPath)
     await this.client.post("/box/api/v1/dentry/recycle", { dentryUuid: id })
   }
 

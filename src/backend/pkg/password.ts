@@ -72,6 +72,23 @@ export function needsRehash(hash: string): boolean {
 }
 
 /**
+ * 使用 CSPRNG 生成 [0, maxExclusive) 的均匀随机整数。
+ * 通过 rejection sampling 消除朴素 `byte % maxExclusive` 带来的 modulo bias。
+ */
+function secureRandomInt(maxExclusive: number): number {
+  if (maxExclusive <= 0) throw new Error("maxExclusive must be > 0")
+  if (maxExclusive === 1) return 0
+  const limit = 256 - (256 % maxExclusive)
+  const buf = new Uint8Array(1)
+  let r = 0
+  do {
+    crypto.getRandomValues(buf)
+    r = buf[0]
+  } while (r >= limit)
+  return r % maxExclusive
+}
+
+/**
  * 生成随机密码（用于临时密码、重置密码等）
  * @param length 密码长度（默认 16）
  * @returns 随机密码（包含大小写字母、数字、特殊字符）
@@ -100,11 +117,9 @@ export function generateRandomPassword(length: number = 16): string {
     chars.push(all[bytes[i] % all.length])
   }
 
-  // Fisher-Yates 洗牌（独立 CSPRNG 字节）
-  const shuffleBytes = new Uint8Array(length)
-  crypto.getRandomValues(shuffleBytes)
+  // Fisher-Yates 洗牌（CSPRNG + rejection sampling 消除 modulo bias）
   for (let i = chars.length - 1; i > 0; i--) {
-    const j = shuffleBytes[i] % (i + 1)
+    const j = secureRandomInt(i + 1)
     const tmp = chars[i]
     chars[i] = chars[j]
     chars[j] = tmp

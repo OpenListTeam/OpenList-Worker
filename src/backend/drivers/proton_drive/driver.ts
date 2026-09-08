@@ -357,7 +357,10 @@ export class ProtonDriveDriver implements StorageDriver {
     const chunkSize = (parseInt(this.addition.chunk_size || "4") || 4) * 1024 * 1024
 
     const start = options?.start ?? 0
-    const end = options?.end ?? (decryptedSize > 0 ? decryptedSize - 1 : 0)
+    // 当解密后大小未知时（decryptedSize <= 0），使用一个足够大的上界，
+    // 避免无 Range 的完整下载只流式传输第一个字节。
+    const end =
+      options?.end ?? (decryptedSize > 0 ? decryptedSize - 1 : Number.MAX_SAFE_INTEGER)
 
     let self = this
     return new ReadableStream<Uint8Array>({
