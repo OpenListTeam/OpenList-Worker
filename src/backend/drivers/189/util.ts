@@ -84,6 +84,10 @@ function parseJsonPreservingIds(text: string): any {
 }
 
 const TRUSTED_REDIRECT_HOSTS = new Set(["cloud.189.cn", "open.e.189.cn"])
+const API_TIMEOUT_MS = 10_000
+const TRANSIENT_HTTP_STATUSES = new Set([
+  502, 503, 504, 520, 521, 522, 523, 524,
+])
 
 function isTrustedHttpsUrl(value: URL): boolean {
   return (
@@ -174,6 +178,54 @@ export class Pan189Client {
     if (updated !== this.cookie) {
       this.cookie = updated
       this.cookieDirty = true
+    }
+  }
+
+  private async fetchText(
+    url: string,
+    init: RequestInit,
+    retryOnTransient = false,
+  ): Promise<{ response: Response; text: string }> {
+    const endpoint = new URL(url).host + new URL(url).pathname
+    for (let attempt = 0; ; attempt++) {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS)
+      let transientStatus = false
+      try {
+        const response = await fetch(url, {
+          ...init,
+          signal: controller.signal,
+        })
+        await this.updateCookie(response.headers)
+        transientStatus = TRANSIENT_HTTP_STATUSES.has(response.status)
+        if (transientStatus) {
+          // Release gateway response bodies before retrying. Never parse HTML as API JSON.
+          void response.body?.cancel().catch(() => {})
+          throw new Error(`[189Cloud] ${endpoint}: HTTP ${response.status}`)
+        }
+        // Keep the timer alive through body consumption, not just until headers arrive.
+        const text = await response.text()
+        return { response, text }
+      } catch (error) {
+        const timeout = controller.signal.aborted
+        const networkFailure = error instanceof TypeError
+        const failure = timeout
+          ? new Error(`[189Cloud] ${endpoint}: 请求超时 (${API_TIMEOUT_MS}ms)`)
+          : networkFailure
+            ? new Error(`[189Cloud] ${endpoint}: 网络连接失败`)
+            : error
+        if (
+          !retryOnTransient ||
+          attempt >= 1 ||
+          !(timeout || networkFailure || transientStatus)
+        ) {
+          throw failure
+        }
+        console.warn(`[189Cloud] ${endpoint}: transient failure; retrying once`)
+      } finally {
+        clearTimeout(timer)
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200))
     }
   }
 
@@ -458,6 +510,7 @@ export class Pan189Client {
       params?: Record<string, string>
       body?: Record<string, string>
       retryOnInvalidSession?: boolean
+      retryOnTransient?: boolean
     } = {},
   ): Promise<T> {
     const method = options.method || "GET"
@@ -488,19 +541,20 @@ export class Pan189Client {
       reqBody = new URLSearchParams(options.body).toString()
     }
 
-    const res = await fetch(urlObj.toString(), {
-      method,
-      headers,
-      body: reqBody,
-    })
-
-    await this.updateCookie(res.headers)
-
-    const text = await res.text()
+    const { response: res, text } = await this.fetchText(
+      urlObj.toString(),
+      { method, headers, body: reqBody },
+      method === "GET" && options.retryOnTransient === true,
+    )
     let data: any
     try {
       data = parseJsonPreservingIds(text)
     } catch {
+      if (!res.ok) {
+        throw new Error(
+          `[189Cloud] ${urlObj.host}${urlObj.pathname}: HTTP ${res.status}`,
+        )
+      }
       throw new Error(`[189Cloud] 非预期响应: ${text.slice(0, 200)}`)
     }
 
@@ -555,6 +609,7 @@ export class Pan189Client {
       "https://cloud.189.cn/api/open/file/listFiles.action",
       {
         method: "GET",
+        retryOnTransient: true,
         params: {
           pageSize,
           pageNum: String(pageNum),

@@ -32,6 +32,129 @@ function mockResponse(
   return response
 }
 
+test("root listing retries one transient HTTP 522 without logging in", async () => {
+  const calls: string[] = []
+  globalThis.fetch = (async (input) => {
+    const url = requestUrl(input)
+    calls.push(url)
+    assert.ok(url.includes("/api/open/file/listFiles.action"))
+    if (calls.length === 1)
+      return mockResponse(url, "<html>522</html>", { status: 522 })
+    return mockResponse(url, {
+      res_code: 0,
+      fileListAO: { count: 0, fileList: [], folderList: [] },
+    })
+  }) as typeof fetch
+  const driver = new Cloud189Driver({
+    username: "",
+    password: "",
+    cookie: "session=valid",
+  })
+  await driver.init()
+  assert.deepEqual(await driver.list("/", "/"), [])
+  assert.equal(calls.length, 2)
+})
+
+test("persistent listing 522 is bounded and reports endpoint and HTTP status", async () => {
+  let calls = 0
+  globalThis.fetch = (async (input) => {
+    calls++
+    return mockResponse(requestUrl(input), "<html>gateway</html>", {
+      status: 522,
+    })
+  }) as typeof fetch
+  const client = new Pan189Client({ username: "", password: "" })
+  await assert.rejects(client.getFiles("-11"), /listFiles.action.*HTTP 522/)
+  assert.equal(calls, 2)
+})
+
+test("root listing recovers from a transient network failure", async () => {
+  let calls = 0
+  globalThis.fetch = (async (input) => {
+    if (++calls === 1) throw new TypeError("fetch failed")
+    return mockResponse(requestUrl(input), {
+      res_code: 0,
+      fileListAO: { count: 0, fileList: [], folderList: [] },
+    })
+  }) as typeof fetch
+  const client = new Pan189Client({ username: "", password: "" })
+  assert.deepEqual(await client.getFiles("-11"), { files: [], folders: [] })
+  assert.equal(calls, 2)
+})
+
+test("write requests are not replayed after HTTP 522", async () => {
+  let calls = 0
+  globalThis.fetch = (async (input) => {
+    calls++
+    return mockResponse(requestUrl(input), "gateway", { status: 522 })
+  }) as typeof fetch
+  const client = new Pan189Client({ username: "", password: "" })
+  await assert.rejects(
+    client.mkdir("-11", "test"),
+    /createFolder.action.*HTTP 522/,
+  )
+  assert.equal(calls, 1)
+})
+
+test("HTTP errors with non-JSON bodies retain their status", async () => {
+  globalThis.fetch = (async (input) =>
+    mockResponse(requestUrl(input), "denied", { status: 403 })) as typeof fetch
+  const client = new Pan189Client({ username: "", password: "" })
+  await assert.rejects(client.getFiles("-11"), /listFiles.action.*HTTP 403/)
+})
+
+test("API connection stalls are aborted after ten seconds", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] })
+  let signal: AbortSignal | undefined
+  globalThis.fetch = (async (_input, init) => {
+    signal = init?.signal ?? undefined
+    assert.ok(signal, "request must have an abort signal")
+    return new Promise<Response>((_resolve, reject) => {
+      signal!.addEventListener("abort", () => reject(signal!.reason), {
+        once: true,
+      })
+    })
+  }) as typeof fetch
+  const client = new Pan189Client({ username: "", password: "" })
+  const result = assert.rejects(
+    client.request("https://cloud.189.cn/api/test"),
+    /test.*10000ms/,
+  )
+  t.mock.timers.tick(10_000)
+  await result
+  assert.equal(signal?.aborted, true)
+})
+
+test("API timeout also covers a stalled response body", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] })
+  let reading!: () => void
+  const started = new Promise<void>((resolve) => {
+    reading = resolve
+  })
+  globalThis.fetch = (async (_input, init) => {
+    assert.ok(init?.signal, "request must have an abort signal")
+    return new Response(
+      new ReadableStream({
+        start(controller) {
+          init.signal!.addEventListener(
+            "abort",
+            () => controller.error(init.signal!.reason),
+            { once: true },
+          )
+          reading()
+        },
+      }),
+    )
+  }) as typeof fetch
+  const client = new Pan189Client({ username: "", password: "" })
+  const pending = client.request("https://cloud.189.cn/api/test")
+  const result = assert.rejects(pending, /test.*10000ms/)
+  // A missing signal fails immediately in the old implementation.
+  await Promise.race([started, pending.catch(() => {})])
+  t.mock.timers.tick(10_000)
+  await result
+})
+
 test("login preserves cookies from intermediate redirects", async () => {
   const loginUrl =
     "https://cloud.189.cn/api/portal/loginUrl.action?redirectURL=https%3A%2F%2Fcloud.189.cn%2Fmain.action"
