@@ -87,37 +87,41 @@ export async function getJwtSecret(c?: Context | any): Promise<string> {
     return envSecret
   }
 
-  // 2. 检查是否为生产环境
+  // 2. KV 持久化密钥（跨实例/重启稳定）
+  const kvSecret = await readKvSecret(env)
+  if (kvSecret && kvSecret.length >= 32) {
+    return kvSecret
+  }
+
+  // 3. 检查是否为生产环境
   const isProduction =
     env.NODE_ENV === "production" ||
     env.ENVIRONMENT === "production" ||
     env.CF_PAGES === "1" ||
     env.WORKERS_ENV === "production"
 
-  if (isProduction) {
-    throw new Error(
-      "[SECURITY CRITICAL] JWT_SECRET must be configured in production environment. " +
-      "Please set a secure random string of at least 32 characters as JWT_SECRET environment variable."
-    )
-  }
-
-  // 3. KV 持久化密钥（跨实例/重启稳定）
-  const kvSecret = await readKvSecret(env)
-  if (kvSecret && kvSecret.length >= 32) {
-    return kvSecret
-  }
-
-  // 4. 开发环境：生成随机密钥并尝试持久化到 KV
+  // 4. 生成随机密钥并尝试持久化到 KV（开发 + 生产兼容）
   if (!cachedJwtSecret) {
     cachedJwtSecret = generateRandomSecret()
     const persisted = await writeKvSecret(env, cachedJwtSecret)
-    console.warn(
-      "[JWT] ⚠️  开发环境警告：JWT_SECRET 未配置，使用临时随机密钥。" +
-      (persisted
-        ? "密钥已持久化到 KV，重启后保持有效。"
-        : "密钥仅存于内存，重启后所有 token 将失效。") +
-      "\n生产环境部署前，请务必配置 >=32 字符的 JWT_SECRET 环境变量。"
-    )
+    
+    if (isProduction) {
+      console.error(
+        "[JWT] ⚠️ 🔴 生产环境安全警告：JWT_SECRET 未配置！" +
+        (persisted
+          ? "\n✅ 已自动生成密钥并持久化到 KV。此密钥将持续使用，但强烈建议手动配置 JWT_SECRET 环境变量以提高安全性。"
+          : "\n❌ 无法持久化密钥到 KV！密钥仅存于内存，重启后所有 token 将失效。请立即配置 JWT_SECRET 环境变量！") +
+        "\n\n🔒 安全建议：生成密钥命令: openssl rand -hex 32"
+      )
+    } else {
+      console.warn(
+        "[JWT] ⚠️  开发环境警告：JWT_SECRET 未配置，使用临时随机密钥。" +
+        (persisted
+          ? "密钥已持久化到 KV，重启后保持有效。"
+          : "密钥仅存于内存，重启后所有 token 将失效。") +
+        "\n生产环境部署前，请务必配置 >=32 字符的 JWT_SECRET 环境变量。"
+      )
+    }
   }
   return cachedJwtSecret
 }
