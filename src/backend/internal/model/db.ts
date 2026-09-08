@@ -352,7 +352,8 @@ export const defaultDb = {
     },
     {
       key: "seed_default_matrix",
-      value: "{\"md5\":{\"whole\":true,\"pieces\":false},\"sha1\":{\"whole\":true,\"pieces\":false},\"sha256\":{\"whole\":true,\"pieces\":false}}",
+      value:
+        '{"md5":{"whole":true,"pieces":false},"sha1":{"whole":true,"pieces":false},"sha256":{"whole":true,"pieces":false}}',
       type: "text",
       help: "Default transfer seed hash matrix",
       group: 4,
@@ -360,7 +361,7 @@ export const defaultDb = {
     },
     {
       key: "seed_format_policies",
-      value: "{\"oss\":\"off\",\"torrent\":\"off\",\"cas\":\"off\"}",
+      value: '{"oss":"off","torrent":"off","cas":"off"}',
       type: "text",
       help: "Automatic transfer seed format policies",
       group: 4,
@@ -390,6 +391,14 @@ export const defaultDb = {
       help: "When opening a single-file CAS seed, immediately rapid-upload it into the same folder and preview the restored file",
       group: 4,
       flag: 0,
+    },
+    {
+      key: "seed_default_trackers",
+      value: "",
+      type: "text",
+      help: "Default tracker list offered when generating torrent seeds (one tracker per line)",
+      group: 4,
+      flag: 1,
     },
     {
       key: "privacy_regs",
