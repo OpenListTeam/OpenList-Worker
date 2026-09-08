@@ -20,6 +20,7 @@ import { safeErrorMessage } from "../pkg/errs"
 import { search } from "../internal/op/search"
 import { parseZip, extractZipEntry, ZipArchive } from "../internal/archive/zip"
 import { assertSafeUrl } from "../pkg/http"
+import { seedRouter } from "./seed"
 import {
   clampChunkSize,
   deleteSession,
@@ -33,6 +34,7 @@ import {
 } from "../internal/upload/multipart"
 
 export const fsRouter = new Hono()
+fsRouter.route("/seed", seedRouter)
 
 const getStorageRequestContext = (c: any) => {
   try {
