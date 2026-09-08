@@ -158,6 +158,17 @@ function parseAddition(storageConfig?: any): any {
     : additionStr
 }
 
+function useWebProxy(storageConfig?: any): boolean {
+  const addition = parseAddition(storageConfig)
+  const value = addition?.web_proxy
+  return value === true || value === "true" || value === 1 || value === "1"
+}
+
+function rawPathForStorage(virtualPath: string, storageConfig?: any): string {
+  const prefix = useWebProxy(storageConfig) ? "/api/p" : "/api/d"
+  return `${prefix}${virtualPath.startsWith("/") ? "" : "/"}${virtualPath}`
+}
+
 async function createDriver(
   driverName: string,
   storageConfig?: any,
@@ -1367,7 +1378,7 @@ export async function getItem(
         raw_url: "",
       },
       provider: resolved.storage.driver,
-      rawUrl: `/api/p${virtualPath.startsWith("/") ? "" : "/"}${virtualPath}`,
+      rawUrl: rawPathForStorage(virtualPath, resolved.storage),
     }
   }
 
@@ -1390,7 +1401,7 @@ export async function getItem(
   return {
     item,
     provider: driverName,
-    rawUrl: `/api/p${virtualPath.startsWith("/") ? "" : "/"}${virtualPath}`,
+    rawUrl: rawPathForStorage(virtualPath, resolved.storage),
   }
 }
 

@@ -8,6 +8,40 @@ import {
   scheduleStoragePersistence,
 } from "./storage"
 
+test("storage web_proxy selects the same detail link mode for /d and /p", async () => {
+  const previousDatabase = process.env.DATABASE_JSON
+  process.env.DATABASE_JSON = JSON.stringify({
+    settings: [],
+    users: [],
+    shares: [],
+    storages: [
+      {
+        id: "189-direct",
+        driver: "189Cloud",
+        mount_path: "/direct",
+        addition: JSON.stringify({ web_proxy: false }),
+        modified: "1",
+        disabled: false,
+      },
+      {
+        id: "189-proxy",
+        driver: "189Cloud",
+        mount_path: "/proxy",
+        addition: JSON.stringify({ web_proxy: true }),
+        modified: "1",
+        disabled: false,
+      },
+    ],
+  })
+  try {
+    assert.equal((await getItem("/direct" as string)).rawUrl, "/api/d/direct")
+    assert.equal((await getItem("/proxy" as string)).rawUrl, "/api/p/proxy")
+  } finally {
+    if (previousDatabase === undefined) delete process.env.DATABASE_JSON
+    else process.env.DATABASE_JSON = previousDatabase
+  }
+})
+
 test("concurrent driver initialization shares one Promise", async () => {
   let calls = 0
   let release!: () => void
