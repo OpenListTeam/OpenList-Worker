@@ -3,8 +3,7 @@ import { resolvePath } from "../internal/model/db"
 import { parseRangeHeader } from "../internal/stream/stream"
 import { flushPendingDriverState, getDriver } from "../internal/op/storage"
 import { resolveShare } from "../internal/op/share"
-import { getUserFromContext } from "./middlewares"
-import { getSignPolicy, verifyDownloadSign } from "../pkg/sign"
+import { needDownloadSign, verifyDownloadSign } from "../pkg/sign"
 import { safeErrorMessage } from "../pkg/errs"
 import { assertSafeUrl } from "../pkg/http"
 
@@ -142,28 +141,22 @@ rawRouter.get("/*", async (c) => {
       }
       reqPath = shareRes.realPath
     } else {
-      // 非分享路径：需要用户认证
-      // getUserFromContext 会尝试以下顺序：
-      // 1. Authorization header 中的 Bearer token
-      // 2. query 参数中的 token/access_token
-      // 3. guest 用户（如果启用）
-      // 
-      // 修复：即使 guest 被禁用/删除，已登录用户（通过 token）仍可访问
-      const user = await getUserFromContext(c)
-      if (!user || user.disabled) {
-        return c.text("Unauthorized: Please login to access this file", 401)
-      }
-    }
-
-    // 下载签名校验（sign_all / link_expiration 启用时）：
-    // 非分享路径必须携带有效签名，防止下载链接被无限期转发/盗链。
-    if (!isSharePath) {
-      const signPolicy = await getSignPolicy(c)
-      if (signPolicy.enabled) {
+      // 对齐 Go server/router.go：
+      //   r.GET("/d/*path", middlewares.PathParse, middlewares.Down(sign.Verify), ...)
+      //   r.GET("/p/*path", middlewares.PathParse, middlewares.Down(sign.Verify), ...)
+      //
+      // 这两个端点**没有 Auth 中间件**，是设计上的「公开下载端点」——
+      // 直链要能被 <video src>、<img src>、播放器、下载器直接消费，而这些
+      // 客户端无法携带 Authorization 头。访问控制完全由 needSign 决定：
+      // 需要签名时校验签名，不需要时公开放行。
+      //
+      // 此前 TS 版在此处强制要求登录用户，与 Go 不符：guest 存在时靠 guest
+      // 兜底看不出问题，guest 一被禁用，列目录/播放视频就全部 401。
+      if (await needDownloadSign(c, reqPath)) {
         const sign = c.req.query("sign") || ""
         const ok = await verifyDownloadSign(c, reqPath, sign)
         if (!ok) {
-          return c.text("Invalid or expired sign", 401)
+          return c.text("sign verify failed", 401)
         }
       }
     }

@@ -183,10 +183,11 @@ test("Security: /api/fs/list returns 401 when unauthenticated and guest is delet
   assert.equal(json.code, 401)
 })
 
-test("Security: /raw/* returns 401 when unauthenticated and guest is deleted or disabled", async () => {
+test("/raw/* is a public download endpoint when no sign is required (parity with Go)", async () => {
   const env: any = {}
   await saveDb(
     {
+      // sign_all 关闭、link_expiration 未配置、无 metas → needSign() == false
       settings: [],
       users: [
         {
@@ -211,5 +212,46 @@ test("Security: /raw/* returns 401 when unauthenticated and guest is deleted or 
   const res = await app.request("/raw/some/file.txt", {
     method: "GET",
   })
-  assert.equal(res.status, 401, "Expected HTTP 401 for anonymous /raw/*")
+
+  // 对齐 Go server/router.go：/d/*path 与 /p/*path 只挂了
+  // PathParse + Down(sign.Verify) + downloadLimiter，没有 Auth 中间件。
+  // 因此在「无需签名」的默认配置下，匿名请求不应被 401 拦截；
+  // 由于测试库中没有该存储，预期是路径解析失败（4xx/5xx，非 401）。
+  //
+  // 此前这里断言 401，编码了与 Go 相反的行为：guest 存在时靠 guest 兜底
+  // 掩盖，guest 一禁用就导致列目录/播放视频全部 401。
+  assert.notEqual(
+    res.status,
+    401,
+    "Anonymous /raw/* must not be rejected with 401 when no sign is required",
+  )
+})
+
+test("/raw/* returns 401 without sign when sign_all is enabled (parity with Go needSign)", async () => {
+  const env: any = {}
+  await saveDb(
+    {
+      settings: [{ key: "sign_all", value: "true" }],
+      users: [
+        {
+          id: 1,
+          username: "admin",
+          password: "xxx",
+          role: 2,
+          permission: 0,
+          base_path: "/",
+          disabled: false,
+        },
+      ],
+      storages: [],
+      shares: [],
+    },
+    env,
+  )
+
+  const app = new Hono()
+  app.route("/raw", rawRouter)
+
+  const res = await app.request("/raw/some/file.txt", { method: "GET" })
+  assert.equal(res.status, 401, "sign_all enabled must require a valid sign")
 })

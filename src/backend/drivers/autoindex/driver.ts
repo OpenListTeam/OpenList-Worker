@@ -68,7 +68,9 @@ export class AutoIndexDriver implements StorageDriver {
       modified: node.modified
         ? parseTime(node.modified, this.addition.modified_time_format || "")
         : new Date().toISOString(),
-      sign: fullURL,
+      // sign 保留给下载签名（pkg/sign），不可塞入 URL，否则前端会拼出无效
+      // ?sign=http://... 导致签名校验 401。直链走 raw_url。
+      sign: "",
       type: calcFileType(node.name, isDir),
       raw_url: isDir ? "" : fullURL,
     }
