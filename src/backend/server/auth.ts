@@ -37,6 +37,9 @@ export const meRouter = new Hono()
 // Cloudflare Workers 多实例下各隔离区独立计数，但能显著提高暴力破解成本，
 // 防止单实例上的无限制尝试。生产环境建议同时配置 IP 限流（ip_limit 设置项）。
 const LOGIN_MAX_FAILURES = 5
+// 跨 IP 的用户名维度兜底：防止攻击者伪造 X-Forwarded-For / x-real-ip
+// 让 IP 维度计数失效，从而绕过登录爆破锁定。阈值更高、锁定同周期。
+const LOGIN_MAX_FAILURES_GLOBAL = 20
 const LOGIN_LOCK_MS = 15 * 60 * 1000
 const loginFailures = new Map<string, { count: number; lockedUntil: number }>()
 
@@ -53,6 +56,23 @@ function loginKey(c: Context, username: string): string {
   return `${clientIpOf(c)}|${String(username || "").toLowerCase()}`
 }
 
+// 与 IP 无关的用户名维度计数，用于抵御「伪造 IP 绕过锁定」的分布式爆破。
+function globalLoginKey(username: string): string {
+  return `__global__|${String(username || "").toLowerCase()}`
+}
+
+function bumpLoginFailure(key: string, maxFailures: number): void {
+  const now = Date.now()
+  const rec = loginFailures.get(key) || { count: 0, lockedUntil: 0 }
+  if (rec.lockedUntil > now) return // already locked
+  rec.count += 1
+  if (rec.count >= maxFailures) {
+    rec.lockedUntil = now + LOGIN_LOCK_MS
+    rec.count = 0
+  }
+  loginFailures.set(key, rec)
+}
+
 function isLoginLocked(c: Context, username: string): boolean {
   // 懒清理：Map 过大时清掉已过锁定期/无锁定的条目，防止无限增长
   if (loginFailures.size > 10000) {
@@ -62,24 +82,19 @@ function isLoginLocked(c: Context, username: string): boolean {
     }
   }
   const rec = loginFailures.get(loginKey(c, username))
-  return !!rec && rec.lockedUntil > Date.now()
+  if (rec && rec.lockedUntil > Date.now()) return true
+  const grec = loginFailures.get(globalLoginKey(username))
+  return !!grec && grec.lockedUntil > Date.now()
 }
 
 function recordLoginFailure(c: Context, username: string) {
-  const key = loginKey(c, username)
-  const now = Date.now()
-  const rec = loginFailures.get(key) || { count: 0, lockedUntil: 0 }
-  if (rec.lockedUntil > now) return // already locked
-  rec.count += 1
-  if (rec.count >= LOGIN_MAX_FAILURES) {
-    rec.lockedUntil = now + LOGIN_LOCK_MS
-    rec.count = 0
-  }
-  loginFailures.set(key, rec)
+  bumpLoginFailure(loginKey(c, username), LOGIN_MAX_FAILURES)
+  bumpLoginFailure(globalLoginKey(username), LOGIN_MAX_FAILURES_GLOBAL)
 }
 
 function clearLoginFailures(c: Context, username: string) {
   loginFailures.delete(loginKey(c, username))
+  loginFailures.delete(globalLoginKey(username))
 }
 
 // OpenList/AList StaticHash —— 前端 /login/hash 提交的哈希算法。

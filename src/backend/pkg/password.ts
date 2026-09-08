@@ -77,34 +77,36 @@ export function needsRehash(hash: string): boolean {
  * @returns 随机密码（包含大小写字母、数字、特殊字符）
  */
 export function generateRandomPassword(length: number = 16): string {
-  const charset = {
-    lowercase: "abcdefghijklmnopqrstuvwxyz",
-    uppercase: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-    numbers: "0123456789",
-    symbols: "!@#$%^&*()-_=+[]{}|;:,.<>?",
+  const lowercase = "abcdefghijklmnopqrstuvwxyz"
+  const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+  const numbers = "0123456789"
+  const symbols = "!@#$%^&*()-_=+[]{}|;:,.<>?"
+  const all = lowercase + uppercase + numbers + symbols
+
+  // 使用 CSPRNG 取代 Math.random，避免可预测性与 sort() 洗牌偏置
+  const bytes = new Uint8Array(length)
+  crypto.getRandomValues(bytes)
+
+  const chars: string[] = []
+  // 保证四类字符各至少一个
+  chars.push(lowercase[bytes[0] % lowercase.length])
+  chars.push(uppercase[bytes[1] % uppercase.length])
+  chars.push(numbers[bytes[2] % numbers.length])
+  chars.push(symbols[bytes[3] % symbols.length])
+  for (let i = 4; i < length; i++) {
+    chars.push(all[bytes[i] % all.length])
   }
 
-  const allChars =
-    charset.lowercase + charset.uppercase + charset.numbers + charset.symbols
-
-  let password = ""
-
-  // 确保包含每种类型的字符
-  password += charset.lowercase[Math.floor(Math.random() * charset.lowercase.length)]
-  password += charset.uppercase[Math.floor(Math.random() * charset.uppercase.length)]
-  password += charset.numbers[Math.floor(Math.random() * charset.numbers.length)]
-  password += charset.symbols[Math.floor(Math.random() * charset.symbols.length)]
-
-  // 填充剩余长度
-  for (let i = password.length; i < length; i++) {
-    password += allChars[Math.floor(Math.random() * allChars.length)]
+  // Fisher-Yates 洗牌（独立 CSPRNG 字节）
+  const shuffleBytes = new Uint8Array(length)
+  crypto.getRandomValues(shuffleBytes)
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = shuffleBytes[i] % (i + 1)
+    const tmp = chars[i]
+    chars[i] = chars[j]
+    chars[j] = tmp
   }
-
-  // 打乱顺序
-  return password
-    .split("")
-    .sort(() => Math.random() - 0.5)
-    .join("")
+  return chars.join("")
 }
 
 /**

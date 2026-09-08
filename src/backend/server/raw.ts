@@ -40,6 +40,53 @@ const getStorageRequestContext = (c: any) => {
   }
 }
 
+// 安全代理下载：手动跟随重定向并逐跳做 SSRF 校验。
+// 关键修复：默认 fetch 会自动跟随 3xx，导致攻击者先让 raw_url 指向一个
+// 通过 isSafeUrl 校验的公网域名，再用 302 跳到内网/云元数据端点，绕过 SSRF。
+// 这里禁用自动重定向，对每一跳的 Location 重新断言安全，并在跨域重定向时
+// 剥离 Cookie/Authorization 等敏感头，防止认证信息泄露给第三方。
+const SAFE_REDIRECT_HEADER_KEYS = new Set([
+  "range",
+  "user-agent",
+  "accept",
+  "accept-language",
+  "referer",
+])
+
+async function safeProxyFetch(
+  url: string,
+  headers: Record<string, string>,
+): Promise<Response> {
+  const MAX_REDIRECTS = 5
+  let current = url
+  let currentHeaders = headers
+  for (let i = 0; i < MAX_REDIRECTS; i++) {
+    try {
+      assertSafeUrl(current, "Proxy download")
+    } catch (e: any) {
+      throw new Error(e?.message || "SSRF blocked: restricted destination")
+    }
+
+    const res = await fetch(current, {
+      headers: currentHeaders,
+      redirect: "manual",
+    })
+
+    const location = res.headers.get("location")
+    if (res.status >= 300 && res.status < 400 && location) {
+      current = new URL(location, current).toString()
+      const next: Record<string, string> = {}
+      for (const [k, v] of Object.entries(headers)) {
+        if (SAFE_REDIRECT_HEADER_KEYS.has(k.toLowerCase()) && v) next[k] = v
+      }
+      currentHeaders = next
+      continue
+    }
+    return res
+  }
+  throw new Error("Proxy download blocked: too many redirects")
+}
+
 rawRouter.get("/*", async (c) => {
   await initNodeModules()
 
@@ -171,13 +218,12 @@ rawRouter.get("/*", async (c) => {
               const rangeReq = c.req.header("Range")
               if (rangeReq) headers["Range"] = rangeReq
 
+              let upstreamRes: Response
               try {
-                assertSafeUrl(fileItem.raw_url, "Proxy download")
+                upstreamRes = await safeProxyFetch(fileItem.raw_url, headers)
               } catch (ssrfErr: any) {
                 return c.text(ssrfErr.message || "SSRF blocked", 403)
               }
-
-              let upstreamRes = await fetch(fileItem.raw_url, { headers })
 
               // If upstream returns 412 Precondition Failed (e.g. strict OSS check), retry with plain GET without Range
               if (upstreamRes.status === 412) {
@@ -185,7 +231,7 @@ rawRouter.get("/*", async (c) => {
                   `[rawRouter] Upstream returned 412 for '${reqPath}', retrying without Range header...`,
                 )
                 delete headers["Range"]
-                upstreamRes = await fetch(fileItem.raw_url, { headers })
+                upstreamRes = await safeProxyFetch(fileItem.raw_url, headers)
               }
 
               // CORS headers
