@@ -1,4 +1,5 @@
 import { Hono } from "hono"
+import { getDb } from "../internal/model/db"
 
 /**
  * 品牌资源路由。
@@ -26,3 +27,50 @@ assetsRouter.get("/logo.png", redirectToLogo)
 assetsRouter.get("/favicon.svg", redirectToLogo)
 assetsRouter.get("/favicon.png", redirectToLogo)
 assetsRouter.get("/favicon.ico", redirectToLogo)
+
+/**
+ * CDN 静态资源重定向路由。
+ * 
+ * 当配置了 CDN_URL 时，前端静态资源（assets/、images/ 等）将重定向到 CDN 加载。
+ * 支持 $version 占位符自动替换为前端版本号。
+ * 
+ * 参考原版 OpenList 实现：https://github.com/OpenListTeam/OpenList/blob/main/server/static/static.go
+ * 
+ * 示例：CDN_URL = https://registry.npmmirror.com/@openlist-frontend/openlist-frontend/$version/files/dist
+ */
+assetsRouter.get("/:folder/:filepath*", async (c) => {
+  const env = c.env as any
+  const cdnUrl = env?.CDN_URL || process.env.CDN_URL
+  
+  if (!cdnUrl) {
+    // 未配置 CDN，返回 404
+    return c.text("Static resource not found", 404)
+  }
+  
+  // 获取前端版本号
+  const db = await getDb()
+  let version = "latest"
+  try {
+    const versionItem = db.get("SELECT * FROM x_settings WHERE key = 'version'") as any
+    if (versionItem && versionItem.value) {
+      // 从版本字符串提取 frontend 版本，如 "v4.2.3 (Commit: xxx) - Frontend: v1.0.0 - Build at: xxx"
+      const match = versionItem.value.match(/Frontend:\s*([^\s-]+)/)
+      if (match) {
+        version = match[1]
+      }
+    }
+  } catch (e) {
+    // 忽略错误，使用默认值
+  }
+  
+  // 替换 $version 占位符
+  const resolvedCdnUrl = cdnUrl.replace(/\$version/g, version)
+  
+  // 构建 CDN 资源完整 URL
+  const folder = c.req.param("folder")
+  const filepath = c.req.param("filepath") || ""
+  const resourceUrl = `${resolvedCdnUrl}/${folder}/${filepath}`
+  
+  // 重定向到 CDN 资源
+  return c.redirect(resourceUrl, 302)
+})
