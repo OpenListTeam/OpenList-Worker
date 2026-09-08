@@ -682,10 +682,10 @@ seedRouter.post("/parse", async (c) => {
         capabilities: {
           rapid_upload: hasRapidHashes,
           offline_download: hasSource,
-          transfer: false,
+          transfer: hasSource,
           convert: true,
-          edit: false,
-          recalculate: false,
+          edit: true,
+          recalculate: true,
         },
         direct_preview: false,
         ...(parsed.info_hash ? { info_hash: parsed.info_hash } : {}),
@@ -786,14 +786,58 @@ seedRouter.post("/update", async (c) => {
     if (body.save_path && !canWrite(user)) return errorResponse(c, 403, "Permission denied")
     const parsed = await parseBodySeed(c, user, body)
     const patch = body.patch && typeof body.patch === "object" ? body.patch : body
+    const options = body.options && typeof body.options === "object" ? body.options : {}
+    const comment = patch.comment ?? options.comment
+    const recalculate = !!(patch.recalculate ?? options.recalculate)
     const seed = normalizeSeed({
       ...parsed.seed,
       name: patch.name ?? parsed.seed.name,
-      comment: patch.comment ?? parsed.seed.comment,
+      comment: comment ?? parsed.seed.comment,
       trackers: patch.trackers ?? parsed.seed.trackers,
       channels: patch.channels ?? parsed.seed.channels,
       files: patch.files ?? parsed.seed.files,
     })
+    const fileComments = body.file_comments && typeof body.file_comments === "object" ? body.file_comments : {}
+    const fileSources = body.file_sources && typeof body.file_sources === "object" ? body.file_sources : {}
+    for (const file of seed.files) {
+      if (fileComments[file.path] !== undefined) file.comment = String(fileComments[file.path])
+      if (Array.isArray(fileSources[file.path])) {
+        for (const source of fileSources[file.path]) validateSource(c, source)
+        file.sources = fileSources[file.path]
+      }
+    }
+    if (recalculate) {
+      const pieceSize = Number(body.piece_size || parsed.seed.piece_size || DEFAULT_PIECE_SIZE)
+      if (!Number.isSafeInteger(pieceSize) || pieceSize < 16 * 1024 || pieceSize > 64 * 1024 * 1024) {
+        throw new Error("Invalid piece_size")
+      }
+      seed.piece_size = pieceSize
+      const matrix = normalizeHashMatrix(body.hash_matrix, [parsed.format])
+      const recalcFiles = Array.isArray(body.recalc_files) ? body.recalc_files : []
+      if (!recalcFiles.length) throw new Error("recalculate requires at least one recalc_files entry")
+      const recalcMap = new Map<string, string>()
+      for (const rf of recalcFiles) {
+        if (typeof rf?.source_path === "string" && rf.source_path.trim()) {
+          recalcMap.set(String(rf.path), rf.source_path)
+        }
+      }
+      const torrentHasher = await TorrentPieceHasher.create(pieceSize)
+      const maxBytes = envNumber(c, "SEED_MAX_HASH_BYTES", DEFAULT_MAX_HASH_BYTES)
+      for (const file of seed.files) {
+        const sourcePath = recalcMap.get(file.path)
+        if (!sourcePath) continue
+        const sourceFiles = await collectSourceFiles(c, user, [sourcePath])
+        if (sourceFiles.length !== 1) throw new Error(`Recalculate path must resolve to exactly one file: ${sourcePath}`)
+        const sf = sourceFiles[0]
+        const response = await fetchSafe(c, new URL(sf.rawUrl, c.req.url), { headers: sf.headers })
+        if (!response.ok || !response.body) throw new Error(`Recalculate download failed with HTTP ${response.status}`)
+        const result = await hashReadableStream(response.body, pieceSize, sf.size, maxBytes, torrentHasher)
+        file.hashes = applyHashMatrix({ ...file, hashes: result.hashes }, matrix).hashes
+        file.size = result.size
+        file.cas_slice_md5 = ""
+        file.cas_create_time = ""
+      }
+    }
     for (const file of seed.files) for (const source of file.sources) validateSource(c, source)
     const format = detectFormat(body.output_format || body.to_format) || parsed.format
     const bytes = await encodeSeed(seed, format)
