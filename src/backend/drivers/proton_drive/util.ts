@@ -24,6 +24,7 @@ import {
   ProtonSDKVersion,
   ProtonSharesURL,
   ProtonUserAgent,
+  ProtonUserURL,
   ProtonWebDriveAV,
 } from "./consts"
 import { computeSRPClientProof } from "./srp"

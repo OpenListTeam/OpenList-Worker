@@ -3,6 +3,7 @@ import {
   DriverCloudreveV3Addition,
   CloudreveV3Resp,
   CloudreveV3Object,
+  CloudreveV3DirectoryResp,
 } from "./types"
 
 const UA =

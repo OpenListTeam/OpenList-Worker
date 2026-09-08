@@ -135,8 +135,10 @@ export class AliDocDriver implements StorageDriver {
   }
 
   async mkdir(virtualPath: string, physicalPath: string): Promise<void> {
-    const parentId = await this.resolveId(physicalPath)
-    const dirName = this.cleanPath(physicalPath).split("/").pop() || ""
+    const clean = this.cleanPath(physicalPath)
+    const parentPath = clean.split("/").slice(0, -1).join("/") || "/"
+    const dirName = clean.split("/").pop() || ""
+    const parentId = await this.resolveId(parentPath)
     await this.client.post("/box/api/v2/dentry/createfolder", {
       dentryType: "folder",
       name: dirName,

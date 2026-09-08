@@ -192,8 +192,10 @@ export class GuangYaPanDriver implements StorageDriver {
   }
 
   async mkdir(virtualPath: string, physicalPath: string): Promise<void> {
-    const parentId = await this.resolveId(physicalPath)
-    const dirName = this.cleanPath(physicalPath).split("/").pop() || ""
+    const clean = this.cleanPath(physicalPath)
+    const parentPath = clean.split("/").slice(0, -1).join("/") || "/"
+    const dirName = clean.split("/").pop() || ""
+    const parentId = await this.resolveId(parentPath)
     await this.client.postAPI("/nd.bizuserres.s/v1/file/create_dir", {
       parentId,
       dirName,

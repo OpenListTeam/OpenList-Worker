@@ -15,7 +15,7 @@ test("filename encrypt/decrypt roundtrip (unicode)", async () => {
   const { privateKey: armoredPriv, publicKey: armoredPub } =
     await openpgp.generateKey({
       type: "ecc",
-      curve: "curve25519",
+      curve: "curve25519Legacy",
       userIDs: [{ name: "t", email: "t@example.com" }],
       passphrase: "pass",
     })
@@ -33,7 +33,7 @@ test("binary encrypt/decrypt roundtrip", async () => {
   const { privateKey: armoredPriv, publicKey: armoredPub } =
     await openpgp.generateKey({
       type: "ecc",
-      curve: "curve25519",
+      curve: "curve25519Legacy",
       userIDs: [{ name: "t", email: "t@example.com" }],
     })
   const priv = await openpgp.readPrivateKey({ armoredKey: armoredPriv })
@@ -54,7 +54,7 @@ test("session key decrypt + binary decrypt chain", async () => {
   const { privateKey: armoredPriv, publicKey: armoredPub } =
     await openpgp.generateKey({
       type: "ecc",
-      curve: "curve25519",
+      curve: "curve25519Legacy",
       userIDs: [{ name: "t", email: "t@example.com" }],
     })
   const priv = await openpgp.readPrivateKey({ armoredKey: armoredPriv })
@@ -73,14 +73,17 @@ test("session key decrypt + binary decrypt chain", async () => {
     decryptionKeys: [priv],
   })
   assert.equal(sessionKeys.length, 1)
-  const plain = await decryptBinaryWithSessionKey(encrypted, sessionKeys)
+  const plain = await decryptBinaryWithSessionKey(
+    encrypted,
+    sessionKeys as unknown as openpgp.SessionKey[],
+  )
   assert.deepEqual(plain, data)
 })
 
 test("unlockPrivateKey with wrong passphrase throws", async () => {
   const { privateKey: armoredPriv } = await openpgp.generateKey({
     type: "ecc",
-    curve: "curve25519",
+    curve: "curve25519Legacy",
     userIDs: [{ name: "t", email: "t@example.com" }],
     passphrase: "correct",
   })

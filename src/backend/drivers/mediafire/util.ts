@@ -1,5 +1,11 @@
 // MediaFire API 客户端
-import { DriverMediafireAddition, MediafireContent, MediafireLinks, MediafireFolderCreate } from "./types"
+import {
+  DriverMediafireAddition,
+  MediafireApiResp,
+  MediafireContent,
+  MediafireLinks,
+  MediafireFolderCreate,
+} from "./types"
 
 const API_BASE = "https://www.mediafire.com/api/1.5"
 const HOST_BASE = "https://www.mediafire.com"

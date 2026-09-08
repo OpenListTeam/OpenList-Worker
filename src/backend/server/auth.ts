@@ -6,6 +6,7 @@ import {
   getUserFromContext,
   revokeToken,
   isTokenRevoked,
+  generateCSRFToken,
 } from "./middlewares"
 import {
   generateTotpSecret,
@@ -256,7 +257,7 @@ export async function authUserFromReq(
   try {
     const secret = await getJwtSecret(c)
     const payload = await verify(token, secret, "HS256")
-    if (await isTokenRevoked(payload?.jti, c.env)) return null
+    if (await isTokenRevoked(payload?.jti as string, c.env)) return null
     const db = await getDb(c.env)
     if (!db.users) db.users = []
     const user = db.users.find(

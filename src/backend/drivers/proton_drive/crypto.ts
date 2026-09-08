@@ -150,7 +150,7 @@ export async function decryptSessionKeyPacket(
   if (!sessionKeys.length) {
     throw new Error("failed to decrypt session key")
   }
-  return sessionKeys[0]
+  return sessionKeys[0] as unknown as openpgp.SessionKey
 }
 
 /** Decrypt a binary OpenPGP message using an already-decrypted session key. */
@@ -173,7 +173,7 @@ export async function generateKeyPair(
 ): Promise<{ privateKey: string; publicKey: string }> {
   return openpgp.generateKey({
     type: "ecc",
-    curve: "curve25519",
+    curve: "curve25519Legacy",
     userIDs: userIds,
   })
 }

@@ -129,7 +129,7 @@ s3Router.on("HEAD", "/*", async (c) => {
     if (!item || item.is_dir) return s3Error("NoSuchKey", "NoSuchKey", 404)
     const headers: Record<string, string> = {
       "Content-Length": String(item.size || 0),
-      "Content-Type": item.type || "application/octet-stream",
+      "Content-Type": String(item.type || "application/octet-stream"),
       "Last-Modified": item.modified || new Date().toISOString(),
     }
     return new Response(null, { status: 200, headers })

@@ -29,8 +29,8 @@ import {
   ProtonLink,
   ProtonShare,
   ProtonListResp,
-  ProtonShareTypeMain,
 } from "./types"
+import { ProtonShareTypeMain } from "./consts"
 import {
   ProtonDriveClient,
   unlockUserKeys,
@@ -400,8 +400,10 @@ export class ProtonDriveDriver implements StorageDriver {
   // ---------- write operations ----------
 
   async mkdir(virtualPath: string, physicalPath: string): Promise<void> {
-    const parentId = await this.resolveId(physicalPath)
-    const dirName = this.cleanPath(physicalPath).split("/").pop() || ""
+    const clean = this.cleanPath(physicalPath)
+    const parentPath = clean.split("/").slice(0, -1).join("/") || "/"
+    const dirName = clean.split("/").pop() || ""
+    const parentId = await this.resolveId(parentPath)
 
     const parentKR = await this.getLinkKR(parentId)
     const encryptedName = await encryptText(dirName, parentKR)
@@ -410,7 +412,7 @@ export class ProtonDriveDriver implements StorageDriver {
     // 生成节点密钥对（公钥作为 NodeKey 上传，私钥的 passphrase 用父密钥环加密）
     const { publicKey: nodePublicArmored } = await openpgp.generateKey({
       type: "ecc",
-      curve: "curve25519",
+      curve: "curve25519Legacy",
       userIDs: [{ name: dirName, email: this.mainShare?.Creator || "" }],
     })
     const nodePassphrase = randomPassphrase()

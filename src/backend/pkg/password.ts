@@ -77,6 +77,9 @@ export function needsRehash(hash: string): boolean {
  * @returns 随机密码（包含大小写字母、数字、特殊字符）
  */
 export function generateRandomPassword(length: number = 16): string {
+  if (!Number.isInteger(length) || length < 4) {
+    throw new Error("Password length must be an integer of at least 4")
+  }
   const lowercase = "abcdefghijklmnopqrstuvwxyz"
   const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
   const numbers = "0123456789"

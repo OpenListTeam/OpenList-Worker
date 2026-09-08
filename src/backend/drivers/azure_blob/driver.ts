@@ -46,7 +46,7 @@ async function hmacSha256Base64(
 ): Promise<string> {
   const keyMat = await crypto.subtle.importKey(
     "raw",
-    key,
+    key as unknown as BufferSource,
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
@@ -178,8 +178,6 @@ export class AzureBlobDriver implements StorageDriver {
     const url = `${this.endpoint}/${this.container}${path ? "/" + path : ""}${query ? "?" + query : ""}`
     const headers: Record<string, string> = {
       Authorization: `SharedKey ${this.accountName}:${signature}`,
-      "x-ms-date": xmsDate,
-      "x-ms-version": "2021-08-06",
       ...extraHeaders,
     }
     if (contentLength) headers["Content-Length"] = contentLength

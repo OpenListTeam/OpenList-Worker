@@ -51,7 +51,7 @@ export function parseAutoIndexHTML(
     onError: () => {},
   }).parseFromString(htmlToXml(html), "text/xml")
 
-  const items = xpath.select(itemXPath, doc) as Node[]
+  const items = xpath.select(itemXPath, doc as unknown as Node) as Node[]
   const result: AutoIndexNode[] = []
 
   for (const item of items) {

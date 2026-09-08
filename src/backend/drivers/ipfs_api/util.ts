@@ -55,7 +55,7 @@ export class ClientIpfs {
 
   async add(content: Buffer, fileName: string): Promise<string> {
     const form = new FormData()
-    form.append("file", new Blob([content]), fileName)
+    form.append("file", new Blob([content as unknown as BlobPart]), fileName)
     const resp = await fetch(`${this.endpoint}/api/v0/add`, { method: "POST", body: form })
     const data: IpfsAddResp = await resp.json().catch(() => ({ Hash: "" } as any))
     if (!data.Hash) throw new Error("[IPFS] add failed")

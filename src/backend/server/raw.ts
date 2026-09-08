@@ -76,7 +76,7 @@ async function safeProxyFetch(
     if (res.status >= 300 && res.status < 400 && location) {
       current = new URL(location, current).toString()
       const next: Record<string, string> = {}
-      for (const [k, v] of Object.entries(headers)) {
+      for (const [k, v] of Object.entries(currentHeaders)) {
         if (SAFE_REDIRECT_HEADER_KEYS.has(k.toLowerCase()) && v) next[k] = v
       }
       currentHeaders = next
