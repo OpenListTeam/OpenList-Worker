@@ -301,6 +301,7 @@ fsRouter.post("/list", async (c) => {
     const { content, provider, storage } = await listItems(
       reqPath,
       requestContext,
+      { page, perPage },
     )
     // write 按请求者身份如实返回：游客/无写权限用户为 false，
     // 前端据此隐藏上传、新建文件夹等写操作入口
@@ -1237,7 +1238,11 @@ fsRouter.post("/multipart/init", async (c) => {
 
   if (!rawPath.trim() || size <= 0) {
     return c.json(
-      { code: 400, message: "Missing File-Path / X-File-Size header", data: null },
+      {
+        code: 400,
+        message: "Missing File-Path / X-File-Size header",
+        data: null,
+      },
       400,
     )
   }
@@ -1329,7 +1334,10 @@ fsRouter.put("/multipart/chunk", async (c) => {
     )
   }
   if (chunkIndex < 0 || chunkIndex >= session.total_chunks) {
-    return c.json({ code: 400, message: "invalid X-Chunk-Index", data: null }, 400)
+    return c.json(
+      { code: 400, message: "invalid X-Chunk-Index", data: null },
+      400,
+    )
   }
 
   // 幂等：已收分片直接返回当前快照
@@ -1340,7 +1348,11 @@ fsRouter.put("/multipart/chunk", async (c) => {
   const tooLarge = exceedsUploadLimit(c, true)
   if (tooLarge !== null) {
     return c.json(
-      { code: 413, message: `Part too large (max ${tooLarge} bytes)`, data: null },
+      {
+        code: 413,
+        message: `Part too large (max ${tooLarge} bytes)`,
+        data: null,
+      },
       413,
     )
   }
@@ -1350,7 +1362,8 @@ fsRouter.put("/multipart/chunk", async (c) => {
     const resolved = await resolvePath(
       getActualPath(user, splitUploadPath(session.path).dir),
     )
-    if (resolved.isVirtual) throw new Error("failed get storage: storage not found")
+    if (resolved.isVirtual)
+      throw new Error("failed get storage: storage not found")
     const driver = await getDriver(resolved.storage!.driver, resolved.storage)
     if (typeof (driver as any).uploadPart !== "function") {
       throw new Error("storage does not support chunked upload")
@@ -1401,7 +1414,8 @@ fsRouter.post("/multipart/complete", async (c) => {
     const resolved = await resolvePath(
       getActualPath(user, splitUploadPath(session.path).dir),
     )
-    if (resolved.isVirtual) throw new Error("failed get storage: storage not found")
+    if (resolved.isVirtual)
+      throw new Error("failed get storage: storage not found")
     const driver = await getDriver(resolved.storage!.driver, resolved.storage)
     if (typeof (driver as any).completeUploadSession !== "function") {
       throw new Error("storage does not support chunked upload")
@@ -1460,7 +1474,8 @@ async function fetchArchiveBytes(
 ): Promise<ArrayBuffer> {
   const actual = getActualPath(user, virtualPath)
   const resolved = await resolvePath(actual)
-  if (resolved.isVirtual) throw new Error("failed get storage: storage not found")
+  if (resolved.isVirtual)
+    throw new Error("failed get storage: storage not found")
   const driver = await getDriver(resolved.storage!.driver, resolved.storage)
   let item: any
   try {
@@ -1536,7 +1551,18 @@ function calcFileTypeSafe(name: string, isDir: boolean): number {
   const video = ["mp4", "mkv", "webm", "avi", "mov", "flv", "m3u8"]
   const audio = ["mp3", "flac", "wav", "aac", "ogg", "m4a"]
   const image = ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico"]
-  const text = ["txt", "md", "json", "js", "ts", "css", "html", "xml", "yml", "log"]
+  const text = [
+    "txt",
+    "md",
+    "json",
+    "js",
+    "ts",
+    "css",
+    "html",
+    "xml",
+    "yml",
+    "log",
+  ]
   if (video.includes(ext)) return 2
   if (audio.includes(ext)) return 3
   if (image.includes(ext)) return 4
@@ -1546,12 +1572,21 @@ function calcFileTypeSafe(name: string, isDir: boolean): number {
 
 fsRouter.post("/archive/meta", async (c) => {
   const user = await getUserFromContext(c)
-  if (!user || user.disabled) return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  if (!user || user.disabled)
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
   const body = await c.req.json().catch(() => ({}))
   const path = String(body.path || c.req.query("path") || "").trim()
-  if (!path) return c.json({ code: 400, message: "path is required", data: null }, 400)
+  if (!path)
+    return c.json({ code: 400, message: "path is required", data: null }, 400)
   if (!isSupportedArchive(path)) {
-    return c.json({ code: 400, message: "unsupported archive format (only ZIP is supported)", data: null }, 400)
+    return c.json(
+      {
+        code: 400,
+        message: "unsupported archive format (only ZIP is supported)",
+        data: null,
+      },
+      400,
+    )
   }
   try {
     const bytes = await fetchArchiveBytes(c, user, path)
@@ -1575,13 +1610,24 @@ fsRouter.post("/archive/meta", async (c) => {
 
 fsRouter.post("/archive/list", async (c) => {
   const user = await getUserFromContext(c)
-  if (!user || user.disabled) return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  if (!user || user.disabled)
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
   const body = await c.req.json().catch(() => ({}))
   const path = String(body.path || c.req.query("path") || "").trim()
-  const innerPath = String(body.inner_path || "").trim().replace(/\/+/g, "/")
-  if (!path) return c.json({ code: 400, message: "path is required", data: null }, 400)
+  const innerPath = String(body.inner_path || "")
+    .trim()
+    .replace(/\/+/g, "/")
+  if (!path)
+    return c.json({ code: 400, message: "path is required", data: null }, 400)
   if (!isSupportedArchive(path)) {
-    return c.json({ code: 400, message: "unsupported archive format (only ZIP is supported)", data: null }, 400)
+    return c.json(
+      {
+        code: 400,
+        message: "unsupported archive format (only ZIP is supported)",
+        data: null,
+      },
+      400,
+    )
   }
   try {
     const bytes = await fetchArchiveBytes(c, user, path)
@@ -1621,21 +1667,38 @@ fsRouter.post("/archive/list", async (c) => {
 
 fsRouter.post("/archive/decompress", async (c) => {
   const user = await getUserFromContext(c)
-  if (!canWrite(user)) return c.json({ code: 403, message: "Permission denied", data: null }, 403)
+  if (!canWrite(user))
+    return c.json({ code: 403, message: "Permission denied", data: null }, 403)
   const body = await c.req.json().catch(() => ({}))
   const srcDir = String(body.src_dir || "").trim()
   const dstDir = String(body.dst_dir || "").trim()
-  const names: string[] = Array.isArray(body.name) ? body.name : body.name ? [String(body.name)] : []
-  const innerPath = String(body.inner_path || "").trim().replace(/\/+/g, "/")
+  const names: string[] = Array.isArray(body.name)
+    ? body.name
+    : body.name
+      ? [String(body.name)]
+      : []
+  const innerPath = String(body.inner_path || "")
+    .trim()
+    .replace(/\/+/g, "/")
   if (!names.length || !dstDir) {
-    return c.json({ code: 400, message: "src_dir/dst_dir/name are required", data: null }, 400)
+    return c.json(
+      { code: 400, message: "src_dir/dst_dir/name are required", data: null },
+      400,
+    )
   }
   try {
     let count = 0
     for (const name of names) {
       const srcPath = srcDir ? `${srcDir}/${name}` : `/${name}`
       if (!isSupportedArchive(name)) {
-        return c.json({ code: 400, message: `unsupported archive format: ${name} (only ZIP is supported)`, data: null }, 400)
+        return c.json(
+          {
+            code: 400,
+            message: `unsupported archive format: ${name} (only ZIP is supported)`,
+            data: null,
+          },
+          400,
+        )
       }
       const bytes = await fetchArchiveBytes(c, user, srcPath)
       const archive = parseZip(bytes)
@@ -1646,11 +1709,19 @@ fsRouter.post("/archive/decompress", async (c) => {
         if (!rel || rel.endsWith("/")) continue
         const targetPath = `${dstDir.replace(/\/+$/, "")}/${rel}`
         const content = await extractZipEntry(bytes, entry)
-        await putItem(targetPath, Buffer.from(content), getStorageRequestContext(c))
+        await putItem(
+          targetPath,
+          Buffer.from(content),
+          getStorageRequestContext(c),
+        )
         count++
       }
     }
-    return c.json({ code: 200, message: "success", data: { task: null, count } })
+    return c.json({
+      code: 200,
+      message: "success",
+      data: { task: null, count },
+    })
   } catch (e: any) {
     return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
   }

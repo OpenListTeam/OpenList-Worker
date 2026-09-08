@@ -37,6 +37,8 @@ test("root listing retries one transient HTTP 522 without logging in", async () 
   globalThis.fetch = (async (input) => {
     const url = requestUrl(input)
     calls.push(url)
+    if (url.includes("/v2/getUserBriefInfo.action"))
+      return mockResponse(url, { res_code: 0, sessionKey: "valid-session" })
     assert.ok(url.includes("/api/open/file/listFiles.action"))
     if (calls.length === 1)
       return mockResponse(url, "<html>522</html>", { status: 522 })
@@ -537,9 +539,8 @@ test("driver initialization does not preflight the root directory", async () => 
   globalThis.fetch = (async (input) => {
     const url = requestUrl(input)
     calls.push(url)
-    if (url.includes("/api/portal/loginUrl.action")) {
-      return mockResponse("https://cloud.189.cn/web/main", "", { status: 200 })
-    }
+    if (url.includes("/v2/getUserBriefInfo.action"))
+      return mockResponse(url, { res_code: 0, sessionKey: "valid-session" })
     throw new Error(`unexpected fetch: ${url}`)
   }) as typeof fetch
 
@@ -550,14 +551,18 @@ test("driver initialization does not preflight the root directory", async () => 
   })
 
   await driver.init()
-  assert.equal(calls.length, 0)
+  assert.equal(calls.length, 1)
 })
 
 test("valid configured Cookie skips login URL during initialization", async () => {
   let calls = 0
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (input) => {
     calls++
-    throw new Error("login URL must not be requested")
+    assert.ok(requestUrl(input).includes("/v2/getUserBriefInfo.action"))
+    return mockResponse(requestUrl(input), {
+      res_code: 0,
+      sessionKey: "valid-session",
+    })
   }) as typeof fetch
 
   const client = new Pan189Client({
@@ -567,7 +572,7 @@ test("valid configured Cookie skips login URL during initialization", async () =
   })
 
   await client.login()
-  assert.equal(calls, 0)
+  assert.equal(calls, 1)
 })
 
 test("Cookie updates are exposed once for deferred persistence", async () => {

@@ -125,6 +125,8 @@ export class Pan189Client {
   private cookieDirty = false
   private sessionKey: string = ""
   private rsa = { pubKey: "", pkId: "", expire: 0 }
+  private loginPromise: Promise<void> | null = null
+  private sessionValidated = false
 
   constructor(
     addition: Cloud189Addition,
@@ -340,7 +342,38 @@ export class Pan189Client {
    * 2. 若未登录且配置了账号密码，执行 open.e.189.cn OAuth2 登录流程
    */
   async login(options: { force?: boolean } = {}): Promise<void> {
-    if (this.cookie && !options.force) return
+    if (this.loginPromise) return this.loginPromise
+    this.loginPromise = this.loginInternal(options)
+    try {
+      await this.loginPromise
+    } finally {
+      this.loginPromise = null
+    }
+  }
+
+  private async loginInternal(
+    options: { force?: boolean } = {},
+  ): Promise<void> {
+    if (this.cookie && !options.force && this.sessionValidated) return
+
+    if (this.cookie && !options.force) {
+      try {
+        const brief = await this.request<any>(
+          "https://cloud.189.cn/v2/getUserBriefInfo.action",
+          { method: "GET", retryOnInvalidSession: false },
+        )
+        if (brief.sessionKey) {
+          this.sessionKey = String(brief.sessionKey)
+          this.sessionValidated = true
+          return
+        }
+      } catch {
+        // Fall through to the full OAuth flow only when the session is invalid.
+        if (!this.addition.username || !this.addition.password) {
+          throw new Error("[189Cloud] Cookie 已失效，请更新 Cookie")
+        }
+      }
+    }
 
     const loginUrl =
       "https://cloud.189.cn/api/portal/loginUrl.action?redirectURL=https%3A%2F%2Fcloud.189.cn%2Fmain.action"
@@ -357,6 +390,7 @@ export class Pan189Client {
     const redirectUrlStr = await this.resolveLoginUrl(loginUrl, headers)
     if (isLoggedInUrl(redirectUrlStr)) {
       // 已经处于登录状态
+      this.sessionValidated = true
       return
     }
 
@@ -498,6 +532,7 @@ export class Pan189Client {
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       })
     }
+    this.sessionValidated = true
   }
 
   /**
@@ -656,18 +691,33 @@ export class Pan189Client {
       findName?: string
       findIsDir?: boolean
       budget?: { used: number; limit: number }
+      page?: number
+      perPage?: number
     },
   ): Promise<{ files: FileItem189[]; folders: FolderItem189[] }> {
     const allFiles: FileItem189[] = []
     const allFolders: FolderItem189[] = []
-    const pageSize = "60"
+    const defaultPageSize = 60
+    const requestedSize = Math.max(
+      1,
+      Math.min(60, Math.floor(Number(options?.perPage) || defaultPageSize)),
+    )
 
     const loadPage = async (pageNum: number) => {
       if (options?.budget) {
         if (options.budget.used >= options.budget.limit) return null
         options.budget.used++
       }
-      return this.getFilesPage(folderId, pageNum, pageSize)
+      return this.getFilesPage(folderId, pageNum, String(requestedSize))
+    }
+
+    const requestedPage = Math.max(1, Math.floor(Number(options?.page) || 1))
+    if (!options?.findName && options?.page !== undefined) {
+      const page = await loadPage(requestedPage)
+      if (!page) return { files: allFiles, folders: allFolders }
+      allFiles.push(...(page.fileListAO!.fileList || []))
+      allFolders.push(...(page.fileListAO!.folderList || []))
+      return { files: allFiles, folders: allFolders }
     }
 
     const first = await loadPage(1)
@@ -690,7 +740,7 @@ export class Pan189Client {
       )
         return { files: allFiles, folders: allFolders }
       let pageNum = 2
-      while (firstFiles.length + firstFolders.length >= Number(pageSize)) {
+      while (firstFiles.length + firstFolders.length >= requestedSize) {
         const page = await loadPage(pageNum++)
         if (!page) break
         const ao = page.fileListAO!
@@ -703,7 +753,7 @@ export class Pan189Client {
             folders.some((f) => f.name === options.findName)) ||
           (!options.findIsDir &&
             files.some((f) => f.name === options.findName)) ||
-          files.length + folders.length < Number(pageSize)
+          files.length + folders.length < requestedSize
         )
           break
       }
@@ -711,7 +761,7 @@ export class Pan189Client {
     }
 
     const total = Math.max(0, Number(firstAO.count) || 0)
-    const pageCount = Math.ceil(total / Number(pageSize))
+    const pageCount = Math.ceil(total / requestedSize)
     const limit = options?.budget?.limit ?? 45
     for (let start = 2; start <= pageCount; start += 6) {
       const end = Math.min(

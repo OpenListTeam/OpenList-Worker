@@ -247,11 +247,17 @@ export class Cloud189Driver implements StorageDriver {
     throw new Error(`[189Cloud] 文件或目录未找到: ${rawName}`)
   }
 
-  async list(_virtualPath: string, physicalPath: string): Promise<FileItem[]> {
+  async list(
+    _virtualPath: string,
+    physicalPath: string,
+    options?: { page?: number; perPage?: number },
+  ): Promise<FileItem[]> {
     this.budget.used = 0
     const folderId = await this.resolveFolderId(physicalPath)
     const { files, folders } = await this.client.getFiles(folderId, {
       budget: this.budget,
+      page: options?.page,
+      perPage: options?.perPage,
     })
 
     const items: FileItem[] = [
@@ -259,7 +265,7 @@ export class Cloud189Driver implements StorageDriver {
       ...files.map(pan189FileToFileItem),
     ]
 
-    return sortFileItems(
+    const sorted = sortFileItems(
       items,
       this.addition.order_by === "filename"
         ? "file_name"
@@ -268,6 +274,9 @@ export class Cloud189Driver implements StorageDriver {
           : "updated_at",
       this.addition.order_direction,
     )
+    return options?.perPage && options.perPage > 0
+      ? sorted.slice(0, options.perPage)
+      : sorted
   }
 
   async get(_virtualPath: string, physicalPath: string): Promise<FileItem> {
