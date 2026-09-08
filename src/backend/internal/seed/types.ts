@@ -33,6 +33,7 @@ export interface SeedFile {
   sources: SeedSource[]
   cas_slice_md5: string
   cas_create_time: string
+  missing_channels: string[]
 }
 
 export interface SharingSeed {
@@ -167,6 +168,9 @@ export function normalizeSeed(input: unknown): SharingSeed {
       sources: normalizeSources(file.sources),
       cas_slice_md5: normalizeHash(file.cas_slice_md5, "md5"),
       cas_create_time: text(file.cas_create_time),
+      missing_channels: Array.isArray(file.missing_channels)
+        ? file.missing_channels.map(text).filter(Boolean)
+        : [],
     }
   })
   const seen = new Set<string>()

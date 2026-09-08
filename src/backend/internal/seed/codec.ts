@@ -277,6 +277,7 @@ export function decodeCas(data: Uint8Array): ParsedSeed {
         sources: [],
         cas_slice_md5: sliceMd5.toLowerCase(),
         cas_create_time: value.create_time || "",
+        missing_channels: [],
       }],
     }),
   }
@@ -367,6 +368,7 @@ function decodeTorrentFiles(
       sources: [],
       cas_slice_md5: casSliceMd5.toLowerCase(),
       cas_create_time: casCreateTime,
+      missing_channels: [],
     }
   })
 }

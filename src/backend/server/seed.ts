@@ -3,7 +3,7 @@ import { getUserFromContext } from "./middlewares"
 import { canWrite, getActualPath, can, PermissionBit } from "../pkg/permission"
 import { assertSafeUrl } from "../pkg/http"
 import { safeErrorMessage } from "../pkg/errs"
-import { resolvePath } from "../internal/model/db"
+import { getSettings, resolvePath } from "../internal/model/db"
 import {
   flushPendingDriverState,
   getDriver,
@@ -332,6 +332,40 @@ async function saveEncodedSeed(c: any, user: any, path: unknown, bytes: Uint8Arr
   await putItem(actualPath, Buffer.from(bytes), storageContext(c))
 }
 
+async function loadDefaultMatrix(): Promise<Record<string, any> | undefined> {
+  try {
+    const settings = await getSettings()
+    const raw = settings["seed_default_matrix"]
+    if (raw) {
+      const parsed = JSON.parse(String(raw))
+      if (parsed && typeof parsed === "object") return parsed
+    }
+  } catch {
+    // ignore malformed settings
+  }
+  return undefined
+}
+
+async function resolveSeedMatrix(c: any, input: unknown, formats: SeedFormat[]) {
+  const explicit = input && typeof input === "object" ? (input as Record<string, any>) : null
+  const hasExplicit = !!explicit?.md5 || !!explicit?.sha1 || !!explicit?.sha256
+  if (!hasExplicit) {
+    try {
+      const settings = await getSettings()
+      const raw = settings["seed_default_matrix"]
+      if (raw) {
+        const parsed = JSON.parse(String(raw))
+        if (parsed?.md5 || parsed?.sha1 || parsed?.sha256) {
+          return normalizeHashMatrix(parsed, formats)
+        }
+      }
+    } catch {
+      // fall through to the default matrix
+    }
+  }
+  return normalizeHashMatrix(hasExplicit ? input : undefined, formats)
+}
+
 async function generateSeed(
   c: any,
   user: any,
@@ -342,7 +376,7 @@ async function generateSeed(
   if (!Number.isSafeInteger(pieceSize) || pieceSize < 16 * 1024 || pieceSize > 64 * 1024 * 1024) {
     throw new Error("Invalid piece_size")
   }
-  const matrix = normalizeHashMatrix(body.hash_matrix, formats)
+  const matrix = await resolveSeedMatrix(c, body.hash_matrix, formats)
   const fileComments = body.file_comments && typeof body.file_comments === "object" ? body.file_comments : {}
   const sourceFiles = await collectSourceFiles(c, user, body.paths ?? body.path)
   const maxBytes = envNumber(c, "SEED_MAX_HASH_BYTES", DEFAULT_MAX_HASH_BYTES)
@@ -366,6 +400,7 @@ async function generateSeed(
       hashes: result.hashes,
       cas_slice_md5: "",
       cas_create_time: "",
+      missing_channels: [],
       sources: body.include_direct_source === true || body.include_sources === true ? [{
         type: "openlist-direct",
         url: `${new URL(c.req.url).origin}/d${file.virtualPath}`,
@@ -575,6 +610,7 @@ seedRouter.post("/capabilities", async (c) => {
           })),
           existing_hashes: [],
           estimated_traffic: sourceFiles.reduce((total, file) => total + file.size, 0),
+          default_matrix: await loadDefaultMatrix(),
         },
       })
     }
@@ -721,6 +757,34 @@ seedRouter.post("/convert", async (c) => {
   }
 })
 
+function applySeedChannelUpdate(
+  seed: SharingSeed,
+  driverName: string,
+  mountPath: string,
+  successByPath: Map<string, boolean>,
+) {
+  if (!driverName) return
+  let anySuccess = false
+  for (const ok of successByPath.values()) {
+    if (ok) {
+      anySuccess = true
+      break
+    }
+  }
+  if (anySuccess && !seed.channels.some((channel) => channel.driver === driverName)) {
+    seed.channels.push({ driver: driverName, mount_path: mountPath })
+  }
+  for (const file of seed.files) {
+    if (!successByPath.has(file.path)) continue
+    const ok = successByPath.get(file.path)!
+    if (ok) {
+      file.missing_channels = file.missing_channels.filter((channel) => channel !== driverName)
+    } else if (!file.missing_channels.includes(driverName)) {
+      file.missing_channels.push(driverName)
+    }
+  }
+}
+
 async function transferHandler(c: any, rapidOnly: boolean) {
   const user = await getUserFromContext(c)
   if (!canWrite(user)) return errorResponse(c, 403, "Permission denied")
@@ -742,9 +806,21 @@ async function transferHandler(c: any, rapidOnly: boolean) {
     if ([...selectedIndexes].some((index) => !Number.isSafeInteger(index) || index < 0 || index >= parsed.seed.files.length)) {
       throw new Error("selected_files contains an invalid index")
     }
+    let targetDriver = ""
+    let targetMountPath = ""
+    try {
+      const resolved = await resolvePath(getActualPath(user, targetRoot))
+      if (!resolved.isVirtual && resolved.storage) {
+        targetDriver = resolved.storage.driver || ""
+        targetMountPath = resolved.storage.mount_path || ""
+      }
+    } catch {
+      // channel update is best-effort when the target storage is unavailable
+    }
     const files = parsed.seed.files.filter((file, index) =>
       selected.size ? selected.has(file.path) : selectedIndexes.size ? selectedIndexes.has(index) : true)
     const results: Array<Record<string, unknown>> = []
+    const successByPath = new Map<string, boolean>()
     let saved = 0
     for (const file of files) {
       const target = joinVirtualPath(targetRoot, file.path)
@@ -755,8 +831,10 @@ async function transferHandler(c: any, rapidOnly: boolean) {
         }
         const result = await uploadStreamToDriver(c, user, file, target, source, rapidOnly)
         saved++
+        successByPath.set(file.path, true)
         results.push({ path: file.path, target, ...result })
       } catch (error) {
+        successByPath.set(file.path, false)
         results.push({ path: file.path, target, status: "unavailable", error: safeErrorMessage(error) })
       }
     }
@@ -769,7 +847,14 @@ async function transferHandler(c: any, rapidOnly: boolean) {
         data: { results },
       }, 501)
     }
-    return c.json({ code: 200, message: "success", data: { total: results.length, saved, results } })
+    const payload: Record<string, unknown> = { total: results.length, saved, results }
+    if (body.update_channel === true && targetDriver) {
+      applySeedChannelUpdate(parsed.seed, targetDriver, targetMountPath, successByPath)
+      const bytes = await encodeSeed(parsed.seed, parsed.format)
+      payload.seed_data = Buffer.from(bytes).toString("base64")
+      payload.seed = parsed.seed
+    }
+    return c.json({ code: 200, message: "success", data: payload })
   } catch (error) {
     return errorResponse(c, 400, safeErrorMessage(error))
   }

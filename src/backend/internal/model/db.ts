@@ -384,6 +384,14 @@ export const defaultDb = {
       flag: 0,
     },
     {
+      key: "seed_cas_direct_access",
+      value: "false",
+      type: "bool",
+      help: "When opening a single-file CAS seed, immediately rapid-upload it into the same folder and preview the restored file",
+      group: 4,
+      flag: 0,
+    },
+    {
       key: "privacy_regs",
       value: "",
       type: "text",
