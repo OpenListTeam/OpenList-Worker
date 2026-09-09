@@ -1,7 +1,7 @@
 <div align="center">
   <img src="https://raw.githubusercontent.com/OpenListTeam/Logo/main/logo.svg" width="128" height="128" alt="logo" />
 
-  <p><em>OpenList 是一个有韧性、长期治理、社区驱动的 AList 分支，旨在防御基于信任的开源攻击。</em></p>
+  <p><em>OpenList 是一个支持多网盘挂载的目录列表工具，支持数十种网盘文件挂载和文件管理、分享等功能</em></p>
 
   <p>本仓库（OpenList-TSWorker）是官方 <a href="https://github.com/OpenListTeam/OpenList">OpenListTeam/OpenList</a> 项目的 TypeScript 移植版</p>
   <p>基于 Cloudflare Workers / EdgeOne Cloud Function 运行</p>
@@ -19,10 +19,7 @@
 
 - English | 中文（本文件） | [日本語](https://github.com/OpenListTeam/OpenList/blob/main/README/README_ja.md) | [更多语言](https://github.com/OpenListTeam/OpenList/tree/main/README)
 
-- [上游项目](https://github.com/OpenListTeam/OpenList)
-- [贡献指南](https://github.com/OpenListTeam/OpenList/blob/main/CONTRIBUTING.md)
-- [行为准则](https://github.com/OpenListTeam/OpenList/blob/main/CODE_OF_CONDUCT.md)
-- [许可证](./LICENSE)
+- [上游项目](https://github.com/OpenListTeam/OpenList) · [贡献指南](https://github.com/OpenListTeam/OpenList/blob/main/CONTRIBUTING.md) · [行为准则](https://github.com/OpenListTeam/OpenList/blob/main/CODE_OF_CONDUCT.md) · [许可证](./LICENSE)
 
 ## 功能简介
 
@@ -53,14 +50,14 @@ OpenList-TSWorker 是一个运行于边缘计算平台的多存储聚合文件�
 - **WebDAV / S3 接口**：将聚合存储以 WebDAV 或 S3 兼容协议对外暴露，便于挂载到第三方工具。
 - **MCP 服务**：提供 Model Context Protocol 端点，可被 AI 助手等客户端集成调用。
 
-### 用户与安全
+### 权限管理
 
 - **多用户与权限**：基于角色的访问控制（RBAC），支持用户分组、目录级读写权限与配额。
 - **多样认证方式**：内置账号密码（bcrypt 加密），支持 TOTP 两步验证（2FA）、WebAuthn/FIDO 无密码登录、SSO（OIDC）单点登录与 LDAP 目录认证。
 - **安全加固**：JWT 会话、CSRF 防护、点击劫持防护（X-Frame-Options）、内容安全策略（CSP）、请求限流与流量限制、敏感字段静态加密（`ENCRYPTION_SECRET`）、审计日志。
 - **健康检查**：提供 `/health` 存活探针与 `/healthz` 就绪探针，可用于监控与告警。
 
-### 多平台与部署
+### 平台部署
 
 - **运行平台**：Cloudflare Workers、腾讯云 EdgeOne Cloud Function、Vercel、Serverless Framework 及 Node.js 容器环境。
 - **数据库**：Cloudflare D1（SQLite）为主，同时支持 MySQL、MariaDB、PostgreSQL、SQL Server。
