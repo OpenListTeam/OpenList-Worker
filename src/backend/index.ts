@@ -4,7 +4,7 @@ import { rawRouter } from "./server/raw"
 import { assetsRouter } from "./server/assets"
 import { webdavRouter } from "./server/webdav"
 import { s3Router } from "./server/s3"
-import { setEnvCtx, getDb } from "./internal/model/db"
+import { setEnvCtx } from "./internal/model/db"
 
 const app = new Hono()
 
@@ -46,27 +46,6 @@ export function setSpaFallbackHtml(html: string) {
   spaFallbackHtml = html
 }
 
-/**
- * 对齐 Go 版 server/static/static.go 的 UpdateIndex()：
- * 把 settings 中的 customize_head / customize_body 注入 index.html 的
- * `<!-- customize head -->` / `<!-- customize body -->` 占位符。
- *
- * Go 后端在启动/保存设置时于服务端完成该替换；TS Worker 是无状态 serverless，
- * 无法在启动时注入，故在每次返回 SPA 入口 HTML 时按需注入。
- */
-async function applyCustomizations(html: string, env: any): Promise<string> {
-  try {
-    const db = await getDb(env)
-    const settings: Record<string, string> = {}
-    for (const s of db.settings || []) settings[s.key] = s.value
-    return html
-      .replace("<!-- customize head -->", settings.customize_head || "")
-      .replace("<!-- customize body -->", settings.customize_body || "")
-  } catch {
-    return html
-  }
-}
-
 app.all("*", async (c) => {
   const env = c.env as any
   if (env && env.ASSETS && typeof env.ASSETS.fetch === "function") {
@@ -79,8 +58,7 @@ app.all("*", async (c) => {
       if (url.pathname === "/" || url.pathname === "/index.html") {
         const headers = new Headers(res.headers)
         headers.set("Cache-Control", "no-cache, must-revalidate")
-        const html = await applyCustomizations(await res.text(), env)
-        return new Response(html, { status: res.status, headers })
+        return new Response(res.body, { status: res.status, headers })
       }
       return res
     }
@@ -92,8 +70,7 @@ app.all("*", async (c) => {
   // EdgeOne 等 ASSETS 缺席的环境：直接返回构建期内联的 SPA 壳，
   // 避免前端路由（/add、/@manage/* 等）落到 404 文本导致整站不可达
   if (spaFallbackHtml && (c.req.method === "GET" || c.req.method === "HEAD")) {
-    const html = await applyCustomizations(spaFallbackHtml, env)
-    return c.body(html, 200, {
+    return c.body(spaFallbackHtml, 200, {
       "Content-Type": "text/html; charset=utf-8",
       // HTML 入口必须 no-cache，否则新版本部署后旧 HTML 仍引用旧 hash 的 JS/CSS
       "Cache-Control": "no-cache, must-revalidate",
