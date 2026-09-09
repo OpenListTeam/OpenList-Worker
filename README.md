@@ -9,7 +9,6 @@
 <a href="https://github.com/OpenListTeam/OpenList/blob/main/LICENSE"><img src="https://img.shields.io/github/license/OpenListTeam/OpenList" alt="License" /></a>
 <a href="https://github.com/OpenListTeam/OpenList/actions?query=workflow%3ABuild"><img src="https://img.shields.io/github/actions/workflow/status/OpenListTeam/OpenList/build.yml?branch=main" alt="Build status" /></a>
 <a href="https://github.com/OpenListTeam/OpenList/releases"><img src="https://img.shields.io/github/release/OpenListTeam/OpenList" alt="latest version" /></a>
-
 <a href="https://github.com/OpenListTeam/OpenList/discussions"><img src="https://img.shields.io/github/discussions/OpenListTeam/OpenList?color=%23ED8936" alt="discussions" /></a>
 <a href="https://github.com/OpenListTeam/OpenList/releases"><img src="https://img.shields.io/github/downloads/OpenListTeam/OpenList/total?color=%239F7AEA&logo=github" alt="Downloads" /></a>
 
@@ -18,7 +17,7 @@
 <div align="center">
 
 
-[English](readmes/README_en.md) | 中文 | [繁體中文](readmes/README_zh-TW.md) | [日本語](readmes/README_ja.md) | [한국어](readmes/README_ko.md) | [Français](readmes/README_fr.md) | [Deutsch](readmes/README_de.md) 
+[English](readmes/README_en.md) | 简体中文 | [繁體中文](readmes/README_zh-TW.md) | [日本語](readmes/README_ja.md) | [한국어](readmes/README_ko.md) | [Français](readmes/README_fr.md) | [Deutsch](readmes/README_de.md) 
 
 [Português](readmes/README_pt.md) | [Русский](readmes/README_ru.md) | [العربية](readmes/README_ar.md) | [Italiano](readmes/README_it.md) | [हिन्दी](readmes/README_hi.md) | [Español](readmes/README_es.md)
 
@@ -42,28 +41,22 @@
 
 </div>
 
-
-
 > [!IMPORTANT]
 > - 若Cloudflare提示`无法获取存储库内容`，则您需要先Fork本项目，再通过连接到Github仓库功能部署
-> - 部署完成后，请登录对应平台后台配置环境变量与存储：
->   **EdgeOne**：[国际站后台](https://console.edgeone.ai/makers) · [中国站后台](https://console.cloud.tencent.com/edgeone/makers) **Cloudflare**：[Worker 后台](https://dash.cloudflare.com/)
->
-> 可选环境变量 / Secrets：
-> - `ENCRYPTION_SECRET`：静态加密密钥（推荐配置 ≥16 字符；用于加密信息）
-> - `JWT_SECRET`：JWT 签名密钥（推荐配置；未配置时自动生成并持久化到 KV）
-> - `CRON_SECRET`：定时刷新任务鉴权密钥（可选，仅 EdgeOne 定时任务需要）
->
-> 详细部署指南：[Cloudflare Workers](./docs/0-Getting-Started/0-00002-Deploy-Cloudflare-Workers.md) · [EdgeOne](./docs/0-Getting-Started/0-00003-Deploy-EdgeOne.md)
+> - 部署完成后配置环境变量： **EdgeOne**：[国际站](https://console.edgeone.ai/makers) · [中国站](https://console.cloud.tencent.com/edgeone/makers)；**Cloudflare**：[Worker 后台](https://dash.cloudflare.com/)
+> - 环境变量：
+>   - `DB_DRIVER`: 数据保存方式：`json` (默认) / `d1` (Cloudflare) / `kv` / `mysql`
+>   - `DB_JSON_BACKEND`: 选择`json`格式所使用的后端: `blob` (默认) / `kv` / `cf_rest`
+> 其余可选变量参考**详细部署指南**：[Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
 
 
 ## 功能简介
 
-OpenList-TSWorker 是一个运行于边缘计算平台的多存储聚合文件列表与管理系统，可将分散在不同网盘、对象存储与协议服务中的文件统一到一个界面进行浏览、预览、下载与管理。
+OpenList 是一个运行于边缘计算平台的多存储聚合文件列表与管理系统
 
-### 关于TS版
+可将分散在不同网盘、对象存储与协议服务中的文件统一到一个界面进行浏览、预览、下载与管理
 
-OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTeam/OpenList)的 TypeScript 移植版
+OpenList-Worker 是 [OpenListTeam/OpenList](https://github.com/OpenListTeam/OpenList)的 TypeScript 移植版
 
 将后端从 Go 重写为运行于 Worker 的 TypeScript 服务，前端保持一致的界面与交互体验。
 
