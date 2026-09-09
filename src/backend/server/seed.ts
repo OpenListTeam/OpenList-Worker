@@ -840,7 +840,7 @@ seedRouter.post("/capabilities", async (c) => {
         code: 200,
         message: "success",
         data: {
-          formats: { oss: true, torrent: true, cas: sourceFiles.length === 1 },
+          formats: { oss: true, torrent: true, cas: true },
           files: sourceFiles.map((file) => ({
             path: file.virtualPath,
             name: file.relativePath,
@@ -928,8 +928,42 @@ seedRouter.post("/generate", async (c) => {
     }
     const formats = detectedFormats as SeedFormat[]
     const { seed, torrentPieces } = await generateSeed(c, user, body, formats)
+    const outputDirectory =
+      body.output_path ||
+      (Array.isArray(body.formats) ? body.save_path : undefined)
     const outputs = []
     for (const format of formats) {
+      // CAS is inherently a single-file container: emit one .cas per file
+      // instead of rejecting multi-file selection.
+      if (format === "cas") {
+        for (const file of seed.files) {
+          const singleSeed: SharingSeed = {
+            ...seed,
+            name: file.path.split("/").pop() || seed.name,
+            files: [file],
+          }
+          const diagnostics = conversionDiagnostics(singleSeed, format)
+          if (diagnostics.length) {
+            outputs.push({ format, convertible: false, diagnostics })
+            continue
+          }
+          const bytes = await encodeSeed(singleSeed, format)
+          const savePath = outputDirectory
+            ? joinVirtualPath(
+                normalizeVirtualPath(outputDirectory),
+                fileNameFor(singleSeed, format),
+              )
+            : body.save_path
+          await saveEncodedSeed(c, user, savePath, bytes)
+          outputs.push(
+            encodedResult(singleSeed, format, bytes, {
+              convertible: true,
+              ...(savePath ? { path: savePath } : {}),
+            }),
+          )
+        }
+        continue
+      }
       const diagnostics = conversionDiagnostics(seed, format)
       if (diagnostics.length) {
         outputs.push({ format, convertible: false, diagnostics })
@@ -939,9 +973,6 @@ seedRouter.post("/generate", async (c) => {
         format === "torrent"
           ? await encodeTorrent(seed, torrentPieces)
           : await encodeSeed(seed, format)
-      const outputDirectory =
-        body.output_path ||
-        (Array.isArray(body.formats) ? body.save_path : undefined)
       const savePath = outputDirectory
         ? joinVirtualPath(
             normalizeVirtualPath(outputDirectory),
