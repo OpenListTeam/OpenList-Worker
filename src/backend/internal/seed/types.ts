@@ -55,6 +55,8 @@ export interface CasFileEntry {
   md5: string
   sliceMd5: string
   create_time: string
+  slice_md5s?: string[]
+  slice_size?: number
 }
 
 export interface CasPayload {
@@ -63,6 +65,8 @@ export interface CasPayload {
   md5: string
   sliceMd5: string
   create_time: string
+  slice_md5s?: string[]
+  slice_size?: number
   files?: CasFileEntry[]
 }
 

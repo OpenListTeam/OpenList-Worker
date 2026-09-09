@@ -286,13 +286,18 @@ async function buildCasFileEntry(
     }
     sliceMd5 = file.hashes.md5.toUpperCase()
   }
-  return {
+  const entry: CasFileEntry = {
     name: file.path.split("/").pop() || file.path,
     size: file.size,
     md5: file.hashes.md5,
     sliceMd5,
     create_time: file.cas_create_time || String(Math.floor(Date.now() / 1000)),
   }
+  if (file.hashes.pieces.md5.length > 0) {
+    entry.slice_md5s = file.hashes.pieces.md5.map((hash) => hash.toUpperCase())
+    entry.slice_size = pieceSize || DEFAULT_PIECE_SIZE
+  }
+  return entry
 }
 
 export async function encodeCas(seedInput: SharingSeed): Promise<Uint8Array> {
@@ -307,6 +312,8 @@ export async function encodeCas(seedInput: SharingSeed): Promise<Uint8Array> {
       md5: entry.md5,
       sliceMd5: entry.sliceMd5,
       create_time: entry.create_time,
+      slice_md5s: entry.slice_md5s,
+      slice_size: entry.slice_size,
     }
   } else {
     const entries: CasFileEntry[] = []
@@ -355,6 +362,9 @@ export function decodeCas(data: Uint8Array): ParsedSeed {
     if (!/^[0-9a-f]{32}$/i.test(md5Hash) || !/^[0-9a-f]{32}$/i.test(sliceMd5)) {
       throw new Error("Invalid CAS hash")
     }
+    const pieceMd5s = Array.isArray(entry.slice_md5s)
+      ? entry.slice_md5s.map((hash) => String(hash).toLowerCase())
+      : []
     return {
       path: entry.name,
       size: Number(entry.size),
@@ -364,7 +374,7 @@ export function decodeCas(data: Uint8Array): ParsedSeed {
         md5: md5Hash,
         sha1: "",
         sha256: "",
-        pieces: { md5: [], sha1: [], sha256: [] },
+        pieces: { md5: pieceMd5s, sha1: [], sha256: [] },
       },
       sources: [],
       cas_slice_md5: sliceMd5,
@@ -418,6 +428,8 @@ export function decodeCas(data: Uint8Array): ParsedSeed {
     md5: md5Hash,
     sliceMd5,
     create_time: String(value.create_time || ""),
+    slice_md5s: value.slice_md5s,
+    slice_size: value.slice_size,
   }
   return {
     format: "cas",
@@ -430,7 +442,7 @@ export function decodeCas(data: Uint8Array): ParsedSeed {
           ? new Date(created * 1000).toISOString()
           : new Date().toISOString(),
       created_by: "OpenList",
-      piece_size: DEFAULT_PIECE_SIZE,
+      piece_size: value.slice_size || DEFAULT_PIECE_SIZE,
       files: [
         fileFromEntry({
           name: value.name,
@@ -438,6 +450,8 @@ export function decodeCas(data: Uint8Array): ParsedSeed {
           md5: md5Hash,
           sliceMd5: sliceMd5,
           create_time: String(value.create_time || ""),
+          slice_md5s: value.slice_md5s,
+          slice_size: value.slice_size,
         }),
       ],
     }),
