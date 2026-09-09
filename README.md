@@ -17,9 +17,14 @@
 
 <div align="center">
 
-- English | 中文（本文件） | [日本語](https://github.com/OpenListTeam/OpenList/blob/main/README/README_ja.md) | [更多语言](https://github.com/OpenListTeam/OpenList/tree/main/README)
 
-- [上游项目](https://github.com/OpenListTeam/OpenList) · [贡献指南](https://github.com/OpenListTeam/OpenList/blob/main/CONTRIBUTING.md) · [行为准则](https://github.com/OpenListTeam/OpenList/blob/main/CODE_OF_CONDUCT.md) · [许可证](./LICENSE)
+[English](readmes/README_en.md) | 中文 | [日本語](readmes/README_ja.md) | [한국어](readmes/README_ko.md) | [Français](readmes/README_fr.md) | [Deutsch](readmes/README_de.md) | [Español](readmes/README_es.md)
+
+[Português](readmes/README_pt.md) | [Русский](readmes/README_ru.md) | [العربية](readmes/README_ar.md) | [Italiano](readmes/README_it.md)
+
+[上游项目](https://github.com/OpenListTeam/OpenList) · [贡献指南](https://github.com/OpenListTeam/OpenList-Worker/blob/main/CONTRIBUTING.md) · [行为准则](https://github.com/OpenListTeam/OpenList-Worker/blob/main/CODE_OF_CONDUCT.md) · [许可证](./LICENSE)
+
+[🌎 全球 Demo](https://new.oplist.org) 　|　 [🇨🇳 中国 Demo](https://new.oplist.org.cn)
 
 </div>
 
@@ -28,10 +33,14 @@
 ## 一键部署
 
 点击下方按钮，即可将本项目一键部署到对应平台：
+<div align="center">
+
 
 | EdgeOne Makers · 国际站 | EdgeOne Makers · 中国站 | Cloudflare Workers · 全球站 |
 | :---: | :---: | :---: |
 | [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=ENCRYPTION_SECRET,JWT_SECRET) | [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=ENCRYPTION_SECRET,JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
+
+</div>
 
 备注：若Cloudflare提示`无法获取存储库内容`，则您需要先Fork本项目，再通过连接到Github仓库功能部署
 
@@ -78,7 +87,7 @@ OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTea
 
 ### 核心能力
 
-- **文件浏览**：统一的目录树浏览，支持图片、视频、音频、文档（Office/PDF/Markdown）、代码、压缩包等多种格式的在线预览与播放。
+- **文件浏览**：统一的目录树浏览，支持图片、视频、音频、文档、代码、压缩包等格式在线预览。
 - **上传下载**：跨存储的上传、批量下载、流式传输与直链跳转。
 - **文件分享**：生成带有效期、密码与权限控制的分享链接，支持匿名访问与目录分享。
 - **全文搜索**：在已索引的存储中快速检索文件。
@@ -89,22 +98,20 @@ OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTea
 ### 权限管理
 
 - **权限管理**：基于角色的访问控制（RBAC），支持用户分组、目录级读写权限与配额。
-- **认证方式**：内置账号密码（bcrypt 加密），支持 TOTP 两步验证（2FA）、WebAuthn/FIDO 无密码登录、SSO（OIDC）单点登录与 LDAP 目录认证。
-- **安全加固**：JWT 会话、CSRF 防护、点击劫持防护（X-Frame-Options）、内容安全策略（CSP）、请求限流与流量限制、敏感字段静态加密（`ENCRYPTION_SECRET`）、审计日志。
+- **认证方式**：内置账号密码，支持TOTP验证、WebAuthn/FIDO登录、SSO单点登录与 LDAP 目录认证。
+- **安全加固**：JWT 会话、CSRF 防护、点击劫持防护（X-Frame-Options）、内容安全策略（CSP）。
 - **健康检查**：提供 `/health` 存活探针与 `/healthz` 就绪探针，可用于监控与告警。
 
 ### 平台部署
 
-- **运行平台**：Cloudflare Workers、腾讯云 EdgeOne Cloud Function、Vercel、Serverless Framework 及 Node.js 容器环境。
+- **运行平台**：Cloudflare Workers、腾讯云 EdgeOne Makers、Vercel、Serverless  及 Node.js 容器环境。
 - **数据存储**：Cloudflare D1（SQLite）为主，同时支持 MySQL、MariaDB、PostgreSQL、SQL Server。
 - **持久缓存**：Cloudflare KV / EdgeOne Blob（可选），用于配置持久化与缓存。
-- **一键部署**：支持 EdgeOne、Cloudflare Workers 等平台的一键部署按钮，部署后通过浏览器安装向导初始化管理员账号。
+- **一键部署**：支持 EdgeOne、Cloudflare Workers 等平台的一键部署按钮+初始化。
 
 ---
 
 ## 手动部署
-
-> 完整部署说明请参考上游官方文档：[https://doc.oplist.org](https://doc.oplist.org)
 
 ### 前置要求
 
@@ -164,10 +171,6 @@ npm run deploy
 - ⚖️ [使用条款](https://doc.oplist.org/terms)
 - 🔒 [隐私政策](https://doc.oplist.org/privacy)
 
-## Demo站点
-
-- 🌎 [全球 Demo](https://new.oplist.org)
-- 🇨🇳 [中国 Demo](https://new.oplist.org.cn)
 
 ## 帮助支持
 
