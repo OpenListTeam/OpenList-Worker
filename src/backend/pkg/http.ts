@@ -333,35 +333,78 @@ export function extractTrustedHosts(addition: any): Set<string> {
   const HOST_KEY_RE =
     /(url|host|address|endpoint|server|domain|site|base|gateway|api)/i
 
-  const addHostFrom = (raw: string) => {
-    const val = raw.trim()
-    if (!val) return
-    // 有 scheme 直接用，没有则补 http://（覆盖 "192.168.1.10:9000" 这类 endpoint）
-    const candidates = /^[a-z][a-z0-9+.-]*:\/\//i.test(val)
-      ? [val]
-      : [`http://${val}`]
-    for (const c of candidates) {
-      try {
-        const u = new URL(c)
-        if (u.protocol !== "http:" && u.protocol !== "https:") continue
-        const h = u.hostname.toLowerCase().trim()
-        if (h) hosts.add(h)
-      } catch {
-        // 不是合法 URL，跳过
-      }
-    }
-  }
-
   const visit = (node: any) => {
     if (node == null || typeof node !== "object") return
     for (const [key, val] of Object.entries(node)) {
       if (typeof val === "string") {
-        if (HOST_KEY_RE.test(key)) addHostFrom(val)
+        if (HOST_KEY_RE.test(key)) {
+          const h = hostFromValue(val)
+          if (h) hosts.add(h)
+        }
       } else if (val != null && typeof val === "object") {
         visit(val)
       }
     }
   }
   visit(obj)
+  return hosts
+}
+
+/**
+ * 从一段字符串（完整 URL 或裸 host[:port]）提取 hostname。
+ * 失败返回 undefined。
+ */
+function hostFromValue(raw: string): string | undefined {
+  const val = raw.trim()
+  if (!val) return undefined
+  // 有 scheme 直接用，没有则补 http://（覆盖 "192.168.1.10:9000" 这类 endpoint）
+  const candidates = /^[a-z][a-z0-9+.-]*:\/\//i.test(val)
+    ? [val]
+    : [`http://${val}`]
+  for (const c of candidates) {
+    try {
+      const u = new URL(c)
+      if (u.protocol !== "http:" && u.protocol !== "https:") continue
+      const h = u.hostname.toLowerCase().trim()
+      if (h) return h
+    } catch {
+      // 不是合法 URL，继续尝试下一个候选
+    }
+  }
+  return undefined
+}
+
+/**
+ * 解析 SSRF_ALLOWED_HOSTS 环境变量的值：逗号 / 空格 / 分号分隔的
+ * URL 或裸 host[:port] 列表，提取出 hostname 集合。
+ * 例如："192.168.1.10:9000, https://minio.internal, 10.0.0.5"
+ */
+export function parseAllowHostsEnv(raw: string): Set<string> {
+  const hosts = new Set<string>()
+  if (!raw) return hosts
+  for (const part of raw.split(/[,;\s]+/)) {
+    const h = hostFromValue(part)
+    if (h) hosts.add(h)
+  }
+  return hosts
+}
+
+/**
+ * 合并所有受信 host 白名单来源：
+ * 1. 存储配置 addition 中管理员填写的 endpoint host（内网自建 S3/WebDAV/MinIO）
+ * 2. 全局环境变量 SSRF_ALLOWED_HOSTS（手动追加，逗号/空格分隔的 URL 或裸 host[:port]）
+ *
+ * env 参数优先取 Cloudflare Workers 的 c.env，Node 环境回退 process.env。
+ */
+export function getTrustedHosts(addition: any, env?: any): Set<string> {
+  const hosts = extractTrustedHosts(addition)
+  const raw =
+    env?.["SSRF_ALLOWED_HOSTS"] ??
+    (typeof process !== "undefined"
+      ? process.env?.["SSRF_ALLOWED_HOSTS"]
+      : undefined)
+  if (typeof raw === "string" && raw.trim()) {
+    for (const h of parseAllowHostsEnv(raw)) hosts.add(h)
+  }
   return hosts
 }

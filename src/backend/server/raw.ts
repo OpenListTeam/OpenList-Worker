@@ -5,7 +5,7 @@ import { flushPendingDriverState, getDriver } from "../internal/op/storage"
 import { resolveShare } from "../internal/op/share"
 import { needDownloadSign, verifyDownloadSign } from "../pkg/sign"
 import { safeErrorMessage } from "../pkg/errs"
-import { assertSafeUrl, extractTrustedHosts } from "../pkg/http"
+import { assertSafeUrl, getTrustedHosts } from "../pkg/http"
 
 let fsPromises: any = null
 let createReadStream: any = null
@@ -177,8 +177,8 @@ rawRouter.get("/*", async (c) => {
       if (normDriver !== "local") {
         try {
           // 管理员配置的受信存储 endpoint host（可能是内网自建 S3/WebDAV/MinIO），
-          // 加入 SSRF 白名单，避免被误拦截。白名单仅来源于管理员填写的 addition 字段。
-          const trustedHosts = extractTrustedHosts(resolved.storage.addition)
+          // 加上全局环境变量 SSRF_ALLOWED_HOSTS，合并为 SSRF 白名单，避免被误拦截。
+          const trustedHosts = getTrustedHosts(resolved.storage.addition, c.env)
           const driver = await getDriver(
             resolved.storage.driver,
             resolved.storage,
