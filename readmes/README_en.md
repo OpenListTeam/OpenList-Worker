@@ -1,23 +1,23 @@
 <div align="center">
   <img src="https://raw.githubusercontent.com/OpenListTeam/Logo/main/logo.svg" width="128" height="128" alt="logo" />
 
-  <p><em>OpenList is a directory listing tool that supports mounting multiple cloud drives, with support for dozens of cloud storage backends, file management, sharing and more.</em></p>
+  <p><em>OpenList is a feature-rich directory listing tool that supports mounting dozens of cloud drives with file preview, download, sharing and more</em></p>
+  <p>This repository is the official TypeScript + Serverless port of <a href="https://github.com/OpenListTeam/OpenList">OpenListTeam/OpenList</a></p>
+  <p>Runs on Cloudflare Workers / EdgeOne Cloud Function / Alibaba Cloud ESA</p>
 
-  <p>This repository is the official TypeScript + Serverless port of the <a href="https://github.com/OpenListTeam/OpenList">OpenListTeam/OpenList</a> project.</p>
-  <p>Runs on Cloudflare Workers / EdgeOne Cloud Function.</p>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/blob/main/LICENSE"><img src="https://img.shields.io/github/license/OpenListTeam/OpenList-Worker" alt="License" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/actions/workflows/edgeone-artifact-guard.yml"><img src="https://img.shields.io/github/actions/workflow/status/OpenListTeam/OpenList-Worker/edgeone-artifact-guard.yml?branch=main" alt="Build status" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/release/OpenListTeam/OpenList-Worker" alt="latest version" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/discussions"><img src="https://img.shields.io/github/discussions/OpenListTeam/OpenList-Worker?color=%23ED8936" alt="discussions" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/downloads/OpenListTeam/OpenList-Worker/total?color=%239F7AEA&logo=github" alt="Downloads" /></a>
 
-<a href="https://github.com/OpenListTeam/OpenList/blob/main/LICENSE"><img src="https://img.shields.io/github/license/OpenListTeam/OpenList" alt="License" /></a>
-<a href="https://github.com/OpenListTeam/OpenList/actions?query=workflow%3ABuild"><img src="https://img.shields.io/github/actions/workflow/status/OpenListTeam/OpenList/build.yml?branch=main" alt="Build status" /></a>
-<a href="https://github.com/OpenListTeam/OpenList/releases"><img src="https://img.shields.io/github/release/OpenListTeam/OpenList" alt="latest version" /></a>
-
-<a href="https://github.com/OpenListTeam/OpenList/discussions"><img src="https://img.shields.io/github/discussions/OpenListTeam/OpenList?color=%23ED8936" alt="discussions" /></a>
-<a href="https://github.com/OpenListTeam/OpenList/releases"><img src="https://img.shields.io/github/downloads/OpenListTeam/OpenList/total?color=%239F7AEA&logo=github" alt="Downloads" /></a>
+📘 [Docs](https://doc.oplist.org) · 🌏 [Docs (China mainland)](https://doc.oplist.org.cn)  · ⚖️ [Terms of use](https://doc.oplist.org/terms)  · 🔒 [Privacy policy](https://doc.oplist.org/privacy)
 
 </div>
 
 <div align="center">
 
-English | [简体中文](../README.md) | [繁體中文](README_zh-TW.md) | [日本語](README_ja.md) | [한국어](README_ko.md) | [Français](README_fr.md) | [Deutsch](README_de.md)
+English | [简体中文](../README.md) | [繁體中文](README_zh-TW.md) | [日本語](README_ja.md) | [한국어](README_ko.md) | [Français](README_fr.md) | [Deutsch](README_de.md) 
 
 [Português](README_pt.md) | [Русский](README_ru.md) | [العربية](README_ar.md) | [Italiano](README_it.md) | [हिन्दी](README_hi.md) | [Español](README_es.md)
 
@@ -32,8 +32,8 @@ English | [简体中文](../README.md) | [繁體中文](README_zh-TW.md) | [日�
 ## One-click Deploy
 
 Click the button below to deploy this project to the corresponding platform with one click:
-
 <div align="center">
+
 
 | EdgeOne Makers · International | EdgeOne Makers · China | Cloudflare Workers · Global |
 | :---: | :---: | :---: |
@@ -42,22 +42,18 @@ Click the button below to deploy this project to the corresponding platform with
 </div>
 
 > [!IMPORTANT]
-> After deployment, visiting the site for the first time will automatically launch the **installation wizard** for initial setup:
->
-> Optional environment variables / secrets:
-> - `ENCRYPTION_SECRET`: static encryption key (recommended ≥16 characters; used to encrypt sensitive fields)
-> - `JWT_SECRET`: JWT signing key (recommended; auto-generated and persisted to KV if not set)
-> - `CRON_SECRET`: scheduled refresh task auth key (optional, only needed for EdgeOne scheduled tasks)
+> - If Cloudflare prompts `cannot fetch repository content`, [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork) this project first, then deploy by connecting to the GitHub repository
+> - After deployment, configure environment variables: **EdgeOne**: [International console](https://console.edgeone.ai/makers) · [China console](https://console.cloud.tencent.com/edgeone/makers); **Cloudflare**: [Worker dashboard](https://dash.cloudflare.com/). Environment variables:
+>   - `DB_DRIVER`: data backend: `json` (default) / `d1` (Cloudflare) / `kv` / `mysql`
+>   - `DB_JSON_BACKEND`: backend used by the `json` format: `blob` (default) / `kv` / `cf_rest`
+>   - For other optional variables, see the **detailed deployment guide**: [Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
+
 
 ## Features
 
-OpenList-Worker is a multi-storage aggregation file listing and management system running on edge computing platforms, unifying files scattered across different cloud drives, object storage and protocol services into one interface for browsing, previewing, downloading and managing.
+OpenList is a multi-storage aggregation file listing and management system running on edge computing platforms. It unifies files scattered across different cloud drives, object storage and protocol services into a single interface for browsing, previewing, downloading and managing.
 
-### About the TS Port
-
-OpenList-Worker is the TypeScript port of the official [OpenListTeam/OpenList](https://github.com/OpenListTeam/OpenList) project.
-
-The backend has been rewritten from Go to a TypeScript service running on Workers, while the frontend keeps a consistent interface and interaction experience.
+OpenList-Worker is the official TypeScript + Serverless port of [OpenListTeam/OpenList](https://github.com/OpenListTeam/OpenList). The backend has been rewritten from Go to a TypeScript service running on Workers, while the frontend keeps a consistent interface and interaction experience.
 
 ### Storage Aggregation
 
@@ -65,12 +61,12 @@ Built-in **78 storage drivers**, ready to mount various storage backends out of 
 
 | Category | Supported backends |
 | :--- | :--- |
-| Domestic cloud drives | Aliyundrive (Open/Share), Quark, Baidu Netdisk, 115, 123 Pan, Thunder, Tianyi Cloud (189), Tencent Weiyun, Lanzou, PikPak, UC Cloud, China Mobile Cloud, 139 Cloud, Doubao, Wopan, Tianyi Family Cloud, LeTV Cloud, etc. |
-| International cloud drives | Google Drive, OneDrive (App/ShareLink), Dropbox, MEGA, MediaFire, Proton Drive, Yandex Disk, Degoo, Bunny Storage, TeraBox, etc. |
-| Object storage | S3-compatible (AWS/OSS/COS/MinIO, etc.), WebDAV, FTP, SFTP, SMB, IPFS, Azure Blob, etc. |
+| Domestic cloud drives | Aliyundrive (Open/Share), Quark (Open/UC TV), Baidu Netdisk (Album), 115 (Open/Share), 123 Pan (Open/Share), Tianyi Cloud (189/PC/TV), China Mobile Cloud (139/Hecaiyun), Wopan, Thunder, Tencent Weiyun, Lanzou, PikPak (Share), Doubao, Guangyapan, Chaoxing Group, Lenovo NAS Share, Teambition, WPS Cloud, Alibaba Docs, HalalCloud, MediaTrack, etc. |
+| International cloud drives | Google Drive (Album), OneDrive (App/ShareLink), Dropbox, MEGA, MediaFire, Proton Drive, Yandex Disk, Degoo, Bunny Storage, TeraBox, etc. |
+| Object storage | S3-compatible (AWS/OSS/COS/MinIO, etc.), UpYun USS, Azure Blob, WebDAV, FTP, SFTP, SMB, IPFS, etc. |
 | Code hosting | GitHub, GitHub Releases, CNB Releases |
-| Cloud drive programs | OpenList / AList V3, Cloudreve V3/V4, Kodbox, Seafile, Teldrive, Febbox, etc. |
-| Other drivers | Netease Music, Misskey, Emby, 115 Share, Aliyundrive Share, Quark Share, etc. |
+| Cloud drive programs | OpenList (Share), AList V3, Cloudreve V3/V4, Kodbox, Seafile, Teldrive, Febbox, etc. |
+| Other drivers | Netease Music, Misskey, Emby, Cloudflare Image Hosting, etc. |
 
 In addition to the real storages above, virtual/functional drivers such as `Local`, `Alias`, `UrlTree`, `AutoIndex`, `Strm`, `Crypt`, `Virtual` and `Chunk` are also provided for local mounts, address aliases, URL lists, encrypted storage and chunking scenarios.
 
@@ -91,12 +87,12 @@ In addition to the real storages above, virtual/functional drivers such as `Loca
 - **Security hardening**: JWT sessions, CSRF protection, clickjacking protection (X-Frame-Options), Content Security Policy (CSP).
 - **Health checks**: provide `/health` liveness probe and `/healthz` readiness probe for monitoring and alerting.
 
-### Deployment
+### Platform Deployment
 
 - **Runtime platforms**: Cloudflare Workers, Tencent Cloud EdgeOne Makers, Vercel, Serverless and Node.js container environments.
 - **Data storage**: Cloudflare D1 (SQLite) as primary, also supporting MySQL, MariaDB, PostgreSQL, SQL Server.
 - **Persistent cache**: Cloudflare KV / EdgeOne Blob (optional) for config persistence and caching.
-- **One-click deploy**: support one-click deployment buttons + initialization on EdgeOne, Cloudflare Workers and other platforms.
+- **One-click deploy**: support one-click deploy buttons + initialization on EdgeOne, Cloudflare Workers and other platforms.
 
 ---
 
@@ -104,32 +100,32 @@ In addition to the real storages above, virtual/functional drivers such as `Loca
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 18+ (pnpm recommended)
 - A Cloudflare account (for deploying to Workers)
 
 ### Local Development
 
 ```bash
-# 1. Install backend dependencies
-npm install
+# 1. Install dependencies
+pnpm install
 
-# 2. Install frontend dependencies
-npm run install:page
+# 2. Configure wrangler.toml (fill in JWT_SECRET, KV/D1 bindings)
 
-# 3. Configure wrangler.jsonc (fill in JWT_SECRET, KV/D1 bindings)
+# 3. Start the dev server (auto-fetches the official frontend and runs the Worker)
+pnpm run dev:unified
 
-# 4. Start the backend dev server
-npm run dev
-
-# 5. Start the frontend dev server in another terminal
-npm run dev:page
+# Or run the Worker only (without fetching the frontend)
+pnpm run dev:worker
 ```
 
 ### Production Deployment
 
 ```bash
-# One-click deploy (frontend build + backend deploy to Cloudflare Workers)
-npm run deploy
+# One-click deploy: ensure the KV namespace exists → fetch the official frontend → deploy to Cloudflare Workers
+pnpm run deploy
+
+# Or deploy the Worker directly (skip KV check and frontend build)
+pnpm run deploy:worker
 ```
 
 ---
@@ -153,31 +149,29 @@ npm run deploy
 
 ---
 
-## Documentation
-
-- 📘 [Official docs](https://doc.oplist.org)
-- 🌏 [China mirror](https://doc.oplist.org.cn)
-- ⚖️ [Terms of use](https://doc.oplist.org/terms)
-- 🔒 [Privacy policy](https://doc.oplist.org/privacy)
 
 ## Support
 
-For general questions, please visit the [_Discussions_](https://github.com/OpenListTeam/OpenList/discussions) forum. **_Issues_ are only for bug reports and feature requests.**
+If you run into any issues, help is available through the following channels:
+
+- 🐛 **Bug reports or feature requests**: please visit [_Issues_](https://github.com/OpenListTeam/OpenList-Worker/issues)
+- 💬 **General questions and discussion**: please visit the [_Discussions_](https://github.com/OpenListTeam/OpenList/discussions) forum
 
 ## License
 
 `OpenList` is open-source software licensed under [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.txt).
 
+
 ## Contact
 
-- [@GitHub](https://github.com/OpenListTeam)
-- [Telegram group](https://t.me/OpenListTeam)
-- [Telegram channel](https://t.me/OpenListOfficial)
+🌐 [@GitHub](https://github.com/OpenListTeam) · ✈️ [Telegram group](https://t.me/OpenListTeam) · ✈️ [Telegram channel](https://t.me/OpenListOfficial)
 
 ## Contributors
 
-We sincerely thank the author of the original project [AlistGo/alist](https://github.com/AlistGo/alist), [Xhofe](https://github.com/Xhofe), and all other contributors.
+Thanks to the following projects and their contributors:
 
-Thanks to these wonderful people:
+- The author and all contributors of [Alist](https://github.com/AlistGo/alist)
+- The author and all contributors of [OpenList](https://github.com/OpenListTeam/OpenList) (Go version)
+- All contributors of this project:
 
 [![Contributors](https://contrib.rocks/image?repo=OpenListTeam/OpenList-Worker)](https://github.com/OpenListTeam/OpenList-Worker/graphs/contributors)

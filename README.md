@@ -1,8 +1,7 @@
 <div align="center">
   <img src="https://raw.githubusercontent.com/OpenListTeam/Logo/main/logo.svg" width="128" height="128" alt="logo" />
 
-  <p><em>OpenList 是一个支持多网盘挂载的目录列表工具，支持数十种网盘文件挂载和文件管理、分享等功能</em></p>
-
+  <p><em>OpenList 是一个多功能的目录列表工具，支持数十种网盘文件挂载和文件预览/下载/分享等功能</em></p>
   <p>本仓库是官方 <a href="https://github.com/OpenListTeam/OpenList">OpenListTeam/OpenList</a> 项目的 TypeScript + Serverless 架构移植版</p>
   <p>基于 Cloudflare Workers / EdgeOne Cloud Function / Alibaba Cloud ESA 运行</p>
 
@@ -17,7 +16,6 @@
 </div>
 
 <div align="center">
-
 
 [English](readmes/README_en.md) | 简体中文 | [繁體中文](readmes/README_zh-TW.md) | [日本語](readmes/README_ja.md) | [한국어](readmes/README_ko.md) | [Français](readmes/README_fr.md) | [Deutsch](readmes/README_de.md) 
 
@@ -44,7 +42,7 @@
 </div>
 
 > [!IMPORTANT]
-> - 若Cloudflare提示`无法获取存储库内容`，则您需要先Fork本项目，再通过连接到Github仓库功能部署
+> - 若Cloudflare提示`无法获取存储库内容`，则您需要先[Fork](https://github.com/OpenListTeam/OpenList-Worker/fork)本项目，再通过连接到Github仓库功能部署
 > - 部署完成后配置环境变量： **EdgeOne**：[国际站](https://console.edgeone.ai/makers) · [中国站](https://console.cloud.tencent.com/edgeone/makers)；**Cloudflare**：[Worker 后台](https://dash.cloudflare.com/)，环境变量：
 >   - `DB_DRIVER`: 数据保存方式：`json` (默认) / `d1` (Cloudflare) / `kv` / `mysql`
 >   - `DB_JSON_BACKEND`: 选择`json`格式所使用的后端: `blob` (默认) / `kv` / `cf_rest`
@@ -53,13 +51,9 @@
 
 ## 功能简介
 
-OpenList 是一个运行于边缘计算平台的多存储聚合文件列表与管理系统
+OpenList 是一个运行于边缘计算平台的多存储聚合文件列表与管理系统，可将分散在不同网盘、对象存储与协议服务中的文件统一到一个界面，进行浏览、预览、下载与管理。
 
-可将分散在不同网盘、对象存储与协议服务中的文件统一到一个界面进行浏览、预览、下载与管理
-
-OpenList-Worker 是 [OpenListTeam/OpenList](https://github.com/OpenListTeam/OpenList)的 TypeScript 移植版
-
-将后端从 Go 重写为运行于 Worker 的 TypeScript 服务，前端保持一致的界面与交互体验。
+OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTeam/OpenList) 项目的 TypeScript + Serverless 移植版，后端由 Go 重写为运行于 Workers 的 TypeScript 服务，前端保持一致的界面与交互体验。
 
 ### 存储聚合
 
@@ -67,12 +61,12 @@ OpenList-Worker 是 [OpenListTeam/OpenList](https://github.com/OpenListTeam/Open
 
 | 分类 | 支持的后端 |
 | :--- | :--- |
-| 国内网盘 | 阿里云盘（Open/Share）、夸克网盘、百度网盘、115 网盘、123 云盘、迅雷云盘、天翼云盘（189）、腾讯微云、蓝奏云、PikPak、UC 网盘、移动云盘、139 云盘、豆包、沃家云盘、天翼家庭云、乐视云盘等 |
-| 国际网盘 | Google Drive、OneDrive（App/ShareLink）、Dropbox、MEGA、MediaFire、Proton Drive、Yandex Disk、Degoo、Bunny Storage、TeraBox 等 |
-| 对象存储 | S3 兼容（AWS/OSS/COS/MinIO 等）、WebDAV、FTP、SFTP、SMB、IPFS、Azure Blob 等 |
+| 国内网盘 | 阿里云盘（开放平台/分享）、夸克网盘（开放平台/UC TV 版）、百度网盘（相册）、115 网盘（开放平台/分享）、123 云盘（开放平台/分享）、天翼云盘（189/PC/TV）、中国移动云盘（139/和彩云）、沃家云盘、迅雷云盘、腾讯微云、蓝奏云、PikPak（分享）、豆包网盘、光亚盘、超星小组网盘、联想 NAS 分享、Teambition 网盘、WPS 网盘、阿里文档、HalalCloud、MediaTrack 等 |
+| 国际网盘 | Google Drive（相册）、OneDrive（应用/分享链接）、Dropbox、MEGA、MediaFire、Proton Drive、Yandex Disk、Degoo、Bunny Storage、TeraBox 等 |
+| 对象存储 | S3 兼容（AWS/OSS/COS/MinIO 等）、又拍云 USS、Azure Blob、WebDAV、FTP、SFTP、SMB、IPFS 等 |
 | 代码托管 | GitHub、GitHub Releases、CNB Releases |
-| 网盘程序 | OpenList / AList V3、Cloudreve V3/V4、Kodbox、Seafile、Teldrive、Febbox 等 |
-| 其他驱动 | 网易云音乐、Misskey、Emby、115 分享、阿里云盘分享、夸克分享等 |
+| 网盘程序 | OpenList（分享）、AList V3、Cloudreve V3/V4、Kodbox（可道云）、Seafile、Teldrive、Febbox 等 |
+| 其他驱动 | 网易云音乐、Misskey、Emby、Cloudflare 图床等 |
 
 除上述真实存储外，还提供 `Local`、`Alias`、`UrlTree`、`AutoIndex`、`Strm`、`Crypt`、`Virtual`、`Chunk` 等虚拟/功能型驱动，可用于本地挂载、地址别名、URL 列表、加密存储与分片等场景。
 
@@ -106,32 +100,32 @@ OpenList-Worker 是 [OpenListTeam/OpenList](https://github.com/OpenListTeam/Open
 
 ### 前置要求
 
-- Node.js 18+
+- Node.js 18+（推荐使用 pnpm）
 - Cloudflare 账号（用于部署到 Workers）
 
 ### 本地开发
 
 ```bash
-# 1. 安装后端依赖
-npm install
+# 1. 安装依赖
+pnpm install
 
-# 2. 安装前端依赖
-npm run install:page
+# 2. 配置 wrangler.toml（填写 JWT_SECRET、KV/D1 绑定）
 
-# 3. 配置 wrangler.jsonc（填写 JWT_SECRET、KV/D1 绑定）
+# 3. 启动开发服务器（自动拉取官方前端并运行 Worker）
+pnpm run dev:unified
 
-# 4. 启动后端开发服务器
-npm run dev
-
-# 5. 在另一个终端启动前端开发服务器
-npm run dev:page
+# 或仅运行 Worker（不拉取前端）
+pnpm run dev:worker
 ```
 
 ### 生产部署
 
 ```bash
-# 一键部署（前端构建 + 后端部署到 Cloudflare Workers）
-npm run deploy
+# 一键部署：确保 KV namespace 存在 → 拉取官方前端 → 部署到 Cloudflare Workers
+pnpm run deploy
+
+# 或直接部署 Worker（跳过 KV 检查与前端构建）
+pnpm run deploy:worker
 ```
 
 ---
@@ -158,7 +152,10 @@ npm run deploy
 
 ## 帮助支持
 
-如有一般性问题请前往 [_Discussions_](https://github.com/OpenListTeam/OpenList/discussions) 讨论区，**_Issues_ 仅用于错误报告和功能请求。**
+在使用过程中遇到问题，可通过以下渠道获取帮助：
+
+- 🐛 **提交 Bug 或功能请求**：请前往 [_Issues_](https://github.com/OpenListTeam/OpenList-Worker/issues)
+- 💬 **一般性问题与交流**：请前往 [_Discussions_](https://github.com/OpenListTeam/OpenList/discussions) 讨论区
 
 ## 开源许可
 
@@ -171,8 +168,10 @@ npm run deploy
 
 ## 贡献列表
 
- - 原[Alist](https://github.com/AlistGo/alist) 项目作者及所有其他贡献者。
- - 原[OpenList](https://github.com/OpenListTeam/OpenList)Go版本项目作者及所有其他贡献者。
- - 本项目贡献者：
+感谢以下项目及其贡献者：
+
+- [Alist](https://github.com/AlistGo/alist) 项目作者及全体贡献者
+- [OpenList](https://github.com/OpenListTeam/OpenList)（Go 版）项目作者及全体贡献者
+- 本项目全体贡献者：
 
 [![Contributors](https://contrib.rocks/image?repo=OpenListTeam/OpenList-Worker)](https://github.com/OpenListTeam/OpenList-Worker/graphs/contributors)
