@@ -3,7 +3,7 @@
 
   <p><em>OpenList 是一个支持多网盘挂载的目录列表工具，支持数十种网盘文件挂载和文件管理、分享等功能</em></p>
 
-  <p>本仓库（OpenList-TSWorker）是官方 <a href="https://github.com/OpenListTeam/OpenList">OpenListTeam/OpenList</a> 项目的 TypeScript 移植版</p>
+  <p>本仓库是官方 <a href="https://github.com/OpenListTeam/OpenList">OpenListTeam/OpenList</a> 项目的 TypeScript + Serverless架构移植版</p>
   <p>基于 Cloudflare Workers / EdgeOne Cloud Function 运行</p>
 
 <a href="https://github.com/OpenListTeam/OpenList/blob/main/LICENSE"><img src="https://img.shields.io/github/license/OpenListTeam/OpenList" alt="License" /></a>
@@ -15,60 +15,15 @@
 
 </div>
 
----
+<div align="center">
 
 - English | 中文（本文件） | [日本語](https://github.com/OpenListTeam/OpenList/blob/main/README/README_ja.md) | [更多语言](https://github.com/OpenListTeam/OpenList/tree/main/README)
 
 - [上游项目](https://github.com/OpenListTeam/OpenList) · [贡献指南](https://github.com/OpenListTeam/OpenList/blob/main/CONTRIBUTING.md) · [行为准则](https://github.com/OpenListTeam/OpenList/blob/main/CODE_OF_CONDUCT.md) · [许可证](./LICENSE)
 
-## 功能简介
+</div>
 
-OpenList-TSWorker 是一个运行于边缘计算平台的多存储聚合文件列表与管理系统，可将分散在不同网盘、对象存储与协议服务中的文件统一到一个界面进行浏览、预览、下载与管理。
-
-### 多存储聚合
-
-内置 **80+ 存储驱动**，开箱即用地挂载各类存储后端：
-
-| 分类 | 支持的后端 |
-| :--- | :--- |
-| 国内网盘 | 阿里云盘（Open/Share）、夸克网盘、百度网盘、115 网盘、123 云盘、迅雷云盘、天翼云盘（189）、腾讯微云、蓝奏云、PikPak、UC 网盘、移动云盘、139 云盘、豆包、沃家云盘、天翼家庭云、乐视云盘等 |
-| 国际网盘 | Google Drive、OneDrive（App/ShareLink）、Dropbox、MEGA、MediaFire、Proton Drive、Yandex Disk、Degoo、Bunny Storage、TeraBox 等 |
-| 对象存储 / 协议 | S3 兼容（AWS/OSS/COS/MinIO 等）、WebDAV、FTP、SFTP、SMB、IPFS、Azure Blob 等 |
-| 代码托管 / Release | GitHub、GitHub Releases、CNB Releases |
-| 网盘类程序 | OpenList / AList V3、Cloudreve V3/V4、Kodbox、Seafile、Teldrive、Febbox 等 |
-| 其他 | 网易云音乐、Misskey、Emby、115 分享、阿里云盘分享、夸克分享等 |
-
-除上述真实存储外，还提供 `Local`、`Alias`、`UrlTree`、`AutoIndex`、`Strm`、`Crypt`、`Virtual`、`Chunk` 等虚拟/功能型驱动，可用于本地挂载、地址别名、URL 列表、加密存储与分片等场景。
-
-### 核心能力
-
-- **文件浏览与预览**：统一的目录树浏览，支持图片、视频、音频、文档（Office/PDF/Markdown）、代码、压缩包等多种格式的在线预览与播放。
-- **上传与下载**：跨存储的上传、批量下载、流式传输与直链跳转。
-- **文件分享**：生成带有效期、密码与权限控制的分享链接，支持匿名访问与目录分享。
-- **全文搜索**：在已索引的存储中快速检索文件。
-- **离线任务**：后台任务队列，支持批量操作与异步处理。
-- **WebDAV / S3 接口**：将聚合存储以 WebDAV 或 S3 兼容协议对外暴露，便于挂载到第三方工具。
-- **MCP 服务**：提供 Model Context Protocol 端点，可被 AI 助手等客户端集成调用。
-
-### 权限管理
-
-- **多用户与权限**：基于角色的访问控制（RBAC），支持用户分组、目录级读写权限与配额。
-- **多样认证方式**：内置账号密码（bcrypt 加密），支持 TOTP 两步验证（2FA）、WebAuthn/FIDO 无密码登录、SSO（OIDC）单点登录与 LDAP 目录认证。
-- **安全加固**：JWT 会话、CSRF 防护、点击劫持防护（X-Frame-Options）、内容安全策略（CSP）、请求限流与流量限制、敏感字段静态加密（`ENCRYPTION_SECRET`）、审计日志。
-- **健康检查**：提供 `/health` 存活探针与 `/healthz` 就绪探针，可用于监控与告警。
-
-### 平台部署
-
-- **运行平台**：Cloudflare Workers、腾讯云 EdgeOne Cloud Function、Vercel、Serverless Framework 及 Node.js 容器环境。
-- **数据库**：Cloudflare D1（SQLite）为主，同时支持 MySQL、MariaDB、PostgreSQL、SQL Server。
-- **缓存**：Cloudflare KV / EdgeOne Blob（可选），用于配置持久化与缓存。
-- **一键部署**：支持 EdgeOne、Cloudflare Workers 等平台的一键部署按钮，部署后通过浏览器安装向导初始化管理员账号。
-
-## 关于TS版
-
-OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTeam/OpenList)的 TypeScript 移植版
-
-将后端从 Go 重写为运行于 Worker 的 TypeScript 服务，前端保持一致的界面与交互体验。
+---
 
 ## 一键部署
 
@@ -95,9 +50,59 @@ OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTea
 >
 > 详细部署指南：[Cloudflare Workers](./docs/0-Getting-Started/0-00002-Deploy-Cloudflare-Workers.md) · [EdgeOne](./docs/0-Getting-Started/0-00003-Deploy-EdgeOne.md)
 
+
+## 功能简介
+
+OpenList-TSWorker 是一个运行于边缘计算平台的多存储聚合文件列表与管理系统，可将分散在不同网盘、对象存储与协议服务中的文件统一到一个界面进行浏览、预览、下载与管理。
+
+### 关于TS版
+
+OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTeam/OpenList)的 TypeScript 移植版
+
+将后端从 Go 重写为运行于 Worker 的 TypeScript 服务，前端保持一致的界面与交互体验。
+
+### 存储聚合
+
+内置 **80+ 存储驱动**，开箱即用地挂载各类存储后端：
+
+| 分类 | 支持的后端 |
+| :--- | :--- |
+| 国内网盘 | 阿里云盘（Open/Share）、夸克网盘、百度网盘、115 网盘、123 云盘、迅雷云盘、天翼云盘（189）、腾讯微云、蓝奏云、PikPak、UC 网盘、移动云盘、139 云盘、豆包、沃家云盘、天翼家庭云、乐视云盘等 |
+| 国际网盘 | Google Drive、OneDrive（App/ShareLink）、Dropbox、MEGA、MediaFire、Proton Drive、Yandex Disk、Degoo、Bunny Storage、TeraBox 等 |
+| 对象存储 | S3 兼容（AWS/OSS/COS/MinIO 等）、WebDAV、FTP、SFTP、SMB、IPFS、Azure Blob 等 |
+| 代码托管 | GitHub、GitHub Releases、CNB Releases |
+| 网盘程序 | OpenList / AList V3、Cloudreve V3/V4、Kodbox、Seafile、Teldrive、Febbox 等 |
+| 其他驱动 | 网易云音乐、Misskey、Emby、115 分享、阿里云盘分享、夸克分享等 |
+
+除上述真实存储外，还提供 `Local`、`Alias`、`UrlTree`、`AutoIndex`、`Strm`、`Crypt`、`Virtual`、`Chunk` 等虚拟/功能型驱动，可用于本地挂载、地址别名、URL 列表、加密存储与分片等场景。
+
+### 核心能力
+
+- **文件浏览**：统一的目录树浏览，支持图片、视频、音频、文档（Office/PDF/Markdown）、代码、压缩包等多种格式的在线预览与播放。
+- **上传下载**：跨存储的上传、批量下载、流式传输与直链跳转。
+- **文件分享**：生成带有效期、密码与权限控制的分享链接，支持匿名访问与目录分享。
+- **全文搜索**：在已索引的存储中快速检索文件。
+- **离线任务**：后台任务队列，支持批量操作与异步处理。
+- **外部接口**：将聚合存储以 WebDAV 或 S3 兼容协议对外暴露，便于挂载到第三方工具。
+- **MCP 服务**：提供 Model Context Protocol 端点，可被 AI 助手等客户端集成调用。
+
+### 权限管理
+
+- **权限管理**：基于角色的访问控制（RBAC），支持用户分组、目录级读写权限与配额。
+- **认证方式**：内置账号密码（bcrypt 加密），支持 TOTP 两步验证（2FA）、WebAuthn/FIDO 无密码登录、SSO（OIDC）单点登录与 LDAP 目录认证。
+- **安全加固**：JWT 会话、CSRF 防护、点击劫持防护（X-Frame-Options）、内容安全策略（CSP）、请求限流与流量限制、敏感字段静态加密（`ENCRYPTION_SECRET`）、审计日志。
+- **健康检查**：提供 `/health` 存活探针与 `/healthz` 就绪探针，可用于监控与告警。
+
+### 平台部署
+
+- **运行平台**：Cloudflare Workers、腾讯云 EdgeOne Cloud Function、Vercel、Serverless Framework 及 Node.js 容器环境。
+- **数据存储**：Cloudflare D1（SQLite）为主，同时支持 MySQL、MariaDB、PostgreSQL、SQL Server。
+- **持久缓存**：Cloudflare KV / EdgeOne Blob（可选），用于配置持久化与缓存。
+- **一键部署**：支持 EdgeOne、Cloudflare Workers 等平台的一键部署按钮，部署后通过浏览器安装向导初始化管理员账号。
+
 ---
 
-## 快速开始
+## 手动部署
 
 > 完整部署说明请参考上游官方文档：[https://doc.oplist.org](https://doc.oplist.org)
 
@@ -131,6 +136,8 @@ npm run dev:page
 npm run deploy
 ```
 
+---
+
 ## 技术架构
 
 ### 后端
@@ -148,7 +155,7 @@ npm run deploy
 - **UI 库**：Ant Design / Material-UI
 - **构建工具**：Vite
 
-
+---
 
 ## 项目文档
 
