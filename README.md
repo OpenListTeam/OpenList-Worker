@@ -44,8 +44,8 @@
 > [!IMPORTANT]
 > - 若Cloudflare提示`无法获取存储库内容`，则您需要先[Fork](https://github.com/OpenListTeam/OpenList-Worker/fork)本项目，再通过连接到Github仓库功能部署
 > - 部署完成后配置环境变量： **EdgeOne**：[国际站](https://console.edgeone.ai/makers) · [中国站](https://console.cloud.tencent.com/edgeone/makers)；**Cloudflare**：[Worker 后台](https://dash.cloudflare.com/)，环境变量：
->   - `DB_DRIVER`: 数据保存方式：`json` (默认) / `d1` (Cloudflare) / `kv` / `mysql`
->   - `DB_JSON_BACKEND`: 选择`json`格式所使用的后端: `blob` (默认) / `kv` / `cf_rest`
+>   - `DB_FORMAT`: 数据存储格式：`map` (默认，整对象JSON) / `key` (分key存储) / `sql` (关系表，与Go后端一致)
+>   - `DB_DRIVER`: 数据库驱动：`auto` (默认，自动检测) / `blob` (EdgeOne Blob) / `cfkv` (CF KV API) / `kv` (KV binding) / `d1` (Cloudflare D1) / `mysql`
 >   - 其余可选变量参考**详细部署指南**：[Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
 
 
@@ -144,6 +144,64 @@ pnpm run deploy:worker
 - **框架**：React 19 + TypeScript
 - **UI 库**：Ant Design / Material-UI
 - **构建工具**：Vite
+
+---
+
+
+## 配置
+
+### 环境变量
+
+#### 数据库配置
+
+**DB_FORMAT**（数据存储格式）
+- `map`（默认）：整对象 JSON 格式，适用于 KV/Blob 等简单存储
+- `key`：分 key 存储格式，每个实体一条记录（如 `openlist_tbl:users:1`），避免大 JSON
+- `sql`：关系数据库表格式，与 Go 后端完全一致，适用于 D1/MySQL
+
+**DB_DRIVER**（数据库驱动）
+- `auto`（默认）：自动检测可用驱动（优先级：blob → cfkv → kv → d1）
+- `blob`：腾讯云 EdgeOne Blob / 阿里云 ESA Blob
+- `cfkv`：Cloudflare KV REST API（需配置 `CF_ACCOUNT_ID`、`CF_KV_NAMESPACE_ID`、`CF_API_TOKEN`）
+- `kv`：Cloudflare KV binding
+- `d1`：Cloudflare D1（SQLite）
+- `mysql`：MySQL / PostgreSQL（仅 Node.js 容器）
+
+**推荐配置组合：**
+```bash
+# Cloudflare Workers + D1（推荐）
+DB_FORMAT=sql
+DB_DRIVER=d1
+
+# EdgeOne + Blob
+DB_FORMAT=map
+DB_DRIVER=blob
+
+# Cloudflare KV（高频读写）
+DB_FORMAT=key
+DB_DRIVER=kv
+
+# 远程访问 Cloudflare KV
+DB_FORMAT=key
+DB_DRIVER=cfkv
+CF_ACCOUNT_ID=your_account_id
+CF_KV_NAMESPACE_ID=your_namespace_id
+CF_API_TOKEN=your_api_token
+```
+
+**向后兼容：**
+- `DB_DRIVER=json` 自动转换为 `DB_FORMAT=map` + 自动检测驱动
+- `DB_JSON_BACKEND` 已废弃，会自动转换为 `DB_DRIVER`
+
+#### 安全配置
+
+- `ENCRYPTION_SECRET`：数据加密密钥（必填）
+- `JWT_SECRET`：JWT 令牌签名密钥（必填）
+- `ADMIN_PASSWORD`：初始管理员密码
+
+#### 其他配置
+
+详细配置说明请参考 [官方文档](https://doc.oplist.org/guide/configuration)
 
 ---
 

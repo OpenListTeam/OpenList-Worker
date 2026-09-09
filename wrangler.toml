@@ -64,7 +64,7 @@ ENCRYPTION_SECRET = ""
 # DATABASE_JSON = ""
 
 [[kv_namespaces]]
-binding = "KV"
+binding = ""
 
 # ===================== D1 =====================
 # 使用 Cloudflare 的 Automatic resource provisioning：

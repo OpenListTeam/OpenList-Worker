@@ -44,8 +44,8 @@ Click the button below to deploy this project to the corresponding platform with
 > [!IMPORTANT]
 > - If Cloudflare prompts `cannot fetch repository content`, [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork) this project first, then deploy by connecting to the GitHub repository
 > - After deployment, configure environment variables: **EdgeOne**: [International console](https://console.edgeone.ai/makers) · [China console](https://console.cloud.tencent.com/edgeone/makers); **Cloudflare**: [Worker dashboard](https://dash.cloudflare.com/). Environment variables:
->   - `DB_DRIVER`: data backend: `json` (default) / `d1` (Cloudflare) / `kv` / `mysql`
->   - `DB_JSON_BACKEND`: backend used by the `json` format: `blob` (default) / `kv` / `cf_rest`
+>   - `DB_FORMAT`: data storage format: `map` (default, whole object JSON) / `key` (per-key storage) / `sql` (relational tables, compatible with Go backend)
+>   - `DB_DRIVER`: database driver: `auto` (default, auto-detect) / `blob` (EdgeOne Blob) / `cfkv` (CF KV API) / `kv` (KV binding) / `d1` (Cloudflare D1) / `mysql`
 >   - For other optional variables, see the **detailed deployment guide**: [Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
 
 
@@ -144,6 +144,64 @@ pnpm run deploy:worker
 - **Framework**: React 19 + TypeScript
 - **UI libraries**: Ant Design / Material-UI
 - **Build tool**: Vite
+
+---
+
+
+## Configuration
+
+### Environment Variables
+
+#### Database Configuration
+
+**DB_FORMAT** (Data Storage Format)
+- `map` (default): Whole object JSON format, suitable for KV/Blob simple storage
+- `key`: Per-key storage format, each entity as a separate record (e.g., `openlist_tbl:users:1`), avoids large JSON
+- `sql`: Relational database table format, fully compatible with Go backend, suitable for D1/MySQL
+
+**DB_DRIVER** (Database Driver)
+- `auto` (default): Auto-detect available drivers (priority: blob → cfkv → kv → d1)
+- `blob`: Tencent EdgeOne Blob / Alibaba ESA Blob
+- `cfkv`: Cloudflare KV REST API (requires `CF_ACCOUNT_ID`, `CF_KV_NAMESPACE_ID`, `CF_API_TOKEN`)
+- `kv`: Cloudflare KV binding
+- `d1`: Cloudflare D1 (SQLite)
+- `mysql`: MySQL / PostgreSQL (Node.js container only)
+
+**Recommended Configurations:**
+```bash
+# Cloudflare Workers + D1 (recommended)
+DB_FORMAT=sql
+DB_DRIVER=d1
+
+# EdgeOne + Blob
+DB_FORMAT=map
+DB_DRIVER=blob
+
+# Cloudflare KV (high-frequency read/write)
+DB_FORMAT=key
+DB_DRIVER=kv
+
+# Remote Cloudflare KV access
+DB_FORMAT=key
+DB_DRIVER=cfkv
+CF_ACCOUNT_ID=your_account_id
+CF_KV_NAMESPACE_ID=your_namespace_id
+CF_API_TOKEN=your_api_token
+```
+
+**Backward Compatibility:**
+- `DB_DRIVER=json` auto-converts to `DB_FORMAT=map` + auto-detect driver
+- `DB_JSON_BACKEND` is deprecated and auto-converts to `DB_DRIVER`
+
+#### Security Configuration
+
+- `ENCRYPTION_SECRET`: Data encryption key (required)
+- `JWT_SECRET`: JWT token signing key (required)
+- `ADMIN_PASSWORD`: Initial admin password
+
+#### Other Configuration
+
+For detailed configuration, please refer to the [official documentation](https://doc.oplist.org/guide/configuration)
 
 ---
 

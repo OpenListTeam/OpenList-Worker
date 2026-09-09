@@ -23,8 +23,8 @@ test("schema: tables / keys / DDL are consistent", () => {
   assert.ok(MYSQL_SCHEMA.length >= 7)
 })
 
-test("backend factory: defaults to json and normalizes driver", async () => {
-  assert.equal(readDriver({}), "json")
+test("backend factory: defaults to auto and normalizes driver", async () => {
+  assert.equal(readDriver({}), "auto")
   assert.equal(readDriver({ DB_DRIVER: "d1" }), "d1")
   assert.equal(readDriver({ DB_DRIVER: "MYSQL" }), "mysql")
   assert.equal(readDriver({ DB_DRIVER: "KV" }), "kv")

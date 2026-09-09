@@ -24,6 +24,8 @@ export const PermissionBit = {
 } as const
 
 export interface UserPermissionObj {
+  id?: number
+  username?: string
   role: number
   permission: number
   disabled?: boolean
