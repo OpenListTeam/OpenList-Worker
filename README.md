@@ -32,6 +32,87 @@ OpenList-TSWorker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListT
 - 本项目仅对上游进行技术栈移植（Go → TypeScript / Cloudflare Workers），不改动功能语义与数据模型。
 - 本项目遵循与上游一致的 [AGPL-3.0](./LICENSE) 开源许可证。
 
+## 一键部署
+
+点击下方按钮，即可将本项目一键部署到对应平台（EdgeOne 会自动读取仓库根目录的 `edgeone.json` 完成构建配置）：
+
+| EdgeOne Makers · 国际站 | EdgeOne Makers · 中国站 | Cloudflare Workers · 全球站 |
+| :---: | :---: | :---: |
+| [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=ENCRYPTION_SECRET,JWT_SECRET) | [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=ENCRYPTION_SECRET,JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
+
+备注：若Cloudflare提示`无法获取存储库内容`，则您需要前往[Github Applications](https://github.com/settings/installations)，找到
+Cloudflare Workers and Pages，确保选中`All repositories`，如果还是无效，请考虑先`Uninstall`再重新授权，或Fork后手动连接仓库
+部署完成后，请登录对应平台后台配置环境变量与存储：
+
+- **EdgeOne**：[国际站后台](https://console.edgeone.ai/makers) · [中国站后台](https://console.cloud.tencent.com/edgeone/makers)
+- **Cloudflare**：[Worker 后台](https://dash.cloudflare.com/)
+
+> [!IMPORTANT]
+> 部署完成后，首次访问站点会自动进入**安装向导**，在浏览器中设置管理员账号与密码即可完成初始化，无需预先配置 `ADMIN_PASSWORD`。
+>
+> 可选环境变量 / Secrets：
+> - `ENCRYPTION_SECRET`：静态加密密钥（推荐配置 ≥16 字符；用于加密网盘 token/secret 等敏感字段，未配置时将以明文落盘）
+> - `JWT_SECRET`：JWT 签名密钥（推荐配置；未配置时自动生成并持久化到 KV）
+> - `CRON_SECRET`：定时刷新任务鉴权密钥（可选，仅 EdgeOne 定时任务需要）
+>
+> 详细部署指南：[Cloudflare Workers](./docs/0-Getting-Started/0-00002-Deploy-Cloudflare-Workers.md) · [EdgeOne](./docs/0-Getting-Started/0-00003-Deploy-EdgeOne.md)
+
+---
+
+## 快速开始
+
+> 完整部署说明请参考上游官方文档：[https://doc.oplist.org](https://doc.oplist.org)
+
+### 前置要求
+
+- Node.js 18+
+- Cloudflare 账号（用于部署到 Workers）
+
+### 本地开发
+
+```bash
+# 1. 安装后端依赖
+npm install
+
+# 2. 安装前端依赖
+npm run install:page
+
+# 3. 配置 wrangler.jsonc（填写 JWT_SECRET、KV/D1 绑定）
+
+# 4. 启动后端开发服务器
+npm run dev
+
+# 5. 在另一个终端启动前端开发服务器
+npm run dev:page
+```
+
+### 生产部署
+
+```bash
+# 一键部署（前端构建 + 后端部署到 Cloudflare Workers）
+npm run deploy
+```
+
+## 文档
+
+- 📘 [官方文档](https://doc.oplist.org)
+- 🌏 [中国镜像](https://doc.oplist.org.cn)
+- ⚖️ [使用条款](https://doc.oplist.org/terms)
+- 🔒 [隐私政策](https://doc.oplist.org/privacy)
+
+## Demo
+
+- 🌎 [全球 Demo](https://demo.oplist.org)
+- 🇨🇳 [中国 Demo](https://demo.oplist.org.cn)
+
+## 讨论
+
+如有一般性问题请前往 [_Discussions_](https://github.com/OpenListTeam/OpenList/discussions) 讨论区，**_Issues_ 仅用于错误报告和功能请求。**
+
+## 许可证
+
+`OpenList` 是基于 [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.txt) 许可证的开源软件。
+
 ## 免责声明
 
 OpenList 是一个由 OpenList 团队独立维护的开源项目，遵循 AGPL-3.0 许可证，致力于保持完整的代码开放性和修改透明性。
@@ -173,98 +254,6 @@ OpenList-TSWorker/
 └── package.json             # 项目依赖
 ```
 
-## 一键部署
-
-点击下方按钮，即可将本项目一键部署到对应平台（EdgeOne 会自动读取仓库根目录的 `edgeone.json` 完成构建配置）：
-
-| EdgeOne Makers · 国际站 | EdgeOne Makers · 中国站 | Cloudflare Workers · 全球站 |
-| :---: | :---: | :---: |
-| [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=ENCRYPTION_SECRET,JWT_SECRET) | [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=ENCRYPTION_SECRET,JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
-
-备注：若Cloudflare提示`无法获取存储库内容`，则您需要前往[Github Applications](https://github.com/settings/installations)，找到
-Cloudflare Workers and Pages，确保选中`All repositories`，如果还是无效，请考虑先`Uninstall`再重新授权，或Fork后手动连接仓库
-部署完成后，请登录对应平台后台配置环境变量与存储：
-
-- **EdgeOne**：[国际站后台](https://console.edgeone.ai/makers) · [中国站后台](https://console.cloud.tencent.com/edgeone/makers)
-- **Cloudflare**：[Worker 后台](https://dash.cloudflare.com/)
-
-> [!IMPORTANT]
-> 部署完成后，首次访问站点会自动进入**安装向导**，在浏览器中设置管理员账号与密码即可完成初始化，无需预先配置 `ADMIN_PASSWORD`。
->
-> 可选环境变量 / Secrets：
-> - `ENCRYPTION_SECRET`：静态加密密钥（推荐配置 ≥16 字符；用于加密网盘 token/secret 等敏感字段，未配置时将以明文落盘）
-> - `JWT_SECRET`：JWT 签名密钥（推荐配置；未配置时自动生成并持久化到 KV）
-> - `CRON_SECRET`：定时刷新任务鉴权密钥（可选，仅 EdgeOne 定时任务需要）
->
-> 详细部署指南：[Cloudflare Workers](./docs/0-Getting-Started/0-00002-Deploy-Cloudflare-Workers.md) · [EdgeOne](./docs/0-Getting-Started/0-00003-Deploy-EdgeOne.md)
-
----
-
-## 快速开始
-
-> 完整部署说明请参考上游官方文档：[https://doc.oplist.org](https://doc.oplist.org)
-
-### 前置要求
-
-- Node.js 18+
-- Cloudflare 账号（用于部署到 Workers）
-
-### 本地开发
-
-```bash
-# 1. 安装后端依赖
-npm install
-
-# 2. 安装前端依赖
-npm run install:page
-
-# 3. 配置 wrangler.jsonc（填写 JWT_SECRET、KV/D1 绑定）
-
-# 4. 启动后端开发服务器
-npm run dev
-
-# 5. 在另一个终端启动前端开发服务器
-npm run dev:page
-```
-
-### 生产部署
-
-```bash
-# 一键部署（前端构建 + 后端部署到 Cloudflare Workers）
-npm run deploy
-```
-
-## 文档
-
-- 📘 [官方文档](https://doc.oplist.org)
-- 🌏 [中国镜像](https://doc.oplist.org.cn)
-- ⚖️ [使用条款](https://doc.oplist.org/terms)
-- 🔒 [隐私政策](https://doc.oplist.org/privacy)
-
-## Demo
-
-- 🌎 [全球 Demo](https://demo.oplist.org)
-- 🇨🇳 [中国 Demo](https://demo.oplist.org.cn)
-
-## 讨论
-
-如有一般性问题请前往 [_Discussions_](https://github.com/OpenListTeam/OpenList/discussions) 讨论区，**_Issues_ 仅用于错误报告和功能请求。**
-
-## 许可证
-
-`OpenList` 是基于 [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.txt) 许可证的开源软件。
-
-## 免责声明
-
-- 本项目为免费开源软件，旨在通过网盘便捷分享文件，主要用于 Go 语言的下载与学习。
-- 使用本软件时请遵守相关法律法规，严禁任何形式的滥用。
-- 本软件基于官方 SDK 或 API 实现，未对其行为进行任何修改、破坏或干扰。
-- 仅进行 HTTP 302 跳转或流量转发，不拦截、存储或篡改任何用户数据。
-- 本项目与任何官方平台或服务提供商无关。
-- 本软件按“原样”提供，不附带任何明示或暗示的担保，包括但不限于适销性或特定用途的适用性。
-- 维护者不对因使用或无法使用本软件而导致的任何直接或间接损失负责。
-- 您需自行承担使用本软件的所有风险，包括但不限于账号被封、下载限速等。
-- 本项目遵循 [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.txt) 许可证，详情请参见 [LICENSE](./LICENSE) 文件。
 
 ## 联系我们
 
