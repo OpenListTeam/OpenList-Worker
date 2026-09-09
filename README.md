@@ -3,8 +3,8 @@
 
   <p><em>OpenList 是一个支持多网盘挂载的目录列表工具，支持数十种网盘文件挂载和文件管理、分享等功能</em></p>
 
-  <p>本仓库是官方 <a href="https://github.com/OpenListTeam/OpenList">OpenListTeam/OpenList</a> 项目的 TypeScript + Serverless架构移植版</p>
-  <p>基于 Cloudflare Workers / EdgeOne Cloud Function 运行</p>
+  <p>本仓库是官方 <a href="https://github.com/OpenListTeam/OpenList">OpenListTeam/OpenList</a> 项目的 TypeScript + Serverless 架构移植版</p>
+  <p>基于 Cloudflare Workers / EdgeOne Cloud Function / Alibaba Cloud ESA 运行</p>
 
 <a href="https://github.com/OpenListTeam/OpenList/blob/main/LICENSE"><img src="https://img.shields.io/github/license/OpenListTeam/OpenList" alt="License" /></a>
 <a href="https://github.com/OpenListTeam/OpenList/actions?query=workflow%3ABuild"><img src="https://img.shields.io/github/actions/workflow/status/OpenListTeam/OpenList/build.yml?branch=main" alt="Build status" /></a>
@@ -18,9 +18,9 @@
 <div align="center">
 
 
-[English](readmes/README_en.md) | 中文 | [日本語](readmes/README_ja.md) | [한국어](readmes/README_ko.md) | [Français](readmes/README_fr.md) | [Deutsch](readmes/README_de.md) | [Español](readmes/README_es.md)
+[English](readmes/README_en.md) | 中文 | [繁體中文](readmes/README_zh-TW.md) | [日本語](readmes/README_ja.md) | [한국어](readmes/README_ko.md) | [Français](readmes/README_fr.md) | [Deutsch](readmes/README_de.md) 
 
-[Português](readmes/README_pt.md) | [Русский](readmes/README_ru.md) | [العربية](readmes/README_ar.md) | [Italiano](readmes/README_it.md)
+[Português](readmes/README_pt.md) | [Русский](readmes/README_ru.md) | [العربية](readmes/README_ar.md) | [Italiano](readmes/README_it.md) | [हिन्दी](readmes/README_hi.md) | [Español](readmes/README_es.md)
 
 [上游项目](https://github.com/OpenListTeam/OpenList) · [贡献指南](https://github.com/OpenListTeam/OpenList-Worker/blob/main/CONTRIBUTING.md) · [行为准则](https://github.com/OpenListTeam/OpenList-Worker/blob/main/CODE_OF_CONDUCT.md) · [许可证](./LICENSE)
 
@@ -42,15 +42,12 @@
 
 </div>
 
-备注：若Cloudflare提示`无法获取存储库内容`，则您需要先Fork本项目，再通过连接到Github仓库功能部署
 
-部署完成后，请登录对应平台后台配置环境变量与存储：
-
-- **EdgeOne**：[国际站后台](https://console.edgeone.ai/makers) · [中国站后台](https://console.cloud.tencent.com/edgeone/makers)
-- **Cloudflare**：[Worker 后台](https://dash.cloudflare.com/)
 
 > [!IMPORTANT]
-> 部署完成后，首次访问站点会自动进入**安装向导**，在浏览器中设置初始化：
+> - 若Cloudflare提示`无法获取存储库内容`，则您需要先Fork本项目，再通过连接到Github仓库功能部署
+> - 部署完成后，请登录对应平台后台配置环境变量与存储：
+>   **EdgeOne**：[国际站后台](https://console.edgeone.ai/makers) · [中国站后台](https://console.cloud.tencent.com/edgeone/makers) **Cloudflare**：[Worker 后台](https://dash.cloudflare.com/)
 >
 > 可选环境变量 / Secrets：
 > - `ENCRYPTION_SECRET`：静态加密密钥（推荐配置 ≥16 字符；用于加密信息）
