@@ -49,12 +49,21 @@ export interface SharingSeed {
   files: SeedFile[]
 }
 
+export interface CasFileEntry {
+  name: string
+  size: number
+  md5: string
+  sliceMd5: string
+  create_time: string
+}
+
 export interface CasPayload {
   name: string
   size: number
   md5: string
   sliceMd5: string
   create_time: string
+  files?: CasFileEntry[]
 }
 
 export interface ParsedSeed {
@@ -109,7 +118,8 @@ function normalizeHash(value: unknown, algorithm: SeedHashAlgorithm): string {
 function normalizeSources(value: unknown): SeedSource[] {
   if (!Array.isArray(value)) return []
   return value.map((item) => {
-    if (!item || typeof item !== "object") throw new Error("Invalid seed source")
+    if (!item || typeof item !== "object")
+      throw new Error("Invalid seed source")
     const type = text((item as any).type)
     const url = text((item as any).url)
     if (!type || !url) throw new Error("Seed source type and URL are required")
@@ -129,7 +139,8 @@ function normalizeSources(value: unknown): SeedSource[] {
 }
 
 export function normalizeSeed(input: unknown): SharingSeed {
-  if (!input || typeof input !== "object") throw new Error("Invalid seed payload")
+  if (!input || typeof input !== "object")
+    throw new Error("Invalid seed payload")
   const value = input as any
   if (value.format !== undefined && value.format !== SEED_FORMAT) {
     throw new Error("Unsupported seed format")
@@ -138,24 +149,37 @@ export function normalizeSeed(input: unknown): SharingSeed {
     throw new Error("Unsupported seed version")
   }
   const pieceSize = Number(value.piece_size || DEFAULT_PIECE_SIZE)
-  if (!Number.isSafeInteger(pieceSize) || pieceSize < 16 * 1024 || pieceSize > 64 * 1024 * 1024) {
+  if (
+    !Number.isSafeInteger(pieceSize) ||
+    pieceSize < 16 * 1024 ||
+    pieceSize > 64 * 1024 * 1024
+  ) {
     throw new Error("Invalid piece_size")
   }
-  if (!Array.isArray(value.files) || value.files.length === 0 || value.files.length > 100_000) {
+  if (
+    !Array.isArray(value.files) ||
+    value.files.length === 0 ||
+    value.files.length > 100_000
+  ) {
     throw new Error("Seed file count must be between 1 and 100000")
   }
   const files: SeedFile[] = value.files.map((file: any) => {
     if (!file || typeof file !== "object") throw new Error("Invalid seed file")
     const size = Number(file.size)
-    if (!Number.isSafeInteger(size) || size < 0) throw new Error("Invalid seed file size")
+    if (!Number.isSafeInteger(size) || size < 0)
+      throw new Error("Invalid seed file size")
     const hashes = file.hashes || {}
     const pieces = hashes.pieces || {}
     const expectedPieces = size > 0 ? Math.ceil(size / pieceSize) : 0
     const normalizedPieces = (algorithm: SeedHashAlgorithm): string[] => {
       if (!Array.isArray(pieces[algorithm])) return []
-      const values = pieces[algorithm].map((hash: unknown) => normalizeHash(hash, algorithm))
+      const values = pieces[algorithm].map((hash: unknown) =>
+        normalizeHash(hash, algorithm),
+      )
       if (values.length !== 0 && values.length !== expectedPieces) {
-        throw new Error(`${algorithm} piece count is ${values.length}, expected ${expectedPieces}`)
+        throw new Error(
+          `${algorithm} piece count is ${values.length}, expected ${expectedPieces}`,
+        )
       }
       return values
     }
@@ -184,7 +208,8 @@ export function normalizeSeed(input: unknown): SharingSeed {
   })
   const seen = new Set<string>()
   for (const file of files) {
-    if (seen.has(file.path)) throw new Error(`Duplicate seed file path: ${file.path}`)
+    if (seen.has(file.path))
+      throw new Error(`Duplicate seed file path: ${file.path}`)
     seen.add(file.path)
   }
   const name = text(value.name) || files[0].path.split("/")[0]
@@ -199,14 +224,23 @@ export function normalizeSeed(input: unknown): SharingSeed {
     created_at: text(value.created_at) || new Date().toISOString(),
     created_by: text(value.created_by) || "OpenList",
     piece_size: pieceSize,
-    trackers: Array.isArray(value.trackers) ? value.trackers.map(text).filter(Boolean) : [],
+    trackers: Array.isArray(value.trackers)
+      ? value.trackers.map(text).filter(Boolean)
+      : [],
     channels: Array.isArray(value.channels)
       ? value.channels.map((channel: any) => {
-          if (!channel || typeof channel !== "object" || !text(channel.driver).trim()) {
+          if (
+            !channel ||
+            typeof channel !== "object" ||
+            !text(channel.driver).trim()
+          ) {
             throw new Error("Seed channel driver is required")
           }
           const mountPath = text(channel.mount_path)
-          if (/[?#\0]/.test(mountPath)) throw new Error("Seed channel mount_path contains invalid characters")
+          if (/[?#\0]/.test(mountPath))
+            throw new Error(
+              "Seed channel mount_path contains invalid characters",
+            )
           return { driver: text(channel.driver).trim(), mount_path: mountPath }
         })
       : [],
@@ -225,15 +259,30 @@ export interface SeedHashMatrix {
   sha256: SeedHashSelection
 }
 
-export function normalizeHashMatrix(input: unknown, formats: SeedFormat[]): SeedHashMatrix {
-  const value = (input && typeof input === "object" ? input : {}) as Record<string, any>
+export function normalizeHashMatrix(
+  input: unknown,
+  formats: SeedFormat[],
+): SeedHashMatrix {
+  const value = (input && typeof input === "object" ? input : {}) as Record<
+    string,
+    any
+  >
   const select = (algorithm: SeedHashAlgorithm): SeedHashSelection => ({
     whole: !!value[algorithm]?.whole,
     pieces: !!value[algorithm]?.pieces,
   })
-  let matrix: SeedHashMatrix = { md5: select("md5"), sha1: select("sha1"), sha256: select("sha256") }
-  const allEmpty = !matrix.md5.whole && !matrix.md5.pieces && !matrix.sha1.whole && !matrix.sha1.pieces &&
-    !matrix.sha256.whole && !matrix.sha256.pieces
+  let matrix: SeedHashMatrix = {
+    md5: select("md5"),
+    sha1: select("sha1"),
+    sha256: select("sha256"),
+  }
+  const allEmpty =
+    !matrix.md5.whole &&
+    !matrix.md5.pieces &&
+    !matrix.sha1.whole &&
+    !matrix.sha1.pieces &&
+    !matrix.sha256.whole &&
+    !matrix.sha256.pieces
   if (allEmpty) {
     matrix = {
       md5: { whole: true, pieces: true },
@@ -248,7 +297,10 @@ export function normalizeHashMatrix(input: unknown, formats: SeedFormat[]): Seed
   return matrix
 }
 
-export function applyHashMatrix(file: SeedFile, matrix: SeedHashMatrix): SeedFile {
+export function applyHashMatrix(
+  file: SeedFile,
+  matrix: SeedHashMatrix,
+): SeedFile {
   const hashes: SeedHashes = {
     md5: matrix.md5.whole ? file.hashes.md5 : "",
     sha1: matrix.sha1.whole ? file.hashes.sha1 : "",
