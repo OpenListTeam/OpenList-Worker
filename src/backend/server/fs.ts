@@ -24,7 +24,7 @@ import {
 import { safeErrorMessage } from "../pkg/errs"
 import { search } from "../internal/op/search"
 import { parseZip, extractZipEntry, ZipArchive } from "../internal/archive/zip"
-import { assertSafeUrl } from "../pkg/http"
+import { assertSafeUrl, extractTrustedHosts } from "../pkg/http"
 import { seedRouter } from "./seed"
 import {
   clampChunkSize,
@@ -1494,7 +1494,9 @@ async function fetchArchiveBytes(
   if (!item || !item.raw_url) {
     throw new Error("archive driver did not return download link")
   }
-  assertSafeUrl(item.raw_url, "Archive download")
+  // 管理员配置的受信存储 endpoint host（内网自建 S3/WebDAV/MinIO）加入白名单
+  const trustedHosts = extractTrustedHosts(resolved.storage?.addition)
+  assertSafeUrl(item.raw_url, "Archive download", trustedHosts)
   const resp = await fetch(item.raw_url, {
     headers: item.raw_url_headers || {},
   })

@@ -5,7 +5,7 @@ import { flushPendingDriverState, getDriver } from "../internal/op/storage"
 import { resolveShare } from "../internal/op/share"
 import { needDownloadSign, verifyDownloadSign } from "../pkg/sign"
 import { safeErrorMessage } from "../pkg/errs"
-import { assertSafeUrl } from "../pkg/http"
+import { assertSafeUrl, extractTrustedHosts } from "../pkg/http"
 
 let fsPromises: any = null
 let createReadStream: any = null
@@ -55,13 +55,14 @@ const SAFE_REDIRECT_HEADER_KEYS = new Set([
 async function safeProxyFetch(
   url: string,
   headers: Record<string, string>,
+  allowHosts?: ReadonlySet<string> | string[],
 ): Promise<Response> {
   const MAX_REDIRECTS = 5
   let current = url
   let currentHeaders = headers
   for (let i = 0; i < MAX_REDIRECTS; i++) {
     try {
-      assertSafeUrl(current, "Proxy download")
+      assertSafeUrl(current, "Proxy download", allowHosts)
     } catch (e: any) {
       throw new Error(e?.message || "SSRF blocked: restricted destination")
     }
@@ -175,6 +176,9 @@ rawRouter.get("/*", async (c) => {
       // Remote cloud drivers: fetch download link via driver.get()
       if (normDriver !== "local") {
         try {
+          // 管理员配置的受信存储 endpoint host（可能是内网自建 S3/WebDAV/MinIO），
+          // 加入 SSRF 白名单，避免被误拦截。白名单仅来源于管理员填写的 addition 字段。
+          const trustedHosts = extractTrustedHosts(resolved.storage.addition)
           const driver = await getDriver(
             resolved.storage.driver,
             resolved.storage,
@@ -220,7 +224,11 @@ rawRouter.get("/*", async (c) => {
 
               let upstreamRes: Response
               try {
-                upstreamRes = await safeProxyFetch(fileItem.raw_url, headers)
+                upstreamRes = await safeProxyFetch(
+                  fileItem.raw_url,
+                  headers,
+                  trustedHosts,
+                )
               } catch (ssrfErr: any) {
                 return c.text(ssrfErr.message || "SSRF blocked", 403)
               }
@@ -231,7 +239,11 @@ rawRouter.get("/*", async (c) => {
                   `[rawRouter] Upstream returned 412 for '${reqPath}', retrying without Range header...`,
                 )
                 delete headers["Range"]
-                upstreamRes = await safeProxyFetch(fileItem.raw_url, headers)
+                upstreamRes = await safeProxyFetch(
+                  fileItem.raw_url,
+                  headers,
+                  trustedHosts,
+                )
               }
 
               // CORS headers
@@ -301,7 +313,7 @@ rawRouter.get("/*", async (c) => {
               return c.body(upstreamRes.body as any, upstreamRes.status as any)
             } else {
               try {
-                assertSafeUrl(fileItem.raw_url, "Redirect download")
+                assertSafeUrl(fileItem.raw_url, "Redirect download", trustedHosts)
               } catch (ssrfErr: any) {
                 return c.text(ssrfErr.message || "SSRF blocked", 403)
               }

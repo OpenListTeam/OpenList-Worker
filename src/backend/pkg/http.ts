@@ -167,7 +167,10 @@ export async function download(
  * - 阻止整数/十六进制 IP 表示
  * - 检测混淆 IP 格式
  */
-export function isSafeUrl(urlStr: string): boolean {
+export function isSafeUrl(
+  urlStr: string,
+  allowHosts?: ReadonlySet<string> | string[],
+): boolean {
   try {
     const parsed = new URL(urlStr)
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
@@ -176,6 +179,15 @@ export function isSafeUrl(urlStr: string): boolean {
 
     const host = parsed.hostname.toLowerCase().trim()
     if (!host) return false
+
+    // 白名单：管理员在存储配置里主动填写的 endpoint host（可能是内网/私有地址）
+    // 视为受信。SSRF 防护只针对用户/第三方可控的 URL，不应拦截管理员自己的
+    // 内网存储（自建 MinIO / 内网 S3 / 内网 WebDAV 等）。仅做精确 host 匹配，
+    // 不放过子域名，避免被「受信域名下的任意子域」绕过。
+    if (allowHosts) {
+      const allow = new Set(allowHosts)
+      if (allow.has(host)) return true
+    }
 
     // 1. 检查危险主机名
     const dangerousHosts = [
@@ -254,14 +266,18 @@ export function isSafeUrl(urlStr: string): boolean {
     }
 
     // 6. 检测 DNS 重绑定特征域名（攻击者常用模式）
+    // 注意：整数/十六进制 IP 检测必须锚定到「完整的 label」，不能做子串匹配。
+    // 例如腾讯云 COS 的 hostname 形如 {bucket}-{10位AppID}.cos.{region}.myqcloud.com，
+    // 其中 AppID 就是连续的 10 位数字；若用 /\d{10}/ 子串匹配会误判为整数 IP，
+    // 导致正常公网下载被 SSRF 拦截。这里只拦截「某个 label 整体是整数/十六进制 IP」。
     const dnsRebindPatterns = [
-      /\d{1,3}-\d{1,3}-\d{1,3}-\d{1,3}/, // 127-0-0-1.example.com
-      /0x[0-9a-f]{8}/i, // 0x7f000001.example.com
-      /\d{10}/, // 2130706433.example.com (整数IP)
-      /127\.0\.0\.1\.nip\.io/, // nip.io DNS rebinding service
-      /localtest\.me/, // localtest.me resolves to 127.0.0.1
-      /vcap\.me/, // vcap.me resolves to 127.0.0.1
-      /\.xip\.io/, // xip.io DNS rebinding service
+      /(^|\.)\d{1,3}-\d{1,3}-\d{1,3}-\d{1,3}(\.|$)/, // 127-0-0-1.example.com
+      /(^|\.)0x[0-9a-f]{6,8}(\.|$)/i, // 0x7f000001.example.com (十六进制IP label)
+      /(^|\.)\d{8,}(\.|$)/, // 2130706433.example.com (整数IP label)
+      /(^|\.)127\.0\.0\.1\.nip\.io$/, // nip.io DNS rebinding service
+      /(^|\.)localtest\.me$/, // localtest.me resolves to 127.0.0.1
+      /(^|\.)vcap\.me$/, // vcap.me resolves to 127.0.0.1
+      /(^|\.)xip\.io$/, // xip.io DNS rebinding service
     ]
     for (const pattern of dnsRebindPatterns) {
       if (pattern.test(host)) {
@@ -275,10 +291,77 @@ export function isSafeUrl(urlStr: string): boolean {
   }
 }
 
-export function assertSafeUrl(urlStr: string, context = "Request"): void {
-  if (!isSafeUrl(urlStr)) {
+export function assertSafeUrl(
+  urlStr: string,
+  context = "Request",
+  allowHosts?: ReadonlySet<string> | string[],
+): void {
+  if (!isSafeUrl(urlStr, allowHosts)) {
     throw new Error(
       `${context} blocked: URL points to a restricted or private network destination (SSRF protection)`,
     )
   }
+}
+
+/**
+ * 从存储配置 addition 中提取管理员配置的受信 host。
+ *
+ * 背景：SSRF 防护针对的是「用户/第三方可控」的 URL。而 addition 的所有字段都是
+ * 管理员在后台主动填写的（S3 的 endpoint、WebDAV 的 address、阿里云中转的
+ * api_url_address 等），属于受信输入。管理员完全可能配置内网自建存储（MinIO、
+ * 内网 S3、内网 WebDAV），此时驱动生成的 raw_url host 就是内网地址，会命中 SSRF
+ * 拦截。因此把这些 host 加入白名单，使管理员自己的内网存储能正常下载。
+ *
+ * 实现：只扫描「字段名含 url/host/address/endpoint/server/domain/site/base 等
+ * 关键词」的字段（避免把 username 之类的普通字符串误当 host），且值必须能解析成
+ * http(s) URL 或裸 host[:port]，提取其 hostname。
+ */
+export function extractTrustedHosts(addition: any): Set<string> {
+  const hosts = new Set<string>()
+  if (addition == null) return hosts
+
+  let obj = addition
+  if (typeof addition === "string") {
+    try {
+      obj = JSON.parse(addition)
+    } catch {
+      return hosts
+    }
+  }
+  if (typeof obj !== "object" || Array.isArray(obj)) return hosts
+
+  const HOST_KEY_RE =
+    /(url|host|address|endpoint|server|domain|site|base|gateway|api)/i
+
+  const addHostFrom = (raw: string) => {
+    const val = raw.trim()
+    if (!val) return
+    // 有 scheme 直接用，没有则补 http://（覆盖 "192.168.1.10:9000" 这类 endpoint）
+    const candidates = /^[a-z][a-z0-9+.-]*:\/\//i.test(val)
+      ? [val]
+      : [`http://${val}`]
+    for (const c of candidates) {
+      try {
+        const u = new URL(c)
+        if (u.protocol !== "http:" && u.protocol !== "https:") continue
+        const h = u.hostname.toLowerCase().trim()
+        if (h) hosts.add(h)
+      } catch {
+        // 不是合法 URL，跳过
+      }
+    }
+  }
+
+  const visit = (node: any) => {
+    if (node == null || typeof node !== "object") return
+    for (const [key, val] of Object.entries(node)) {
+      if (typeof val === "string") {
+        if (HOST_KEY_RE.test(key)) addHostFrom(val)
+      } else if (val != null && typeof val === "object") {
+        visit(val)
+      }
+    }
+  }
+  visit(obj)
+  return hosts
 }
