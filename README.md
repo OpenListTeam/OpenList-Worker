@@ -12,6 +12,8 @@
 <a href="https://github.com/OpenListTeam/OpenList/discussions"><img src="https://img.shields.io/github/discussions/OpenListTeam/OpenList?color=%23ED8936" alt="discussions" /></a>
 <a href="https://github.com/OpenListTeam/OpenList/releases"><img src="https://img.shields.io/github/downloads/OpenListTeam/OpenList/total?color=%239F7AEA&logo=github" alt="Downloads" /></a>
 
+📘 [使用文档](https://doc.oplist.org) · 🌏 [使用文档（中国大陆）](https://doc.oplist.org.cn)  · ⚖️ [使用条款](https://doc.oplist.org/terms)  · 🔒 [隐私政策](https://doc.oplist.org/privacy)
+
 </div>
 
 <div align="center">
@@ -154,13 +156,6 @@ npm run deploy
 
 ---
 
-## 项目文档
-
-- 📘 [官方文档](https://doc.oplist.org)
-- 🌏 [中国镜像](https://doc.oplist.org.cn)
-- ⚖️ [使用条款](https://doc.oplist.org/terms)
-- 🔒 [隐私政策](https://doc.oplist.org/privacy)
-
 
 ## 帮助支持
 
@@ -173,14 +168,11 @@ npm run deploy
 
 ## 联系我们
 
-- [@GitHub](https://github.com/OpenListTeam)
-- [Telegram 交流群](https://t.me/OpenListTeam)
-- [Telegram 频道](https://t.me/OpenListOfficial)
+[@GitHub](https://github.com/OpenListTeam) · [Telegram 交流群](https://t.me/OpenListTeam) · [Telegram 频道](https://t.me/OpenListOfficial)
 
 ## 贡献列表
 
-我们衷心感谢原项目 [AlistGo/alist](https://github.com/AlistGo/alist) 的作者 [Xhofe](https://github.com/Xhofe) 及所有其他贡献者。
-
-感谢这些优秀的人：
-
+ - 原[Alist](https://github.com/AlistGo/alist) 项目作者及所有其他贡献者。
+ - 原[OpenList](https://github.com/OpenListTeam/OpenList)Go版本项目作者及所有其他贡献者。
+ - 本项目贡献者：
 [![Contributors](https://contrib.rocks/image?repo=OpenListTeam/OpenList-Worker)](https://github.com/OpenListTeam/OpenList-Worker/graphs/contributors)
