@@ -16,6 +16,16 @@ import { resolvePath } from "../internal/model/db"
 import { getUserFromContext } from "./middlewares"
 import { canWrite, getActualPath, isAdmin } from "../pkg/permission"
 import {
+  getNearestMeta,
+  canAccess,
+  getReadme,
+  getHeader,
+  canWriteContentBypassUserPerms,
+  isHidden,
+  canWrite as canWriteMeta,
+} from "../pkg/meta"
+import type { Meta } from "../pkg/meta"
+import {
   getSignPolicy,
   signDownloadPath,
   isEncryptPath,
@@ -49,6 +59,7 @@ const getStorageRequestContext = (c: any) => {
     }
     return {
       waitUntil: (promise: Promise<unknown>) => executionCtx.waitUntil(promise),
+      env: c.env, // 传递 env 用于请求级 KV 缓存复用
     }
   } catch {
     return undefined
@@ -305,13 +316,22 @@ fsRouter.post("/list", async (c) => {
       })
     }
 
+    // 普通路径：应用 meta 权限（密码 + read_users + readme/header + hide 过滤）
+    const meta = await getNearestMeta(reqPath, c.env)
+    if (!canAccess(user, meta, reqPath, body.password || "")) {
+      return c.json(
+        { code: 403, message: "Access denied (wrong password or not in read_users)", data: null },
+        403,
+      )
+    }
+
     const { content, provider, storage } = await listItems(
       reqPath,
       requestContext,
     )
-    // write 按请求者身份如实返回：游客/无写权限用户为 false，
-    // 前端据此隐藏上传、新建文件夹等写操作入口
-    const writable = canWrite(user)
+    // write：用户写权限 + meta.write_users 白名单（对齐 Go common.CanWrite）
+    const writable = canWrite(user) && canWriteMeta(user, meta, reqPath)
+    const writeContentBypass = canWriteContentBypassUserPerms(meta, reqPath)
     // 下载签名（对齐 Go server/common.Sign + handles.isEncrypt）：
     //   目录不签名；sign_all（或 TS 扩展的 link_expiration）开启、
     //   或该目录被设了密码的 meta 覆盖时，为文件项签发 HMAC 签名。
@@ -326,23 +346,25 @@ fsRouter.post("/list", async (c) => {
       : 0
     // Normalize each item to the full Obj shape expected by the frontend
     const normalized = await Promise.all(
-      content.map(async (item: any) => {
-        const fullPath = `${reqPath}/${item.name}`.replace(/\/{2,}/g, "/")
-        const sign =
-          !item.is_dir && signNeeded
-            ? await signDownloadPath(c, fullPath, signExpiresIn)
-            : ""
-        return {
-          name: item.name,
-          size: item.size,
-          is_dir: item.is_dir,
-          created: item.created || item.modified || new Date().toISOString(),
-          modified: item.modified || new Date().toISOString(),
-          sign,
-          thumb: item.thumb || "",
-          type: item.type ?? 0,
-        }
-      }),
+      content
+        .filter((item: any) => !isHidden(meta, reqPath, item.name))
+        .map(async (item: any) => {
+          const fullPath = `${reqPath}/${item.name}`.replace(/\/{2,}/g, "/")
+          const sign =
+            !item.is_dir && signNeeded
+              ? await signDownloadPath(c, fullPath, signExpiresIn)
+              : ""
+          return {
+            name: item.name,
+            size: item.size,
+            is_dir: item.is_dir,
+            created: item.created || item.modified || new Date().toISOString(),
+            modified: item.modified || new Date().toISOString(),
+            sign,
+            thumb: item.thumb || "",
+            type: item.type ?? 0,
+          }
+        }),
     )
 
     let storagePageSize = 0
@@ -382,10 +404,10 @@ fsRouter.post("/list", async (c) => {
       data: {
         content: pagedContent,
         total,
-        readme: "",
-        header: "",
+        readme: getReadme(meta, reqPath),
+        header: getHeader(meta, reqPath),
         write: writable,
-        write_content_bypass: false,
+        write_content_bypass: writeContentBypass,
         provider,
         page_size: effectivePerPage > 0 ? effectivePerPage : undefined,
       },
@@ -468,6 +490,15 @@ fsRouter.post("/get", async (c) => {
       })
     }
 
+    // 普通路径：应用 meta 权限（密码 + read_users + readme/header）
+    const meta = await getNearestMeta(reqPath, c.env)
+    if (!canAccess(user, meta, reqPath, body.password || "")) {
+      return c.json(
+        { code: 403, message: "Access denied (wrong password or not in read_users)", data: null },
+        403,
+      )
+    }
+
     const { item, provider, rawUrl } = await getItem(reqPath, requestContext)
     // 与 /fs/list 同源逻辑，见上方注释
     const signPolicy = await getSignPolicy(c)
@@ -480,6 +511,8 @@ fsRouter.post("/get", async (c) => {
             signPolicy.expiresIn || (await getSignExpiresIn(c)),
           )
         : ""
+    const writable = canWrite(user) && canWriteMeta(user, meta, reqPath)
+    const writeContentBypass = canWriteContentBypassUserPerms(meta, reqPath)
     return c.json({
       code: 200,
       message: "success",
@@ -494,12 +527,12 @@ fsRouter.post("/get", async (c) => {
         thumb: (item as any).thumb || "",
         type: item.type ?? 0,
         raw_url: rawUrl,
-        readme: "",
-        header: "",
+        readme: getReadme(meta, reqPath),
+        header: getHeader(meta, reqPath),
         provider,
         related: [],
-        write: canWrite(user),
-        write_content_bypass: false,
+        write: writable,
+        write_content_bypass: writeContentBypass,
       },
     })
   } catch (err: any) {

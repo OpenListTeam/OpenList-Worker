@@ -10,6 +10,7 @@ import { getDriver } from "../internal/op/storage"
 import { search } from "../internal/op/search"
 import { checkAdminAuth } from "../pkg/utils"
 import { safeErrorMessage } from "../pkg/errs"
+import { validateHide } from "../pkg/meta"
 
 export const adminRouter = new Hono()
 
@@ -4192,6 +4193,18 @@ adminRouter.post("/meta/create", async (c) => {
     return c.json({ code: 400, message: "meta already exists", data: null })
   }
 
+  // 校验 hide 正则合法性（对齐 Go handles/meta.go:71-80 validHide）
+  const hide = String(body.hide || "")
+  if (hide) {
+    const invalidLine = validateHide(hide)
+    if (invalidLine) {
+      return c.json(
+        { code: 400, message: `invalid hide regex: ${invalidLine}`, data: null },
+        400,
+      )
+    }
+  }
+
   const newMeta = {
     id: db.metas.length ? Math.max(...db.metas.map((m: any) => m.id)) + 1 : 1,
     path,
@@ -4203,7 +4216,7 @@ adminRouter.post("/meta/create", async (c) => {
     p_sub: !!body.p_sub,
     write: !!body.write,
     w_sub: !!body.w_sub,
-    hide: body.hide || "",
+    hide,
     h_sub: !!body.h_sub,
     readme: body.readme || "",
     r_sub: !!body.r_sub,
@@ -4231,6 +4244,18 @@ adminRouter.post("/meta/update", async (c) => {
       : db.metas[idx].path
   if (path && db.metas.some((m: any) => m.path === path && m.id !== body.id)) {
     return c.json({ code: 400, message: "meta already exists", data: null })
+  }
+
+  // 校验 hide 正则合法性（对齐 Go handles/meta.go:71-80 validHide）
+  const hide = body.hide !== undefined ? String(body.hide) : db.metas[idx].hide
+  if (hide) {
+    const invalidLine = validateHide(hide)
+    if (invalidLine) {
+      return c.json(
+        { code: 400, message: `invalid hide regex: ${invalidLine}`, data: null },
+        400,
+      )
+    }
   }
 
   db.metas[idx] = {
