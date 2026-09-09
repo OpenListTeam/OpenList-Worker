@@ -47,7 +47,7 @@
 > - 环境变量：
 >   - `DB_DRIVER`: 数据保存方式：`json` (默认) / `d1` (Cloudflare) / `kv` / `mysql`
 >   - `DB_JSON_BACKEND`: 选择`json`格式所使用的后端: `blob` (默认) / `kv` / `cf_rest`
-> 其余可选变量参考**详细部署指南**：[Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
+>   - 其余可选变量参考**详细部署指南**：[Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
 
 
 ## 功能简介
