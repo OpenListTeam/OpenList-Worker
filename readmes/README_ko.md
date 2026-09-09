@@ -59,14 +59,12 @@ OpenList-Worker는 공식 [OpenListTeam/OpenList](https://github.com/OpenListTea
 
 **78개의 스토리지 드라이버**를 내장하여 다양한 스토리지 백엔드를 즉시 마운트할 수 있습니다：
 
-| 분류 | 지원 백엔드 |
-| :--- | :--- |
-| 국내 클라우드 드라이브 | Aliyundrive（오픈 플랫폼/공유）、Quark（오픈 플랫폼/UC TV）、Baidu Netdisk（앨범）、115（오픈 플랫폼/공유）、123 Pan（오픈 플랫폼/공유）、Tianyi Cloud（189/PC/TV）、China Mobile Cloud（139/Hecaiyun）、Wopan、Thunder、Tencent Weiyun、Lanzou、PikPak（공유）、Doubao、Guangyapan、Chaoxing Group、Lenovo NAS 공유、Teambition、WPS Cloud、Alibaba Docs、HalalCloud、MediaTrack 등 |
-| 국제 클라우드 드라이브 | Google Drive（앨범）、OneDrive（앱/공유 링크）、Dropbox、MEGA、MediaFire、Proton Drive、Yandex Disk、Degoo、Bunny Storage、TeraBox 등 |
-| 오브젝트 스토리지 | S3 호환（AWS/OSS/COS/MinIO 등）、UpYun USS、Azure Blob、WebDAV、FTP、SFTP、SMB、IPFS 등 |
-| 코드 호스팅 | GitHub、GitHub Releases、CNB Releases |
-| 클라우드 드라이브 프로그램 | OpenList（공유）、AList V3、Cloudreve V3/V4、Kodbox、Seafile、Teldrive、Febbox 등 |
-| 기타 드라이버 | Netease Music、Misskey、Emby、Cloudflare 이미지 호스팅 등 |
+- **국내 클라우드 드라이브**：Aliyundrive（오픈 플랫폼/공유）、Quark（오픈 플랫폼/UC TV）、Baidu Netdisk（앨범）、115（오픈 플랫폼/공유）、123 Pan（오픈 플랫폼/공유）、Tianyi Cloud（189/PC/TV）、China Mobile Cloud（139/Hecaiyun）、Wopan、Thunder、Tencent Weiyun、Lanzou、PikPak（공유）、Doubao、Guangyapan、Chaoxing Group、Lenovo NAS 공유、Teambition、WPS Cloud、Alibaba Docs、HalalCloud、MediaTrack 등
+- **국제 클라우드 드라이브**：Google Drive（앨범）、OneDrive（앱/공유 링크）、Dropbox、MEGA、MediaFire、Proton Drive、Yandex Disk、Degoo、Bunny Storage、TeraBox 등
+- **오브젝트 스토리지**：S3 호환（AWS/OSS/COS/MinIO 등）、UpYun USS、Azure Blob、WebDAV、FTP、SFTP、SMB、IPFS 등
+- **코드 호스팅**：GitHub、GitHub Releases、CNB Releases
+- **클라우드 드라이브 프로그램**：OpenList（공유）、AList V3、Cloudreve V3/V4、Kodbox、Seafile、Teldrive、Febbox 등
+- **기타 드라이버**：Netease Music、Misskey、Emby、Cloudflare 이미지 호스팅 등
 
 위의 실제 스토리지 외에도 `Local`、`Alias`、`UrlTree`、`AutoIndex`、`Strm`、`Crypt`、`Virtual`、`Chunk` 등의 가상/기능 드라이버를 제공하여 로컬 마운트, 주소 별칭, URL 목록, 암호화 스토리지, 청크 분할 등의 시나리오를 지원합니다.
 

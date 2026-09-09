@@ -59,14 +59,12 @@ OpenList-Worker は公式 [OpenListTeam/OpenList](https://github.com/OpenListTea
 
 **78 個のストレージドライバー**を内蔵し、さまざまなストレージバックエンドをすぐにマウントできます：
 
-| カテゴリ | 対応バックエンド |
-| :--- | :--- |
-| 国内クラウドドライブ | アリババクラウドディスク（オープンプラットフォーム/共有）、Quark（オープンプラットフォーム/UC TV 版）、Baidu 網盤（アルバム）、115（オープンプラットフォーム/共有）、123 Pan（オープンプラットフォーム/共有）、天翼クラウドディスク（189/PC/TV）、中国移動クラウドディスク（139/和彩雲）、沃家クラウドディスク、迅雷クラウドディスク、Tencent Weiyun、Lanzou、PikPak（共有）、豆包、光亜盤、超星グループ、Lenovo NAS 共有、Teambition、WPS クラウド、アリババドキュメント、HalalCloud、MediaTrack など |
-| 海外クラウドドライブ | Google Drive（アルバム）、OneDrive（アプリ/共有リンク）、Dropbox、MEGA、MediaFire、Proton Drive、Yandex Disk、Degoo、Bunny Storage、TeraBox など |
-| オブジェクトストレージ | S3 互換（AWS/OSS/COS/MinIO など）、UpYun USS、Azure Blob、WebDAV、FTP、SFTP、SMB、IPFS など |
-| コードホスティング | GitHub、GitHub Releases、CNB Releases |
-| クラウドドライブプログラム | OpenList（共有）、AList V3、Cloudreve V3/V4、Kodbox、Seafile、Teldrive、Febbox など |
-| その他のドライバー | Netease Music、Misskey、Emby、Cloudflare 画像ホスティングなど |
+- **国内クラウドドライブ**：アリババクラウドディスク（オープンプラットフォーム/共有）、Quark（オープンプラットフォーム/UC TV 版）、Baidu 網盤（アルバム）、115（オープンプラットフォーム/共有）、123 Pan（オープンプラットフォーム/共有）、天翼クラウドディスク（189/PC/TV）、中国移動クラウドディスク（139/和彩雲）、沃家クラウドディスク、迅雷クラウドディスク、Tencent Weiyun、Lanzou、PikPak（共有）、豆包、光亜盤、超星グループ、Lenovo NAS 共有、Teambition、WPS クラウド、アリババドキュメント、HalalCloud、MediaTrack など
+- **海外クラウドドライブ**：Google Drive（アルバム）、OneDrive（アプリ/共有リンク）、Dropbox、MEGA、MediaFire、Proton Drive、Yandex Disk、Degoo、Bunny Storage、TeraBox など
+- **オブジェクトストレージ**：S3 互換（AWS/OSS/COS/MinIO など）、UpYun USS、Azure Blob、WebDAV、FTP、SFTP、SMB、IPFS など
+- **コードホスティング**：GitHub、GitHub Releases、CNB Releases
+- **クラウドドライブプログラム**：OpenList（共有）、AList V3、Cloudreve V3/V4、Kodbox、Seafile、Teldrive、Febbox など
+- **その他のドライバー**：Netease Music、Misskey、Emby、Cloudflare 画像ホスティングなど
 
 上記の実際のストレージに加え、`Local`、`Alias`、`UrlTree`、`AutoIndex`、`Strm`、`Crypt`、`Virtual`、`Chunk` などの仮想・機能ドライバーも提供しており、ローカルマウント、アドレスエイリアス、URL リスト、暗号化ストレージ、チャンク分割などのシーンに対応しています。
 

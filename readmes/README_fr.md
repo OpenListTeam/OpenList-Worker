@@ -59,14 +59,12 @@ OpenList-Worker est le port officiel TypeScript + Serverless du projet [OpenList
 
 **78 pilotes de stockage** intégrés, prêts à monter divers backends de stockage :
 
-| Catégorie | Backends pris en charge |
-| :--- | :--- |
-| Disques cloud domestiques | Aliyundrive (Open/Share), Quark (Open/UC TV), Baidu Netdisk (Album), 115 (Open/Share), 123 Pan (Open/Share), Tianyi Cloud (189/PC/TV), China Mobile Cloud (139/Hecaiyun), Wopan, Thunder, Tencent Weiyun, Lanzou, PikPak (Share), Doubao, Guangyapan, Chaoxing Group, Lenovo NAS Share, Teambition, WPS Cloud, Alibaba Docs, HalalCloud, MediaTrack, etc. |
-| Disques cloud internationaux | Google Drive (Album), OneDrive (App/ShareLink), Dropbox, MEGA, MediaFire, Proton Drive, Yandex Disk, Degoo, Bunny Storage, TeraBox, etc. |
-| Stockage d'objets | Compatible S3 (AWS/OSS/COS/MinIO, etc.), UpYun USS, Azure Blob, WebDAV, FTP, SFTP, SMB, IPFS, etc. |
-| Hébergement de code | GitHub, GitHub Releases, CNB Releases |
-| Programmes de disque cloud | OpenList (Share), AList V3, Cloudreve V3/V4, Kodbox, Seafile, Teldrive, Febbox, etc. |
-| Autres pilotes | Netease Music, Misskey, Emby, Cloudflare Image Hosting, etc. |
+- **Disques cloud domestiques** : Aliyundrive (Open/Share), Quark (Open/UC TV), Baidu Netdisk (Album), 115 (Open/Share), 123 Pan (Open/Share), Tianyi Cloud (189/PC/TV), China Mobile Cloud (139/Hecaiyun), Wopan, Thunder, Tencent Weiyun, Lanzou, PikPak (Share), Doubao, Guangyapan, Chaoxing Group, Lenovo NAS Share, Teambition, WPS Cloud, Alibaba Docs, HalalCloud, MediaTrack, etc.
+- **Disques cloud internationaux** : Google Drive (Album), OneDrive (App/ShareLink), Dropbox, MEGA, MediaFire, Proton Drive, Yandex Disk, Degoo, Bunny Storage, TeraBox, etc.
+- **Stockage d'objets** : Compatible S3 (AWS/OSS/COS/MinIO, etc.), UpYun USS, Azure Blob, WebDAV, FTP, SFTP, SMB, IPFS, etc.
+- **Hébergement de code** : GitHub, GitHub Releases, CNB Releases
+- **Programmes de disque cloud** : OpenList (Share), AList V3, Cloudreve V3/V4, Kodbox, Seafile, Teldrive, Febbox, etc.
+- **Autres pilotes** : Netease Music, Misskey, Emby, Cloudflare Image Hosting, etc.
 
 En plus des stockages réels ci-dessus, des pilotes virtuels/fonctionnels tels que `Local`, `Alias`, `UrlTree`, `AutoIndex`, `Strm`, `Crypt`, `Virtual` et `Chunk` sont également fournis pour les montages locaux, les alias d'adresse, les listes d'URL, le stockage chiffré et le découpage en morceaux.
 

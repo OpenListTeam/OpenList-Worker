@@ -59,14 +59,12 @@ OpenList-Worker ist der offizielle TypeScript + Serverless-Port des Projekts [Op
 
 **78 Speichertreiber** integriert, bereit zum Mounten verschiedener Speicher-Backends:
 
-| Kategorie | Unterstützte Backends |
-| :--- | :--- |
-| Inländische Cloud-Laufwerke | Aliyundrive (Open/Share), Quark (Open/UC TV), Baidu Netdisk (Album), 115 (Open/Share), 123 Pan (Open/Share), Tianyi Cloud (189/PC/TV), China Mobile Cloud (139/Hecaiyun), Wopan, Thunder, Tencent Weiyun, Lanzou, PikPak (Share), Doubao, Guangyapan, Chaoxing Group, Lenovo NAS Share, Teambition, WPS Cloud, Alibaba Docs, HalalCloud, MediaTrack usw. |
-| Internationale Cloud-Laufwerke | Google Drive (Album), OneDrive (App/ShareLink), Dropbox, MEGA, MediaFire, Proton Drive, Yandex Disk, Degoo, Bunny Storage, TeraBox usw. |
-| Objektspeicher | S3-kompatibel (AWS/OSS/COS/MinIO usw.), UpYun USS, Azure Blob, WebDAV, FTP, SFTP, SMB, IPFS usw. |
-| Code-Hosting | GitHub, GitHub Releases, CNB Releases |
-| Cloud-Laufwerk-Programme | OpenList (Share), AList V3, Cloudreve V3/V4, Kodbox, Seafile, Teldrive, Febbox usw. |
-| Weitere Treiber | Netease Music, Misskey, Emby, Cloudflare Image Hosting usw. |
+- **Inländische Cloud-Laufwerke**: Aliyundrive (Open/Share), Quark (Open/UC TV), Baidu Netdisk (Album), 115 (Open/Share), 123 Pan (Open/Share), Tianyi Cloud (189/PC/TV), China Mobile Cloud (139/Hecaiyun), Wopan, Thunder, Tencent Weiyun, Lanzou, PikPak (Share), Doubao, Guangyapan, Chaoxing Group, Lenovo NAS Share, Teambition, WPS Cloud, Alibaba Docs, HalalCloud, MediaTrack usw.
+- **Internationale Cloud-Laufwerke**: Google Drive (Album), OneDrive (App/ShareLink), Dropbox, MEGA, MediaFire, Proton Drive, Yandex Disk, Degoo, Bunny Storage, TeraBox usw.
+- **Objektspeicher**: S3-kompatibel (AWS/OSS/COS/MinIO usw.), UpYun USS, Azure Blob, WebDAV, FTP, SFTP, SMB, IPFS usw.
+- **Code-Hosting**: GitHub, GitHub Releases, CNB Releases
+- **Cloud-Laufwerk-Programme**: OpenList (Share), AList V3, Cloudreve V3/V4, Kodbox, Seafile, Teldrive, Febbox usw.
+- **Weitere Treiber**: Netease Music, Misskey, Emby, Cloudflare Image Hosting usw.
 
 Zusätzlich zu den oben genannten echten Speichern werden auch virtuelle/funktionale Treiber wie `Local`, `Alias`, `UrlTree`, `AutoIndex`, `Strm`, `Crypt`, `Virtual` und `Chunk` für lokale Mounts, Adressaliase, URL-Listen, verschlüsselte Speicherung und Chunking bereitgestellt.
 
