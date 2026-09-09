@@ -923,6 +923,17 @@ const ensureDefaultPlugins = (db: any) => {
   }
 }
 
+// FIX(备份恢复 / meta 丢失): loadDb 此前对 settings/storages/shares/plugins 都做了
+// 兜底，唯独漏了 metas。旧 KV 数据若不含 metas 字段，getDb() 返回的 db.metas 为
+// undefined，meta/list 会因 db.metas.length 直接 500，meta/create 虽自行兜底，
+// 但列表读取始终失败，表现为「恢复后 metas 一条都看不到」。
+const ensureDefaultMetas = (db: any) => {
+  if (!db) return
+  if (!db.metas || !Array.isArray(db.metas)) {
+    db.metas = []
+  }
+}
+
 /**
  * Request-scoped memoization for getDb().
  *
@@ -968,6 +979,7 @@ const loadDb = async (envCtx?: any) => {
       ensureDefaultStorages(memoryDb)
       ensureDefaultShares(memoryDb)
       ensureDefaultPlugins(memoryDb)
+      ensureDefaultMetas(memoryDb)
       return memoryDb
     }
   } catch (err) {
@@ -979,6 +991,7 @@ const loadDb = async (envCtx?: any) => {
     ensureDefaultStorages(memoryDb)
     ensureDefaultShares(memoryDb)
     ensureDefaultPlugins(memoryDb)
+    ensureDefaultMetas(memoryDb)
     return memoryDb
   }
 
@@ -994,6 +1007,7 @@ const loadDb = async (envCtx?: any) => {
       ensureDefaultStorages(memoryDb)
       ensureDefaultShares(memoryDb)
       ensureDefaultPlugins(memoryDb)
+      ensureDefaultMetas(memoryDb)
       return memoryDb
     } catch (err) {
       console.error("Failed to parse DATABASE_JSON env variable:", err)
@@ -1005,6 +1019,7 @@ const loadDb = async (envCtx?: any) => {
   ensureDefaultStorages(memoryDb)
   ensureDefaultShares(memoryDb)
   ensureDefaultPlugins(memoryDb)
+  ensureDefaultMetas(memoryDb)
   return memoryDb
 }
 
@@ -1231,8 +1246,8 @@ export const saveDb = async (data: any, envCtx?: any): Promise<boolean> => {
   return true
 }
 
-export async function resolvePath(virtualPath: string) {
-  const db = await getDb()
+export async function resolvePath(virtualPath: string, envCtx?: any) {
+  const db = await getDb(envCtx)
 
   // ============ 路径遍历防护增强 (2026-09-08) ============
   // 1. URL 解码（防止 %2e%2e 等编码绕过）

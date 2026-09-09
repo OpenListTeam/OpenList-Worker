@@ -299,10 +299,14 @@ adminRouter.post("/storage/create", async (c) => {
     modified: new Date().toISOString(),
   }
 
+  // 先保存配置到 KV（防止网盘连接超时导致配置丢失）
+  db.storages.push(newStorage)
+  await saveDb(db, c.env)
+
+  // 再尝试连接远程网盘（不重复 init，getDriver 内部已经 init 过）
   if (!newStorage.disabled) {
     try {
-      const driver = await getDriver(newStorage.driver, newStorage)
-      await driver.init?.()
+      await getDriver(newStorage.driver, newStorage)
       newStorage.status = "work"
     } catch (e: any) {
       newStorage.status = e.message || String(e)
@@ -310,7 +314,7 @@ adminRouter.post("/storage/create", async (c) => {
       if (String(e.message || e).includes("unsupported driver")) {
         newStorage.disabled = true
       }
-      db.storages.push(newStorage)
+      // 更新状态并重新保存
       await saveDb(db, c.env)
       return c.json({
         code: 500,
@@ -318,10 +322,10 @@ adminRouter.post("/storage/create", async (c) => {
         data: newStorage,
       })
     }
+    // 连接成功，更新状态
+    await saveDb(db, c.env)
   }
 
-  db.storages.push(newStorage)
-  await saveDb(db, c.env)
   return c.json({ code: 200, message: "success", data: newStorage })
 })
 
@@ -4132,10 +4136,11 @@ adminRouter.post("/setting/reset_token", async (c) => {
 
 adminRouter.get("/meta/list", async (c) => {
   const db = await getDb(c.env)
+  const metas = db.metas || []
   return c.json({
     code: 200,
     message: "success",
-    data: { content: db.metas, total: db.metas.length },
+    data: { content: metas, total: metas.length },
   })
 })
 
@@ -4820,4 +4825,208 @@ adminRouter.post("/audit/cleanup", async (c) => {
       500,
     )
   }
+})
+
+// ============================================================
+// Backup / Restore
+// 对齐 Go 版通过 list/create 接口组装出的备份 JSON 结构（Data 接口），
+// 但直接读写 db 原始数据、不做脱敏，避免 storage.addition / token / share.pwd
+// 等敏感字段在备份时被 mask 掉，导致「备份 → 恢复」数据不完整。
+// 前端 OpenList-Frontend 在 isTsWorker() 时调用这两个接口。
+// ============================================================
+
+// GET /api/admin/backup —— 导出完整未脱敏数据
+adminRouter.get("/backup", async (c) => {
+  const db = await getDb(c.env)
+  const data = {
+    encrypted: "",
+    settings: (db.settings || []).map((s: any) => ({ ...s })),
+    // 对齐 Go 版 list：不导出 password 哈希与 otp_secret（密码不参与备份，
+    // 恢复后由管理员重置），避免敏感哈希落入备份文件。
+    users: (db.users || []).map((u: any) => {
+      const { password, otp_secret, ...rest } = u
+      return rest
+    }),
+    storages: (db.storages || []).map((s: any) => ({ ...s })),
+    metas: (db.metas || []).map((m: any) => ({ ...m })),
+    shares: (db.shares || []).map((s: any) => ({ ...s })),
+  }
+  return c.json({ code: 200, message: "success", data })
+})
+
+// POST /api/admin/restore —— 导入恢复（按唯一键 upsert，支持 override）
+// body = { encrypted?: "", settings?, users?, storages?, metas?, shares?, override?: boolean }
+adminRouter.post("/restore", async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return c.json({ code: 400, message: "invalid body", data: null }, 400)
+  }
+  const db = await getDb(c.env)
+  const override = body.override === true
+
+  // 跨项目用户 ID 映射：旧备份里的用户 ID（users[].id）→ 恢复后的实际 ID。
+  // meta 的 read_users / write_users 引用的是用户 ID，跨项目迁移时 ID 会变，
+  // 这里在恢复 users 时建立映射，恢复 metas 时重写引用。
+  const idMap = new Map<number, number>()
+  const remapUserIds = (ids: any): number[] => {
+    if (!Array.isArray(ids)) return []
+    const out: number[] = []
+    for (const raw of ids) {
+      const id = typeof raw === "number" ? raw : parseInt(String(raw), 10)
+      if (!Number.isFinite(id)) continue
+      const mapped = idMap.get(id)
+      // 仅保留能映射到目标用户的 ID；映射不到说明源备份中该用户已不存在，
+      // 直接丢弃，避免悬空引用错误关联到目标项目的同号用户。
+      if (mapped !== undefined) out.push(mapped)
+    }
+    return out
+  }
+
+  // 1) settings：按 key upsert，过滤 version / index_progress
+  if (Array.isArray(body.settings)) {
+    if (!db.settings) db.settings = []
+    for (const s of body.settings) {
+      if (!s || typeof s !== "object" || Array.isArray(s)) continue
+      const key = String(s.key || "")
+      if (!key || key === "version" || key === "index_progress") continue
+      let value = s.value
+      if (value !== null && typeof value === "object") {
+        value = JSON.stringify(value)
+      }
+      const idx = db.settings.findIndex((x: any) => x.key === key)
+      if (idx !== -1) {
+        db.settings[idx].value = value
+        if (typeof s.group === "number") db.settings[idx].group = s.group
+      } else {
+        db.settings.push({
+          key,
+          value,
+          type: typeof s.type === "string" ? s.type : "string",
+          help: typeof s.help === "string" ? s.help : "",
+          group: typeof s.group === "number" ? s.group : 0,
+          flag: typeof s.flag === "number" ? s.flag : 0,
+        })
+      }
+    }
+  }
+
+  // 2) users：按 username upsert；password 不随备份，恢复后置空待管理员重置。
+  // 同时建立「旧用户 ID → 实际 ID」映射，供 metas 的 read_users/write_users 重写。
+  if (Array.isArray(body.users)) {
+    if (!db.users) db.users = []
+    for (const u of body.users) {
+      if (!u || typeof u !== "object") continue
+      const username = String(u.username || "")
+      if (!username) continue
+      const oldId =
+        typeof u.id === "number" ? u.id : parseInt(String(u.id), 10)
+      const idx = db.users.findIndex((x: any) => x.username === username)
+      if (idx !== -1) {
+        // 已存在：无论是否 override，都映射到现有用户 ID
+        if (Number.isFinite(oldId)) idMap.set(oldId, db.users[idx].id)
+        if (!override) continue
+        const existing = db.users[idx]
+        if (u.role !== undefined) existing.role = parseInt(u.role, 10)
+        if (u.permission !== undefined)
+          existing.permission = parseInt(u.permission, 10)
+        if (u.base_path !== undefined) existing.base_path = u.base_path
+        if (u.disabled !== undefined) existing.disabled = !!u.disabled
+        if (u.sso_id !== undefined) existing.sso_id = u.sso_id
+        if (u.allow_ldap !== undefined) existing.allow_ldap = !!u.allow_ldap
+      } else {
+        const maxId = db.users.reduce(
+          (max: number, x: any) => Math.max(max, x.id || 0),
+          0,
+        )
+        const newId = maxId + 1
+        if (Number.isFinite(oldId)) idMap.set(oldId, newId)
+        db.users.push({
+          id: newId,
+          username,
+          password: "",
+          role: u.role !== undefined ? parseInt(u.role, 10) : 0,
+          permission:
+            u.permission !== undefined ? parseInt(u.permission, 10) : 0,
+          base_path: u.base_path || "/",
+          disabled: !!u.disabled,
+          sso_id: u.sso_id || "",
+          allow_ldap: !!u.allow_ldap,
+          pwd_update_at: u.pwd_update_at || "",
+        })
+      }
+    }
+  }
+
+  // 3) storages：按 mount_path upsert，保留 addition 完整凭据
+  if (Array.isArray(body.storages)) {
+    if (!db.storages) db.storages = []
+    for (const s of body.storages) {
+      if (!s || typeof s !== "object") continue
+      const mount =
+        "/" + String(s.mount_path || "").split("/").filter(Boolean).join("/")
+      if (!mount || mount === "/") continue
+      const idx = db.storages.findIndex(
+        (x: any) =>
+          "/" + String(x.mount_path || "").split("/").filter(Boolean).join("/") ===
+          mount,
+      )
+      if (idx !== -1) {
+        if (!override) continue
+        db.storages[idx] = { ...db.storages[idx], ...s, id: db.storages[idx].id, mount_path: mount }
+      } else {
+        const maxId = db.storages.reduce(
+          (max: number, x: any) => Math.max(max, x.id || 0),
+          0,
+        )
+        db.storages.push({ ...s, id: maxId + 1, mount_path: mount })
+      }
+    }
+  }
+
+  // 4) metas：按 path upsert，并重写 read_users/write_users 中的跨项目用户 ID
+  if (Array.isArray(body.metas)) {
+    if (!db.metas) db.metas = []
+    for (const m of body.metas) {
+      if (!m || typeof m !== "object") continue
+      const path =
+        "/" + String(m.path || "").split("/").filter(Boolean).join("/")
+      if (!path || path === "/") continue
+      const mapped = { ...m }
+      if (m.read_users !== undefined)
+        mapped.read_users = remapUserIds(m.read_users)
+      if (m.write_users !== undefined)
+        mapped.write_users = remapUserIds(m.write_users)
+      const idx = db.metas.findIndex((x: any) => x.path === path)
+      if (idx !== -1) {
+        if (!override) continue
+        db.metas[idx] = { ...db.metas[idx], ...mapped, id: db.metas[idx].id, path }
+      } else {
+        const maxId = db.metas.reduce(
+          (max: number, x: any) => Math.max(max, x.id || 0),
+          0,
+        )
+        db.metas.push({ ...mapped, id: maxId + 1, path })
+      }
+    }
+  }
+
+  // 5) shares：按 id（字符串）upsert
+  if (Array.isArray(body.shares)) {
+    if (!db.shares) db.shares = []
+    for (const s of body.shares) {
+      if (!s || typeof s !== "object") continue
+      const id = String(s.id || "")
+      if (!id) continue
+      const idx = db.shares.findIndex((x: any) => String(x.id) === id)
+      if (idx !== -1) {
+        if (!override) continue
+        db.shares[idx] = { ...db.shares[idx], ...s, id }
+      } else {
+        db.shares.push({ ...s, id })
+      }
+    }
+  }
+
+  await saveDb(db, c.env)
+  return c.json({ code: 200, message: "success", data: null })
 })
