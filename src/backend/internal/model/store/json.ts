@@ -123,14 +123,21 @@ export async function getKvBinding(envCtx?: any): Promise<{
       if (blobStore) {
         // Blob SDK only initializes inside the EdgeOne Makers runtime
         installRespSafetyNet()
+        console.log("[DB] getKvBinding: using EdgeOne Blob storage")
         return {
           binding: blobStore,
           platform: "EdgeOne Blob (@edgeone/pages-blob, strong consistency)",
           mode: "blob",
         }
       }
-    } catch {}
+    } catch (err: any) {
+      console.error(
+        `[DB] getKvBinding: EdgeOne Blob init failed: ${err?.message || err}`,
+        `stack=${err?.stack?.substring(0, 300) || ""}`,
+      )
+    }
     if (forced === "blob") {
+      console.warn("[DB] getKvBinding: blob mode forced but unavailable")
       return {
         binding: null,
         platform:
@@ -173,6 +180,7 @@ export async function getKvBinding(envCtx?: any): Promise<{
           ? `EdgeOne KV (${c.name})`
           : `Cloudflare / EdgeOne KV (${c.name})`
 
+        console.log(`[DB] getKvBinding: found KV binding: ${platformName}`)
         return {
           binding: b,
           platform: platformName,
@@ -182,6 +190,14 @@ export async function getKvBinding(envCtx?: any): Promise<{
     }
 
     if (forced === "kv") {
+      console.error(
+        `[DB] getKvBinding: KV mode forced but no binding found. Checked candidates:`,
+        candidates.map(c => c.key).join(", "),
+        `env keys:`,
+        Object.keys(env || {}).filter(k => k.includes("KV") || k.includes("EO")).join(", ") || "none",
+        `globalThis keys:`,
+        Object.keys(g).filter(k => k.includes("KV") || k.includes("EO")).join(", ") || "none",
+      )
       return {
         binding: null,
         platform: "KV namespace binding (not found)",
@@ -203,6 +219,7 @@ export async function getKvBinding(envCtx?: any): Promise<{
       (typeof process !== "undefined" ? process.env.CF_API_TOKEN : "")
 
     if (cfAccountId && cfNamespaceId && cfApiToken) {
+      console.log("[DB] getKvBinding: using Cloudflare KV REST API")
       return {
         binding: {
           type: "cf_rest",
@@ -216,6 +233,12 @@ export async function getKvBinding(envCtx?: any): Promise<{
     }
 
     if (forced === "cf_rest") {
+      console.error(
+        `[DB] getKvBinding: cf_rest mode forced but missing credentials:`,
+        `CF_ACCOUNT_ID=${!!cfAccountId}`,
+        `CF_KV_NAMESPACE_ID=${!!cfNamespaceId}`,
+        `CF_API_TOKEN=${!!cfApiToken}`,
+      )
       return {
         binding: null,
         platform:
@@ -225,6 +248,10 @@ export async function getKvBinding(envCtx?: any): Promise<{
     }
   }
 
+  console.warn(
+    `[DB] getKvBinding: no KV storage found, using memory-only mode (data will not persist)`,
+    `forced=${forced}`,
+  )
   return { binding: null, platform: "Memory", mode: "none" }
 }
 
@@ -281,29 +308,42 @@ async function saveToKv(
   data: any,
 ): Promise<boolean> {
   const { binding, mode } = kvInfo
-  if (mode === "none" || !binding) return false
+  if (mode === "none" || !binding) {
+    console.warn(`[KV/Blob Store] saveToKv: mode="${mode}", binding=${!!binding}, skipping write`)
+    return false
+  }
 
   const valStr = JSON.stringify(data)
+  console.log(`[KV/Blob Store] saveToKv: key="${key}", mode="${mode}", size=${valStr.length} bytes`)
 
   try {
     if (mode === "blob") {
       // @edgeone/pages-blob SDK: setJSON(key, value) for structured data
       if (typeof binding.setJSON === "function") {
-        return (await binding.setJSON(key, data)) !== false
+        const result = (await binding.setJSON(key, data)) !== false
+        console.log(`[KV/Blob Store] blob.setJSON result=${result}`)
+        return result
       }
       // Fallback: set(key, stringified)
       if (typeof binding.set === "function") {
-        return (await binding.set(key, valStr)) !== false
+        const result = (await binding.set(key, valStr)) !== false
+        console.log(`[KV/Blob Store] blob.set result=${result}`)
+        return result
       }
     } else if (mode === "binding") {
       // NOTE: only an explicit `false` counts as failure. Cloudflare KV's
       // put() resolves to void, so `undefined` must stay a success —
       // otherwise every normal write would be reported as failed.
       if (typeof binding.put === "function") {
-        return (await binding.put(key, valStr)) !== false
+        const putResult = await binding.put(key, valStr)
+        const result = putResult !== false
+        console.log(`[KV/Blob Store] binding.put result=${putResult}, success=${result}`)
+        return result
       }
       if (typeof binding.set === "function") {
-        return (await binding.set(key, valStr)) !== false
+        const result = (await binding.set(key, valStr)) !== false
+        console.log(`[KV/Blob Store] binding.set result=${result}`)
+        return result
       }
     } else if (binding.type === "cf_rest") {
       const url = `https://api.cloudflare.com/client/v4/accounts/${binding.accountId}/storage/kv/namespaces/${binding.namespaceId}/values/${key}`
@@ -315,11 +355,17 @@ async function saveToKv(
         },
         body: valStr,
       })
+      console.log(`[KV/Blob Store] cf_rest PUT status=${res.status}`)
       return res.ok
     }
-  } catch (err) {
-    console.error("[KV/Blob Store] Error writing key:", key, err)
+  } catch (err: any) {
+    console.error(
+      `[KV/Blob Store] Error writing key="${key}", mode="${mode}", dataSize=${valStr.length}:`,
+      err?.message || err,
+      `stack=${err?.stack?.substring(0, 300) || ""}`,
+    )
   }
+  console.warn(`[KV/Blob Store] saveToKv: no valid method found for mode="${mode}"`)
   return false
 }
 

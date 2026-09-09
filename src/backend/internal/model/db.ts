@@ -1232,9 +1232,19 @@ export const saveDb = async (data: any, envCtx?: any): Promise<boolean> => {
 
   try {
     // 落盘前对敏感字段做静态加密（H-1），内存中的 data 保持明文
+    console.log(
+      `[DB] saveDb: sealing and persisting to ${backend.name}, storages=${data.storages?.length || 0}`,
+    )
     const sealed = await sealDb(data, getEncryptionKey(activeEnv))
+    console.log(
+      `[DB] saveDb: sealed data size=${JSON.stringify(sealed).length} bytes`,
+    )
     await backend.save(sealed, activeEnv)
   } catch (err: any) {
+    console.error(
+      `[DB] saveDb FAILED: backend=${backend.name}, error=${err?.message || err}`,
+      `stack=${err?.stack?.substring(0, 500) || ""}`,
+    )
     throw new Error(
       `[DB] Failed to persist config (${backend.name}); the change was NOT saved: ${err?.message || err}`,
     )

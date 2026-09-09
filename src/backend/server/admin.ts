@@ -301,7 +301,17 @@ adminRouter.post("/storage/create", async (c) => {
 
   // 先保存配置到 KV（防止网盘连接超时导致配置丢失）
   db.storages.push(newStorage)
-  await saveDb(db, c.env)
+  try {
+    await saveDb(db, c.env)
+  } catch (saveErr: any) {
+    // KV 写入失败：回滚内存状态，返回明确错误
+    db.storages.pop()
+    return c.json({
+      code: 500,
+      message: `Failed to save storage config: ${saveErr.message || String(saveErr)}`,
+      data: null,
+    })
+  }
 
   // 再尝试连接远程网盘（不重复 init，getDriver 内部已经 init 过）
   if (!newStorage.disabled) {
@@ -315,7 +325,12 @@ adminRouter.post("/storage/create", async (c) => {
         newStorage.disabled = true
       }
       // 更新状态并重新保存
-      await saveDb(db, c.env)
+      try {
+        await saveDb(db, c.env)
+      } catch (saveErr: any) {
+        console.error("[admin/storage/create] Failed to update storage status:", saveErr)
+        // 状态更新失败不影响主流程，继续返回
+      }
       return c.json({
         code: 500,
         message: e.message || String(e),
@@ -323,7 +338,12 @@ adminRouter.post("/storage/create", async (c) => {
       })
     }
     // 连接成功，更新状态
-    await saveDb(db, c.env)
+    try {
+      await saveDb(db, c.env)
+    } catch (saveErr: any) {
+      console.error("[admin/storage/create] Failed to update storage status after connection:", saveErr)
+      // 已经连接成功，状态更新失败不影响用户，继续返回成功
+    }
   }
 
   return c.json({ code: 200, message: "success", data: newStorage })

@@ -133,11 +133,21 @@ function wrapEsaEdgeKV(edgeKv: any, cache?: Map<string, string | null>) {
       }
     },
     async put(key: string, value: string): Promise<void> {
-      await edgeKv.put(key, value)
-      // put 成功后立即更新请求级缓存和模块级缓存，使后续 get 能拿到新值
-      // （不依赖 EdgeKV 最终一致性同步，解决"保存后刷新复原"）
-      if (cache) cache.set(key, value)
-      setModuleKvCache(key, value)
+      try {
+        await edgeKv.put(key, value)
+        // put 成功后立即更新请求级缓存和模块级缓存，使后续 get 能拿到新值
+        // （不依赖 EdgeKV 最终一致性同步，解决"保存后刷新复原"）
+        if (cache) cache.set(key, value)
+        setModuleKvCache(key, value)
+      } catch (e: any) {
+        console.error(
+          `[ESA/KV] put failed key=${key}, valueLen=${value?.length || 0}:`,
+          e?.message || e,
+          e?.stack || ""
+        )
+        // 不更新缓存，让后续 get 能重试
+        throw e
+      }
     },
     async delete(key: string): Promise<void> {
       try {
