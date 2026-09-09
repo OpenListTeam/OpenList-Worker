@@ -23,17 +23,14 @@ shareRouter.use("/cancel", adminAuthMiddleware)
 shareRouter.use("/enable", adminAuthMiddleware)
 shareRouter.use("/disable", adminAuthMiddleware)
 
-// List all shares (sanitizes plain password field)
+// List all shares (returns full data aligned with Go backend)
 shareRouter.get("/list", async (c) => {
   const db = await getDb(c.env)
-  const sanitizedShares = (db.shares || []).map((s: any) => ({
-    ...s,
-    pwd: s.pwd ? "******" : "",
-  }))
+  const shares = db.shares || []
   return c.json({
     code: 200,
     message: "success",
-    data: { content: sanitizedShares, total: sanitizedShares.length },
+    data: { content: shares, total: shares.length },
   })
 })
 

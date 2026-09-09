@@ -193,6 +193,20 @@ CF_API_TOKEN=your_api_token
 - `DB_DRIVER=json` 自动转换为 `DB_FORMAT=map` + 自动检测驱动
 - `DB_JSON_BACKEND` 已废弃，会自动转换为 `DB_DRIVER`
 
+**表名对齐（仅 SQL 格式）：**
+`sql` 格式采用列式表，命名策略与 Go 后端的 GORM 一致（snake_case + 复数表名 + 前缀）：
+
+| Go 结构体     | 表名                |
+| :------------ | :------------------ |
+| `SettingItem` | `x_setting_items`   |
+| `SharingDB`   | `x_sharing_dbs`     |
+| `Storage`     | `x_storages`        |
+| `User`        | `x_users`           |
+| `Meta`        | `x_metas`           |
+| （仅 TS）     | `x_plugins`         |
+
+前缀默认为 `x_`，由 `TABLE_PREFIX` 环境变量控制（与 Go 后端一致）。要与 Go 后端共享同一物理数据库，保持默认值即可。
+
 #### 安全配置
 
 - `ENCRYPTION_SECRET`：数据加密密钥（必填）

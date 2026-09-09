@@ -10,6 +10,9 @@ import {
   TABLE_KEY,
   keyOf,
   TABLES,
+  TABLE_SQL_NAMES,
+  getTablePrefix,
+  tableSqlName,
   D1_SCHEMA,
   MYSQL_SCHEMA,
   serializeColumn,
@@ -139,6 +142,28 @@ test("schema: columnar tables match Go backend structure", () => {
   // DDL 幂等生成（schema_info + 6 张业务表）
   assert.ok(D1_SCHEMA.length >= 7)
   assert.ok(MYSQL_SCHEMA.length >= 7)
+})
+
+test("schema: SQL table names align with Go GORM naming", () => {
+  // 复数名映射（对齐 Go 的 GORM snake_case + 复数）
+  assert.equal(TABLE_SQL_NAMES.settings, "setting_items")
+  assert.equal(TABLE_SQL_NAMES.shares, "sharing_dbs")
+  assert.equal(TABLE_SQL_NAMES.storages, "storages")
+  assert.equal(TABLE_SQL_NAMES.users, "users")
+  assert.equal(TABLE_SQL_NAMES.metas, "metas")
+
+  // 表前缀（对齐 Go 的 TABLE_PREFIX，默认 x_）
+  assert.equal(getTablePrefix({}), "x_")
+  assert.equal(getTablePrefix({ TABLE_PREFIX: "abc_" }), "abc_")
+
+  // 完整表名 = 前缀 + 复数名
+  assert.equal(tableSqlName("settings", {}), "x_setting_items")
+  assert.equal(tableSqlName("shares", {}), "x_sharing_dbs")
+  assert.equal(tableSqlName("settings", { TABLE_PREFIX: "abc_" }), "abc_setting_items")
+
+  // DDL 里应包含带前缀的复数表名
+  assert.ok(D1_SCHEMA.some((d) => d.includes("x_setting_items")))
+  assert.ok(D1_SCHEMA.some((d) => d.includes("x_sharing_dbs")))
 })
 
 test("schema: column serialization roundtrip", () => {

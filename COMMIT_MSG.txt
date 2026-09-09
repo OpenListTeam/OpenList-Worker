@@ -1,0 +1,6 @@
+feat(database): align SQL table names with Go GORM naming
+
+- Map TS group names to Go plural table names (setting_items/sharing_dbs/...)
+- Add configurable TABLE_PREFIX (default x_) matching Go backend
+- Update format/sql.ts, driver/d1.ts, driver/mysql.ts to use dynamic prefix
+- Add table naming tests; update README and worker.md docs

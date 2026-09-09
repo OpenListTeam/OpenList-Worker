@@ -193,6 +193,20 @@ CF_API_TOKEN=your_api_token
 - `DB_DRIVER=json` auto-converts to `DB_FORMAT=map` + auto-detect driver
 - `DB_JSON_BACKEND` is deprecated and auto-converts to `DB_DRIVER`
 
+**Table Naming (SQL format only):**
+The `sql` format uses columnar tables with the same naming strategy as the Go backend's GORM (snake_case + pluralized names + prefix):
+
+| Go struct     | Table name         |
+| :------------ | :----------------- |
+| `SettingItem` | `x_setting_items`  |
+| `SharingDB`   | `x_sharing_dbs`    |
+| `Storage`     | `x_storages`       |
+| `User`        | `x_users`          |
+| `Meta`        | `x_metas`          |
+| (TS only)     | `x_plugins`        |
+
+The prefix defaults to `x_` and is controlled by the `TABLE_PREFIX` env var (matching the Go backend). Keep the default to share the same physical database with the Go backend.
+
 #### Security Configuration
 
 - `ENCRYPTION_SECRET`: Data encryption key (required)

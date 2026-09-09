@@ -8,7 +8,7 @@
  * - MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
  */
 import type { Driver } from "../types"
-import { MYSQL_SCHEMA, KV_SCHEMA_MYSQL } from "../schema"
+import { buildDdl, getTablePrefix, KV_SCHEMA_MYSQL } from "../schema"
 
 function isNode(): boolean {
   return typeof process !== "undefined" && process.release?.name === "node"
@@ -47,15 +47,16 @@ async function getPool(env: any): Promise<any | null> {
   return _pool
 }
 
-let _schemaInited = false
+let _schemaInitedPrefix: string | null = null
 
-async function ensureSchema(pool: any): Promise<void> {
-  if (_schemaInited) return
+async function ensureSchema(pool: any, env?: any): Promise<void> {
+  const prefix = getTablePrefix(env)
+  if (_schemaInitedPrefix === prefix) return
   // KV 表（map/key 格式）+ 列式表（sql 格式）一并创建
-  for (const ddl of [...KV_SCHEMA_MYSQL, ...MYSQL_SCHEMA]) {
+  for (const ddl of [...KV_SCHEMA_MYSQL, ...buildDdl("mysql", env)]) {
     await pool.query(ddl)
   }
-  _schemaInited = true
+  _schemaInitedPrefix = prefix
 }
 
 export const mysqlDriver: Driver = {
@@ -75,7 +76,7 @@ export const mysqlDriver: Driver = {
     const pool = await getPool(env)
     if (!pool) throw new Error("MySQL pool not available")
 
-    await ensureSchema(pool)
+    await ensureSchema(pool, env)
     const [rows]: any[] = await pool.query(
       "SELECT `value` FROM `kv` WHERE `key` = ?",
       [key]
@@ -87,7 +88,7 @@ export const mysqlDriver: Driver = {
     const pool = await getPool(env)
     if (!pool) throw new Error("MySQL pool not available")
 
-    await ensureSchema(pool)
+    await ensureSchema(pool, env)
     await pool.query(
       "INSERT INTO `kv` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)",
       [key, value]
@@ -98,7 +99,7 @@ export const mysqlDriver: Driver = {
     const pool = await getPool(env)
     if (!pool) throw new Error("MySQL pool not available")
 
-    await ensureSchema(pool)
+    await ensureSchema(pool, env)
     await pool.query("DELETE FROM `kv` WHERE `key` = ?", [key])
   },
 
@@ -106,7 +107,7 @@ export const mysqlDriver: Driver = {
     const pool = await getPool(env)
     if (!pool) throw new Error("MySQL pool not available")
 
-    await ensureSchema(pool)
+    await ensureSchema(pool, env)
     const [rows]: any[] = await pool.query(
       "SELECT `key` FROM `kv` WHERE `key` LIKE ? ORDER BY `key`",
       [`${prefix}%`]
@@ -118,7 +119,7 @@ export const mysqlDriver: Driver = {
     const pool = await getPool(env)
     if (!pool) throw new Error("MySQL pool not available")
 
-    await ensureSchema(pool)
+    await ensureSchema(pool, env)
     const [rows]: any[] = await pool.query(sql, params)
     return rows || []
   },
@@ -127,7 +128,7 @@ export const mysqlDriver: Driver = {
     const pool = await getPool(env)
     if (!pool) throw new Error("MySQL pool not available")
 
-    await ensureSchema(pool)
+    await ensureSchema(pool, env)
     await pool.query(sql, params)
   },
 
@@ -138,7 +139,7 @@ export const mysqlDriver: Driver = {
     const pool = await getPool(env)
     if (!pool) throw new Error("MySQL pool not available")
 
-    await ensureSchema(pool)
+    await ensureSchema(pool, env)
     const conn = await pool.getConnection()
     try {
       await conn.beginTransaction()

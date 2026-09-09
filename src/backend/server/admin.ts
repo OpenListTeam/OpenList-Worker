@@ -24,28 +24,6 @@ adminRouter.use("*", async (c, next) => {
   await next()
 })
 
-// ---- 敏感字段脱敏工具 ----
-// 网盘 token/secret/cookie 等敏感字段不应在管理接口中明文回显，
-// 列表/详情统一脱敏，仅保留首尾片段便于辨识。
-const SENSITIVE_KEY_PATTERN = /token|secret|password|passwd|cookie|credit|key/i
-
-function maskSecretValue(value: unknown): unknown {
-  if (typeof value !== "string" || value.length === 0) return value
-  if (value.length <= 8) return "******"
-  return `${value.slice(0, 4)}******${value.slice(-4)}`
-}
-
-function maskAddition(addition: any): any {
-  if (!addition || typeof addition !== "object") return addition
-  const copy = Array.isArray(addition) ? [...addition] : { ...addition }
-  for (const k of Object.keys(copy)) {
-    if (SENSITIVE_KEY_PATTERN.test(k)) {
-      copy[k] = maskSecretValue(copy[k])
-    }
-  }
-  return copy
-}
-
 // 生成密码学安全的随机 token（替代 Math.random）
 function generateSecureToken(length = 32): string {
   const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -70,10 +48,7 @@ function generateSecureToken(length = 32): string {
 
 adminRouter.get("/storage/list", async (c) => {
   const db = await getDb(c.env)
-  const content = (db.storages || []).map((s: any) => ({
-    ...s,
-    addition: maskAddition(s.addition),
-  }))
+  const content = db.storages || []
   return c.json({
     code: 200,
     message: "success",
@@ -127,7 +102,7 @@ adminRouter.get("/storage/get", async (c) => {
   return c.json({
     code: 200,
     message: "success",
-    data: { ...storage, addition: maskAddition(storage.addition) },
+    data: storage,
   })
 })
 
@@ -3972,14 +3947,7 @@ adminRouter.get("/setting/list", async (c) => {
     settings = settings.filter((s: any) => groupNums.includes(s.group))
   }
 
-  // 敏感设置项（token / sso_client_secret 等）脱敏，避免明文回显
-  const data = settings.map((s: any) =>
-    SENSITIVE_KEY_PATTERN.test(String(s.key || ""))
-      ? { ...s, value: maskSecretValue(s.value) }
-      : s,
-  )
-
-  return c.json({ code: 200, message: "success", data })
+  return c.json({ code: 200, message: "success", data: settings })
 })
 
 adminRouter.post("/setting/save", async (c) => {

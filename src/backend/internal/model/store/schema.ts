@@ -231,6 +231,43 @@ export const TABLES: Record<TableName, TableDef> = {
 }
 
 /**
+ * SQL 表名映射：TS 分组名 → Go 的 GORM 复数表名（不含前缀）。
+ *
+ * Go 用 GORM 默认命名策略：结构体名 snake_case + 复数，例如：
+ *   - SettingItem → setting_items
+ *   - SharingDB   → sharing_dbs
+ *   - Storage → storages / User → users / Meta → metas
+ *
+ * TS 内部对象分组仍用 settings/shares（对齐 db.ts 的对象字段名），落库时
+ * 通过本映射转换为 Go 的复数表名，实现与 Go 后端共享同一数据库。
+ *
+ * plugins 为 TS 独有（Go 无插件表），沿用复数名 plugins。
+ */
+export const TABLE_SQL_NAMES: Record<TableName, string> = {
+  settings: "setting_items",
+  storages: "storages",
+  users: "users",
+  shares: "sharing_dbs",
+  metas: "metas",
+  plugins: "plugins",
+}
+
+/**
+ * 读取表前缀（对齐 Go 的 TABLE_PREFIX，默认 "x_"）。
+ */
+export function getTablePrefix(env?: any): string {
+  const e = env || (typeof process !== "undefined" ? process.env : {}) || {}
+  return String(e?.TABLE_PREFIX || "x_")
+}
+
+/**
+ * 返回某张表在 SQL 中的完整表名（前缀 + 复数名）。
+ */
+export function tableSqlName(table: TableName, env?: any): string {
+  return getTablePrefix(env) + TABLE_SQL_NAMES[table]
+}
+
+/**
  * 对象字段值 → SQL 列值。
  */
 export function serializeColumn(col: ColumnDef, value: any): any {
@@ -347,7 +384,11 @@ function quote(name: string): string {
 /**
  * 生成单张表的建表语句（含主键与唯一索引）。
  */
-function buildTableDdl(def: TableDef, dialect: "sqlite" | "mysql"): string {
+function buildTableDdl(
+  def: TableDef,
+  dialect: "sqlite" | "mysql",
+  tableName: string,
+): string {
   const parts: string[] = []
   for (const col of def.columns) {
     let line = `${quote(col.name)} ${sqlType(col, dialect)}`
@@ -361,7 +402,7 @@ function buildTableDdl(def: TableDef, dialect: "sqlite" | "mysql"): string {
     }
     parts.push(line)
   }
-  return `CREATE TABLE IF NOT EXISTS ${quote(def.name)} (${parts.join(", ")})`
+  return `CREATE TABLE IF NOT EXISTS ${quote(tableName)} (${parts.join(", ")})`
 }
 
 /**
@@ -374,12 +415,13 @@ function buildSchemaInfoDdl(dialect: "sqlite" | "mysql"): string {
 }
 
 /**
- * 生成完整的建表语句数组（幂等）。
+ * 生成完整的建表语句数组（幂等）。表名前缀由 TABLE_PREFIX 环境变量决定
+ * （默认 "x_"，对齐 Go），复数表名对齐 Go 的 GORM 命名策略。
  */
-export function buildDdl(dialect: "sqlite" | "mysql"): string[] {
+export function buildDdl(dialect: "sqlite" | "mysql", env?: any): string[] {
   const out: string[] = [buildSchemaInfoDdl(dialect)]
   for (const name of TABLE_NAMES) {
-    out.push(buildTableDdl(TABLES[name], dialect))
+    out.push(buildTableDdl(TABLES[name], dialect, tableSqlName(name, env)))
   }
   return out
 }

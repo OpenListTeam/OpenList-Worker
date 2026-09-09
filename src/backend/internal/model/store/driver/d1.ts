@@ -6,7 +6,7 @@
  * - OPENLIST_DB (别名)
  */
 import type { Driver } from "../types"
-import { D1_SCHEMA, KV_SCHEMA_SQLITE } from "../schema"
+import { buildDdl, KV_SCHEMA_SQLITE } from "../schema"
 
 function getD1(env?: any): any | null {
   const e =
@@ -16,10 +16,10 @@ function getD1(env?: any): any | null {
 
 const d1Inited = new WeakMap<object, boolean>()
 
-async function ensureSchema(db: any): Promise<void> {
+async function ensureSchema(db: any, env?: any): Promise<void> {
   if (d1Inited.get(db)) return
   // KV 表（map/key 格式）+ 列式表（sql 格式）一并创建
-  for (const ddl of [...KV_SCHEMA_SQLITE, ...D1_SCHEMA]) {
+  for (const ddl of [...KV_SCHEMA_SQLITE, ...buildDdl("sqlite", env)]) {
     await db.prepare(ddl).run()
   }
   d1Inited.set(db, true)
@@ -41,7 +41,7 @@ export const d1Driver: Driver = {
     const db = getD1(env)
     if (!db) throw new Error("D1 binding not found")
 
-    await ensureSchema(db)
+    await ensureSchema(db, env)
     const result = await db
       .prepare("SELECT value FROM kv WHERE key = ?")
       .bind(key)
@@ -53,7 +53,7 @@ export const d1Driver: Driver = {
     const db = getD1(env)
     if (!db) throw new Error("D1 binding not found")
 
-    await ensureSchema(db)
+    await ensureSchema(db, env)
     await db
       .prepare("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)")
       .bind(key, value)
@@ -64,7 +64,7 @@ export const d1Driver: Driver = {
     const db = getD1(env)
     if (!db) throw new Error("D1 binding not found")
 
-    await ensureSchema(db)
+    await ensureSchema(db, env)
     await db.prepare("DELETE FROM kv WHERE key = ?").bind(key).run()
   },
 
@@ -72,7 +72,7 @@ export const d1Driver: Driver = {
     const db = getD1(env)
     if (!db) throw new Error("D1 binding not found")
 
-    await ensureSchema(db)
+    await ensureSchema(db, env)
     const result = await db
       .prepare("SELECT key FROM kv WHERE key LIKE ? ORDER BY key")
       .bind(`${prefix}%`)
@@ -84,7 +84,7 @@ export const d1Driver: Driver = {
     const db = getD1(env)
     if (!db) throw new Error("D1 binding not found")
 
-    await ensureSchema(db)
+    await ensureSchema(db, env)
     const stmt = db.prepare(sql)
     const result = await stmt.bind(...params).all()
     return result.results || []
@@ -94,7 +94,7 @@ export const d1Driver: Driver = {
     const db = getD1(env)
     if (!db) throw new Error("D1 binding not found")
 
-    await ensureSchema(db)
+    await ensureSchema(db, env)
     const stmt = db.prepare(sql)
     await stmt.bind(...params).run()
   },
@@ -106,7 +106,7 @@ export const d1Driver: Driver = {
     const db = getD1(env)
     if (!db) throw new Error("D1 binding not found")
 
-    await ensureSchema(db)
+    await ensureSchema(db, env)
     
     // D1 batch 单次语句数上限约 100，分批提交
     const BATCH = 100

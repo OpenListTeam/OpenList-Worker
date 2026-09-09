@@ -2,7 +2,8 @@
  * SQL 格式适配器（列式表，与 Go 后端完全一致）。
  *
  * 每个字段对应一列，表结构由 schema.ts 的 TABLES 定义。字段名对齐 Go 的
- * json tag，因此 D1 / MySQL 中的表结构与 Go 的 GORM 建表结果一致。
+ * json tag，表名通过 TABLE_SQL_NAMES 映射为 Go 的复数名并加上 TABLE_PREFIX
+ * 前缀（默认 x_），因此 D1 / MySQL 中的表结构与 Go 的 GORM 建表结果一致。
  */
 import type { FormatAdapter, Driver } from "../types"
 import {
@@ -10,6 +11,7 @@ import {
   TABLE_KEY,
   TABLES,
   TableName,
+  tableSqlName,
   rowToEntity,
   entityToRow,
 } from "../schema"
@@ -18,6 +20,11 @@ const INIT_MARK = "openlist_config"
 
 function quote(name: string): string {
   return "`" + name + "`"
+}
+
+/** 带前缀+复数的完整表名（含反引号）。 */
+function qn(table: TableName, env?: any): string {
+  return quote(tableSqlName(table, env))
 }
 
 /** 列名列表（含反引号）。 */
@@ -33,7 +40,7 @@ export const sqlFormat: FormatAdapter = {
       throw new Error(`Driver ${driver.name} does not support SQL queries`)
     }
 
-    // 检查是否已初始化
+    // 检查是否已初始化（schema_info 为 TS 内部标记表，不加前缀）
     const marks = await driver.query(
       "SELECT v FROM schema_info WHERE k = ?",
       [INIT_MARK],
@@ -44,7 +51,7 @@ export const sqlFormat: FormatAdapter = {
     const out: Record<string, any> = {}
 
     for (const table of TABLE_NAMES) {
-      const rows = await driver.query(`SELECT * FROM ${quote(table)}`, [], env)
+      const rows = await driver.query(`SELECT * FROM ${qn(table, env)}`, [], env)
       out[table] = rows.map((r: any) => rowToEntity(table, r))
     }
 
@@ -60,7 +67,7 @@ export const sqlFormat: FormatAdapter = {
 
     // 清空所有表
     for (const table of TABLE_NAMES) {
-      statements.push({ sql: `DELETE FROM ${quote(table)}`, params: [] })
+      statements.push({ sql: `DELETE FROM ${qn(table, env)}`, params: [] })
     }
 
     // 插入新数据
@@ -68,7 +75,7 @@ export const sqlFormat: FormatAdapter = {
       for (const entity of data?.[table] || []) {
         const { columns, values } = entityToRow(table, entity)
         const placeholders = columns.map(() => "?").join(", ")
-        const sql = `INSERT INTO ${quote(table)} (${columns
+        const sql = `INSERT INTO ${qn(table, env)} (${columns
           .map((c) => quote(c))
           .join(", ")}) VALUES (${placeholders})`
         statements.push({ sql, params: values })
@@ -90,7 +97,7 @@ export const sqlFormat: FormatAdapter = {
       throw new Error(`Driver ${driver.name} does not support SQL queries`)
     }
     const t = table as TableName
-    const rows = await driver.query(`SELECT * FROM ${quote(t)}`, [], env)
+    const rows = await driver.query(`SELECT * FROM ${qn(t, env)}`, [], env)
     return rows.map((r: any) => rowToEntity(t, r))
   },
 
@@ -106,13 +113,13 @@ export const sqlFormat: FormatAdapter = {
     const t = table as TableName
 
     const statements: Array<{ sql: string; params: any[] }> = [
-      { sql: `DELETE FROM ${quote(t)}`, params: [] },
+      { sql: `DELETE FROM ${qn(t, env)}`, params: [] },
     ]
 
     for (const entity of records) {
       const { columns, values } = entityToRow(t, entity)
       const placeholders = columns.map(() => "?").join(", ")
-      const sql = `INSERT INTO ${quote(t)} (${columns
+      const sql = `INSERT INTO ${qn(t, env)} (${columns
         .map((c) => quote(c))
         .join(", ")}) VALUES (${placeholders})`
       statements.push({ sql, params: values })
@@ -133,7 +140,7 @@ export const sqlFormat: FormatAdapter = {
     const t = table as TableName
     const keyCol = TABLE_KEY[t]
     const rows = await driver.query(
-      `SELECT * FROM ${quote(t)} WHERE ${quote(keyCol)} = ?`,
+      `SELECT * FROM ${qn(t, env)} WHERE ${quote(keyCol)} = ?`,
       [key],
       env,
     )
@@ -151,10 +158,11 @@ export const sqlFormat: FormatAdapter = {
       throw new Error(`Driver ${driver.name} does not support SQL execution`)
     }
     const t = table as TableName
+    void key
 
     const { columns, values } = entityToRow(t, record)
     const placeholders = columns.map(() => "?").join(", ")
-    const sql = `INSERT OR REPLACE INTO ${quote(t)} (${columns
+    const sql = `INSERT OR REPLACE INTO ${qn(t, env)} (${columns
       .map((c) => quote(c))
       .join(", ")}) VALUES (${placeholders})`
 
@@ -172,6 +180,10 @@ export const sqlFormat: FormatAdapter = {
     }
     const t = table as TableName
     const keyCol = TABLE_KEY[t]
-    await driver.execute(`DELETE FROM ${quote(t)} WHERE ${quote(keyCol)} = ?`, [key], env)
+    await driver.execute(
+      `DELETE FROM ${qn(t, env)} WHERE ${quote(keyCol)} = ?`,
+      [key],
+      env,
+    )
   },
 }

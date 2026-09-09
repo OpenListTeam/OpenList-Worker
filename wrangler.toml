@@ -32,6 +32,11 @@ DB_FORMAT = "map"
 #   mysql - 外部 MySQL（仅 Node 容器运行时，需 MYSQL_URL 或 MYSQL_* 分项）
 DB_DRIVER = "auto"
 
+# ===================== 表名前缀（TABLE_PREFIX，仅 DB_FORMAT = "sql" 时生效）=====================
+# SQL 表名 = 前缀 + Go 的复数表名（setting_items/sharing_dbs/storages/users/metas）。
+# 前缀对齐 Go 后端的 TABLE_PREFIX，默认 "x_"，与 Go 共享同一数据库时保持默认即可。
+# TABLE_PREFIX = "x_"
+
 # ===================== KV / Blob 存储 =====================
 # 自定义 KV binding 名（map/key 模式；不设则自动探测 KV/EDGEONE_KV/EO_KV 等）
 # KV_NAME = "KV"
