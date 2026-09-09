@@ -1,11 +1,19 @@
 /**
  * 关系型后端（D1 / MySQL）的表结构定义。
  *
- * 采用「主键列 + data JSON 列」宽表：主键列冗余存储 String(entity.id)（或
- * settings 的 key），用于 SQL 查询与唯一约束；data 列存储该行实体的完整
- * JSON（字段动态，增删无需改 DDL）。
+ * 与 Go 后端（OpenList-Backends）完全一致的**列式表**结构：每个字段对应一列，
+ * 而非「主键 + data JSON」的键值宽表。字段名对齐 Go 的 `json` tag（snake_case），
+ * 因此 D1 / MySQL 中的表结构与 Go 的 GORM 建表结果一致。
  *
- * 注意：`key` 在 MySQL 是保留字，列名统一用反引号包裹。
+ * 类型映射（TS 对象字段 → SQL 列）：
+ *   - string → TEXT
+ *   - number → INTEGER（id/role/permission/order 等整型）
+ *   - bool   → INTEGER（0/1）
+ *   - json   → TEXT（数组/对象，序列化为 JSON 字符串）
+ *   - date   → TEXT（ISO 8601 时间字符串）
+ *
+ * 注意：`key` / `order` / `group` / `index` / `write` 等在 SQL 方言中可能是保留字，
+ * 所有列名统一用反引号包裹（SQLite 与 MySQL 均支持）。
  */
 
 export const TABLE_NAMES = [
@@ -19,7 +27,35 @@ export const TABLE_NAMES = [
 
 export type TableName = (typeof TABLE_NAMES)[number]
 
-/** 每张表的实体主键列名（用于从实体对象提取主键值）。 */
+/** 字段类型（决定序列化与 SQL 列类型）。 */
+export type FieldType = "string" | "number" | "bool" | "json" | "date"
+
+/** 列定义。 */
+export interface ColumnDef {
+  /** SQL 列名（snake_case，对齐 Go json tag）。 */
+  name: string
+  /** 对象字段名（默认与 name 相同）。 */
+  key?: string
+  /** 字段类型。 */
+  type: FieldType
+  /** 是否主键。 */
+  pk?: boolean
+  /** 是否唯一索引。 */
+  unique?: boolean
+  /** 是否可空（主键默认为不可空）。 */
+  nullable?: boolean
+}
+
+/** 表定义。 */
+export interface TableDef {
+  name: TableName
+  columns: ColumnDef[]
+}
+
+/**
+ * 每张表的主键对应的「对象字段名」（用于从实体对象提取主键值）。
+ * 供 key 格式（分 key 存储）与 SQL 格式共用。
+ */
 export const TABLE_KEY: Record<TableName, string> = {
   settings: "key",
   storages: "id",
@@ -34,7 +70,12 @@ export function keyOf(table: TableName, entity: any): string {
   return String(entity?.[TABLE_KEY[table]] ?? "")
 }
 
-/** 附加索引列（主键之外，冗余冗余常用查询字段）。 */
+/**
+ * 附加索引列（主键之外冗余存储的常用查询字段）。
+ *
+ * @deprecated 仅供旧版宽表后端（store/d1.ts、store/mysql.ts）使用。新的
+ * 列式表（TABLES）已把每个字段独立成列，不再需要该映射。保留仅为兼容遗留代码。
+ */
 export const TABLE_EXTRA_COLUMNS: Record<TableName, string[]> = {
   settings: [],
   storages: ["mount_path"],
@@ -45,27 +86,320 @@ export const TABLE_EXTRA_COLUMNS: Record<TableName, string[]> = {
 }
 
 /**
- * SQLite 方言（Cloudflare D1）的建表语句。
+ * 完整列式表定义。
+ *
+ * 字段与 Go 后端模型一一对应（json tag）：
+ *   - settings ← model.SettingItem
+ *   - storages ← model.Storage
+ *   - users    ← model.User（含 TS 特有的 pwd_update_at）
+ *   - shares   ← model.SharingDB（Files 序列化自 []string）
+ *   - metas    ← model.Meta
+ *   - plugins  ← TS 独有（Go 无插件表）
  */
-export const D1_SCHEMA: string[] = [
-  `CREATE TABLE IF NOT EXISTS schema_info (k TEXT PRIMARY KEY, v TEXT)`,
-  `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, data TEXT NOT NULL)`,
-  `CREATE TABLE IF NOT EXISTS storages (id TEXT PRIMARY KEY, mount_path TEXT, data TEXT NOT NULL)`,
-  `CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, username TEXT, data TEXT NOT NULL)`,
-  `CREATE TABLE IF NOT EXISTS shares (id TEXT PRIMARY KEY, data TEXT NOT NULL)`,
-  `CREATE TABLE IF NOT EXISTS metas (id TEXT PRIMARY KEY, path TEXT, data TEXT NOT NULL)`,
-  `CREATE TABLE IF NOT EXISTS plugins (id TEXT PRIMARY KEY, data TEXT NOT NULL)`,
-]
+export const TABLES: Record<TableName, TableDef> = {
+  settings: {
+    name: "settings",
+    columns: [
+      { name: "key", type: "string", pk: true },
+      { name: "value", type: "string" },
+      { name: "help", type: "string" },
+      { name: "type", type: "string" },
+      { name: "options", type: "string" },
+      { name: "group", type: "number" },
+      { name: "flag", type: "number" },
+      { name: "index", type: "number" },
+    ],
+  },
+
+  storages: {
+    name: "storages",
+    columns: [
+      { name: "id", type: "number", pk: true },
+      { name: "mount_path", type: "string", unique: true },
+      { name: "order", type: "number" },
+      { name: "driver", type: "string" },
+      { name: "cache_expiration", type: "number" },
+      { name: "custom_cache_policies", type: "string" },
+      { name: "status", type: "string" },
+      { name: "addition", type: "string" },
+      { name: "remark", type: "string" },
+      { name: "modified", type: "date" },
+      { name: "disabled", type: "bool" },
+      { name: "disable_index", type: "bool" },
+      { name: "enable_sign", type: "bool" },
+      { name: "seed_policy", type: "string" },
+      { name: "order_by", type: "string" },
+      { name: "order_direction", type: "string" },
+      { name: "extract_folder", type: "string" },
+      { name: "web_proxy", type: "bool" },
+      { name: "webdav_policy", type: "string" },
+      { name: "proxy_range", type: "bool" },
+      { name: "down_proxy_url", type: "string" },
+      { name: "disable_proxy_sign", type: "bool" },
+    ],
+  },
+
+  users: {
+    name: "users",
+    columns: [
+      { name: "id", type: "number", pk: true },
+      { name: "username", type: "string", unique: true },
+      { name: "password", type: "string" },
+      { name: "base_path", type: "string" },
+      { name: "role", type: "number" },
+      { name: "disabled", type: "bool" },
+      { name: "permission", type: "number" },
+      { name: "otp_secret", type: "string" },
+      { name: "sso_id", type: "string" },
+      { name: "allow_ldap", type: "bool" },
+      // TS 特有：密码更新时间（Go 用 pwd_ts/pwd_hash/salt 内部字段，json:"-" 不落 API）
+      { name: "pwd_update_at", type: "date" },
+    ],
+  },
+
+  shares: {
+    name: "shares",
+    columns: [
+      { name: "id", type: "string", pk: true },
+      // Go 的 SharingDB.FilesRaw（json:"-" 但落库，列名 files_raw）存 []string 的 JSON；
+      // TS 业务对象字段名为 files，通过 key 字段解耦列名与对象字段名。
+      { name: "files_raw", key: "files", type: "json" },
+      { name: "expires", type: "date", nullable: true },
+      { name: "pwd", type: "string" },
+      { name: "accessed", type: "number" },
+      { name: "max_accessed", type: "number" },
+      { name: "creator_id", type: "number" },
+      { name: "disabled", type: "bool" },
+      { name: "remark", type: "string" },
+      { name: "readme", type: "string" },
+      { name: "header", type: "string" },
+      { name: "order_by", type: "string" },
+      { name: "order_direction", type: "string" },
+      { name: "extract_folder", type: "string" },
+    ],
+  },
+
+  metas: {
+    name: "metas",
+    columns: [
+      { name: "id", type: "number", pk: true },
+      { name: "path", type: "string", unique: true },
+      { name: "read_users", type: "json" },
+      { name: "read_users_sub", type: "bool" },
+      { name: "write_users", type: "json" },
+      { name: "write_users_sub", type: "bool" },
+      { name: "password", type: "string" },
+      { name: "p_sub", type: "bool" },
+      { name: "write", type: "bool" },
+      { name: "w_sub", type: "bool" },
+      { name: "hide", type: "string" },
+      { name: "h_sub", type: "bool" },
+      { name: "readme", type: "string" },
+      { name: "r_sub", type: "bool" },
+      { name: "header", type: "string" },
+      { name: "header_sub", type: "bool" },
+    ],
+  },
+
+  plugins: {
+    name: "plugins",
+    columns: [
+      { name: "id", type: "string", pk: true },
+      { name: "name", type: "string" },
+      { name: "version", type: "string" },
+      { name: "description", type: "string" },
+      { name: "author", type: "string" },
+      { name: "homepage", type: "string" },
+      { name: "repository", type: "string" },
+      { name: "icon", type: "string" },
+      { name: "type", type: "string" },
+      { name: "enabled", type: "bool" },
+      { name: "high_privilege", type: "bool" },
+      { name: "permissions", type: "json" },
+      { name: "entry_url", type: "string" },
+      { name: "script_content", type: "string" },
+      { name: "style_content", type: "string" },
+      { name: "config_schema", type: "json" },
+      { name: "config_values", type: "json" },
+      { name: "target_hooks", type: "json" },
+      { name: "is_builtin", type: "bool" },
+      { name: "tags", type: "json" },
+      { name: "created_at", type: "date" },
+      { name: "updated_at", type: "date" },
+    ],
+  },
+}
 
 /**
- * MySQL 方言的建表语句。
+ * 对象字段值 → SQL 列值。
  */
-export const MYSQL_SCHEMA: string[] = [
-  "CREATE TABLE IF NOT EXISTS `schema_info` (`k` VARCHAR(255) PRIMARY KEY, `v` LONGTEXT)",
-  "CREATE TABLE IF NOT EXISTS `settings` (`key` VARCHAR(255) PRIMARY KEY, `data` LONGTEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS `storages` (`id` VARCHAR(64) PRIMARY KEY, `mount_path` VARCHAR(512), `data` LONGTEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS `users` (`id` VARCHAR(64) PRIMARY KEY, `username` VARCHAR(255), UNIQUE KEY `uq_users_username` (`username`), `data` LONGTEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS `shares` (`id` VARCHAR(64) PRIMARY KEY, `data` LONGTEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS `metas` (`id` VARCHAR(64) PRIMARY KEY, `path` VARCHAR(512), `data` LONGTEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS `plugins` (`id` VARCHAR(64) PRIMARY KEY, `data` LONGTEXT NOT NULL)",
+export function serializeColumn(col: ColumnDef, value: any): any {
+  if (value === undefined || value === null) return null
+  switch (col.type) {
+    case "string":
+      return String(value)
+    case "number":
+      return typeof value === "number" ? value : Number(value)
+    case "bool":
+      return value ? 1 : 0
+    case "json":
+      return typeof value === "string" ? value : JSON.stringify(value)
+    case "date": {
+      if (value instanceof Date) return value.toISOString()
+      if (typeof value === "number") return new Date(value).toISOString()
+      return String(value)
+    }
+    default:
+      return value
+  }
+}
+
+/**
+ * SQL 列值 → 对象字段值。
+ */
+export function deserializeColumn(col: ColumnDef, value: any): any {
+  if (value === undefined || value === null) {
+    // json 类型缺失时回退为空数组/空对象，避免业务代码 .length / .includes 崩溃
+    if (col.type === "json") return null
+    return null
+  }
+  switch (col.type) {
+    case "string":
+      return String(value)
+    case "number":
+      return Number(value)
+    case "bool":
+      return value === 1 || value === "1" || value === true || value === "true"
+    case "json": {
+      if (typeof value !== "string") return value
+      try {
+        return JSON.parse(value)
+      } catch {
+        return value
+      }
+    }
+    case "date":
+      return value
+    default:
+      return value
+  }
+}
+
+/**
+ * 将一行 SQL 记录（SELECT * 结果）转换回对象。
+ *
+ * 跳过 null/undefined 列：列式表的「缺失字段」以 NULL 存储，反序列化时不
+ * 输出这些字段，避免 roundtrip 后对象被注入大量 null 键（与 map/key 格式
+ * 的对象形态保持一致）。
+ */
+export function rowToEntity(table: TableName, row: any): any {
+  const def = TABLES[table]
+  const out: any = {}
+  for (const col of def.columns) {
+    const key = col.key ?? col.name
+    const value = deserializeColumn(col, row[col.name])
+    if (value !== null && value !== undefined) {
+      out[key] = value
+    }
+  }
+  return out
+}
+
+/**
+ * 将对象转换为 INSERT 的列与参数。
+ */
+export function entityToRow(table: TableName, entity: any): {
+  columns: string[]
+  values: any[]
+} {
+  const def = TABLES[table]
+  const columns: string[] = []
+  const values: any[] = []
+  for (const col of def.columns) {
+    const key = col.key ?? col.name
+    columns.push(col.name)
+    values.push(serializeColumn(col, entity?.[key]))
+  }
+  return { columns, values }
+}
+
+/** SQL 列类型 → 方言类型。 */
+function sqlType(col: ColumnDef, dialect: "sqlite" | "mysql"): string {
+  switch (col.type) {
+    case "number":
+      return dialect === "mysql" ? "BIGINT" : "INTEGER"
+    case "bool":
+      return dialect === "mysql" ? "TINYINT(1)" : "INTEGER"
+    case "string":
+    case "json":
+    case "date":
+      return "TEXT"
+    default:
+      return "TEXT"
+  }
+}
+
+/** 列标识符统一加反引号（SQLite 与 MySQL 均支持）。 */
+function quote(name: string): string {
+  return "`" + name + "`"
+}
+
+/**
+ * 生成单张表的建表语句（含主键与唯一索引）。
+ */
+function buildTableDdl(def: TableDef, dialect: "sqlite" | "mysql"): string {
+  const parts: string[] = []
+  for (const col of def.columns) {
+    let line = `${quote(col.name)} ${sqlType(col, dialect)}`
+    if (col.pk) {
+      line += " PRIMARY KEY"
+    } else if (!col.nullable) {
+      line += " NOT NULL"
+    }
+    if (col.unique) {
+      line += " UNIQUE"
+    }
+    parts.push(line)
+  }
+  return `CREATE TABLE IF NOT EXISTS ${quote(def.name)} (${parts.join(", ")})`
+}
+
+/**
+ * 生成 schema_info 表（标记 SQL 格式是否已初始化）。
+ */
+function buildSchemaInfoDdl(dialect: "sqlite" | "mysql"): string {
+  const k = dialect === "mysql" ? "VARCHAR(255)" : "TEXT"
+  const v = "TEXT"
+  return `CREATE TABLE IF NOT EXISTS ${quote("schema_info")} (${quote("k")} ${k} PRIMARY KEY, ${quote("v")} ${v})`
+}
+
+/**
+ * 生成完整的建表语句数组（幂等）。
+ */
+export function buildDdl(dialect: "sqlite" | "mysql"): string[] {
+  const out: string[] = [buildSchemaInfoDdl(dialect)]
+  for (const name of TABLE_NAMES) {
+    out.push(buildTableDdl(TABLES[name], dialect))
+  }
+  return out
+}
+
+/** 兼容旧导出：SQLite（Cloudflare D1）方言建表语句。 */
+export const D1_SCHEMA: string[] = buildDdl("sqlite")
+
+/** 兼容旧导出：MySQL 方言建表语句。 */
+export const MYSQL_SCHEMA: string[] = buildDdl("mysql")
+
+/**
+ * KV 表（供 map/key 格式做键值存储）的建表语句。
+ *
+ * 与「列式表」分离：map/key 格式仍然以键值对方式落盘，sql 格式才用上面的
+ * 列式表。驱动层需同时创建这两类表。
+ */
+export const KV_SCHEMA_SQLITE: string[] = [
+  `CREATE TABLE IF NOT EXISTS ${quote("kv")} (${quote("key")} TEXT PRIMARY KEY, ${quote("value")} TEXT NOT NULL)`,
+]
+
+export const KV_SCHEMA_MYSQL: string[] = [
+  "CREATE TABLE IF NOT EXISTS `kv` (`key` VARCHAR(512) PRIMARY KEY, `value` LONGTEXT NOT NULL)",
 ]

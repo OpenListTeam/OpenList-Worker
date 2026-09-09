@@ -44,8 +44,8 @@
 > [!IMPORTANT]
 > - यदि Cloudflare `रिपॉजिटरी सामग्री प्राप्त नहीं कर सकता` दिखाता है, तो पहले इस परियोजना को [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork) करें, फिर Github रिपॉजिटरी से कनेक्ट करके तैनात करें
 > - तैनाती के बाद पर्यावरण चर कॉन्फ़िगर करें: **EdgeOne**: [अंतर्राष्ट्रीय कंसोल](https://console.edgeone.ai/makers) · [चीन कंसोल](https://console.cloud.tencent.com/edgeone/makers); **Cloudflare**: [Worker डैशबोर्ड](https://dash.cloudflare.com/)। पर्यावरण चर:
->   - `DB_DRIVER`: डेटा संग्रहण विधि: `json` (डिफ़ॉल्ट) / `d1` (Cloudflare) / `kv` / `mysql`
->   - `DB_JSON_BACKEND`: `json` प्रारूप द्वारा उपयोग किया जाने वाला बैकएंड: `blob` (डिफ़ॉल्ट) / `kv` / `cf_rest`
+>   - `DB_FORMAT`: डेटा संग्रहण प्रारूप: `map` (डिफ़ॉल्ट, संपूर्ण ऑब्जेक्ट JSON) / `key` (कुंजी-आधारित संग्रहण) / `sql` (रिलेशनल टेबल, Go बैकएंड संगत)
+>   - `DB_DRIVER`: डेटाबेस ड्राइवर: `auto` (डिफ़ॉल्ट, स्वतः पहचान) / `blob` / `cfkv` / `kv` / `d1` / `mysql`
 >   - शेष वैकल्पिक चरों के लिए **विस्तृत तैनाती मार्गदर्शिका** देखें: [Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
 
 

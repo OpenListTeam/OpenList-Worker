@@ -1,23 +1,29 @@
 /**
- * SQL 格式适配器
- * 
- * 使用关系表存储，与 Go 后端完全一致的表结构：
- * - settings: key (PK), data (JSON)
- * - storages: id (PK), mount_path, data (JSON)
- * - users: id (PK), username, data (JSON)
- * - shares: id (PK), data (JSON)
- * - metas: id (PK), path, data (JSON)
- * - plugins: id (PK), data (JSON)
- * 
- * 适用于 D1、MySQL、PostgreSQL 等关系数据库。
+ * SQL 格式适配器（列式表，与 Go 后端完全一致）。
+ *
+ * 每个字段对应一列，表结构由 schema.ts 的 TABLES 定义。字段名对齐 Go 的
+ * json tag，因此 D1 / MySQL 中的表结构与 Go 的 GORM 建表结果一致。
  */
 import type { FormatAdapter, Driver } from "../types"
 import {
   TABLE_NAMES,
   TABLE_KEY,
-  TABLE_EXTRA_COLUMNS,
-  type TableName,
+  TABLES,
+  TableName,
+  rowToEntity,
+  entityToRow,
 } from "../schema"
+
+const INIT_MARK = "openlist_config"
+
+function quote(name: string): string {
+  return "`" + name + "`"
+}
+
+/** 列名列表（含反引号）。 */
+function cols(table: TableName): string {
+  return TABLES[table].columns.map((c) => quote(c.name)).join(", ")
+}
 
 export const sqlFormat: FormatAdapter = {
   name: "sql",
@@ -30,16 +36,16 @@ export const sqlFormat: FormatAdapter = {
     // 检查是否已初始化
     const marks = await driver.query(
       "SELECT v FROM schema_info WHERE k = ?",
-      ["openlist_config"],
-      env
+      [INIT_MARK],
+      env,
     )
     if (!marks || marks.length === 0) return null
 
     const out: Record<string, any> = {}
 
     for (const table of TABLE_NAMES) {
-      const rows = await driver.query(`SELECT data FROM ${table}`, [], env)
-      out[table] = rows.map((r: any) => JSON.parse(r.data))
+      const rows = await driver.query(`SELECT * FROM ${quote(table)}`, [], env)
+      out[table] = rows.map((r: any) => rowToEntity(table, r))
     }
 
     return out
@@ -54,31 +60,25 @@ export const sqlFormat: FormatAdapter = {
 
     // 清空所有表
     for (const table of TABLE_NAMES) {
-      statements.push({ sql: `DELETE FROM ${table}`, params: [] })
+      statements.push({ sql: `DELETE FROM ${quote(table)}`, params: [] })
     }
 
     // 插入新数据
     for (const table of TABLE_NAMES) {
-      const keyCol = TABLE_KEY[table]
-      const extras = TABLE_EXTRA_COLUMNS[table] || []
-      const cols = [keyCol, ...extras, "data"]
-      const placeholders = cols.map(() => "?").join(", ")
-      const sql = `INSERT INTO ${table} (${cols.join(", ")}) VALUES (${placeholders})`
-
       for (const entity of data?.[table] || []) {
-        const params: any[] = [
-          String(entity?.[keyCol] ?? ""),
-          ...extras.map((c: string) => String(entity?.[c] ?? "")),
-          JSON.stringify(entity),
-        ]
-        statements.push({ sql, params })
+        const { columns, values } = entityToRow(table, entity)
+        const placeholders = columns.map(() => "?").join(", ")
+        const sql = `INSERT INTO ${quote(table)} (${columns
+          .map((c) => quote(c))
+          .join(", ")}) VALUES (${placeholders})`
+        statements.push({ sql, params: values })
       }
     }
 
     // 标记已初始化
     statements.push({
       sql: "INSERT OR REPLACE INTO schema_info (k, v) VALUES (?, ?)",
-      params: ["openlist_config", String(Date.now())],
+      params: [INIT_MARK, String(Date.now())],
     })
 
     await driver.batch(statements, env)
@@ -89,38 +89,33 @@ export const sqlFormat: FormatAdapter = {
     if (!driver.query) {
       throw new Error(`Driver ${driver.name} does not support SQL queries`)
     }
-
-    const rows = await driver.query(`SELECT data FROM ${table}`, [], env)
-    return rows.map((r: any) => JSON.parse(r.data))
+    const t = table as TableName
+    const rows = await driver.query(`SELECT * FROM ${quote(t)}`, [], env)
+    return rows.map((r: any) => rowToEntity(t, r))
   },
 
   async saveTable(
     table: string,
     records: any[],
     driver: Driver,
-    env?: any
+    env?: any,
   ): Promise<void> {
     if (!driver.batch) {
       throw new Error(`Driver ${driver.name} does not support batch operations`)
     }
-
-    const keyCol = TABLE_KEY[table as keyof typeof TABLE_KEY]
-    const extras = TABLE_EXTRA_COLUMNS[table as keyof typeof TABLE_EXTRA_COLUMNS] || []
-    const cols = [keyCol, ...extras, "data"]
-    const placeholders = cols.map(() => "?").join(", ")
+    const t = table as TableName
 
     const statements: Array<{ sql: string; params: any[] }> = [
-      { sql: `DELETE FROM ${table}`, params: [] },
+      { sql: `DELETE FROM ${quote(t)}`, params: [] },
     ]
 
-    const insertSql = `INSERT INTO ${table} (${cols.join(", ")}) VALUES (${placeholders})`
     for (const entity of records) {
-      const params = [
-        String(entity?.[keyCol] ?? ""),
-        ...extras.map((c: string) => String(entity?.[c] ?? "")),
-        JSON.stringify(entity),
-      ]
-      statements.push({ sql: insertSql, params })
+      const { columns, values } = entityToRow(t, entity)
+      const placeholders = columns.map(() => "?").join(", ")
+      const sql = `INSERT INTO ${quote(t)} (${columns
+        .map((c) => quote(c))
+        .join(", ")}) VALUES (${placeholders})`
+      statements.push({ sql, params: values })
     }
 
     await driver.batch(statements, env)
@@ -130,20 +125,19 @@ export const sqlFormat: FormatAdapter = {
     table: string,
     key: string,
     driver: Driver,
-    env?: any
+    env?: any,
   ): Promise<any | null> {
     if (!driver.query) {
       throw new Error(`Driver ${driver.name} does not support SQL queries`)
     }
-
-    const keyCol = TABLE_KEY[table as keyof typeof TABLE_KEY]
+    const t = table as TableName
+    const keyCol = TABLE_KEY[t]
     const rows = await driver.query(
-      `SELECT data FROM ${table} WHERE ${keyCol} = ?`,
+      `SELECT * FROM ${quote(t)} WHERE ${quote(keyCol)} = ?`,
       [key],
-      env
+      env,
     )
-
-    return rows.length > 0 ? JSON.parse(rows[0].data) : null
+    return rows.length > 0 ? rowToEntity(t, rows[0]) : null
   },
 
   async saveRecord(
@@ -151,38 +145,33 @@ export const sqlFormat: FormatAdapter = {
     key: string,
     record: any,
     driver: Driver,
-    env?: any
+    env?: any,
   ): Promise<void> {
     if (!driver.execute) {
       throw new Error(`Driver ${driver.name} does not support SQL execution`)
     }
+    const t = table as TableName
 
-    const keyCol = TABLE_KEY[table as keyof typeof TABLE_KEY]
-    const extras = TABLE_EXTRA_COLUMNS[table as keyof typeof TABLE_EXTRA_COLUMNS] || []
-    const cols = [keyCol, ...extras, "data"]
-    const placeholders = cols.map(() => "?").join(", ")
+    const { columns, values } = entityToRow(t, record)
+    const placeholders = columns.map(() => "?").join(", ")
+    const sql = `INSERT OR REPLACE INTO ${quote(t)} (${columns
+      .map((c) => quote(c))
+      .join(", ")}) VALUES (${placeholders})`
 
-    const sql = `INSERT OR REPLACE INTO ${table} (${cols.join(", ")}) VALUES (${placeholders})`
-    const params = [
-      key,
-      ...extras.map((c: string) => String(record?.[c] ?? "")),
-      JSON.stringify(record),
-    ]
-
-    await driver.execute(sql, params, env)
+    await driver.execute(sql, values, env)
   },
 
   async deleteRecord(
     table: string,
     key: string,
     driver: Driver,
-    env?: any
+    env?: any,
   ): Promise<void> {
     if (!driver.execute) {
       throw new Error(`Driver ${driver.name} does not support SQL execution`)
     }
-
-    const keyCol = TABLE_KEY[table as keyof typeof TABLE_KEY]
-    await driver.execute(`DELETE FROM ${table} WHERE ${keyCol} = ?`, [key], env)
+    const t = table as TableName
+    const keyCol = TABLE_KEY[t]
+    await driver.execute(`DELETE FROM ${quote(t)} WHERE ${quote(keyCol)} = ?`, [key], env)
   },
 }

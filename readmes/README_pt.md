@@ -44,8 +44,8 @@ Clique no botão abaixo para implantar este projeto na plataforma correspondente
 > [!IMPORTANT]
 > - Se o Cloudflare exibir `não é possível obter o conteúdo do repositório`, [bifurque](https://github.com/OpenListTeam/OpenList-Worker/fork) este projeto primeiro e depois implante conectando-se ao repositório do Github
 > - Após a implantação, configure as variáveis de ambiente: **EdgeOne**: [Console internacional](https://console.edgeone.ai/makers) · [Console China](https://console.cloud.tencent.com/edgeone/makers); **Cloudflare**: [Painel do Worker](https://dash.cloudflare.com/). Variáveis de ambiente:
->   - `DB_DRIVER`: modo de armazenamento de dados: `json` (padrão) / `d1` (Cloudflare) / `kv` / `mysql`
->   - `DB_JSON_BACKEND`: backend usado pelo formato `json`: `blob` (padrão) / `kv` / `cf_rest`
+>   - `DB_FORMAT`: formato de armazenamento de dados: `map` (padrão, JSON do objeto completo) / `key` (armazenamento por chave) / `sql` (tabelas relacionais, compatível com o backend Go)
+>   - `DB_DRIVER`: driver de banco de dados: `auto` (padrão, detecção automática) / `blob` / `cfkv` / `kv` / `d1` / `mysql`
 >   - Para outras variáveis opcionais, consulte o **guia de implantação detalhado**: [Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
 
 

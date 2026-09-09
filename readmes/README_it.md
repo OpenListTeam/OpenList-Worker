@@ -44,8 +44,8 @@ Clicca il pulsante qui sotto per distribuire questo progetto sulla piattaforma c
 > [!IMPORTANT]
 > - Se Cloudflare mostra `impossibile recuperare il contenuto del repository`, [fai un fork](https://github.com/OpenListTeam/OpenList-Worker/fork) di questo progetto e poi distribuisci collegandoti al repository Github
 > - Dopo il deploy, configura le variabili d'ambiente: **EdgeOne**: [Console internazionale](https://console.edgeone.ai/makers) · [Console Cina](https://console.cloud.tencent.com/edgeone/makers); **Cloudflare**: [Dashboard Worker](https://dash.cloudflare.com/). Variabili d'ambiente:
->   - `DB_DRIVER`: modalità di salvataggio dei dati: `json` (predefinito) / `d1` (Cloudflare) / `kv` / `mysql`
->   - `DB_JSON_BACKEND`: backend utilizzato dal formato `json`: `blob` (predefinito) / `kv` / `cf_rest`
+>   - `DB_FORMAT`: formato di archiviazione dei dati: `map` (predefinito, JSON dell'oggetto completo) / `key` (archiviazione per chiave) / `sql` (tabelle relazionali, compatibile con il backend Go)
+>   - `DB_DRIVER`: driver del database: `auto` (predefinito, rilevamento automatico) / `blob` / `cfkv` / `kv` / `d1` / `mysql`
 >   - Per le altre variabili opzionali, consulta la **guida di deploy dettagliata**: [Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
 
 

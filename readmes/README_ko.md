@@ -44,8 +44,8 @@
 > [!IMPORTANT]
 > - Cloudflare에서 `저장소 콘텐츠를 가져올 수 없습니다`라고 표시되면, 먼저 이 프로젝트를 [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork)한 다음 Github 저장소 연결 기능으로 배포하세요
 > - 배포 후 환경 변수를 설정합니다： **EdgeOne**：[국제 콘솔](https://console.edgeone.ai/makers) · [중국 콘솔](https://console.cloud.tencent.com/edgeone/makers)；**Cloudflare**：[Worker 대시보드](https://dash.cloudflare.com/)。환경 변수：
->   - `DB_DRIVER`: 데이터 저장 방식：`json` (기본값) / `d1` (Cloudflare) / `kv` / `mysql`
->   - `DB_JSON_BACKEND`: `json` 형식이 사용할 백엔드: `blob` (기본값) / `kv` / `cf_rest`
+>   - `DB_FORMAT`: 데이터 저장 형식: `map` (기본값, 전체 객체 JSON) / `key` (키별 저장) / `sql` (관계형 테이블, Go 백엔드 호환)
+>   - `DB_DRIVER`: 데이터베이스 드라이버: `auto` (기본값, 자동 감지) / `blob` / `cfkv` / `kv` / `d1` / `mysql`
 >   - 나머지 선택 변수는 **상세 배포 가이드**를 참조하세요：[Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
 
 

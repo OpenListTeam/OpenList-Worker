@@ -23,11 +23,12 @@ DB_FORMAT = "map"
 
 # ===================== 数据库驱动（DB_DRIVER）=====================
 # 决定底层存储系统（大小写不敏感）：
-#   auto（默认）- 自动检测，优先级 blob → cfkv → kv → d1
+#   auto（默认）- 自动检测，优先级 blob → cfkv → kv → d1 → memory
 #   blob  - 腾讯云 EdgeOne Blob / 阿里云 ESA Blob
 #   cfkv  - Cloudflare KV REST API（需 CF_ACCOUNT_ID / CF_KV_NAMESPACE_ID / CF_API_TOKEN）
 #   kv    - Cloudflare KV binding（需下方 [[kv_namespaces]] 绑定）
 #   d1    - Cloudflare D1（需下方 [[d1_databases]] 绑定）
+#   do    - Cloudflare Durable Objects（需下方 [[durable_objects]] 绑定与 migrations）
 #   mysql - 外部 MySQL（仅 Node 容器运行时，需 MYSQL_URL 或 MYSQL_* 分项）
 DB_DRIVER = "auto"
 
@@ -76,6 +77,17 @@ binding = ""
 # binding = "DB"
 # database_name = "openlist"
 # database_id = ""
+
+# ===================== Durable Objects（DB_DRIVER = "do" 时启用）=====================
+# DO 内置 SQLite 存储（强一致性 + 事务），适合需要一致性的单租户部署。
+# 启用方式：取消以下注释，并把 DB_DRIVER 设为 "do"。
+# [[durable_objects.bindings]]
+# name = "OPENLIST_DO"
+# class_name = "OpenListDB"
+# 
+# [[migrations]]
+# tag = "v1"
+# new_sqlite_classes = ["OpenListDB"]
 
 
 

@@ -8,7 +8,7 @@
  * - MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
  */
 import type { Driver } from "../types"
-import { MYSQL_SCHEMA } from "../schema"
+import { MYSQL_SCHEMA, KV_SCHEMA_MYSQL } from "../schema"
 
 function isNode(): boolean {
   return typeof process !== "undefined" && process.release?.name === "node"
@@ -51,17 +51,10 @@ let _schemaInited = false
 
 async function ensureSchema(pool: any): Promise<void> {
   if (_schemaInited) return
-  for (const ddl of MYSQL_SCHEMA) {
+  // KV 表（map/key 格式）+ 列式表（sql 格式）一并创建
+  for (const ddl of [...KV_SCHEMA_MYSQL, ...MYSQL_SCHEMA]) {
     await pool.query(ddl)
   }
-  // 创建 KV 表（用于 map/key 格式）
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS \`kv\` (
-      \`key\` VARCHAR(512) PRIMARY KEY,
-      \`value\` LONGTEXT NOT NULL,
-      \`updated_at\` BIGINT NOT NULL
-    )
-  `)
   _schemaInited = true
 }
 
@@ -96,8 +89,8 @@ export const mysqlDriver: Driver = {
 
     await ensureSchema(pool)
     await pool.query(
-      "INSERT INTO `kv` (`key`, `value`, `updated_at`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), `updated_at` = VALUES(`updated_at`)",
-      [key, value, Date.now()]
+      "INSERT INTO `kv` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)",
+      [key, value]
     )
   },
 

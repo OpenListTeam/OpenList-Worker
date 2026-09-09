@@ -124,7 +124,7 @@ export interface FormatAdapter {
  */
 export interface StoreBackend {
   /** 后端标识名 */
-  readonly name: StoreDriver
+  readonly name: string
   /**
    * 读取完整配置对象（已加密）。无数据时返回 null（由上层回退到默认值）。
    */

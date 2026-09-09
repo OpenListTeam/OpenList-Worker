@@ -6,7 +6,7 @@
  * - OPENLIST_DB (别名)
  */
 import type { Driver } from "../types"
-import { D1_SCHEMA } from "../schema"
+import { D1_SCHEMA, KV_SCHEMA_SQLITE } from "../schema"
 
 function getD1(env?: any): any | null {
   const e =
@@ -18,7 +18,8 @@ const d1Inited = new WeakMap<object, boolean>()
 
 async function ensureSchema(db: any): Promise<void> {
   if (d1Inited.get(db)) return
-  for (const ddl of D1_SCHEMA) {
+  // KV 表（map/key 格式）+ 列式表（sql 格式）一并创建
+  for (const ddl of [...KV_SCHEMA_SQLITE, ...D1_SCHEMA]) {
     await db.prepare(ddl).run()
   }
   d1Inited.set(db, true)
