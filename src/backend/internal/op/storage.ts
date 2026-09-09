@@ -76,6 +76,13 @@ import { StrmDriver } from "../../drivers/strm/driver"
 import { ChunkDriver } from "../../drivers/chunk/driver"
 import { AzureBlobDriver } from "../../drivers/azure_blob/driver"
 import { UssDriver } from "../../drivers/uss/driver"
+import { AliDocDriver } from "../../drivers/alidoc/driver"
+import { EmbyDriver } from "../../drivers/emby/driver"
+import { BunnyStorageDriver } from "../../drivers/bunny_storage/driver"
+import { CFImgBedDriver } from "../../drivers/cloudflare_imgbed/driver"
+import { GuangYaPanDriver } from "../../drivers/guangyapan/driver"
+import { AutoIndexDriver } from "../../drivers/autoindex/driver"
+import { ProtonDriveDriver } from "../../drivers/proton_drive/driver"
 
 // LocalDriver is not available in Cloudflare Workers (no fs module).
 // When running in Node.js container mode, import dynamically on first use.
@@ -1100,6 +1107,60 @@ async function createDriver(
   } else if (normDriver === "uss" || normDriver === "upyun") {
     const addition = parseAddition(storageConfig)
     driver = new UssDriver(addition)
+    await driver.init?.()
+  } else if (normDriver === "autoindex" || normDriver === "nginxautoindex") {
+    const addition = parseAddition(storageConfig)
+    driver = new AutoIndexDriver(addition)
+    await driver.init?.()
+  } else if (normDriver === "protondrive" || normDriver === "proton") {
+    const addition = parseAddition(storageConfig)
+    driver = new ProtonDriveDriver(addition)
+    await driver.init?.()
+  } else if (normDriver === "alidoc" || normDriver === "dingtalkdoc") {
+    const addition = parseAddition(storageConfig)
+    driver = new AliDocDriver(addition)
+    await driver.init?.()
+  } else if (normDriver === "emby" || normDriver === "jellyfin") {
+    const addition = parseAddition(storageConfig)
+    driver = new EmbyDriver(addition)
+    await driver.init?.()
+  } else if (
+    normDriver === "bunnystorage" ||
+    normDriver === "bunnycdn" ||
+    normDriver === "bunny"
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new BunnyStorageDriver(addition)
+    await driver.init?.()
+  } else if (
+    normDriver === "cloudflareimgbed" ||
+    normDriver === "cfimgbed" ||
+    normDriver === "cloudflareimage"
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new CFImgBedDriver(addition)
+    await driver.init?.()
+  } else if (normDriver === "guangyapan" || normDriver === "guangya") {
+    const addition = parseAddition(storageConfig)
+    driver = new GuangYaPanDriver(addition, async (accessToken, refreshToken) => {
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        stAddition.access_token = accessToken
+        if (refreshToken) stAddition.refresh_token = refreshToken
+        st.addition = JSON.stringify(stAddition)
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[GuangYaPan] failed to persist tokens:", e)
+      }
+    })
     await driver.init?.()
   } else {
     throw new Error(

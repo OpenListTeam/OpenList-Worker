@@ -72,39 +72,59 @@ export function needsRehash(hash: string): boolean {
 }
 
 /**
+ * 使用 CSPRNG 生成 [0, maxExclusive) 的均匀随机整数。
+ * 通过 rejection sampling 消除朴素 `byte % maxExclusive` 带来的 modulo bias。
+ */
+function secureRandomInt(maxExclusive: number): number {
+  if (maxExclusive <= 0) throw new Error("maxExclusive must be > 0")
+  if (maxExclusive === 1) return 0
+  const limit = 256 - (256 % maxExclusive)
+  const buf = new Uint8Array(1)
+  let r = 0
+  do {
+    crypto.getRandomValues(buf)
+    r = buf[0]
+  } while (r >= limit)
+  return r % maxExclusive
+}
+
+/**
  * 生成随机密码（用于临时密码、重置密码等）
  * @param length 密码长度（默认 16）
  * @returns 随机密码（包含大小写字母、数字、特殊字符）
  */
 export function generateRandomPassword(length: number = 16): string {
-  const charset = {
-    lowercase: "abcdefghijklmnopqrstuvwxyz",
-    uppercase: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-    numbers: "0123456789",
-    symbols: "!@#$%^&*()-_=+[]{}|;:,.<>?",
+  if (!Number.isInteger(length) || length < 4) {
+    throw new Error("Password length must be an integer of at least 4")
+  }
+  const lowercase = "abcdefghijklmnopqrstuvwxyz"
+  const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+  const numbers = "0123456789"
+  const symbols = "!@#$%^&*()-_=+[]{}|;:,.<>?"
+  const all = lowercase + uppercase + numbers + symbols
+
+  // 使用 CSPRNG 取代 Math.random，避免可预测性与 sort() 洗牌偏置
+  const bytes = new Uint8Array(length)
+  crypto.getRandomValues(bytes)
+
+  const chars: string[] = []
+  // 保证四类字符各至少一个
+  chars.push(lowercase[bytes[0] % lowercase.length])
+  chars.push(uppercase[bytes[1] % uppercase.length])
+  chars.push(numbers[bytes[2] % numbers.length])
+  chars.push(symbols[bytes[3] % symbols.length])
+  for (let i = 4; i < length; i++) {
+    chars.push(all[bytes[i] % all.length])
   }
 
-  const allChars =
-    charset.lowercase + charset.uppercase + charset.numbers + charset.symbols
-
-  let password = ""
-
-  // 确保包含每种类型的字符
-  password += charset.lowercase[Math.floor(Math.random() * charset.lowercase.length)]
-  password += charset.uppercase[Math.floor(Math.random() * charset.uppercase.length)]
-  password += charset.numbers[Math.floor(Math.random() * charset.numbers.length)]
-  password += charset.symbols[Math.floor(Math.random() * charset.symbols.length)]
-
-  // 填充剩余长度
-  for (let i = password.length; i < length; i++) {
-    password += allChars[Math.floor(Math.random() * allChars.length)]
+  // Fisher-Yates 洗牌（CSPRNG + rejection sampling 消除 modulo bias）
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = secureRandomInt(i + 1)
+    const tmp = chars[i]
+    chars[i] = chars[j]
+    chars[j] = tmp
   }
-
-  // 打乱顺序
-  return password
-    .split("")
-    .sort(() => Math.random() - 0.5)
-    .join("")
+  return chars.join("")
 }
 
 /**

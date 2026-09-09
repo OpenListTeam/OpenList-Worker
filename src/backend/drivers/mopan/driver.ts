@@ -268,25 +268,33 @@ export class MoPanDriver implements StorageDriver {
   }
 
   async move(
-    _virtualPathSrc: string,
-    physicalPathSrc: string,
-    _virtualPathDst: string,
-    physicalPathDst: string,
+    srcDir: string,
+    dstDir: string,
+    names: string[],
+    srcPhys: string,
+    dstPhys: string,
   ): Promise<void> {
-    const srcItem = await this.get("", physicalPathSrc)
-    const dstFolderId = await this.resolveFolderId(physicalPathDst)
-    await this.performBatchTask(srcItem, dstFolderId, TaskTypeMove)
+    const dstFolderId = await this.resolveFolderId(dstPhys)
+    for (const name of names) {
+      const srcItemPath = srcPhys === "/" ? `/${name}` : `${srcPhys}/${name}`
+      const srcItem = await this.get(srcDir, srcItemPath)
+      await this.performBatchTask(srcItem, dstFolderId, TaskTypeMove)
+    }
   }
 
   async copy(
-    _virtualPathSrc: string,
-    physicalPathSrc: string,
-    _virtualPathDst: string,
-    physicalPathDst: string,
+    srcDir: string,
+    dstDir: string,
+    names: string[],
+    srcPhys: string,
+    dstPhys: string,
   ): Promise<void> {
-    const srcItem = await this.get("", physicalPathSrc)
-    const dstFolderId = await this.resolveFolderId(physicalPathDst)
-    await this.performBatchTask(srcItem, dstFolderId, TaskTypeCopy)
+    const dstFolderId = await this.resolveFolderId(dstPhys)
+    for (const name of names) {
+      const srcItemPath = srcPhys === "/" ? `/${name}` : `${srcPhys}/${name}`
+      const srcItem = await this.get(srcDir, srcItemPath)
+      await this.performBatchTask(srcItem, dstFolderId, TaskTypeCopy)
+    }
   }
 
   private async performBatchTask(
@@ -364,27 +372,16 @@ export class MoPanDriver implements StorageDriver {
   async put(
     _virtualPath: string,
     physicalPath: string,
-    content: ReadableStream<Uint8Array>,
+    content: Buffer,
   ): Promise<void> {
-    const parts = physicalPath.split("/").filter(Boolean)
-    const fileName = parts.pop() || "未命名文件"
-    const parentPath = parts.join("/")
+    const pathParts = physicalPath.split("/").filter(Boolean)
+    const fileName = pathParts.pop() || "未命名文件"
+    const parentPath = pathParts.join("/")
     const parentId = await this.resolveFolderId(parentPath)
 
-    // Read all content and calculate MD5
-    const chunks: Uint8Array[] = []
-    const reader = content.getReader()
-    let totalSize = 0
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      chunks.push(value)
-      totalSize += value.length
-    }
-
-    const fileBuffer = Buffer.concat(chunks.map((c) => Buffer.from(c)))
+    const fileBuffer = content
     const fileMd5 = createHash("md5").update(fileBuffer).digest("hex")
+    const totalSize = content.length
 
     // Init multi-part upload
     const initData = await this.client.initMultiUpload(
@@ -397,22 +394,22 @@ export class MoPanDriver implements StorageDriver {
 
     if (!initData.fileDataExists) {
       // Upload parts
-      const parts = await this.client.getAllMultiUploadUrls(
+      const uploadParts = await this.client.getAllMultiUploadUrls(
         initData.uploadFileID,
         initData.partInfos,
       )
 
-      for (const part of parts) {
+      for (const part of uploadParts) {
         const start = (part.partNumber - 1) * initData.partSize
         const end =
-          part.partNumber === parts.length
+          part.partNumber === uploadParts.length
             ? totalSize
             : start + initData.partSize
         const chunk = fileBuffer.slice(start, end)
 
         await fetch(part.uploadUrl, {
           method: "PUT",
-          body: chunk,
+          body: chunk as unknown as BodyInit,
           headers: {
             "Content-Length": String(chunk.length),
           },

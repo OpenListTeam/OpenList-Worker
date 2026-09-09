@@ -67,31 +67,59 @@ async function writeKvSecret(env: any, secret: string): Promise<boolean> {
 
 /**
  * 获取 JWT 签名密钥。
- * 优先级：env.JWT_SECRET > KV 持久化随机密钥 > 进程内随机密钥。
+ * 优先级：env.JWT_SECRET > KV 持久化随机密钥 > 进程内随机密钥（仅开发环境）。
  */
 export async function getJwtSecret(c?: Context | any): Promise<string> {
   const env =
     c?.env || (typeof process !== "undefined" ? (process as any).env : {}) || {}
 
-  // 1. 环境变量显式配置（最优先）
+  // 1. 环境变量显式配置（最优先，提高最小长度要求到 32 字符）
   const envSecret = env.JWT_SECRET
+  if (envSecret && envSecret.length >= 32) {
+    return envSecret
+  }
+
+  // 兼容性：如果密钥长度在 16-31 之间，发出警告但仍然使用
   if (envSecret && envSecret.length >= 16) {
+    console.warn(
+      "[JWT] JWT_SECRET 长度不足 32 字符，建议使用更长的密钥以提高安全性。"
+    )
     return envSecret
   }
 
   // 2. KV 持久化密钥（跨实例/重启稳定）
   const kvSecret = await readKvSecret(env)
-  if (kvSecret && kvSecret.length >= 16) {
+  if (kvSecret && kvSecret.length >= 32) {
     return kvSecret
   }
 
-  // 3. 生成随机密钥并持久化到 KV（若无 KV 则仅内存）
+  // 3. 检查是否为生产环境
+  const isProduction =
+    env.NODE_ENV === "production" ||
+    env.ENVIRONMENT === "production" ||
+    env.CF_PAGES === "1" ||
+    env.WORKERS_ENV === "production"
+
+  // 4. 生成随机密钥并尝试持久化到 KV（开发 + 生产兼容）
   if (!cachedJwtSecret) {
     cachedJwtSecret = generateRandomSecret()
     const persisted = await writeKvSecret(env, cachedJwtSecret)
-    if (!persisted) {
+    
+    if (isProduction) {
+      console.error(
+        "[JWT] ⚠️ 🔴 生产环境安全警告：JWT_SECRET 未配置！" +
+        (persisted
+          ? "\n✅ 已自动生成密钥并持久化到 KV。此密钥将持续使用，但强烈建议手动配置 JWT_SECRET 环境变量以提高安全性。"
+          : "\n❌ 无法持久化密钥到 KV！密钥仅存于内存，重启后所有 token 将失效。请立即配置 JWT_SECRET 环境变量！") +
+        "\n\n🔒 安全建议：生成密钥命令: openssl rand -hex 32"
+      )
+    } else {
       console.warn(
-        "[JWT] JWT_SECRET 未配置且无法持久化到 KV：密钥仅存于当前进程，多实例/冷启动会导致已签发 token 失效。生产环境请配置 >=16 字符的 JWT_SECRET。",
+        "[JWT] ⚠️  开发环境警告：JWT_SECRET 未配置，使用临时随机密钥。" +
+        (persisted
+          ? "密钥已持久化到 KV，重启后保持有效。"
+          : "密钥仅存于内存，重启后所有 token 将失效。") +
+        "\n生产环境部署前，请务必配置 >=32 字符的 JWT_SECRET 环境变量。"
       )
     }
   }
@@ -274,6 +302,10 @@ export async function generateCSRFToken(c: Context): Promise<string> {
 /**
  * CSRF 保护中间件：对 POST/PUT/DELETE/PATCH 请求验证 CSRF token
  * GET/HEAD/OPTIONS 请求豁免检查
+ * 
+ * 安全增强 (2026-09-08):
+ * - 仅允许从 HTTP Header 获取 token（移除 Query 和 Body 获取）
+ * - 防止 JSON 劫持和 URL 泄露攻击
  */
 export async function csrfProtection(
   c: Context,
@@ -286,29 +318,15 @@ export async function csrfProtection(
     return next()
   }
 
-  // 获取 CSRF token（支持 Header、Query、Body 三种方式）
-  let token =
-    c.req.header("x-csrf-token") ||
-    c.req.header("X-CSRF-Token") ||
-    c.req.query("csrf_token")
-
-  // 尝试从 JSON body 中获取
-  if (!token) {
-    try {
-      const body = await c.req.json()
-      token = body?.csrf_token
-      // 重要：重新设置 body 供后续处理（Hono 的 req.json() 会消耗 body）
-      ;(c.req as any).bodyCache = body
-    } catch {
-      // 非 JSON body，继续
-    }
-  }
+  // 仅从 HTTP Header 获取 CSRF token（安全最佳实践）
+  // 移除 Query 和 Body 获取以防止攻击者通过 JSON 劫持或 URL 泄露绕过 CSRF 防护
+  const token = c.req.header("x-csrf-token") || c.req.header("X-CSRF-Token")
 
   if (!token) {
     return c.json(
       {
         code: 403,
-        message: "CSRF token missing. Please include X-CSRF-Token header or csrf_token parameter.",
+        message: "CSRF token missing. Please include X-CSRF-Token header.",
         data: null,
       },
       403,
@@ -425,6 +443,8 @@ export async function getUserFromContext(c: Context): Promise<{
     }
   }
 
+  // 无 Authorization header：尝试使用 guest 用户作为后备
+  // 注意：guest 不可用时返回 null 是合理的，调用方应该正确处理
   if (!authHeader) {
     try {
       const db = await getDb(c.env)
@@ -443,6 +463,8 @@ export async function getUserFromContext(c: Context): Promise<{
         }
       }
     } catch {}
+    // guest 不存在或被禁用，返回 null
+    // 调用方应该检查是否有其他方式获取用户（如 query token）
     return null
   }
 

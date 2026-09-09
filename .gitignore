@@ -81,3 +81,4 @@ docs/*AUDIT*.md
 docs/*SECURITY*.md
 docs/TASK-COMPLETION-REPORT.md
 wrangler.d1.jsonc
+.wrangler-dryrun/

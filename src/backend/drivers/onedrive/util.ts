@@ -61,13 +61,27 @@ export async function requestApi<T>(
   data?: any,
   noRetry?: boolean,
 ): Promise<T> {
+  const isBinary =
+    data !== undefined &&
+    (data instanceof Uint8Array ||
+      data instanceof ArrayBuffer ||
+      (typeof Buffer !== "undefined" && Buffer.isBuffer(data)))
+
   const init: RequestInit = {
     method: method.toUpperCase(),
     headers: {
       Authorization: `Bearer ${d.accessToken}`,
-      ...(data !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...(data !== undefined
+        ? {
+            "Content-Type": isBinary
+              ? "application/octet-stream"
+              : "application/json",
+          }
+        : {}),
     },
-    ...(data !== undefined ? { body: JSON.stringify(data) } : {}),
+    ...(data !== undefined
+      ? { body: isBinary ? (data as any) : JSON.stringify(data) }
+      : {}),
   }
   const res = await fetch(url, init)
   if (!res.ok) {

@@ -48,7 +48,10 @@ export class WebdavDriver implements StorageDriver {
       size: item.size,
       is_dir: item.isFolder,
       modified: item.modified,
-      sign: item.path || remotePath,
+      // sign 语义是「下载签名」（由 pkg/sign 签发），不是远程路径。
+      // 之前误塞远程路径会让前端拼出 ?sign=/dav/xxx 这类无效签名，
+      // 在 sign_all/link_expiration 开启时被判为「Invalid or expired sign」→ 401。
+      sign: "",
       type: calcFileType(item.name, item.isFolder),
       thumb: "",
       raw_url: item.isFolder ? undefined : link.url,

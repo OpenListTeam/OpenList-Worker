@@ -219,10 +219,7 @@ export class Cloud189PCDriver implements StorageDriver {
       pageNum++
     }
 
-    return sortFileItems(allFiles, {
-      orderBy: "name",
-      orderDirection: "asc",
-    })
+    return sortFileItems(allFiles, "name", "asc")
   }
 
   async link(file: FileItem): Promise<{ url: string; headers?: Record<string, string> }> {
@@ -243,17 +240,20 @@ export class Cloud189PCDriver implements StorageDriver {
     }
   }
 
-  async get(path: string): Promise<FileItem | null> {
+  async get(_virtualPath: string, physicalPath: string): Promise<FileItem> {
     const resp = await this.client.requestAPI("/open/file/getFileInfo.action", {
-      fileId: path,
+      fileId: physicalPath,
     })
 
-    if (!resp) return null
+    if (!resp) throw new Error("[189PC] file not found")
 
     return cloud189PCFileToFileItem(resp as Cloud189PCFile)
   }
 
-  async makeDir(parentDir: string, dirName: string): Promise<void> {
+  async mkdir(_virtualPath: string, physicalPath: string): Promise<void> {
+    const parts = physicalPath.split("/").filter(Boolean)
+    const dirName = parts.pop() || ""
+    const parentDir = parts.join("/")
     const resp = await this.client.requestAPI(CreateFolderURL, {
       parentFolderId: parentDir || this.rootFolderId,
       folderName: dirName,
@@ -292,31 +292,22 @@ export class Cloud189PCDriver implements StorageDriver {
   }
 
   async put(
-    dstDirPath: string,
-    content: ReadableStream,
-    fileName: string
+    _virtualPath: string,
+    physicalPath: string,
+    content: Buffer,
   ): Promise<void> {
-    const reader = content.getReader()
-    const chunks: Uint8Array[] = []
-    let totalSize = 0
-
-    // Read all chunks
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      chunks.push(value)
-      totalSize += value.length
-    }
-
-    // Combine chunks
-    const buffer = Buffer.concat(chunks.map((c) => Buffer.from(c)))
+    const pathParts = physicalPath.split("/").filter(Boolean)
+    const fileName = pathParts.pop() || "upload"
+    const parentFolderId = pathParts.join("/") || this.rootFolderId
+    const buffer = content
+    const totalSize = content.length
     const md5 = calcMD5(buffer)
     const sha1 = calcSHA1(buffer)
 
     // Init upload
     const initResp = await this.client.requestUploadAPI(InitUploadURL, {
-      parentFolderId: dstDirPath || this.rootFolderId,
-      fileName: fileName,
+      parentFolderId,
+      fileName,
       fileSize: totalSize,
       fileMd5: md5,
       sliceSize: DefaultChunkSize,
@@ -344,7 +335,7 @@ export class Cloud189PCDriver implements StorageDriver {
 
     // Upload file
     const formData = new FormData()
-    formData.append("file", new Blob([buffer]), fileName)
+    formData.append("file", new Blob([buffer as unknown as BlobPart]), fileName)
 
     await this.client.request(uploadUrlResp.uploadUrls[0], {
       method: "POST",

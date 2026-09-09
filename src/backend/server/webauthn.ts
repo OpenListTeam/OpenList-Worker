@@ -369,7 +369,10 @@ webauthnRouter.post("/webauthn_finish_login", async (c) => {
     )
     const sig = b64urlDecode(body.response?.signature || "")
     const clientDataHash = new Uint8Array(
-      await crypto.subtle.digest("SHA-256", b64urlDecode(body.response?.clientDataJSON || "")),
+      await crypto.subtle.digest(
+        "SHA-256",
+        b64urlDecode(body.response?.clientDataJSON || "") as unknown as BufferSource,
+      ),
     )
     const signedData = new Uint8Array(authData.length + clientDataHash.length)
     signedData.set(authData, 0)
@@ -380,7 +383,12 @@ webauthnRouter.post("/webauthn_finish_login", async (c) => {
         ? { name: "RSASSA-PKCS1-v1_5" }
         : { name: "ECDSA", hash: "SHA-256" }
     const valid = await crypto.subtle
-      .verify(verifyAlg as any, publicKey, sig, signedData)
+      .verify(
+        verifyAlg as any,
+        publicKey,
+        sig as unknown as BufferSource,
+        signedData as unknown as BufferSource,
+      )
       .catch(() => false)
     if (!valid) {
       return c.json({ code: 400, message: "signature verification failed", data: null }, 400)
@@ -499,8 +507,9 @@ webauthnRouter.post("/webauthn_finish_registration", async (c) => {
       sign_count: signCount,
       created_at: new Date().toISOString(),
     }
-    if (!user.webauthn_credentials) user.webauthn_credentials = []
-    user.webauthn_credentials.push(credRecord)
+    const webauthnUser = user as any
+    if (!webauthnUser.webauthn_credentials) webauthnUser.webauthn_credentials = []
+    webauthnUser.webauthn_credentials.push(credRecord)
     await saveDb(db, c.env)
 
     return c.json({ code: 200, message: "Registered Successfully", data: null })

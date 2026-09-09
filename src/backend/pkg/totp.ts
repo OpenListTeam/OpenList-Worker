@@ -83,12 +83,23 @@ export function isValidTOTPSecret(secret: string): boolean {
  * 备用码应该由调用方生成并加密存储
  */
 export function generateBackupCodes(count: number = 10): string[] {
+  if (!Number.isInteger(count) || count < 1 || count > 1000) {
+    throw new Error("Backup code count must be an integer between 1 and 1000")
+  }
+  // 使用 CSPRNG 生成恢复码，避免 Math.random 可预测导致 2FA 被绕过
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // 去除易混淆字符 I/O/0/1
+  const bytes = new Uint8Array(count * 8)
+  crypto.getRandomValues(bytes)
+
   const codes: string[] = []
   for (let i = 0; i < count; i++) {
-    // 生成 8 位随机码（格式：XXXX-XXXX）
-    const part1 = Math.random().toString(36).substring(2, 6).toUpperCase()
-    const part2 = Math.random().toString(36).substring(2, 6).toUpperCase()
-    codes.push(`${part1}-${part2}`)
+    let code = ""
+    for (let j = 0; j < 8; j++) {
+      // 取模会有轻微偏置，但对 32 字符集、8 字节/码的恢复码场景可忽略；
+      // 如需严格无偏可改为拒绝采样。
+      code += alphabet[bytes[i * 8 + j] % alphabet.length]
+    }
+    codes.push(`${code.slice(0, 4)}-${code.slice(4)}`)
   }
   return codes
 }

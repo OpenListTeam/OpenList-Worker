@@ -15,11 +15,17 @@ import { resolveShare } from "../internal/op/share"
 import { resolvePath } from "../internal/model/db"
 import { getUserFromContext } from "./middlewares"
 import { canWrite, getActualPath, isAdmin } from "../pkg/permission"
-import { getSignPolicy, signDownloadPath } from "../pkg/sign"
+import {
+  getSignPolicy,
+  signDownloadPath,
+  isEncryptPath,
+  getSignExpiresIn,
+} from "../pkg/sign"
 import { safeErrorMessage } from "../pkg/errs"
 import { search } from "../internal/op/search"
 import { parseZip, extractZipEntry, ZipArchive } from "../internal/archive/zip"
 import { assertSafeUrl } from "../pkg/http"
+import { seedRouter } from "./seed"
 import {
   clampChunkSize,
   deleteSession,
@@ -33,6 +39,7 @@ import {
 } from "../internal/upload/multipart"
 
 export const fsRouter = new Hono()
+fsRouter.route("/seed", seedRouter)
 
 const getStorageRequestContext = (c: any) => {
   try {
@@ -305,17 +312,26 @@ fsRouter.post("/list", async (c) => {
     // write 按请求者身份如实返回：游客/无写权限用户为 false，
     // 前端据此隐藏上传、新建文件夹等写操作入口
     const writable = canWrite(user)
-    // 下载签名策略（sign_all / link_expiration）：仅对文件项签发 HMAC 签名，
-    // 前端拼到下载链接后由 /raw 校验。未启用时 sign 保持驱动原值。
+    // 下载签名（对齐 Go server/common.Sign + handles.isEncrypt）：
+    //   目录不签名；sign_all（或 TS 扩展的 link_expiration）开启、
+    //   或该目录被设了密码的 meta 覆盖时，为文件项签发 HMAC 签名。
+    // 必须与 raw.ts 的 needDownloadSign 保持对称，否则直链会验签失败。
+    // 注意：不能回退 item.sign —— sign 由本层统一签发，驱动不参与
+    //（历史上 webdav/autoindex 驱动曾把远程路径/URL 塞进该字段）。
     const signPolicy = await getSignPolicy(c)
+    const encrypt = await isEncryptPath(c, reqPath)
+    const signNeeded = signPolicy.enabled || encrypt
+    const signExpiresIn = signNeeded
+      ? signPolicy.expiresIn || (await getSignExpiresIn(c))
+      : 0
     // Normalize each item to the full Obj shape expected by the frontend
     const normalized = await Promise.all(
       content.map(async (item: any) => {
         const fullPath = `${reqPath}/${item.name}`.replace(/\/{2,}/g, "/")
         const sign =
-          !item.is_dir && signPolicy.enabled
-            ? await signDownloadPath(c, fullPath, signPolicy.expiresIn)
-            : item.sign || ""
+          !item.is_dir && signNeeded
+            ? await signDownloadPath(c, fullPath, signExpiresIn)
+            : ""
         return {
           name: item.name,
           size: item.size,
@@ -453,11 +469,17 @@ fsRouter.post("/get", async (c) => {
     }
 
     const { item, provider, rawUrl } = await getItem(reqPath, requestContext)
+    // 与 /fs/list 同源逻辑，见上方注释
     const signPolicy = await getSignPolicy(c)
+    const signNeeded = signPolicy.enabled || (await isEncryptPath(c, reqPath))
     const sign =
-      !item.is_dir && signPolicy.enabled
-        ? await signDownloadPath(c, reqPath, signPolicy.expiresIn)
-        : item.sign || ""
+      !item.is_dir && signNeeded
+        ? await signDownloadPath(
+            c,
+            reqPath,
+            signPolicy.expiresIn || (await getSignExpiresIn(c)),
+          )
+        : ""
     return c.json({
       code: 200,
       message: "success",
@@ -897,19 +919,15 @@ fsRouter.post("/add_offline_download", async (c) => {
     return c.json({ code: 400, message: "No URLs provided" })
   }
 
-  /* 
-  // Offline download is not supported in stateless Serverless environments 
-  // as it requires a long-running background process or specialized task queue.
-  downloadOfflineFile(urls, reqPath).catch((err) => {
-    console.error("Async offline download background job failed:", err)
-  })
-  */
-  return c.json({
-    code: 200,
-    message:
-      "Offline download task received (Note: background processing limited in Serverless mode)",
-    data: null,
-  })
+  return c.json(
+    {
+      code: 501,
+      message:
+        "capability unavailable: this runtime has no durable offline-download adapter; use /fs/seed/offline_download with an approved source and a streaming-capable target driver",
+      data: { path: reqPath, accepted: 0 },
+    },
+    501,
+  )
 })
 
 fsRouter.post("/search", async (c) => {
@@ -1144,7 +1162,7 @@ fsRouter.post("/link", async (c) => {
     }
     const driver = await getDriver(resolved.storage.driver, resolved.storage)
     try {
-      const item = await driver.get(reqPath, resolved.physical)
+      const item = await driver.get(reqPath, resolved.physical ?? "/")
       if (item && item.raw_url) {
         return c.json({
           code: 200,
