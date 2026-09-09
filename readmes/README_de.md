@@ -61,7 +61,7 @@ Das Backend wurde von Go auf einen auf Workers laufenden TypeScript-Dienst umges
 
 ### Speicher-Aggregation
 
-**Über 80 Speichertreiber** integriert，bereit zum Mounten verschiedener Speicher-Backends：
+**78 Speichertreiber** integriert，bereit zum Mounten verschiedener Speicher-Backends：
 
 | Kategorie | Unterstützte Backends |
 | :--- | :--- |

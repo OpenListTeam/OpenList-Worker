@@ -61,7 +61,7 @@ The backend has been rewritten from Go to a TypeScript service running on Worker
 
 ### Storage Aggregation
 
-Built-in **80+ storage drivers**, ready to mount various storage backends out of the box:
+Built-in **78 storage drivers**, ready to mount various storage backends out of the box:
 
 | Category | Supported backends |
 | :--- | :--- |

@@ -61,7 +61,7 @@ El backend se ha reescrito de Go a un servicio TypeScript que se ejecuta en Work
 
 ### Agregación de almacenamiento
 
-**Más de 80 controladores de almacenamiento** integrados，listos para montar varios backends de almacenamiento：
+**78 controladores de almacenamiento** integrados，listos para montar varios backends de almacenamiento：
 
 | Categoría | Backends compatibles |
 | :--- | :--- |

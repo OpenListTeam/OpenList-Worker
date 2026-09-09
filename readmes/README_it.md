@@ -61,7 +61,7 @@ Il backend è stato riscritto da Go a un servizio TypeScript eseguito su Workers
 
 ### Aggregazione degli storage
 
-Oltre **80 driver di storage** integrati，pronti a montare vari backend di storage：
+**78 driver di storage** integrati，pronti a montare vari backend di storage：
 
 | Categoria | Backend supportati |
 | :--- | :--- |

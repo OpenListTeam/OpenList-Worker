@@ -61,7 +61,7 @@ Le backend a été réécrit de Go vers un service TypeScript fonctionnant sur W
 
 ### Agrégation de stockages
 
-**Plus de 80 pilotes de stockage** intégrés, prêts à monter divers backends de stockage :
+**78 pilotes de stockage** intégrés, prêts à monter divers backends de stockage :
 
 | Catégorie | Backends pris en charge |
 | :--- | :--- |

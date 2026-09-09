@@ -61,7 +61,7 @@ O backend foi reescrito de Go para um serviço TypeScript executado no Workers�
 
 ### Agregação de armazenamento
 
-**Mais de 80 drivers de armazenamento** integrados，prontos para montar vários backends de armazenamento：
+**78 drivers de armazenamento** integrados，prontos para montar vários backends de armazenamento：
 
 | Categoria | Backends suportados |
 | :--- | :--- |

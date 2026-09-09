@@ -61,7 +61,7 @@ OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTea
 
 ### 儲存聚合
 
-內建 **80+ 儲存驅動**，開箱即用地掛載各類儲存後端：
+內建 **78 個儲存驅動**，開箱即用地掛載各類儲存後端：
 
 | 分類 | 支援的後端 |
 | :--- | :--- |
