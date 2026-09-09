@@ -1,5 +1,9 @@
 import esbuild from "esbuild"
 import fs from "fs"
+import path from "path"
+import { fileURLToPath } from "url"
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 /**
  * Node 内置模块列表（裸模块名，无 node: 前缀）。
@@ -113,6 +117,30 @@ const normalizeHtmlEolPlugin = {
   },
 }
 
+/**
+ * ESA 边缘运行时 Node 内置模块 shim 插件
+ * 拦截 Node 内置模块引用（裸模块名和 node: 前缀），替换为空壳实现
+ */
+const nodeShimPlugin = {
+  name: "node-shim",
+  setup(build) {
+    const nodeModules = ["crypto", "buffer", "util", "stream", "zlib", "module", "fs", "path"]
+    const shimPath = path.resolve(__dirname, "node-shim.mjs")
+    
+    // 匹配裸模块名（如 "crypto"）
+    const bareFilter = new RegExp(`^(${nodeModules.join("|")})$`)
+    build.onResolve({ filter: bareFilter }, (args) => {
+      return { path: shimPath, external: false }
+    })
+    
+    // 匹配 node: 前缀（如 "node:crypto"）
+    const nodeFilter = new RegExp(`^node:(${nodeModules.join("|")})$`)
+    build.onResolve({ filter: nodeFilter }, (args) => {
+      return { path: shimPath, external: false }
+    })
+  },
+}
+
 async function build() {
   await esbuild.build({
     entryPoints: ["api/[...route].ts"],
@@ -160,21 +188,20 @@ async function build() {
     await esbuild.build({
       entryPoints: ["esa-entry.ts"],
       bundle: true,
-      platform: "neutral",
+      platform: "browser", // ESA 边缘运行时不支持 Node 内置模块，需要浏览器构建
       outfile: "dist/esa-entry.js",
       minify: true,
       format: "esm",
-      mainFields: ["module", "main"],
+      mainFields: ["browser", "module", "main"], // 优先选择浏览器版本依赖
+      conditions: ["browser"], // 强制浏览器条件导出
       external: [
-      "ssh2",
-      "cpu-features",
-      "iconv-lite",
-      "mysql2",
-      "node:*",
-      ...NODE_BUILTINS,
-    ],
+        "ssh2",
+        "cpu-features",
+        "iconv-lite",
+        "mysql2",
+      ],
       loader: { ".html": "text", ".node": "empty" },
-      plugins: [emptyNodeDriverPlugin, normalizeHtmlEolPlugin],
+      plugins: [emptyNodeDriverPlugin, normalizeHtmlEolPlugin, nodeShimPlugin],
     })
   }
 

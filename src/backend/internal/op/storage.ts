@@ -137,6 +137,7 @@ function setDriverCache(key: string, driver: StorageDriver): void {
 
 export interface StorageRequestContext {
   waitUntil?: (promise: Promise<unknown>) => void
+  env?: any // ESA/Cloudflare env，用于请求级缓存复用
 }
 
 export async function getOrCreateDriver(
@@ -1307,7 +1308,7 @@ export async function listItems(
   virtualPath: string,
   requestContext?: StorageRequestContext,
 ): Promise<{ content: FileItem[]; provider: string; storage?: any }> {
-  const resolved = await resolvePath(virtualPath)
+  const resolved = await resolvePath(virtualPath, requestContext?.env)
   let items: FileItem[] = []
   let driverName = "Virtual"
 
@@ -1328,24 +1329,24 @@ export async function listItems(
       }
       if (resolved.storage.status !== "work") {
         resolved.storage.status = "work"
-        const db = await getDb()
+        const db = await getDb(requestContext?.env)
         const st = (db.storages || []).find(
           (s: any) => s.id === resolved.storage?.id,
         )
         if (st) {
           st.status = "work"
-          await saveDb(db)
+          await saveDb(db, requestContext?.env)
         }
       }
     } catch (e: any) {
       try {
-        const db = await getDb()
+        const db = await getDb(requestContext?.env)
         const st = (db.storages || []).find(
           (s: any) => s.id === resolved.storage?.id,
         )
         if (st) {
           st.status = e.message || String(e)
-          await saveDb(db)
+          await saveDb(db, requestContext?.env)
         }
       } catch (persistErr) {
         console.warn("Failed to persist storage status:", persistErr)
@@ -1357,7 +1358,7 @@ export async function listItems(
   }
 
   // Merge virtual child storage mounts if we are listing a directory that contains mount points
-  const db = await getDb()
+  const db = await getDb(requestContext?.env)
   const activeStorages = (db.storages || []).filter((s: any) => !s.disabled)
   const cleanListedPath = resolved.cleanPath
 
@@ -1396,7 +1397,7 @@ export async function getItem(
   virtualPath: string,
   requestContext?: StorageRequestContext,
 ): Promise<{ item: FileItem; provider: string; rawUrl: string }> {
-  const resolved = await resolvePath(virtualPath)
+  const resolved = await resolvePath(virtualPath, requestContext?.env)
   if (resolved.isVirtual) {
     const name = resolved.cleanPath.split("/").filter(Boolean).pop() || "root"
     return {
@@ -1458,7 +1459,7 @@ export async function makeDirectory(
   virtualPath: string,
   requestContext?: StorageRequestContext,
 ): Promise<void> {
-  const resolved = await resolvePath(virtualPath)
+  const resolved = await resolvePath(virtualPath, requestContext?.env)
   if (resolved.isVirtual) {
     throw new Error("failed get storage: storage not found")
   }
@@ -1480,7 +1481,7 @@ export async function renameItem(
   newName: string,
   requestContext?: StorageRequestContext,
 ): Promise<void> {
-  const resolved = await resolvePath(virtualPath)
+  const resolved = await resolvePath(virtualPath, requestContext?.env)
   if (resolved.isVirtual) {
     throw new Error("failed get storage: storage not found")
   }
@@ -1504,7 +1505,7 @@ export async function removeItems(
 ): Promise<void> {
   for (const name of names) {
     const itemVirtual = `${dir}/${name}`
-    const resolved = await resolvePath(itemVirtual)
+    const resolved = await resolvePath(itemVirtual, requestContext?.env)
     if (resolved.isVirtual) {
       throw new Error("failed get storage: storage not found")
     }
@@ -1531,8 +1532,8 @@ export async function moveItems(
   for (const name of names) {
     const srcVirtual = `${srcDir}/${name}`
     const dstVirtual = `${dstDir}/${name}`
-    const srcResolved = await resolvePath(srcVirtual)
-    const dstResolved = await resolvePath(dstVirtual)
+    const srcResolved = await resolvePath(srcVirtual, requestContext?.env)
+    const dstResolved = await resolvePath(dstVirtual, requestContext?.env)
     if (srcResolved.isVirtual || dstResolved.isVirtual) {
       throw new Error("failed get storage: storage not found")
     }
@@ -1569,8 +1570,8 @@ export async function copyItems(
   for (const name of names) {
     const srcVirtual = `${srcDir}/${name}`
     const dstVirtual = `${dstDir}/${name}`
-    const srcResolved = await resolvePath(srcVirtual)
-    const dstResolved = await resolvePath(dstVirtual)
+    const srcResolved = await resolvePath(srcVirtual, requestContext?.env)
+    const dstResolved = await resolvePath(dstVirtual, requestContext?.env)
     if (srcResolved.isVirtual || dstResolved.isVirtual) {
       throw new Error("failed get storage: storage not found")
     }
@@ -1603,7 +1604,7 @@ export async function putItem(
   content: Buffer,
   requestContext?: StorageRequestContext,
 ): Promise<void> {
-  const resolved = await resolvePath(virtualPath)
+  const resolved = await resolvePath(virtualPath, requestContext?.env)
   if (resolved.isVirtual) {
     throw new Error("failed get storage: storage not found")
   }

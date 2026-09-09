@@ -29,7 +29,10 @@ const getStorageRequestContext = (c: any) => {
     if (!executionCtx || typeof executionCtx.waitUntil !== "function") {
       return undefined
     }
-    return { waitUntil: (p: Promise<unknown>) => executionCtx.waitUntil(p) }
+    return { 
+      waitUntil: (p: Promise<unknown>) => executionCtx.waitUntil(p),
+      env: c.env, // 传递 env 用于请求级 KV 缓存复用
+    }
   } catch {
     return undefined
   }
