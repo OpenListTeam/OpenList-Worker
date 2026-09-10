@@ -23,6 +23,7 @@ export const TABLE_NAMES = [
   "shares",
   "metas",
   "plugins",
+  "sshkeys",
 ] as const
 
 export type TableName = (typeof TABLE_NAMES)[number]
@@ -63,6 +64,7 @@ export const TABLE_KEY: Record<TableName, string> = {
   shares: "id",
   metas: "id",
   plugins: "id",
+  sshkeys: "id",
 }
 
 /** 主键值统一序列化为字符串，避免数字/字符串 id 混用导致的主键类型漂移。 */
@@ -83,6 +85,7 @@ export const TABLE_EXTRA_COLUMNS: Record<TableName, string[]> = {
   shares: [],
   metas: ["path"],
   plugins: [],
+  sshkeys: ["user_id"],
 }
 
 /**
@@ -101,13 +104,13 @@ export const TABLES: Record<TableName, TableDef> = {
     name: "settings",
     columns: [
       { name: "key", type: "string", pk: true },
-      { name: "value", type: "string" },
-      { name: "help", type: "string" },
-      { name: "type", type: "string" },
-      { name: "options", type: "string" },
-      { name: "group", type: "number" },
-      { name: "flag", type: "number" },
-      { name: "index", type: "number" },
+      { name: "value", type: "string", nullable: true },
+      { name: "help", type: "string", nullable: true },
+      { name: "type", type: "string", nullable: true },
+      { name: "options", type: "string", nullable: true },
+      { name: "group", type: "number", nullable: true },
+      { name: "flag", type: "number", nullable: true },
+      { name: "index", type: "number", nullable: true },
     ],
   },
 
@@ -116,26 +119,26 @@ export const TABLES: Record<TableName, TableDef> = {
     columns: [
       { name: "id", type: "number", pk: true },
       { name: "mount_path", type: "string", unique: true },
-      { name: "order", type: "number" },
-      { name: "driver", type: "string" },
-      { name: "cache_expiration", type: "number" },
-      { name: "custom_cache_policies", type: "string" },
-      { name: "status", type: "string" },
-      { name: "addition", type: "string" },
-      { name: "remark", type: "string" },
-      { name: "modified", type: "date" },
-      { name: "disabled", type: "bool" },
-      { name: "disable_index", type: "bool" },
-      { name: "enable_sign", type: "bool" },
-      { name: "seed_policy", type: "string" },
-      { name: "order_by", type: "string" },
-      { name: "order_direction", type: "string" },
-      { name: "extract_folder", type: "string" },
-      { name: "web_proxy", type: "bool" },
-      { name: "webdav_policy", type: "string" },
-      { name: "proxy_range", type: "bool" },
-      { name: "down_proxy_url", type: "string" },
-      { name: "disable_proxy_sign", type: "bool" },
+      { name: "order", type: "number", nullable: true },
+      { name: "driver", type: "string", nullable: true },
+      { name: "cache_expiration", type: "number", nullable: true },
+      { name: "custom_cache_policies", type: "string", nullable: true },
+      { name: "status", type: "string", nullable: true },
+      { name: "addition", type: "string", nullable: true },
+      { name: "remark", type: "string", nullable: true },
+      { name: "modified", type: "date", nullable: true },
+      { name: "disabled", type: "bool", nullable: true },
+      { name: "disable_index", type: "bool", nullable: true },
+      { name: "enable_sign", type: "bool", nullable: true },
+      { name: "seed_policy", type: "string", nullable: true },
+      { name: "order_by", type: "string", nullable: true },
+      { name: "order_direction", type: "string", nullable: true },
+      { name: "extract_folder", type: "string", nullable: true },
+      { name: "web_proxy", type: "bool", nullable: true },
+      { name: "webdav_policy", type: "string", nullable: true },
+      { name: "proxy_range", type: "bool", nullable: true },
+      { name: "down_proxy_url", type: "string", nullable: true },
+      { name: "disable_proxy_sign", type: "bool", nullable: true },
     ],
   },
 
@@ -144,16 +147,18 @@ export const TABLES: Record<TableName, TableDef> = {
     columns: [
       { name: "id", type: "number", pk: true },
       { name: "username", type: "string", unique: true },
-      { name: "password", type: "string" },
-      { name: "base_path", type: "string" },
-      { name: "role", type: "number" },
-      { name: "disabled", type: "bool" },
-      { name: "permission", type: "number" },
-      { name: "otp_secret", type: "string" },
-      { name: "sso_id", type: "string" },
-      { name: "allow_ldap", type: "bool" },
+      { name: "password", type: "string", nullable: true },
+      { name: "base_path", type: "string", nullable: true },
+      { name: "role", type: "number", nullable: true },
+      { name: "disabled", type: "bool", nullable: true },
+      { name: "permission", type: "number", nullable: true },
+      { name: "salt", type: "string", nullable: true },
+      { name: "otp_secret", type: "string", nullable: true },
+      { name: "sso_id", type: "string", nullable: true },
+      { name: "authn", type: "string", nullable: true },  // WebAuthn credentials JSON
+      { name: "allow_ldap", type: "bool", nullable: true },
       // TS 特有：密码更新时间（Go 用 pwd_ts/pwd_hash/salt 内部字段，json:"-" 不落 API）
-      { name: "pwd_update_at", type: "date" },
+      { name: "pwd_update_at", type: "date", nullable: true },
     ],
   },
 
@@ -163,19 +168,19 @@ export const TABLES: Record<TableName, TableDef> = {
       { name: "id", type: "string", pk: true },
       // Go 的 SharingDB.FilesRaw（json:"-" 但落库，列名 files_raw）存 []string 的 JSON；
       // TS 业务对象字段名为 files，通过 key 字段解耦列名与对象字段名。
-      { name: "files_raw", key: "files", type: "json" },
+      { name: "files_raw", key: "files", type: "json", nullable: true },
       { name: "expires", type: "date", nullable: true },
-      { name: "pwd", type: "string" },
-      { name: "accessed", type: "number" },
-      { name: "max_accessed", type: "number" },
-      { name: "creator_id", type: "number" },
-      { name: "disabled", type: "bool" },
-      { name: "remark", type: "string" },
-      { name: "readme", type: "string" },
-      { name: "header", type: "string" },
-      { name: "order_by", type: "string" },
-      { name: "order_direction", type: "string" },
-      { name: "extract_folder", type: "string" },
+      { name: "pwd", type: "string", nullable: true },
+      { name: "accessed", type: "number", nullable: true },
+      { name: "max_accessed", type: "number", nullable: true },
+      { name: "creator_id", type: "number", nullable: true },
+      { name: "disabled", type: "bool", nullable: true },
+      { name: "remark", type: "string", nullable: true },
+      { name: "readme", type: "string", nullable: true },
+      { name: "header", type: "string", nullable: true },
+      { name: "order_by", type: "string", nullable: true },
+      { name: "order_direction", type: "string", nullable: true },
+      { name: "extract_folder", type: "string", nullable: true },
     ],
   },
 
@@ -184,20 +189,33 @@ export const TABLES: Record<TableName, TableDef> = {
     columns: [
       { name: "id", type: "number", pk: true },
       { name: "path", type: "string", unique: true },
-      { name: "read_users", type: "json" },
-      { name: "read_users_sub", type: "bool" },
-      { name: "write_users", type: "json" },
-      { name: "write_users_sub", type: "bool" },
-      { name: "password", type: "string" },
-      { name: "p_sub", type: "bool" },
-      { name: "write", type: "bool" },
-      { name: "w_sub", type: "bool" },
-      { name: "hide", type: "string" },
-      { name: "h_sub", type: "bool" },
-      { name: "readme", type: "string" },
-      { name: "r_sub", type: "bool" },
-      { name: "header", type: "string" },
-      { name: "header_sub", type: "bool" },
+      { name: "read_users", type: "json", nullable: true },
+      { name: "read_users_sub", type: "bool", nullable: true },
+      { name: "write_users", type: "json", nullable: true },
+      { name: "write_users_sub", type: "bool", nullable: true },
+      { name: "password", type: "string", nullable: true },
+      { name: "p_sub", type: "bool", nullable: true },
+      { name: "write", type: "bool", nullable: true },
+      { name: "w_sub", type: "bool", nullable: true },
+      { name: "hide", type: "string", nullable: true },
+      { name: "h_sub", type: "bool", nullable: true },
+      { name: "readme", type: "string", nullable: true },
+      { name: "r_sub", type: "bool", nullable: true },
+      { name: "header", type: "string", nullable: true },
+      { name: "header_sub", type: "bool", nullable: true },
+    ],
+  },
+
+  sshkeys: {
+    name: "sshkeys",
+    columns: [
+      { name: "id", type: "number", pk: true },
+      { name: "user_id", type: "number", nullable: true },   // json:"-" 不走 API 但落库
+      { name: "title", type: "string", nullable: true },
+      { name: "fingerprint", type: "string", nullable: true },
+      { name: "key_str", type: "string", nullable: true },   // gorm:"type:text" json:"-"
+      { name: "added_time", type: "date", nullable: true },
+      { name: "last_used_time", type: "date", nullable: true },
     ],
   },
 
@@ -205,27 +223,27 @@ export const TABLES: Record<TableName, TableDef> = {
     name: "plugins",
     columns: [
       { name: "id", type: "string", pk: true },
-      { name: "name", type: "string" },
-      { name: "version", type: "string" },
-      { name: "description", type: "string" },
-      { name: "author", type: "string" },
-      { name: "homepage", type: "string" },
-      { name: "repository", type: "string" },
-      { name: "icon", type: "string" },
-      { name: "type", type: "string" },
-      { name: "enabled", type: "bool" },
-      { name: "high_privilege", type: "bool" },
-      { name: "permissions", type: "json" },
-      { name: "entry_url", type: "string" },
-      { name: "script_content", type: "string" },
-      { name: "style_content", type: "string" },
-      { name: "config_schema", type: "json" },
-      { name: "config_values", type: "json" },
-      { name: "target_hooks", type: "json" },
-      { name: "is_builtin", type: "bool" },
-      { name: "tags", type: "json" },
-      { name: "created_at", type: "date" },
-      { name: "updated_at", type: "date" },
+      { name: "name", type: "string", nullable: true },
+      { name: "version", type: "string", nullable: true },
+      { name: "description", type: "string", nullable: true },
+      { name: "author", type: "string", nullable: true },
+      { name: "homepage", type: "string", nullable: true },
+      { name: "repository", type: "string", nullable: true },
+      { name: "icon", type: "string", nullable: true },
+      { name: "type", type: "string", nullable: true },
+      { name: "enabled", type: "bool", nullable: true },
+      { name: "high_privilege", type: "bool", nullable: true },
+      { name: "permissions", type: "json", nullable: true },
+      { name: "entry_url", type: "string", nullable: true },
+      { name: "script_content", type: "string", nullable: true },
+      { name: "style_content", type: "string", nullable: true },
+      { name: "config_schema", type: "json", nullable: true },
+      { name: "config_values", type: "json", nullable: true },
+      { name: "target_hooks", type: "json", nullable: true },
+      { name: "is_builtin", type: "bool", nullable: true },
+      { name: "tags", type: "json", nullable: true },
+      { name: "created_at", type: "date", nullable: true },
+      { name: "updated_at", type: "date", nullable: true },
     ],
   },
 }
@@ -250,6 +268,7 @@ export const TABLE_SQL_NAMES: Record<TableName, string> = {
   shares: "sharing_dbs",
   metas: "metas",
   plugins: "plugins",
+  sshkeys: "ssh_public_keys",
 }
 
 /**
@@ -271,7 +290,21 @@ export function tableSqlName(table: TableName, env?: any): string {
  * 对象字段值 → SQL 列值。
  */
 export function serializeColumn(col: ColumnDef, value: any): any {
-  if (value === undefined || value === null) return null
+  if (value === undefined || value === null) {
+    // 主键不能为 null，直接返回 null 让调用方处理
+    if (col.pk) return null
+    // 可空列（nullable: true）直接存 null
+    if (col.nullable) return null
+    // 其余列（旧表可能有 NOT NULL 约束）按类型返回无害默认值
+    switch (col.type) {
+      case "string": return ""
+      case "number": return 0
+      case "bool":   return 0
+      case "json":   return "null"
+      case "date":   return ""
+      default:       return ""
+    }
+  }
   switch (col.type) {
     case "string":
       return String(value)
@@ -296,13 +329,15 @@ export function serializeColumn(col: ColumnDef, value: any): any {
  */
 export function deserializeColumn(col: ColumnDef, value: any): any {
   if (value === undefined || value === null) {
-    // json 类型缺失时回退为空数组/空对象，避免业务代码 .length / .includes 崩溃
     if (col.type === "json") return null
     return null
   }
   switch (col.type) {
-    case "string":
-      return String(value)
+    case "string": {
+      const s = String(value)
+      // 空字符串视为 null，避免 "" 被当作有效密码/哈希值
+      return s === "" ? null : s
+    }
     case "number":
       return Number(value)
     case "bool":

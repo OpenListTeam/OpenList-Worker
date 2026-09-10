@@ -5,12 +5,12 @@
  * `idFromName` 定位（默认 ID "openlist-db"），保证数据持久在同一实例。
  *
  * 环境变量 / 配置：
- * - DO_BINDING: DO namespace binding 名称（默认 "OPENLIST_DO"）
+ * - DO_BINDING: DO namespace binding 名称（默认 "DO"）
  * - DO_ID: DO 实例名称（默认 "openlist-db"）
  *
  * 需在 wrangler.toml 配置（见文件顶部说明）：
  *   [[durable_objects.bindings]]
- *   name = "OPENLIST_DO"
+ *   name = "DO"
  *   class_name = "OpenListDB"
  *   [[migrations]]
  *   tag = "v1"
@@ -20,7 +20,7 @@ import type { Driver } from "../types"
 
 function getDoBinding(env?: any): any | null {
   const e = env || (typeof globalThis !== "undefined" ? (globalThis as any) : {})
-  const bindingName = e?.DO_BINDING || "OPENLIST_DO"
+  const bindingName = e?.DO_BINDING || "DO"
   return e?.[bindingName] || null
 }
 
@@ -107,7 +107,7 @@ export const doDriver: Driver = {
         connected: false,
         platform: "Cloudflare Durable Objects",
         mode: "do",
-        error: "DO binding not found (expected env.OPENLIST_DO or env.DO_BINDING)",
+        error: "DO binding not found (expected env.DO or env.DO_BINDING)",
       }
     }
 

@@ -21,7 +21,6 @@ import {
   deleteUserSshKey,
 } from "../internal/op/sshkey"
 import {
-  verifyPassword,
   staticHash,
   saltedHash,
   generateSalt,
@@ -258,7 +257,6 @@ export async function verifyUserStaticHash(
 
 /**
  * 校验明文密码（/login、改密旧密码校验、WebDAV Basic Auth 共用）。
- * 对 bcrypt 遗留记录仍可逃生（验证通过后由调用方迁移）。
  */
 export async function verifyUserPassword(
   user: any,
@@ -266,9 +264,6 @@ export async function verifyUserPassword(
 ): Promise<boolean> {
   const stored = String(user?.password || "").trim()
   if (!stored) return false
-  if (/^\$2[aby]\$/.test(stored)) {
-    return verifyPassword(plain, stored)
-  }
   return verifyUserStaticHash(user, await staticHash(plain))
 }
 

@@ -9,6 +9,15 @@ import { getDb } from "../internal/model/db"
 let cachedJwtSecret: string | null = null
 const JWT_SECRET_KV_KEY = "openlist_jwt_secret"
 
+/**
+ * 清除进程内 JWT secret 缓存。
+ * 对应 Go 的 sign.Instance()：reset_token 后调用此函数，
+ * 强制下次请求从 KV/env 重新加载新密钥，使旧 token 全部失效。
+ */
+export function resetJwtSecretCache(): void {
+  cachedJwtSecret = null
+}
+
 function generateRandomSecret(): string {
   const bytes = new Uint8Array(32)
   crypto.getRandomValues(bytes)

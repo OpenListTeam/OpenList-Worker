@@ -87,7 +87,7 @@ binding = ""
 # DO 内置 SQLite 存储（强一致性 + 事务），适合需要一致性的单租户部署。
 # 启用方式：取消以下注释，并把 DB_DRIVER 设为 "do"。
 # [[durable_objects.bindings]]
-# name = "OPENLIST_DO"
+# name = "DO"
 # class_name = "OpenListDB"
 # 
 # [[migrations]]

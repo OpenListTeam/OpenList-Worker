@@ -133,30 +133,25 @@ taskRouter.post("/:type/clear_succeeded", (c) => {
   return c.json({ code: 200, message: "success", data: null })
 })
 
-taskRouter.post("/:type/retry_failed", (c) => {
-  return c.json({ code: 200, message: "success", data: null })
-})
+// 以下接口在 TS Worker 中无意义：TS 不维护持久异步任务队列，
+// 所有文件操作均同步完成后立即返回。任务 ID / 进度 / 重试 / 取消
+// 等生命周期管理由 Go 后端负责，此处明确返回 501。
+const unsupportedTaskOp = (c: any) =>
+  c.json(
+    {
+      code: 501,
+      message:
+        "task lifecycle operations (retry/cancel/delete) are not supported in the TS Worker runtime; " +
+        "file operations execute synchronously and do not produce persistent tasks",
+      data: null,
+    },
+    501,
+  )
 
-taskRouter.post("/:type/retry", (c) => {
-  return c.json({ code: 200, message: "success", data: null })
-})
-
-taskRouter.post("/:type/retry_some", (c) => {
-  return c.json({ code: 200, message: "success", data: null })
-})
-
-taskRouter.post("/:type/cancel", (c) => {
-  return c.json({ code: 200, message: "success", data: null })
-})
-
-taskRouter.post("/:type/cancel_some", (c) => {
-  return c.json({ code: 200, message: "success", data: null })
-})
-
-taskRouter.post("/:type/delete", (c) => {
-  return c.json({ code: 200, message: "success", data: null })
-})
-
-taskRouter.post("/:type/delete_some", (c) => {
-  return c.json({ code: 200, message: "success", data: null })
-})
+taskRouter.post("/:type/retry_failed", unsupportedTaskOp)
+taskRouter.post("/:type/retry", unsupportedTaskOp)
+taskRouter.post("/:type/retry_some", unsupportedTaskOp)
+taskRouter.post("/:type/cancel", unsupportedTaskOp)
+taskRouter.post("/:type/cancel_some", unsupportedTaskOp)
+taskRouter.post("/:type/delete", unsupportedTaskOp)
+taskRouter.post("/:type/delete_some", unsupportedTaskOp)

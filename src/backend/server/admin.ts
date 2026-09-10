@@ -4120,6 +4120,10 @@ adminRouter.post("/setting/set_thunderx", async (c) => {
 adminRouter.post("/setting/reset_token", async (c) => {
   const newToken = generateSecureToken(32)
   await updateSettingValue(c.env, { token: newToken })
+  // 对应 Go sign.Instance()：token 变更后清除进程内 JWT secret 缓存，
+  // 强制下次请求重新加载新密钥，使所有旧 token 立即失效。
+  const { resetJwtSecretCache } = await import("./middlewares")
+  resetJwtSecretCache()
   return c.json({ code: 200, message: "success", data: newToken })
 })
 
