@@ -3,15 +3,19 @@
  *
  * 与 json 后端（整对象存单个 key）不同，本后端仿照 d1/mysql 的「分表」思想，
  * 把 6 张实体表拆成多条 KV 记录：每个实体一条，key 形如
- *   `openlist_tbl:<table>:<primaryKey>`
+ *   `openlist_tbl_<table>_<primaryKey>`
  * value 为该实体 JSON（敏感字段已由 db.ts 在持久化边界 seal 为 enc:v1:）。
  *
  * 收益：
  *   - 读写不再每次搬运整个大 JSON，降低 KV 读放大与请求体开销；
  *   - 单 key 更小，规避 KV 单 key 大小上限。
  *
+ * 键名约束：EdgeOne KV 只接受字母、数字和下划线，因此分隔符用 `_`
+ * 而非 `:`，id 中的非法字符（如 UUID 的 `-`）需转义。详见 encodeKeyPart。
+ *
  * 存储目标复用 store/json.ts 的 getKvBinding() 探测结果，支持：
  *   - KV namespace binding（Cloudflare KV / EdgeOne KV）
+ *   - EdgeOne KV 经 Edge Function 代理（proxy）
  *   - EdgeOne Blob（@edgeone/pages-blob，同样具备 list/delete 能力）
  * 不支持的 mode（CF REST API / 无绑定）视为未配置。
  *
@@ -21,18 +25,17 @@
 import type { StoreBackend } from "./types"
 import { getKvBinding } from "./json"
 import { TABLE_NAMES, keyOf } from "./schema"
+import { entityKeyOf, KEY_PREFIX, tableKeyPrefix } from "./keycodec"
 
-/** 所有分表 key 的统一前缀，避免与 openlist_config / openlist_jwt_secret 冲突。 */
-const KEY_PREFIX = "openlist_tbl:"
 /** 初始化标记 key：存在即视为「已写入过配置」，避免空库被误判为已配置。 */
 const MARK_KEY = `${KEY_PREFIX}schema_info`
 
 function tablePrefix(table: string): string {
-  return `${KEY_PREFIX}${table}:`
+  return tableKeyPrefix(table)
 }
 
 function entityKey(table: string, id: string): string {
-  return `${tablePrefix(table)}${id}`
+  return entityKeyOf(table, id)
 }
 
 /** 从 getKvBinding 探测结果中提取可用的 list/delete/get/put 适配层。 */
@@ -45,6 +48,7 @@ async function getKvAdapter(env?: any): Promise<{
 } | null> {
   const info = await getKvBinding(env)
   const { binding, mode } = info
+  // api 模式（CF REST）接口形态不同，不支持；proxy 与 binding 接口一致，放行。
   if (mode === "none" || mode === "api" || !binding) return null
 
   if (mode === "blob") {

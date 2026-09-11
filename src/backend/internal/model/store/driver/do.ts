@@ -18,10 +18,39 @@
  */
 import type { Driver } from "../types"
 
+/**
+ * 判断对象是否具备 Durable Object 命名空间接口形态。
+ *
+ * 必须校验：环境变量可能只是「绑定名」字符串，而非绑定对象，
+ * 直接使用会得到 "binding.idFromName is not a function"。
+ */
+function isDoNamespaceLike(b: any): boolean {
+  if (!b || typeof b !== "object") return false
+  try {
+    return typeof b.idFromName === "function"
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 获取 Durable Object 绑定。
+ *
+ * env 与 globalThis 独立检查：env 为真值时不阻断对 globalThis 的探测。
+ */
 function getDoBinding(env?: any): any | null {
-  const e = env || (typeof globalThis !== "undefined" ? (globalThis as any) : {})
-  const bindingName = e?.DO_BINDING || "DO"
-  return e?.[bindingName] || null
+  const g = typeof globalThis !== "undefined" ? (globalThis as any) : {}
+
+  const bindingName =
+    env?.DO_BINDING || g?.DO_BINDING || "DO"
+
+  const fromEnv = env?.[bindingName]
+  if (isDoNamespaceLike(fromEnv)) return fromEnv
+
+  const fromGlobal = g?.[bindingName]
+  if (isDoNamespaceLike(fromGlobal)) return fromGlobal
+
+  return null
 }
 
 function getDoId(env?: any): string {

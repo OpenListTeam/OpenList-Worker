@@ -5,14 +5,62 @@ import { assetsRouter } from "./server/assets"
 import { webdavRouter } from "./server/webdav"
 import { s3Router } from "./server/s3"
 import { setEnvCtx } from "./internal/model/db"
+import { getStoreConfigError } from "./internal/model/store/backend"
 
 const app = new Hono()
+
+/**
+ * 静态资源 / SPA 壳路径：这些请求不应被存储配置错误拦截，
+ * 否则前端连提示页面都加载不出来。
+ */
+function isStaticOrShell(pathname: string, accept: string, method: string): boolean {
+  // 带扩展名的静态文件
+  if (/\.[a-zA-Z0-9]+$/.test(pathname)) return true
+  // 浏览器导航请求（HTML）由 SPA 壳承载
+  if ((method === "GET" || method === "HEAD") && accept.includes("text/html")) {
+    return true
+  }
+  return false
+}
 
 app.use("*", async (c, next) => {
   // 关键：每个请求注入 KV binding 上下文（CF Workers 多实例/冷启动时
   // 模块级 globalEnvCtx 为 null，会导致 getDb()/saveDb() 退回内存模式，
   // 网盘账号密码与 access_token 无法从 KV 持久化读取）
-  setEnvCtx(c.env)
+  //
+  // EdgeOne 场景：KV 只能由 Edge Function 访问，Node 云函数需经 HTTP 代理
+  // 调用 /kv-* 。而 Node 的 fetch 不接受相对 URL，因此这里把当前请求的
+  // origin 注入 env，供 kv 驱动拼出绝对地址（同一部署内自调用）。
+  const env = (c.env || {}) as any
+  try {
+    const reqUrl = new URL(c.req.url)
+    if (!env.__requestOrigin) {
+      env.__requestOrigin = reqUrl.origin
+    }
+  } catch {
+    // 忽略：无法解析时由驱动侧回退处理
+  }
+
+  setEnvCtx(env)
+
+  // 存储配置错误全局拦截：任何依赖持久化的 API 都应立即得到明确错误，
+  // 而不是静默退回内存模式（表现为「操作成功但数据丢失」）。
+  // 静态资源与 SPA 壳放行，保证前端能加载并展示该错误。
+  const { pathname } = new URL(c.req.url)
+  if (!isStaticOrShell(pathname, c.req.header("accept") || "", c.req.method)) {
+    const configError = await getStoreConfigError(env)
+    if (configError) {
+      return c.json(
+        {
+          code: 503,
+          message: configError,
+          data: { error: "STORAGE_CONFIG_ERROR", configError },
+        },
+        503,
+      )
+    }
+  }
+
   await next()
 })
 

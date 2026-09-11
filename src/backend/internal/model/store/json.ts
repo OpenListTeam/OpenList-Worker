@@ -8,11 +8,21 @@ import type { StoreBackend } from "./types"
 
 // ---- EdgeOne Blob SDK (HTTP API, avoids Redis RESP protocol crashes) ----
 let _blobStore: any = null
-let _blobChecked = false
+
+/**
+ * 探测次数上限。
+ *
+ * 只缓存「成功」结果，失败不缓存：
+ * 冷启动早期 SDK 可能尚未就绪，若把失败也永久缓存，会导致整个实例
+ * 生命周期内再也不会尝试，表现为「明明能用却一直报无持久化后端」。
+ * 同时设上限避免每个请求都重复探测。
+ */
+let _blobProbeCount = 0
 
 async function getBlobStore(): Promise<any | null> {
-  if (_blobChecked) return _blobStore
-  _blobChecked = true
+  if (_blobStore) return _blobStore // 成功过：直接复用
+  if (_blobProbeCount >= 3) return null // 连续失败：不再重试
+  _blobProbeCount++
   try {
     // @ts-ignore
     const { getStore } = await import("@edgeone/pages-blob")
@@ -23,7 +33,7 @@ async function getBlobStore(): Promise<any | null> {
       consistency: "strong",
     } as any)
   } catch {
-    _blobStore = null
+    return null // 不缓存失败，允许后续请求重试
   }
   return _blobStore
 }
@@ -96,10 +106,105 @@ const JSON_BACKENDS = new Set(["auto", "blob", "kv", "cf_rest"])
  *   3. CF REST API (env vars)
  *   4. None (memory fallback)
  */
+/**
+ * 判断一个对象是否是「可用的 Web KV binding」。
+ *
+ * 这一校验必不可少：EdgeOne Node 云函数也会注入一个名为 `KV` 的绑定，
+ * 但它走 RESP/Redis 协议（TCP socket），调用 get/put 会抛出
+ * "cannot find the collection by name"，而不是提供 Web KV API。
+ * 只有具备 get() 且具备 put()/set() 的对象才算可用。
+ *
+ * 同时排除字符串等原始值 —— 环境变量 `KV` 可能是绑定名（字符串），
+ * 直接当绑定使用会得到 "kv.get is not a function"。
+ */
+export function isWebKv(b: any): boolean {
+  if (!b || typeof b !== "object") return false
+  // 属性访问可能触发异常 getter（代理对象、SDK 惰性初始化等），
+  // 任何异常都视为「不是可用绑定」，避免让探测本身崩溃。
+  try {
+    if (typeof b.get !== "function") return false
+    return typeof b.put === "function" || typeof b.set === "function"
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 创建基于 HTTP 代理的 KV 适配器。
+ *
+ * 用于 EdgeOne Node 云函数：拿不到 KV binding，必须经 Edge Function
+ * （functions/kv-*）代为访问。对外暴露与原生 binding 相同的接口，
+ * 使调用方（middlewares/auth/admin）无需感知差异。
+ */
+function createProxyBinding(origin: string, env: any): any {
+  const base = String(origin).replace(/\/$/, "")
+  const headers = (): Record<string, string> => {
+    const h: Record<string, string> = { "Content-Type": "application/json" }
+    // 用密钥前 16 位作为内部调用标识（Edge Function 侧常量时间比对）
+    const secret = env?.ENCRYPTION_SECRET || env?.JWT_SECRET
+    if (typeof secret === "string" && secret.length >= 16) {
+      h["X-Internal-Call"] = secret.slice(0, 16)
+    }
+    return h
+  }
+
+  const decode = (v: any): string | null => {
+    if (v === null || v === undefined) return null
+    return typeof v === "string" ? v : String(v)
+  }
+
+  return {
+    async get(key: string): Promise<string | null> {
+      const res = await fetch(`${base}/kv-get?key=${encodeURIComponent(key)}`, {
+        method: "GET",
+        headers: headers(),
+      })
+      if (!res.ok) {
+        if (res.status === 404) return null
+        throw new Error(`KV proxy get failed: HTTP ${res.status}`)
+      }
+      const body: any = await res.json().catch(() => ({}))
+      return decode(body?.value)
+    },
+
+    async put(key: string, value: string): Promise<void> {
+      const res = await fetch(`${base}/kv-put`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({ key, value }),
+      })
+      if (!res.ok) throw new Error(`KV proxy put failed: HTTP ${res.status}`)
+    },
+
+    async delete(key: string): Promise<void> {
+      const res = await fetch(
+        `${base}/kv-delete?key=${encodeURIComponent(key)}`,
+        { method: "DELETE", headers: headers() },
+      )
+      if (!res.ok && res.status !== 404) {
+        throw new Error(`KV proxy delete failed: HTTP ${res.status}`)
+      }
+    },
+
+    async list(opts: { prefix?: string } = {}): Promise<{ keys: any[] }> {
+      const prefix = opts?.prefix || ""
+      const res = await fetch(
+        `${base}/kv-list?prefix=${encodeURIComponent(prefix)}`,
+        { method: "GET", headers: headers() },
+      )
+      if (!res.ok) throw new Error(`KV proxy list failed: HTTP ${res.status}`)
+      const body: any = await res.json().catch(() => ({}))
+      const keys = Array.isArray(body?.keys) ? body.keys : []
+      // 兼容 binding 形态：调用方读取 k.name / k.key 两种写法
+      return { keys: keys.map((name: string) => ({ name, key: name })) }
+    },
+  }
+}
+
 export async function getKvBinding(envCtx?: any): Promise<{
   binding: any
   platform: string
-  mode: "binding" | "blob" | "api" | "none"
+  mode: "binding" | "blob" | "api" | "proxy" | "none"
 }> {
   if (envCtx) {
     jsonEnvCtx = envCtx
@@ -113,6 +218,62 @@ export async function getKvBinding(envCtx?: any): Promise<{
   if (forced !== forcedRaw) {
     console.warn(
       `[DB] unknown DB_JSON_BACKEND "${forcedRaw}", falling back to auto detection`,
+    )
+  }
+
+  /**
+   * 原生 KV binding 探测。
+   *
+   * 两点必须注意：
+   *  1. env 与 globalThis 需独立检查 —— env 为真值时不会回退到 globalThis，
+   *     而 EdgeOne Edge Functions 把绑定名注入为全局标识符。
+   *  2. 必须做接口形态校验 —— EdgeOne Node 云函数也会注入名为 `KV` 的绑定，
+   *     但它走 RESP/Redis 协议（TCP socket），调用 put/get 会抛
+   *     "cannot find the collection by name"，而非提供 Web KV API。
+   *     只有具备 get/put(或 set) 的对象才算可用的 KV binding。
+   */
+  let nativeKv: any = null
+  for (const name of [
+    "EDGEONE_KV",
+    "EO_KV",
+    "KV",
+    "CF_KV",
+    "DATABASE_KV",
+  ]) {
+    const fromEnv = env?.[name]
+    if (isWebKv(fromEnv)) {
+      nativeKv = fromEnv
+      break
+    }
+    const fromGlobal = g?.[name]
+    if (isWebKv(fromGlobal)) {
+      nativeKv = fromGlobal
+      break
+    }
+  }
+
+  // 0. EdgeOne Node 云函数：显式 DB_DRIVER=kv 且无原生 binding → 走 HTTP 代理。
+  //    放在 Blob 之前，确保用户显式选择的 KV 优先于自动探测出的 Blob。
+  const kvPreferred =
+    String(env?.DB_DRIVER || "").trim().toLowerCase() === "kv" || forced === "kv"
+  if (kvPreferred && !nativeKv) {
+    let origin: any
+    try {
+      origin = env?.EDGE_KV_BASE_URL || env?.__requestOrigin
+    } catch {
+      origin = undefined
+    }
+    if (typeof origin === "string" && origin.startsWith("http")) {
+      console.log("[DB] getKvBinding: using EdgeOne KV via Edge Function proxy")
+      return {
+        binding: createProxyBinding(origin, env),
+        platform: "EdgeOne KV (via Edge Function proxy)",
+        mode: "proxy",
+      }
+    }
+    console.warn(
+      "[DB] getKvBinding: KV proxy requested but no origin available " +
+        "(set EDGE_KV_BASE_URL or ensure request origin is injected)",
     )
   }
 
@@ -164,12 +325,14 @@ export async function getKvBinding(envCtx?: any): Promise<{
     ]
 
     for (const c of candidates) {
-      const b = (env && env[c.key]) || g[c.key]
-      if (
-        b &&
-        typeof b.get === "function" &&
-        (typeof b.put === "function" || typeof b.set === "function")
-      ) {
+      // env 与 globalThis 必须独立判断：
+      // 若 env[c.key] 存在但是 RESP 客户端（不满足接口形态），
+      // `(env && env[key]) || g[key]` 的写法会短路，导致永不去检查
+      // globalThis 上真正可用的绑定。
+      const fromEnv = env && env[c.key]
+      const fromGlobal = g[c.key]
+      const b = isWebKv(fromEnv) ? fromEnv : isWebKv(fromGlobal) ? fromGlobal : null
+      if (b) {
         const isEdgeOne =
           c.key.startsWith("EDGEONE") ||
           c.key.startsWith("EO") ||
@@ -272,7 +435,7 @@ async function readFromKv(
       if (text) {
         return typeof text === "string" ? JSON.parse(text) : text
       }
-    } else if (mode === "binding") {
+    } else if (mode === "binding" || mode === "proxy") {
       let val: any = null
       try {
         // Cloudflare KV 支持 (key, "text")，EdgeOne KV 支持 (key)
@@ -330,10 +493,11 @@ async function saveToKv(
         console.log(`[KV/Blob Store] blob.set result=${result}`)
         return result
       }
-    } else if (mode === "binding") {
+    } else if (mode === "binding" || mode === "proxy") {
       // NOTE: only an explicit `false` counts as failure. Cloudflare KV's
       // put() resolves to void, so `undefined` must stay a success —
       // otherwise every normal write would be reported as failed.
+      // proxy 模式复用同一分支：适配器已实现 put/get/delete/list。
       if (typeof binding.put === "function") {
         const putResult = await binding.put(key, valStr)
         const result = putResult !== false
@@ -430,4 +594,92 @@ export const jsonBackend: StoreBackend = {
   async health(env?: any): Promise<any> {
     return getKvStatus(env)
   },
+}
+
+// ───────────────────────── 持久化密钥管理 ─────────────────────────
+//
+// 密钥（JWT 签名密钥、字段加密密钥）需要跨实例、跨冷启动保持一致，
+// 因此必须持久化。设计原则：
+//
+//   1. 生成只发生在初始化（setup）阶段，且仅当键不存在时。
+//   2. 一旦写入，永不覆盖 —— 覆盖会导致已加密数据无法解密。
+//   3. 非初始化阶段只读；读不到就是故障，绝不重新生成。
+//   4. 判定依据是「键是否存在」，而不是「读取是否成功」。
+//
+// 键名与数据库中的实体隔离，避免被通用 list(prefix) 误扫。
+
+/** 从持久化后端读取密钥，不存在或失败返回 null */
+export async function readPersistedSecret(
+  env: any,
+  key: string,
+): Promise<string | null> {
+  try {
+    const kvInfo = await getKvBinding(env)
+    if (kvInfo.mode === "none" || !kvInfo.binding) return null
+    const { binding, mode } = kvInfo
+
+    let val: any = null
+    if (mode === "blob") {
+      val = await binding.get(key)
+    } else {
+      try {
+        val = await binding.get(key, "text")
+      } catch {
+        val = await binding.get(key)
+      }
+    }
+    if (val && typeof val.text === "function") val = await val.text()
+    if (val === null || val === undefined) return null
+    const str = String(val).trim()
+    return str || null
+  } catch (e) {
+    console.warn(`[Secret] read "${key}" failed:`, e)
+    return null
+  }
+}
+
+/**
+ * 写入密钥。
+ *
+ * 调用方需自行保证「仅在不存在时调用」，本函数不检查现有值
+ * （见上方设计原则第 2 条）。
+ */
+export async function writePersistedSecret(
+  env: any,
+  key: string,
+  secret: string,
+): Promise<boolean> {
+  try {
+    const kvInfo = await getKvBinding(env)
+    if (kvInfo.mode === "none" || !kvInfo.binding) {
+      console.warn(
+        `[Secret] cannot persist "${key}": no storage backend available`,
+      )
+      return false
+    }
+    const { binding, mode } = kvInfo
+
+    if (mode === "blob") {
+      if (typeof binding.set === "function") await binding.set(key, secret)
+      else if (typeof binding.put === "function") await binding.put(key, secret)
+      else return false
+    } else {
+      if (typeof binding.put === "function") await binding.put(key, secret)
+      else if (typeof binding.set === "function") await binding.set(key, secret)
+      else return false
+    }
+    return true
+  } catch (e) {
+    console.warn(`[Secret] write "${key}" failed:`, e)
+    return false
+  }
+}
+
+/**
+ * 生成一个 64 位十六进制随机密钥，与 middlewares.ts 中的生成方式一致。
+ */
+export function generateSecret(): string {
+  const bytes = new Uint8Array(32)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")
 }

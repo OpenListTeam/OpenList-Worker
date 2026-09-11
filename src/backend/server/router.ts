@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { getDb, getKvStatus } from "../internal/model/db"
+import { isServerlessRuntime, NO_STORAGE_MESSAGE } from "../internal/model/store/backend"
 import { fsRouter } from "./fs"
 import {
   authRouter,
@@ -264,13 +265,20 @@ export function setupRouter(app: Hono) {
       platform: kv?.platform ?? null,
       error: kv?.error ?? null,
     }
-    // If no KV is configured, this is a memory-only deployment (Vercel,
-    // Lambda, Docker). Return 200 with a warning so monitors don't alarm,
-    // but surface the mode clearly in the response body.
+    // Serverless / Worker runtimes must never fall back to memory: instances
+    // are multi-tenant and short-lived, so writes silently vanish and users
+    // see "saved successfully" for data that does not exist. Report that as
+    // unhealthy so monitors and the UI both surface it.
+    const serverless = isServerlessRuntime(c.env)
     if (!kv?.configured) {
-      checks.persistence.mode = "memory"
-      checks.persistence.note =
-        "No persistence configured — changes are ephemeral"
+      checks.persistence.mode = serverless ? "unavailable" : "memory"
+      if (serverless) {
+        checks.persistence.note = NO_STORAGE_MESSAGE
+        healthy = false
+      } else {
+        checks.persistence.note =
+          "No persistence configured — changes are ephemeral"
+      }
     }
     // If KV is configured but failing, that's a real outage.
     if (kv?.configured && !kv?.connected) {

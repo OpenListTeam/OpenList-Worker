@@ -161,9 +161,9 @@ pnpm run deploy:worker
 
 **DB_DRIVER**（数据库驱动）
 - `auto`（默认）：自动检测可用驱动（优先级：blob → cfkv → kv → d1）
-- `blob`：腾讯云 EdgeOne Blob / 阿里云 ESA Blob
+- `blob`：EdgeOne Blob Storage（SDK）/ ESA Blob（binding）
 - `cfkv`：Cloudflare KV REST API（需配置 `CF_ACCOUNT_ID`、`CF_KV_NAMESPACE_ID`、`CF_API_TOKEN`）
-- `kv`：Cloudflare KV binding
+- `kv`：KV 存储（自动检测：Cloudflare/EdgeOne binding 或 EdgeOne HTTP 代理模式）
 - `d1`：Cloudflare D1（SQLite）
 - `mysql`：MySQL / PostgreSQL（仅 Node.js 容器）
 
@@ -173,11 +173,15 @@ pnpm run deploy:worker
 DB_FORMAT=sql
 DB_DRIVER=d1
 
-# EdgeOne + Blob
+# EdgeOne + Blob（推荐，零配置）
 DB_FORMAT=map
 DB_DRIVER=blob
 
-# Cloudflare KV（高频读写）
+# EdgeOne / Cloudflare KV（自动适配环境）
+DB_FORMAT=map
+DB_DRIVER=kv
+
+# Cloudflare KV（高频读写，需绑定）
 DB_FORMAT=key
 DB_DRIVER=kv
 

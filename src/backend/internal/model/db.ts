@@ -1,10 +1,20 @@
 import { encrypt, decrypt } from "../../pkg/crypto"
-import { setJsonEnvCtx } from "./store/json"
+import {
+  generateSecret,
+  readPersistedSecret,
+  setJsonEnvCtx,
+  writePersistedSecret,
+} from "./store/json"
 import { getStoreBackend } from "./store/backend"
 
 // 保持外部（middlewares.ts / router.ts / admin.ts）对 getKvBinding / getKvStatus
 // 的既有引用不变，从 json 后端 re-export。
-export { getKvBinding, getKvStatus } from "./store/json"
+export {
+  getKvBinding,
+  getKvStatus,
+  readPersistedSecret,
+  writePersistedSecret,
+} from "./store/json"
 export { getStoreStatus } from "./store/backend"
 
 // Global default configuration payload for Cloudflare Workers
@@ -973,7 +983,7 @@ const loadDb = async (envCtx?: any) => {
   try {
     const persisted = await backend.load(activeEnv)
     if (persisted) {
-      await unsealDb(persisted, getEncryptionKey(activeEnv))
+      await unsealDb(persisted, await getEncryptionKey(activeEnv))
       memoryDb = persisted
       ensureDefaultSettings(memoryDb)
       ensureDefaultStorages(memoryDb)
@@ -1085,24 +1095,99 @@ const SENSITIVE_SETTING_KEYS = new Set([
 
 let encryptionKeyWarned = false
 
-function getEncryptionKey(envCtx?: any): string | null {
+/** 字段加密密钥的持久化键名 */
+export const ENCRYPTION_SECRET_KV_KEY = "openlist_encryption_secret"
+
+/**
+ * 获取字段加密密钥。
+ *
+ * 优先级：
+ *   1. env.ENCRYPTION_SECRET / env.JWT_SECRET
+ *   2. 持久化密钥（openlist_encryption_secret，由初始化阶段生成写入）
+ *
+ * 注意：这里**只读不生成**。生成只发生在初始化（setup）阶段，见
+ * ensureEncryptionSecret()。否则读取瞬时失败会导致生成新密钥，
+ * 使既有加密数据永久无法解密。
+ */
+/** 进程内缓存：密钥一旦确定就不会变，避免每次 load/save 都读存储 */
+let cachedEncryptionKey: string | null = null
+
+async function getEncryptionKey(envCtx?: any): Promise<string | null> {
+  if (cachedEncryptionKey) return cachedEncryptionKey
+
   const env =
     envCtx ||
     globalEnvCtx ||
     (typeof process !== "undefined" ? process.env : {})
-  const key =
+  const envKey =
     env?.ENCRYPTION_SECRET ||
     env?.JWT_SECRET ||
     (typeof process !== "undefined" ? process.env?.ENCRYPTION_SECRET : "") ||
     (typeof process !== "undefined" ? process.env?.JWT_SECRET : "")
-  const resolved = key && String(key).length >= 16 ? String(key) : null
-  if (!resolved && !encryptionKeyWarned) {
+  if (envKey && String(envKey).length >= 16) {
+    cachedEncryptionKey = String(envKey)
+    return cachedEncryptionKey
+  }
+
+  // 回退到持久化密钥（仅读取，绝不生成）
+  try {
+    const persisted = await readPersistedSecret(env, ENCRYPTION_SECRET_KV_KEY)
+    if (persisted && persisted.length >= 16) {
+      cachedEncryptionKey = persisted
+      return cachedEncryptionKey
+    }
+  } catch {
+    // 读取失败按未配置处理
+  }
+
+  if (!encryptionKeyWarned) {
     encryptionKeyWarned = true
     console.error(
-      "[DB] ENCRYPTION_SECRET / JWT_SECRET 未配置：网盘 token/secret 等敏感字段将以明文落盘。生产环境请务必配置 >=16 字符的 ENCRYPTION_SECRET。",
+      "[DB] ENCRYPTION_SECRET 未配置且持久化密钥不存在：敏感字段将以明文落盘。" +
+        "已完成初始化的实例请检查存储后端；新实例将在 setup 阶段自动生成。",
     )
   }
-  return resolved
+  return null
+}
+
+/**
+ * 初始化阶段确保字段加密密钥存在。
+ *
+ * 仅在键不存在时生成并写入；已存在则直接返回（永不覆盖）。
+ * 只在 setup 流程中调用。
+ *
+ * @returns 密钥，或 null（存储不可用导致既无法读取也无法写入）
+ */
+export async function ensureEncryptionSecret(envCtx?: any): Promise<string | null> {
+  const env =
+    envCtx ||
+    globalEnvCtx ||
+    (typeof process !== "undefined" ? process.env : {})
+
+  // 1. 显式配置优先，绝不写入持久化（尊重运维配置）
+  const envKey = env?.ENCRYPTION_SECRET
+  if (envKey && String(envKey).length >= 16) return String(envKey)
+
+  // 2. 已存在则复用（存在性门控：只读，不覆盖）
+  const existing = await readPersistedSecret(env, ENCRYPTION_SECRET_KV_KEY)
+  if (existing && existing.length >= 16) return existing
+
+  // 3. 不存在：生成并写入
+  const generated = generateSecret()
+  const ok = await writePersistedSecret(env, ENCRYPTION_SECRET_KV_KEY, generated)
+  if (!ok) {
+    console.error(
+      "[DB] Failed to persist ENCRYPTION_SECRET; falling back to JWT_SECRET. " +
+        "Sensitive fields will not be encrypted with a dedicated key.",
+    )
+    // 回退：用 JWT_SECRET 兜底，避免明文落盘
+    const fallback = env?.JWT_SECRET
+    return typeof fallback === "string" && fallback.length >= 16 ? fallback : null
+  }
+
+  console.log("[DB] Generated and persisted a new ENCRYPTION_SECRET")
+  cachedEncryptionKey = generated
+  return generated
 }
 
 async function sealValue(value: string, key: string): Promise<string> {
@@ -1235,7 +1320,7 @@ export const saveDb = async (data: any, envCtx?: any): Promise<boolean> => {
     console.log(
       `[DB] saveDb: sealing and persisting to ${backend.name}, storages=${data.storages?.length || 0}`,
     )
-    const sealed = await sealDb(data, getEncryptionKey(activeEnv))
+    const sealed = await sealDb(data, await getEncryptionKey(activeEnv))
     console.log(
       `[DB] saveDb: sealed data size=${JSON.stringify(sealed).length} bytes`,
     )

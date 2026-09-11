@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import { getDb, saveDb } from "../internal/model/db"
+import { ensureEncryptionSecret, getDb, saveDb } from "../internal/model/db"
 import { setUserPassword } from "../pkg/password"
 
 export const publicRouter = new Hono()
@@ -199,12 +199,16 @@ publicRouter.get("/plugins", async (c) => {
 })
 
 // 系统是否已初始化：存在已设置密码的管理员账号即为已初始化。
+//
+// 注意：存储配置错误（如 EdgeOne KV 代理缺少 JWT_SECRET）已在全局中间件
+// （index.ts）统一拦截并返回 503，因此这里无需重复处理。
 publicRouter.get("/init_status", async (c) => {
   const db = await getDb(c.env)
   const admin = (db.users || []).find((u: any) => u.role === 2)
   const initialized = Boolean(
     admin && String(admin.password || "").trim() !== "",
   )
+
   return c.json({
     code: 200,
     message: "success",
@@ -242,6 +246,12 @@ publicRouter.post("/init/setup", async (c) => {
       400,
     )
   }
+
+  // 初始化阶段：确保加密密钥存在。
+  //
+  // 只在 setup 中生成 —— 且仅当持久化键不存在时。一旦写入永不覆盖，
+  // 否则既有加密数据将无法解密。其他任何阶段都只读不生成。
+  await ensureEncryptionSecret(c.env)
 
   if (existing) {
     // admin 账号已存在但尚未设置密码（未初始化）：直接更新

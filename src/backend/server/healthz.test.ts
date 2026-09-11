@@ -39,9 +39,9 @@ test("Observability: /api/healthz returns 200 when config and persistence are he
 })
 
 test("Observability: /api/healthz returns 200 when no persistence is configured (memory mode)", async () => {
-  // Empty env means no KV binding: this is a valid memory-only deployment
-  // (Vercel, Lambda, Docker). Return 200 so monitors don't alarm, but
-  // clearly indicate the mode in the response.
+  // A plain env with no serverless markers is treated as a local/container
+  // deployment, where in-memory storage is an acceptable dev mode. Return 200
+  // so monitors don't alarm, but clearly indicate the mode in the response.
   const env: any = {}
   const res = await buildApp().request("/api/healthz", { method: "GET" }, env)
   assert.equal(
@@ -56,6 +56,27 @@ test("Observability: /api/healthz returns 200 when no persistence is configured 
   assert.ok(
     json.checks.persistence.note,
     "should include a note about ephemeral mode",
+  )
+})
+
+test("Observability: /api/healthz returns 503 on serverless without storage", async () => {
+  // Serverless / Worker runtimes (multi-instance, short-lived) must never
+  // silently fall back to memory: writes would vanish while the UI reports
+  // success. Such a deployment is unhealthy until storage is configured.
+  const env: any = { __requestOrigin: "https://example.edgeone.cool" }
+  const res = await buildApp().request("/api/healthz", { method: "GET" }, env)
+  assert.equal(
+    res.status,
+    503,
+    "serverless without a storage backend must report 503",
+  )
+  const json: any = await res.json()
+  assert.equal(json.ok, false)
+  assert.equal(json.checks.persistence.mode, "unavailable")
+  assert.match(
+    String(json.checks.persistence.note),
+    /No storage backend is available/,
+    "should explain how to configure storage",
   )
 })
 
