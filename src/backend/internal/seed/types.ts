@@ -1,6 +1,8 @@
 export const SEED_FORMAT = "openlist-sharing-seed" as const
 export const SEED_VERSION = 1 as const
 export const DEFAULT_PIECE_SIZE = 10 * 1024 * 1024
+/** Legacy default cloud drive id used when no explicit cloud is recorded. */
+export const DEFAULT_CAS_CLOUD = "189" as const
 
 export type SeedFormat = "oss" | "torrent" | "cas"
 export type SeedHashAlgorithm = "md5" | "sha1" | "sha256"
@@ -33,6 +35,11 @@ export interface SeedFile {
   sources: SeedSource[]
   cas_slice_md5: string
   cas_create_time: string
+  /**
+   * Identifies the cloud drive whose CAS slice rule this metadata follows
+   * (e.g. "189", "115", "aliyundrive_open"). Empty means "189" (legacy default).
+   */
+  cas_cloud: string
   missing_channels: string[]
 }
 
@@ -57,6 +64,8 @@ export interface CasFileEntry {
   create_time: string
   slice_md5s?: string[]
   slice_size?: number
+  /** Cloud drive identifier (e.g. "189"); empty means "189". */
+  cloud?: string
 }
 
 export interface CasPayload {
@@ -67,6 +76,8 @@ export interface CasPayload {
   create_time: string
   slice_md5s?: string[]
   slice_size?: number
+  /** Cloud drive identifier (e.g. "189"); empty means "189". */
+  cloud?: string
   files?: CasFileEntry[]
 }
 
@@ -205,6 +216,7 @@ export function normalizeSeed(input: unknown): SharingSeed {
       sources: normalizeSources(file.sources),
       cas_slice_md5: normalizeHash(file.cas_slice_md5, "md5"),
       cas_create_time: text(file.cas_create_time),
+      cas_cloud: text(file.cas_cloud).trim(),
       missing_channels: Array.isArray(file.missing_channels)
         ? file.missing_channels.map(text).filter(Boolean)
         : [],
