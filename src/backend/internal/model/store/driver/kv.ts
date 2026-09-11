@@ -37,29 +37,9 @@ function isWebKvLike(b: any): boolean {
  */
 function getKvBinding(env?: any): any | null {
   const g = globalThis as any
-
-  // 允许通过环境变量指定自定义绑定名（环境变量读取需容错）
-  let customName: any
-  try {
-    customName =
-      env?.EDGEONE_KV_NAME || env?.KV_NAMESPACE || env?.KV_NAME ||
-      g?.EDGEONE_KV_NAME || g?.KV_NAMESPACE
-  } catch {
-    customName = undefined
-  }
-
-  const candidates: string[] = customName
-    ? [customName, "EDGEONE_KV", "EO_KV", "KV", "CF_KV", "DATABASE_KV"]
-    : ["EDGEONE_KV", "EO_KV", "KV", "CF_KV", "DATABASE_KV"]
-
-  for (const name of candidates) {
-    const fromEnv = env?.[name]
-    if (isWebKvLike(fromEnv)) return fromEnv
-
-    const fromGlobal = g?.[name]
-    if (isWebKvLike(fromGlobal)) return fromGlobal
-  }
-
+  // 绑定名统一为 KV（KV namespace binding 的通用约定名）
+  if (isWebKvLike(env?.KV)) return env.KV
+  if (isWebKvLike(g?.KV)) return g.KV
   return null
 }
 
@@ -84,11 +64,11 @@ function isEdgeOneNodeEnv(env?: any): boolean {
  *     形成循环依赖；
  *  2. 打包产物中不能依赖源码相对路径的动态 import。
  *
- * 因此 KV 代理模式要求显式配置 JWT_SECRET / ENCRYPTION_SECRET（>=16 字符）。
+ * 因此 KV 代理模式要求显式配置 JWT_SECRET（>=16 字符）。
  */
 function getProxySecret(env?: EnvContext): string | null {
   try {
-    const s = env?.ENCRYPTION_SECRET || env?.JWT_SECRET
+    const s = env?.JWT_SECRET
     return typeof s === "string" && s.length >= 16 ? s : null
   } catch {
     return null
@@ -100,8 +80,8 @@ function getProxySecret(env?: EnvContext): string | null {
  *
  * Triggered when all of the following hold:
  *  1. The current env has no KV binding, so the HTTP proxy must be used.
- *  2. No JWT_SECRET / ENCRYPTION_SECRET (>= 16 chars) is configured, so the
- *     proxy cannot be authenticated.
+ *  2. No JWT_SECRET (>= 16 chars) is configured, so the proxy cannot be
+ *     authenticated.
  *
  * The combination "no binding + proxy required" only occurs on EdgeOne Node
  * Functions: Cloudflare Workers have a native binding, and other platforms
@@ -119,7 +99,7 @@ export function checkProxyConfig(env?: any): string | null {
   }
 
   return (
-    "KV proxy mode requires the JWT_SECRET (or ENCRYPTION_SECRET) " +
+    "KV proxy mode requires the JWT_SECRET " +
     "environment variable with at least 16 characters.\n" +
     "Reason: EdgeOne Node Functions cannot access KV directly and must go " +
     "through an Edge Function proxy, whose authentication depends on this " +

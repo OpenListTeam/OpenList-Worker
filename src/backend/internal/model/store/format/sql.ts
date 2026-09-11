@@ -2,7 +2,7 @@
  * SQL 格式适配器（列式表，与 Go 后端完全一致）。
  *
  * 每个字段对应一列，表结构由 schema.ts 的 TABLES 定义。字段名对齐 Go 的
- * json tag，表名通过 TABLE_SQL_NAMES 映射为 Go 的复数名并加上 TABLE_PREFIX
+ * json tag，表名通过 TABLE_SQL_NAMES 映射为 Go 的复数名并加上固定前缀 "x_"
  * 前缀（默认 x_），因此 D1 / MySQL 中的表结构与 Go 的 GORM 建表结果一致。
  */
 import type { FormatAdapter, Driver } from "../types"

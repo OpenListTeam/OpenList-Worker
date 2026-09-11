@@ -18,19 +18,12 @@ const requiredEnvVars = [
   {
     name: 'JWT_SECRET',
     minLength: 32,
-    description: 'JWT 签名密钥',
-    generateCommand: 'openssl rand -hex 32'
-  },
-  {
-    name: 'ENCRYPTION_SECRET',
-    minLength: 32,
-    description: '数据加密密钥',
+    description: 'JWT 签名 / 数据加密 / 定时任务 密钥',
     generateCommand: 'openssl rand -hex 32'
   }
 ]
 
 const optionalEnvVars = [
-  { name: 'CRON_SECRET', description: '定时任务密钥' },
   { name: 'MAX_UPLOAD_SIZE', description: '最大上传大小（字节）' },
   { name: 'LOGIN_MAX_FAILURES', description: '登录失败锁定阈值' }
 ]
@@ -106,17 +99,7 @@ function main() {
   
   // 检查密钥安全性
   console.log('\n📋 密钥安全性检查:\n')
-  
-  const jwtSecret = process.env.JWT_SECRET
-  const encSecret = process.env.ENCRYPTION_SECRET
-  
-  if (jwtSecret && encSecret && jwtSecret === encSecret) {
-    console.log('  ⚠️  JWT_SECRET 和 ENCRYPTION_SECRET 相同（建议使用不同的密钥）')
-    allPassed = false
-  } else if (jwtSecret && encSecret) {
-    console.log('  ✅ JWT_SECRET 和 ENCRYPTION_SECRET 不同')
-  }
-  
+
   // 检查弱密钥
   const weakPatterns = [
     'secret', 'password', '123456', 'test', 'example', 

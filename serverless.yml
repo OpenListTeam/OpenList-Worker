@@ -13,8 +13,7 @@ provider:
     ADMIN_USERNAME: ${env:ADMIN_USERNAME, 'admin'}
     # FIX(F-11): no 'admin' fallback — leave empty so the app generates a
     # random initial password instead of a world-known one.
-    ADMIN_PASSWORD: ${env:ADMIN_PASSWORD, ''}
-    DATABASE_JSON: ${env:DATABASE_JSON, ''}
+    ADMIN_PASS: ${env:ADMIN_PASS, ''}
     AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1" # Performance optimization for keep-alive
 
 build:

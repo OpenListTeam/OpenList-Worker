@@ -1005,26 +1005,7 @@ const loadDb = async (envCtx?: any) => {
     return memoryDb
   }
 
-  // Priority 2: Environment Variable
-  if (
-    typeof process !== "undefined" &&
-    process.env &&
-    process.env.DATABASE_JSON
-  ) {
-    try {
-      memoryDb = JSON.parse(process.env.DATABASE_JSON)
-      ensureDefaultSettings(memoryDb)
-      ensureDefaultStorages(memoryDb)
-      ensureDefaultShares(memoryDb)
-      ensureDefaultPlugins(memoryDb)
-      ensureDefaultMetas(memoryDb)
-      return memoryDb
-    } catch (err) {
-      console.error("Failed to parse DATABASE_JSON env variable:", err)
-    }
-  }
-
-  // Priority 3: In-Memory DB
+  // Priority 2: In-Memory DB（模块级，进程内共享；重启即失，仅用于本地调试）
   memoryDb = JSON.parse(JSON.stringify(defaultDb))
   ensureDefaultStorages(memoryDb)
   ensureDefaultShares(memoryDb)
@@ -1077,7 +1058,7 @@ export const getDb = async (envCtx?: any) => {
 // 修复 H-1：网盘 token/secret/OTP 等敏感字段此前以明文 JSON 落 KV/Blob。
 // 这里在「持久化边界」做字段级加密（落盘前 seal、读盘后 unseal），内存中
 // 始终保持明文，因此 resolvePath / parseAddition / 各驱动 / admin 接口均无需
-// 改动。密钥优先取 ENCRYPTION_SECRET，回退 JWT_SECRET；两者皆无时跳过加密，
+// 改动。密钥统一取 JWT_SECRET（签名与加密共用）；未配置时跳过加密，
 // 保持既有部署（无密钥）向后兼容。已存在的明文数据不带前缀，unseal 时原样
 // 返回，不会因升级而丢失。
 // ============================================================
@@ -1095,13 +1076,18 @@ const SENSITIVE_SETTING_KEYS = new Set([
 
 let encryptionKeyWarned = false
 
-/** 字段加密密钥的持久化键名 */
+/**
+ * 字段加密密钥的持久化键名。
+ *
+ * 注意：这是 **KV 存储槽位名**，不是环境变量名。历史部署已用它存过密钥，
+ * 改名会导致既有密文无法解密，故保持不变。
+ */
 export const ENCRYPTION_SECRET_KV_KEY = "openlist_encryption_secret"
 
 /**
  * 解析「环境变量中显式配置的」字段加密密钥。
  *
- * 约定：ENCRYPTION_SECRET 优先，其次 JWT_SECRET（后者兼作签名密钥）。
+ * 约定：加密统一使用 JWT_SECRET（签名与加密共用同一密钥）。
  * 长度不足 16 视为未配置，避免弱密钥。
  *
  * 该来源具有**最高优先级且恒定不变**：只要它存在，seal 与 unseal
@@ -1109,9 +1095,7 @@ export const ENCRYPTION_SECRET_KV_KEY = "openlist_encryption_secret"
  */
 function readEnvEncryptionKey(env: any): string | null {
   const raw =
-    env?.ENCRYPTION_SECRET ||
     env?.JWT_SECRET ||
-    (typeof process !== "undefined" ? process.env?.ENCRYPTION_SECRET : "") ||
     (typeof process !== "undefined" ? process.env?.JWT_SECRET : "")
   return typeof raw === "string" && raw.length >= 16 ? raw : null
 }
@@ -1125,7 +1109,7 @@ let cachedFromEnv = false
  * 获取字段加密密钥（只读，绝不生成）。
  *
  * 优先级：
- *   1. env.ENCRYPTION_SECRET / env.JWT_SECRET
+ *   1. env.JWT_SECRET
  *   2. 持久化密钥 openlist_encryption_secret（由 setup 阶段写入）
  *
  * 关键约束（保证加解密对称）：
@@ -1168,8 +1152,8 @@ async function getEncryptionKey(envCtx?: any): Promise<string | null> {
   if (!encryptionKeyWarned) {
     encryptionKeyWarned = true
     console.error(
-      "[DB] No encryption key available: set ENCRYPTION_SECRET (or " +
-        "JWT_SECRET). Sensitive fields would otherwise be written in plaintext.",
+      "[DB] No encryption key available: set JWT_SECRET. " +
+        "Sensitive fields would otherwise be written in plaintext.",
     )
   }
   return null
@@ -1223,13 +1207,13 @@ export async function ensureEncryptionSecret(envCtx?: any): Promise<string | nul
     const ok = await writePersistedSecret(env, ENCRYPTION_SECRET_KV_KEY, generated)
     if (!ok) {
       console.error(
-        "[DB] Failed to persist an ENCRYPTION_SECRET. Sensitive fields will be " +
-          "stored in plaintext until one is configured via environment variable.",
+        "[DB] Failed to persist an encryption key. Sensitive fields will be " +
+          "stored in plaintext until JWT_SECRET is configured via environment variable.",
       )
       return null
     }
 
-    console.log("[DB] Generated and persisted a new ENCRYPTION_SECRET")
+    console.log("[DB] Generated and persisted a new encryption key (JWT_SECRET)")
     cachedEncryptionKey = generated
     cachedFromEnv = false
     return generated
@@ -1255,7 +1239,7 @@ async function unsealValue(value: string, key: string): Promise<string> {
     return await decrypt(value.slice(ENCRYPTION_PREFIX.length), key)
   } catch (e) {
     console.warn(
-      "[DB] Failed to decrypt a sealed secret (wrong ENCRYPTION_SECRET/JWT_SECRET?):",
+      "[DB] Failed to decrypt a sealed secret (wrong JWT_SECRET?):",
       e,
     )
     return value // keep raw value, never lose data

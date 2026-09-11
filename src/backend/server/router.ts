@@ -144,7 +144,7 @@ export function setupRouter(app: Hono) {
 
   // CORS Middleware
   // 安全策略：不再回显任意 Origin。
-  // 1) 若配置了环境变量 ALLOWED_ORIGINS（逗号分隔），仅放行白名单来源；
+  // 1) 若配置了环境变量 ALLOW_URLS（逗号分隔），仅放行白名单来源；
   // 2) 否则仅放行同源请求（Origin 与请求 Host 一致，即浏览器直连本站）。
   //    跨域来源的浏览器请求将被拒绝，降低 CSRF/凭证滥用风险。
   app.use(
@@ -154,9 +154,9 @@ export function setupRouter(app: Hono) {
         if (!origin) return origin
         const env = (c as any).env || {}
         const allowedOriginsRaw =
-          env.ALLOWED_ORIGINS ||
+          env.ALLOW_URLS ||
           (typeof process !== "undefined"
-            ? process.env?.ALLOWED_ORIGINS
+            ? process.env?.ALLOW_URLS
             : "") ||
           ""
         const allowedOrigins = allowedOriginsRaw

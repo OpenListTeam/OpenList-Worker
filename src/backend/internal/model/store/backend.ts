@@ -7,7 +7,6 @@
  *
  * 向后兼容（旧配置自动映射）：
  * - DB_DRIVER=json → DB_FORMAT=map + 自动检测驱动
- * - DB_JSON_BACKEND=blob/kv/cf_rest → DB_DRIVER=blob/kv/cfkv
  */
 import type {
   Driver,
@@ -40,29 +39,6 @@ function readEnv(key: string, defaultValue: string, env?: any): string {
  */
 export function readDriver(env?: any): StorageDriver {
   const e = env || (typeof process !== "undefined" ? process.env : {}) || {}
-
-  // 向后兼容：DB_JSON_BACKEND → DB_DRIVER
-  if (e.DB_JSON_BACKEND) {
-    const backend = String(e.DB_JSON_BACKEND).trim().toLowerCase()
-    console.warn(
-      "[DEPRECATED] DB_JSON_BACKEND is deprecated. Use DB_DRIVER instead.",
-    )
-    switch (backend) {
-      case "blob":
-        return "blob"
-      case "kv":
-      case "binding":
-        return "kv"
-      case "cf_rest":
-      case "cf-rest":
-      case "cfrest":
-      case "rest":
-      case "api":
-        return "cfkv"
-      default:
-        return "auto"
-    }
-  }
 
   const driver = readEnv("DB_DRIVER", "auto", env) as StorageDriver
 
@@ -122,13 +98,7 @@ export function isServerlessRuntime(env?: any): boolean {
 
     // ── EdgeOne ──
     if (
-      env?.EO_KV ||
-      env?.EDGEONE_KV ||
-      env?.EDGEONE_KV_NAME ||
       env?.EDGEONE_BLOB ||
-      env?.worker_kv ||
-      g?.EO_KV ||
-      g?.EDGEONE_KV ||
       g?.EDGEONE_BLOB ||
       typeof g?.EdgeOne !== "undefined"
     ) {
@@ -144,7 +114,6 @@ export function isServerlessRuntime(env?: any): boolean {
     // ── 阿里云 ESA ──
     if (
       env?.ESA_BLOB ||
-      env?.ESA_KV ||
       g?.ESA_BLOB ||
       typeof g?.ESA !== "undefined"
     ) {
@@ -152,12 +121,13 @@ export function isServerlessRuntime(env?: any): boolean {
     }
 
     // ── EdgeOne Node 云函数环境变量特征 ──
-    // 平台会注入 SCF 相关变量，可据此识别
-    const scfVars =
+    // 平台会注入 SCF 相关变量，可据此识别（固定变量名，平台自动注入）
+    if (
       env?.TENCENTCLOUD_SCF_FUNCTIONNAME ||
-      env?.SCF_FUNCTIONNAME ||
       (typeof process !== "undefined" && process.env?.TENCENTCLOUD_SCF_FUNCTIONNAME)
-    if (scfVars) return true
+    ) {
+      return true
+    }
   } catch {
     // 检测自身的异常不应影响判定；保守视为非 serverless（本地/容器）
   }
@@ -207,7 +177,7 @@ export const NO_STORAGE_MESSAGE =
   "DB_DRIVER=kv (DB_FORMAT=map or key) and JWT_SECRET\n" +
   "  3. Cloudflare KV / D1: bind the namespace and set DB_DRIVER accordingly\n" +
   "Environment variables to set in the project settings:\n" +
-  "  DB_DRIVER=blob | kv | cfkv | d1\n" +
+  "  DB_DRIVER=blob | kv | cfkv | d1 | do | mysql\n" +
   "  DB_FORMAT=map | key | sql"
 
 /** 驱动名 → 实现 */

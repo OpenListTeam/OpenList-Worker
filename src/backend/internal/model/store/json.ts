@@ -72,35 +72,9 @@ export function setJsonEnvCtx(env: any) {
 }
 
 /**
- * 读取 json 后端内的显式存储方案开关（DB_JSON_BACKEND）。
- *
- * 取值（大小写不敏感）：
- *   - "auto"（默认）：按 blob → kv → cf_rest → 内存 顺序自动检测
- *   - "blob"：强制使用 EdgeOne Blob（@edgeone/pages-blob）
- *   - "kv"：强制使用 KV namespace binding（含 "binding" 别名）
- *   - "cf_rest"：强制使用 Cloudflare KV REST API（含 "cf-rest"/"rest"/"api" 别名）
- *
- * 未知取值原样返回，由 getKvBinding 告警并回退到 auto。
- */
-export function readJsonBackend(env?: any): string {
-  const e = env || (typeof process !== "undefined" ? process.env : {}) || {}
-  const raw = String(e?.DB_JSON_BACKEND || "")
-    .trim()
-    .toLowerCase()
-  if (!raw) return "auto"
-  if (raw === "cf_rest" || raw === "cf-rest" || raw === "rest" || raw === "api")
-    return "cf_rest"
-  if (raw === "kv" || raw === "binding") return "kv"
-  if (raw === "blob" || raw === "auto") return raw
-  return raw
-}
-
-const JSON_BACKENDS = new Set(["auto", "blob", "kv", "cf_rest"])
-
-/**
  * Universal KV / Blob Storage Adapter for EdgeOne Makers & Cloudflare Workers
  *
- * 可通过 DB_JSON_BACKEND 显式指定方案；默认（auto）按以下顺序检测：
+ * 默认（auto）按以下顺序检测：
  *   1. @edgeone/pages-blob SDK (EdgeOne — HTTP API, no RESP crashes)
  *   2. KV namespace binding (Cloudflare Workers native)
  *   3. CF REST API (env vars)
@@ -141,7 +115,7 @@ function createProxyBinding(origin: string, env: any): any {
   const headers = (): Record<string, string> => {
     const h: Record<string, string> = { "Content-Type": "application/json" }
     // 用密钥前 16 位作为内部调用标识（Edge Function 侧常量时间比对）
-    const secret = env?.ENCRYPTION_SECRET || env?.JWT_SECRET
+    const secret = env?.JWT_SECRET
     if (typeof secret === "string" && secret.length >= 16) {
       h["X-Internal-Call"] = secret.slice(0, 16)
     }
@@ -213,14 +187,6 @@ export async function getKvBinding(envCtx?: any): Promise<{
     envCtx || jsonEnvCtx || (typeof process !== "undefined" ? process.env : {})
   const g = typeof globalThis !== "undefined" ? (globalThis as any) : {}
 
-  const forcedRaw = readJsonBackend(env)
-  const forced = JSON_BACKENDS.has(forcedRaw) ? forcedRaw : "auto"
-  if (forced !== forcedRaw) {
-    console.warn(
-      `[DB] unknown DB_JSON_BACKEND "${forcedRaw}", falling back to auto detection`,
-    )
-  }
-
   /**
    * 原生 KV binding 探测。
    *
@@ -231,31 +197,19 @@ export async function getKvBinding(envCtx?: any): Promise<{
    *     但它走 RESP/Redis 协议（TCP socket），调用 put/get 会抛
    *     "cannot find the collection by name"，而非提供 Web KV API。
    *     只有具备 get/put(或 set) 的对象才算可用的 KV binding。
+   *
+   * 绑定名统一为 `KV`（KV namespace binding 的通用约定名）。
    */
-  let nativeKv: any = null
-  for (const name of [
-    "EDGEONE_KV",
-    "EO_KV",
-    "KV",
-    "CF_KV",
-    "DATABASE_KV",
-  ]) {
-    const fromEnv = env?.[name]
-    if (isWebKv(fromEnv)) {
-      nativeKv = fromEnv
-      break
-    }
-    const fromGlobal = g?.[name]
-    if (isWebKv(fromGlobal)) {
-      nativeKv = fromGlobal
-      break
-    }
-  }
+  const nativeKv = isWebKv(env?.KV)
+    ? env.KV
+    : isWebKv(g?.KV)
+      ? g.KV
+      : null
 
   // 0. EdgeOne Node 云函数：显式 DB_DRIVER=kv 且无原生 binding → 走 HTTP 代理。
   //    放在 Blob 之前，确保用户显式选择的 KV 优先于自动探测出的 Blob。
   const kvPreferred =
-    String(env?.DB_DRIVER || "").trim().toLowerCase() === "kv" || forced === "kv"
+    String(env?.DB_DRIVER || "").trim().toLowerCase() === "kv"
   if (kvPreferred && !nativeKv) {
     let origin: any
     try {
@@ -278,99 +232,40 @@ export async function getKvBinding(envCtx?: any): Promise<{
   }
 
   // 1. EdgeOne Blob SDK (HTTP API — avoids RESP protocol crashes)
-  if (forced === "auto" || forced === "blob") {
-    try {
-      const blobStore = await getBlobStore()
-      if (blobStore) {
-        // Blob SDK only initializes inside the EdgeOne Makers runtime
-        installRespSafetyNet()
-        console.log("[DB] getKvBinding: using EdgeOne Blob storage")
-        return {
-          binding: blobStore,
-          platform: "EdgeOne Blob (@edgeone/pages-blob, strong consistency)",
-          mode: "blob",
-        }
-      }
-    } catch (err: any) {
-      console.error(
-        `[DB] getKvBinding: EdgeOne Blob init failed: ${err?.message || err}`,
-        `stack=${err?.stack?.substring(0, 300) || ""}`,
-      )
-    }
-    if (forced === "blob") {
-      console.warn("[DB] getKvBinding: blob mode forced but unavailable")
+  try {
+    const blobStore = await getBlobStore()
+    if (blobStore) {
+      // Blob SDK only initializes inside the EdgeOne Makers runtime
+      installRespSafetyNet()
+      console.log("[DB] getKvBinding: using EdgeOne Blob storage")
       return {
-        binding: null,
-        platform:
-          "EdgeOne Blob (unavailable — @edgeone/pages-blob not initialized outside Makers)",
-        mode: "none",
+        binding: blobStore,
+        platform: "EdgeOne Blob (@edgeone/pages-blob, strong consistency)",
+        mode: "blob",
       }
     }
+  } catch (err: any) {
+    console.error(
+      `[DB] getKvBinding: EdgeOne Blob init failed: ${err?.message || err}`,
+      `stack=${err?.stack?.substring(0, 300) || ""}`,
+    )
   }
 
-  // 2. KV namespace binding (Cloudflare Workers native — no RESP issues)
-  if (forced === "auto" || forced === "kv") {
-    const customKvName =
-      (env && (env.EDGEONE_KV_NAME || env.KV_NAMESPACE || env.KV_NAME)) ||
-      g.EDGEONE_KV_NAME ||
-      g.KV_NAMESPACE
-
-    const candidates = [
-      ...(customKvName ? [{ key: customKvName, name: customKvName }] : []),
-      { key: "EDGEONE_KV", name: "EDGEONE_KV" },
-      { key: "EO_KV", name: "EO_KV" },
-      { key: "KV", name: "KV" },
-      { key: "CF_KV", name: "CF_KV" },
-      { key: "DATABASE_KV", name: "DATABASE_KV" },
-    ]
-
-    for (const c of candidates) {
-      // env 与 globalThis 必须独立判断：
-      // 若 env[c.key] 存在但是 RESP 客户端（不满足接口形态），
-      // `(env && env[key]) || g[key]` 的写法会短路，导致永不去检查
-      // globalThis 上真正可用的绑定。
-      const fromEnv = env && env[c.key]
-      const fromGlobal = g[c.key]
-      const b = isWebKv(fromEnv) ? fromEnv : isWebKv(fromGlobal) ? fromGlobal : null
-      if (b) {
-        const isEdgeOne =
-          c.key.startsWith("EDGEONE") ||
-          c.key.startsWith("EO") ||
-          Boolean(env && (env.EDGEONE || env.EO_REGION || env.EDGEONE_KV_NAME)) ||
-          Boolean(g.EDGEONE_KV || g.EO_KV)
-        if (isEdgeOne) installRespSafetyNet()
-        const platformName = isEdgeOne
-          ? `EdgeOne KV (${c.name})`
-          : `Cloudflare / EdgeOne KV (${c.name})`
-
-        console.log(`[DB] getKvBinding: found KV binding: ${platformName}`)
-        return {
-          binding: b,
-          platform: platformName,
-          mode: "binding",
-        }
-      }
-    }
-
-    if (forced === "kv") {
-      console.error(
-        `[DB] getKvBinding: KV mode forced but no binding found. Checked candidates:`,
-        candidates.map(c => c.key).join(", "),
-        `env keys:`,
-        Object.keys(env || {}).filter(k => k.includes("KV") || k.includes("EO")).join(", ") || "none",
-        `globalThis keys:`,
-        Object.keys(g).filter(k => k.includes("KV") || k.includes("EO")).join(", ") || "none",
-      )
-      return {
-        binding: null,
-        platform: "KV namespace binding (not found)",
-        mode: "none",
-      }
-    }
+  // 2. KV namespace binding（统一名为 KV）
+  if (nativeKv) {
+    const isEdgeOne =
+      Boolean(env && (env.EDGEONE || env.EO_REGION)) ||
+      Boolean(g.EDGEONE || typeof g.EdgeOne !== "undefined")
+    if (isEdgeOne) installRespSafetyNet()
+    const platformName = isEdgeOne
+      ? "EdgeOne KV (KV)"
+      : "Cloudflare / EdgeOne KV (KV)"
+    console.log(`[DB] getKvBinding: found KV binding: ${platformName}`)
+    return { binding: nativeKv, platform: platformName, mode: "binding" }
   }
 
-  // 3. Cloudflare REST API 模式
-  if (forced === "auto" || forced === "cf_rest") {
+  // 3. Cloudflare REST API 模式（显式 DB_DRIVER=cfkv 或凭据齐全时自动启用）
+  {
     const cfAccountId =
       env.CF_ACCOUNT_ID ||
       (typeof process !== "undefined" ? process.env.CF_ACCOUNT_ID : "")
@@ -394,26 +289,10 @@ export async function getKvBinding(envCtx?: any): Promise<{
         mode: "api",
       }
     }
-
-    if (forced === "cf_rest") {
-      console.error(
-        `[DB] getKvBinding: cf_rest mode forced but missing credentials:`,
-        `CF_ACCOUNT_ID=${!!cfAccountId}`,
-        `CF_KV_NAMESPACE_ID=${!!cfNamespaceId}`,
-        `CF_API_TOKEN=${!!cfApiToken}`,
-      )
-      return {
-        binding: null,
-        platform:
-          "Cloudflare KV (REST API) — missing CF_ACCOUNT_ID / CF_KV_NAMESPACE_ID / CF_API_TOKEN",
-        mode: "none",
-      }
-    }
   }
 
   console.warn(
-    `[DB] getKvBinding: no KV storage found, using memory-only mode (data will not persist)`,
-    `forced=${forced}`,
+    "[DB] getKvBinding: no KV storage found, using memory-only mode (data will not persist)",
   )
   return { binding: null, platform: "Memory", mode: "none" }
 }

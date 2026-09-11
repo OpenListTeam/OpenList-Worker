@@ -4,11 +4,11 @@
  * 通过 DO binding 获取 stub，RPC 调用 OpenListDB 实例的方法。每个实例用
  * `idFromName` 定位（默认 ID "openlist-db"），保证数据持久在同一实例。
  *
- * 环境变量 / 配置：
- * - DO_BINDING: DO namespace binding 名称（默认 "DO"）
- * - DO_ID: DO 实例名称（默认 "openlist-db"）
+ * 配置：
+ * - DO binding 名固定为 `DO`
+ * - DO_ID: DO 实例名称（可选，默认 "openlist-db"）
  *
- * 需在 wrangler.toml 配置（见文件顶部说明）：
+ * 需在 wrangler.toml 配置：
  *   [[durable_objects.bindings]]
  *   name = "DO"
  *   class_name = "OpenListDB"
@@ -36,20 +36,13 @@ function isDoNamespaceLike(b: any): boolean {
 /**
  * 获取 Durable Object 绑定。
  *
- * env 与 globalThis 独立检查：env 为真值时不阻断对 globalThis 的探测。
+ * 绑定名固定为 DO。env 与 globalThis 独立检查：env 为真值时不阻断对
+ * globalThis 的探测。
  */
 function getDoBinding(env?: any): any | null {
   const g = typeof globalThis !== "undefined" ? (globalThis as any) : {}
-
-  const bindingName =
-    env?.DO_BINDING || g?.DO_BINDING || "DO"
-
-  const fromEnv = env?.[bindingName]
-  if (isDoNamespaceLike(fromEnv)) return fromEnv
-
-  const fromGlobal = g?.[bindingName]
-  if (isDoNamespaceLike(fromGlobal)) return fromGlobal
-
+  if (isDoNamespaceLike(env?.DO)) return env.DO
+  if (isDoNamespaceLike(g?.DO)) return g.DO
   return null
 }
 
@@ -136,7 +129,7 @@ export const doDriver: Driver = {
         connected: false,
         platform: "Cloudflare Durable Objects",
         mode: "do",
-        error: "DO binding not found (expected env.DO or env.DO_BINDING)",
+        error: "DO binding not found (expected env.DO)",
       }
     }
 

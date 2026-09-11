@@ -24,19 +24,15 @@ const ADMIN_ROLE = 2
 
 /**
  * 解析 KV 绑定。
- * 官方示例中绑定名是直接可用的全局标识符；这里兼容 env 挂载与全局两种形态。
+ *
+ * 绑定名固定为 `KV`。官方示例中绑定名是直接可用的全局标识符，
+ * 这里兼容 env 挂载与全局两种形态。
  */
 export function resolveKv(env) {
-  const candidates = ["KV", "my_kv", "EDGEONE_KV", "worker_kv"]
-
-  for (const name of candidates) {
-    const v = env?.[name]
-    if (isKvLike(v)) return v
-  }
-  for (const name of candidates) {
-    const v = globalThis?.[name]
-    if (isKvLike(v)) return v
-  }
+  const v = env?.KV
+  if (isKvLike(v)) return v
+  const gv = globalThis?.KV
+  if (isKvLike(gv)) return gv
   return null
 }
 
@@ -58,11 +54,7 @@ function isKvLike(v) {
  */
 export async function getJwtSecret(env) {
   // 1) 环境变量（长度需 >= 16，与 Node 侧一致）
-  const envSecret =
-    env?.JWT_SECRET ||
-    env?.ENCRYPTION_SECRET ||
-    globalThis?.JWT_SECRET ||
-    globalThis?.ENCRYPTION_SECRET
+  const envSecret = env?.JWT_SECRET || globalThis?.JWT_SECRET
   if (typeof envSecret === "string" && envSecret.length >= 16) {
     return envSecret
   }

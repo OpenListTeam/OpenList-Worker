@@ -222,15 +222,15 @@ function timingSafeEqual(a: string, b: string): boolean {
 
 /**
  * 定时调度鉴权通道：EdgeOne Schedules 只能携带 path/method/payload，
- * 无法附加 Authorization 头。当环境变量 CRON_SECRET 已设置时，
+ * 无法附加 Authorization 头。复用 JWT_SECRET 作为调度密钥，
  * 允许请求通过 query（?cron_secret=）、JSON body { cron_secret }
  * 或 X-Cron-Secret 头携带匹配值触发受保护的任务接口。
  */
 export async function matchCronSecret(c: Context): Promise<boolean> {
   const env = (c as any)?.env || {}
   const secret =
-    env.CRON_SECRET ||
-    (typeof process !== "undefined" ? process.env?.CRON_SECRET : "")
+    env.JWT_SECRET ||
+    (typeof process !== "undefined" ? process.env?.JWT_SECRET : "")
   if (!secret || typeof secret !== "string") return false
 
   const header = c.req.header("x-cron-secret")

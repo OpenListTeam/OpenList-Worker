@@ -166,14 +166,14 @@ test("schema: SQL table names align with Go GORM naming", () => {
   assert.equal(TABLE_SQL_NAMES.users, "users")
   assert.equal(TABLE_SQL_NAMES.metas, "metas")
 
-  // 表前缀（对齐 Go 的 TABLE_PREFIX，默认 x_）
+  // 表前缀固定 x_（对齐 Go 的默认值）
   assert.equal(getTablePrefix({}), "x_")
-  assert.equal(getTablePrefix({ TABLE_PREFIX: "abc_" }), "abc_")
+  assert.equal(getTablePrefix({ TABLE_PREFIX: "abc_" }), "x_")
 
   // 完整表名 = 前缀 + 复数名
   assert.equal(tableSqlName("settings", {}), "x_setting_items")
   assert.equal(tableSqlName("shares", {}), "x_sharing_dbs")
-  assert.equal(tableSqlName("settings", { TABLE_PREFIX: "abc_" }), "abc_setting_items")
+  assert.equal(tableSqlName("settings", { TABLE_PREFIX: "abc_" }), "x_setting_items")
 
   // DDL 里应包含带前缀的复数表名
   assert.ok(D1_SCHEMA.some((d) => d.includes("x_setting_items")))
@@ -208,10 +208,6 @@ test("backend factory: readDriver/readFormat backward compat", () => {
   assert.equal(readDriver({ DB_DRIVER: "d1" }), "d1")
   assert.equal(readDriver({ DB_DRIVER: "MYSQL" }), "mysql")
   assert.equal(readDriver({ DB_DRIVER: "cfkv" }), "cfkv")
-  // DB_JSON_BACKEND 自动映射
-  assert.equal(readDriver({ DB_JSON_BACKEND: "blob" }), "blob")
-  assert.equal(readDriver({ DB_JSON_BACKEND: "kv" }), "kv")
-  assert.equal(readDriver({ DB_JSON_BACKEND: "cf_rest" }), "cfkv")
   // DB_DRIVER=json → auto（旧整对象语义）
   assert.equal(readDriver({ DB_DRIVER: "json" }), "auto")
 

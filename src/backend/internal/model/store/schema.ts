@@ -279,11 +279,10 @@ export const TABLE_SQL_NAMES: Record<DdlTableName, string> = {
 }
 
 /**
- * 读取表前缀（对齐 Go 的 TABLE_PREFIX，默认 "x_"）。
+ * 表前缀，固定为 "x_"（对齐 Go 后端的默认值）。
  */
-export function getTablePrefix(env?: any): string {
-  const e = env || (typeof process !== "undefined" ? process.env : {}) || {}
-  return String(e?.TABLE_PREFIX || "x_")
+export function getTablePrefix(_env?: any): string {
+  return "x_"
 }
 
 /**
@@ -457,8 +456,8 @@ function buildSchemaInfoDdl(dialect: "sqlite" | "mysql"): string {
 }
 
 /**
- * 生成完整的建表语句数组（幂等）。表名前缀由 TABLE_PREFIX 环境变量决定
- * （默认 "x_"，对齐 Go），复数表名对齐 Go 的 GORM 命名策略。
+ * 生成完整的建表语句数组（幂等）。表名固定为 "x_" 前缀（对齐 Go），
+ * 复数表名对齐 Go 的 GORM 命名策略。
  */
 export function buildDdl(dialect: "sqlite" | "mysql", env?: any): string[] {
   const out: string[] = [buildSchemaInfoDdl(dialect)]

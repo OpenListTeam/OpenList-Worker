@@ -59,7 +59,7 @@
 
 优先级（`getEncryptionKey` 与 `ensureEncryptionSecret` **完全一致**，避免加解密分裂）：
 
-1. **环境变量** `ENCRYPTION_SECRET`，其次 `JWT_SECRET`（长度 ≥ 16 才生效）
+1. **环境变量** `JWT_SECRET`（长度 ≥ 16 才生效）
 2. **持久化密钥** `openlist_encryption_secret`（KV/Blob 中的一项），由 setup 阶段写入
 
 关键约束：
@@ -129,7 +129,7 @@ storages_1         → {"id":1,"mount_path":"/x",...}
 
 | 项 | 值 |
 |---|---|
-| 表名 | `TABLE_PREFIX`（默认 `x_`）+ Go 复数名，如 `x_users`、`x_setting_items` |
+| 表名 | 固定前缀 `x_` + Go 复数名，如 `x_users`、`x_setting_items` |
 | 列名 | 对齐 Go 的 json tag（snake_case），如 `mount_path`、`read_users` |
 | 初始化标记 | `schema_info` 表（`INIT_MARK = "openlist_config"`） |
 
@@ -184,8 +184,8 @@ storages_1         → {"id":1,"mount_path":"/x",...}
 
 - **Binding 模式**：直接使用 KV namespace binding
 - **代理模式**：EdgeOne KV 经 Edge Function 转发（`functions/kv-*.js`）
-  - 需 `JWT_SECRET`（或 `ENCRYPTION_SECRET`）用于 `X-Internal-Call` 头部鉴权
-  - Edge 侧密钥读取带 **60s TTL 缓存**，避免 Node 侧写入新密钥后 Edge 长期持旧值
+  - 需 `JWT_SECRET` 用于 `X-Internal-Call` 头部鉴权
+  - Edge 侧**不缓存密钥**，每次直读 env → KV，避免 Node 侧写入新密钥后 Edge 持有旧值
 
 `get()` 对 `get(key, "text")`（Cloudflare）与 `get(key, {type:"text"})`（EdgeOne）
 做**双签名兼容**，并把对象返回值归一化为 string，保持 `Driver.get` 契约。
@@ -244,7 +244,7 @@ TS 后端可与 Go 后端**共享同一物理数据库**（通过 `sql` 格式 +
 
 ### 5.2 表前缀
 
-默认 `x_`，与 Go 的 `TABLE_PREFIX` 保持一致；`plugins` 为 TS 独有（Go 无此表）。
+固定为 `x_`（对齐 Go 后端默认值）；`plugins` 为 TS 独有（Go 无此表）。
 
 ### 5.3 旧版配置映射（向后兼容）
 
@@ -252,7 +252,6 @@ TS 后端可与 Go 后端**共享同一物理数据库**（通过 `sql` 格式 +
 |---|---|
 | `DB_DRIVER=json` | `DB_FORMAT=map` + 自动探测驱动 |
 | `DB_DRIVER=kv`（未指定格式） | `DB_FORMAT=key` |
-| `DB_JSON_BACKEND=blob/kv/cf_rest` | `DB_DRIVER=blob/kv/cfkv` |
 
 ---
 
@@ -283,9 +282,9 @@ blob → cfkv → kv → d1
 判定依据全部为**运行时特征**（不依赖用户配置），命中任一即成立：
 
 1. **通用**：注入型请求上下文（`__requestOrigin` / `__requestContext` / `__makersContext`）
-2. **EdgeOne**：KV/Blob 绑定名、EdgeOne 全局对象、`TENCENTCLOUD_SCF_FUNCTIONNAME`
+2. **EdgeOne**：`EDGEONE_BLOB`、`EdgeOne` 全局对象、`TENCENTCLOUD_SCF_FUNCTIONNAME`
 3. **Cloudflare Workers**：`WebSocketPair`、`caches.default`
-4. **阿里云 ESA**：`ESA_BLOB` / `ESA_KV` / `ESA` 全局对象
+4. **阿里云 ESA**：`ESA_BLOB` / `ESA` 全局对象
 
 ### 6.4 缓存（`getStorageBackend`）
 
@@ -309,9 +308,15 @@ blob → cfkv → kv → d1
 |---|---|---|---|
 | `DB_DRIVER` | `auto`/`blob`/`cfkv`/`kv`/`d1`/`do`/`mysql` | `auto` | 底层存储驱动 |
 | `DB_FORMAT` | `map`/`key`/`sql` | `map` | 数据存储格式 |
-| `ENCRYPTION_SECRET` | ≥16 字符 | — | 字段加密密钥（优先） |
-| `JWT_SECRET` | ≥16 字符 | — | JWT 签名；兼作加密密钥回退 |
-| `MYSQL_DSN` / `SQL_DSN` | DSN 字符串 | — | MySQL 连接 |
+| `JWT_SECRET` | ≥16 字符 | — | JWT 签名 / 字段加密 / 定时任务鉴权（三合一） |
+| `ADMIN_PASS` | 字符串 | — | 跳过安装向导，自动初始化 admin |
+| `ALLOW_URLS` | Host 列表 | — | CORS 白名单（逗号分隔） |
+| `MAX_UPLOAD_SIZE` | 字节 | `26214400` | 整体上传上限（25MB） |
+| `MAX_PART_SIZE` | 字节 | `16777216` | 分片单片上限（16MB） |
+| `CDN_URL` | URL | — | 前端静态资源 CDN（支持 `$version`） |
+| `SEED_SOURCE_ALLOWED_HOSTS` | Host 列表 | — | 种子数据来源白名单 |
+| `MYSQL_URL` / `DATABASE_URL` | DSN 字符串 | — | MySQL 连接串（优先） |
+| `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_USER`/`MYSQL_PASSWORD`/`MYSQL_DATABASE` | 字符串 | — | MySQL 分项配置 |
 | `CF_ACCOUNT_ID` / `CF_KV_NAMESPACE_ID` / `CF_API_TOKEN` | 字符串 | — | Cloudflare KV REST |
 
 ### 各平台推荐组合

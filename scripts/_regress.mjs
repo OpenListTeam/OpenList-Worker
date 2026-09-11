@@ -78,7 +78,7 @@ try {
   check("users_1", codec.entityKeyOf("users", "1") === "users_1", codec.entityKeyOf("users", "1"))
   check("下划线不转义", codec.entityKeyOf("settings", "site_title") === "settings_site_title")
   check("无 xx 冗余", !codec.entityKeyOf("settings", "site_title").includes("xx"))
-  check("无 openlist_tbl_ 前缀", !codec.entityKeyOf("users", "1").includes("openlist_tbl"))
+  check("无历史前缀", !codec.entityKeyOf("users", "1").includes("openlist_tbl"))
   const uuid = "550e8400-e29b-41d4-a716-446655440000"
   check("UUID 合法", KV_RE.test(codec.entityKeyOf("users", uuid)))
   check("UUID 可逆", codec.decodeKeyPart(codec.encodeKeyPart(uuid)) === uuid)
@@ -126,8 +126,6 @@ try {
   const envJwt = { DB_DRIVER: "kv", JWT_SECRET, __requestOrigin: origin }
   check("env 有密钥 → 直接用", (await dbMod.ensureEncryptionSecret(envJwt)) === JWT_SECRET)
   check("不写持久化", store.size === 0)
-  const envBoth = { DB_DRIVER: "kv", JWT_SECRET, ENCRYPTION_SECRET: "enc-secret-32-chars-long!!!!", __requestOrigin: origin }
-  check("ENC 优先", (await dbMod.ensureEncryptionSecret(envBoth)) === "enc-secret-32-chars-long!!!!")
 
   console.log("=== D. 加解密对称 ===")
   const hashed = "a".repeat(64)
@@ -140,10 +138,9 @@ try {
   console.log("=== E. worker 禁内存 ===")
   for (const [n, e] of [
     ["__requestOrigin", { __requestOrigin: origin }],
-    ["EDGEONE_KV", { EDGEONE_KV: {} }],
-    ["worker_kv", { worker_kv: {} }],
+    ["EDGEONE_BLOB", { EDGEONE_BLOB: {} }],
     ["ESA_BLOB", { ESA_BLOB: {} }],
-    ["SCF", { SCF_FUNCTIONNAME: "f" }],
+    ["TENCENTCLOUD_SCF_FUNCTIONNAME", { TENCENTCLOUD_SCF_FUNCTIONNAME: "f" }],
   ]) check(`识别 ${n}`, backendMod.isServerlessRuntime(e) === true)
   check("本地不误判", backendMod.isServerlessRuntime({}) === false)
   let e1 = false
