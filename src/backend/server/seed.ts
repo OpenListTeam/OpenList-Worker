@@ -320,6 +320,7 @@ interface SourceFile {
   modified: string
   rawUrl: string
   headers: Record<string, string>
+  hashes: { md5?: string; sha1?: string; sha256?: string }
 }
 
 async function collectSourceFiles(
@@ -357,6 +358,7 @@ async function collectSourceFiles(
         modified: item.modified || "",
         rawUrl,
         headers,
+        hashes: item.hashes ?? (item.hash ? { md5: item.hash } : {}),
       })
       return
     }
@@ -836,26 +838,43 @@ seedRouter.post("/capabilities", async (c) => {
         .split("\n")
         .map((line) => line.trim())
         .filter(Boolean)
+      const hashAlgorithms = ["md5", "sha1", "sha256"] as const
+      const files = sourceFiles.map((file) => {
+        const availableHashes = hashAlgorithms.filter(
+          (algorithm) => !!file.hashes[algorithm],
+        )
+        const requiresDownload = availableHashes.length < hashAlgorithms.length
+        return {
+          path: file.virtualPath,
+          name: file.relativePath,
+          size: file.size,
+          available_hashes: availableHashes,
+          requires_download: requiresDownload,
+          requires_fetch: requiresDownload,
+          estimated_traffic: requiresDownload ? file.size : 0,
+          streamable: true,
+          share_available: true,
+          direct_source_available: true,
+        }
+      })
+      const existing = new Set<string>()
+      for (const file of sourceFiles) {
+        for (const algorithm of hashAlgorithms) {
+          if (file.hashes[algorithm]) existing.add(algorithm)
+        }
+      }
+      const existingHashes = hashAlgorithms.filter((algorithm) =>
+        existing.has(algorithm),
+      )
       return c.json({
         code: 200,
         message: "success",
         data: {
           formats: { oss: true, torrent: true, cas: sourceFiles.length === 1 },
-          files: sourceFiles.map((file) => ({
-            path: file.virtualPath,
-            name: file.relativePath,
-            size: file.size,
-            available_hashes: [],
-            requires_download: true,
-            requires_fetch: true,
-            estimated_traffic: file.size,
-            streamable: true,
-            share_available: true,
-            direct_source_available: true,
-          })),
-          existing_hashes: [],
-          estimated_traffic: sourceFiles.reduce(
-            (total, file) => total + file.size,
+          files,
+          existing_hashes: existingHashes,
+          estimated_traffic: files.reduce(
+            (total, file) => total + file.estimated_traffic,
             0,
           ),
           default_matrix: await loadDefaultMatrix(),

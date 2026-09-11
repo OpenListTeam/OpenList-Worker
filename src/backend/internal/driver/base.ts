@@ -14,6 +14,16 @@ export interface FileItem {
   raw_url_error?: string
   /** Whole-file hash (e.g. md5) used for rapid upload */
   hash?: string
+  /**
+   * Whole-file hashes by algorithm, populated by drivers whose file listings
+   * expose hashes (e.g. md5, sha1, sha256). Prefer this over the legacy `hash`
+   * field; seed capability preflight consumes these to avoid re-downloading.
+   */
+  hashes?: {
+    md5?: string
+    sha1?: string
+    sha256?: string
+  }
 }
 
 export function calcFileType(name: string, isDir: boolean): number {
