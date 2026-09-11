@@ -566,36 +566,6 @@ export async function getKvStatus(envCtx?: any) {
   }
 }
 
-/** 默认后端：JSON / KV / Blob。 */
-export const jsonBackend: StoreBackend = {
-  name: "json",
-
-  async load(env?: any): Promise<any | null> {
-    const kvInfo = await getKvBinding(env)
-    if (kvInfo.mode === "none") return null
-    return readFromKv(kvInfo, "openlist_config")
-  },
-
-  async save(data: any, env?: any): Promise<boolean> {
-    const kvInfo = await getKvBinding(env)
-    if (kvInfo.mode === "none") return false
-    const ok = await saveToKv(kvInfo, "openlist_config", data)
-    if (!ok) {
-      throw new Error(`Failed to persist config to KV (${kvInfo.platform})`)
-    }
-    return true
-  },
-
-  async isConfigured(env?: any): Promise<boolean> {
-    const kvInfo = await getKvBinding(env)
-    return kvInfo.mode !== "none"
-  },
-
-  async health(env?: any): Promise<any> {
-    return getKvStatus(env)
-  },
-}
-
 // ───────────────────────── 持久化密钥管理 ─────────────────────────
 //
 // 密钥（JWT 签名密钥、字段加密密钥）需要跨实例、跨冷启动保持一致，

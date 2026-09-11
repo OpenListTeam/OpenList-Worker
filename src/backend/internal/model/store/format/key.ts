@@ -2,12 +2,12 @@
  * Key 格式适配器
  *
  * 将数据按表拆分，每个实体一条记录：
- * - openlist_tbl_settings_<key>
- * - openlist_tbl_users_<id>
- * - openlist_tbl_storages_<id>
- * - openlist_tbl_shares_<id>
- * - openlist_tbl_metas_<id>
- * - openlist_tbl_plugins_<id>
+ * - settings_<key>
+ * - users_<id>
+ * - storages_<id>
+ * - shares_<id>
+ * - metas_<id>
+ * - plugins_<id>
  *
  * 避免大 JSON，适合频繁读写单条记录的场景。
  *
@@ -44,7 +44,6 @@ export const keyFormat: FormatAdapter = {
     const out: Record<string, any> = {}
 
     for (const table of TABLE_NAMES) {
-      const keyCol = TABLE_KEY[table]
       const prefix = tablePrefix(table)
       const keys = await driver.list(prefix, env)
 

@@ -22,6 +22,43 @@ function quote(name: string): string {
   return "`" + name + "`"
 }
 
+/**
+ * 生成 UPSERT 语句。
+ *
+ * SQLite（D1 / DO）与 MySQL 语法不同，必须按方言分支：
+ *   - SQLite: INSERT OR REPLACE INTO ...
+ *   - MySQL:  INSERT INTO ... ON DUPLICATE KEY UPDATE ...
+ *
+ * 驱动名即方言标识：d1 / do 为 SQLite，mysql 为 MySQL。
+ */
+function upsertSql(
+  table: string,
+  columns: string[],
+  params: any[],
+  driver: Driver,
+): { sql: string; params: any[] } {
+  const cols = columns.map((c) => quote(c)).join(", ")
+  const placeholders = columns.map(() => "?").join(", ")
+
+  if (driver.name === "mysql") {
+    // MySQL 无 INSERT OR REPLACE；用 ON DUPLICATE KEY UPDATE 覆盖全部非主键列。
+    // 主键列不参与 UPDATE（写回自身无意义），其余列以 VALUES(col) 覆盖。
+    const updates = columns
+      .slice(1)
+      .map((c) => `${quote(c)} = VALUES(${quote(c)})`)
+      .join(", ")
+    const sql = updates
+      ? `INSERT INTO ${table} (${cols}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${updates}`
+      : `INSERT INTO ${table} (${cols}) VALUES (${placeholders})`
+    return { sql, params }
+  }
+
+  return {
+    sql: `INSERT OR REPLACE INTO ${table} (${cols}) VALUES (${placeholders})`,
+    params,
+  }
+}
+
 /** 带前缀+复数的完整表名（含反引号）。 */
 function qn(table: TableName, env?: any): string {
   return quote(tableSqlName(table, env))
@@ -82,11 +119,15 @@ export const sqlFormat: FormatAdapter = {
       }
     }
 
-    // 标记已初始化
-    statements.push({
-      sql: "INSERT OR REPLACE INTO schema_info (k, v) VALUES (?, ?)",
-      params: [INIT_MARK, String(Date.now())],
-    })
+    // 标记已初始化（方言兼容的 UPSERT）
+    statements.push(
+      upsertSql(
+        quote("schema_info"),
+        ["k", "v"],
+        [INIT_MARK, String(Date.now())],
+        driver,
+      ),
+    )
 
     await driver.batch(statements, env)
     return true
@@ -161,10 +202,8 @@ export const sqlFormat: FormatAdapter = {
     void key
 
     const { columns, values } = entityToRow(t, record)
-    const placeholders = columns.map(() => "?").join(", ")
-    const sql = `INSERT OR REPLACE INTO ${qn(t, env)} (${columns
-      .map((c) => quote(c))
-      .join(", ")}) VALUES (${placeholders})`
+    // 方言兼容的 UPSERT（SQLite: INSERT OR REPLACE / MySQL: ON DUPLICATE KEY UPDATE）
+    const { sql } = upsertSql(qn(t, env), columns, values, driver)
 
     await driver.execute(sql, values, env)
   },

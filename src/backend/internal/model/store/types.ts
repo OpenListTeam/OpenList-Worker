@@ -12,11 +12,16 @@
 /** 存储格式类型 */
 export type StorageFormat = "map" | "key" | "sql"
 
+/**
+ * 运行环境上下文（平台注入的绑定与配置）。
+ *
+ * 允许任意键访问：不同平台注入的绑定名各异（KV / DB / BLOB / ESA_BLOB …），
+ * 驱动层需按平台探测，因此不做严格结构约束。
+ */
+export type EnvContext = Record<string, any>
+
 /** 存储驱动类型 */
 export type StorageDriver = "auto" | "blob" | "cfkv" | "kv" | "d1" | "do" | "mysql"
-
-/** 旧版驱动类型（向后兼容） */
-export type StoreDriver = "json" | "d1" | "mysql" | "kv"
 
 /**
  * 驱动接口（底层 I/O）
@@ -120,14 +125,15 @@ export interface FormatAdapter {
 }
 
 /**
- * 旧版后端接口（向后兼容）
+ * 存储后端接口（整配置对象读写）。
+ *
+ * 这是 `Driver` + `FormatAdapter` 之上的适配层，由 `backend.ts` 的
+ * `getStoreBackend()` 组装后供 `db.ts` 使用，屏蔽底层驱动/格式差异。
  */
 export interface StoreBackend {
   /** 后端标识名 */
   readonly name: string
-  /**
-   * 读取完整配置对象（已加密）。无数据时返回 null（由上层回退到默认值）。
-   */
+  /** 读取完整配置对象（已加密）。无数据时返回 null（由上层回退到默认值）。 */
   load(env?: any): Promise<any | null>
   /**
    * 写入完整配置对象（已加密）。成功返回 true；未配置持久化目标时返回 false；
@@ -136,7 +142,7 @@ export interface StoreBackend {
   save(data: any, env?: any): Promise<boolean>
   /** 是否配置了真实可用的持久化目标。未实现时视为始终已配置。 */
   isConfigured?(env?: any): Promise<boolean>
-  /** 建表 / 迁移（D1、MySQL 需要）。应幂等。 */
+  /** 建表（D1、DO、MySQL 需要）。应幂等。 */
   init?(env?: any): Promise<void>
   /** 健康检查，用于 /debug/info 与 /admin/kv/status。 */
   health?(env?: any): Promise<any>

@@ -7,6 +7,7 @@ import { keyFormat } from "./format/key"
 import { sqlFormat } from "./format/sql"
 import {
   TABLE_NAMES,
+  DDL_TABLE_NAMES,
   TABLE_KEY,
   keyOf,
   TABLES,
@@ -42,7 +43,7 @@ function createMockKvDriver(): Driver {
 }
 
 /** 基于局部 Map 的简易 SQL 驱动（隔离测试，支持 sqlFormat 用到的 SQL）。 */
-function createMockSqlDriver(): Driver {
+function createMockSqlDriver(name = "mock-sql"): Driver {
   // table -> rows (对象数组)
   const tables = new Map<string, any[]>()
   // schema_info: k -> v
@@ -54,7 +55,7 @@ function createMockSqlDriver(): Driver {
   }
 
   return {
-    name: "mock-sql",
+    name,
     isAvailable: async () => true,
     init: async () => {},
     get: async () => null,
@@ -82,28 +83,37 @@ function createMockSqlDriver(): Driver {
       for (const { sql, params } of statements) {
         const trimmed = sql.trim()
         // DELETE FROM `table`
-        let m = trimmed.match(/^DELETE FROM `?(\w+)`?/i)
+        const m = trimmed.match(/^DELETE FROM `?(\w+)`?/i)
         if (m) {
           tables.set(m[1], [])
           continue
         }
-        // INSERT INTO `table` (`c1`, `c2`, ...) VALUES (?, ?, ...)
-        m = trimmed.match(
+        // schema_info 的 UPSERT 必须先于通用 INSERT 匹配，否则会被当作数据行。
+        // SQLite 方言：INSERT OR REPLACE INTO `schema_info` (`k`, `v`) VALUES (?, ?)
+        if (/^INSERT OR REPLACE INTO `?schema_info`?/i.test(trimmed)) {
+          schemaInfo.set(String(params[0]), String(params[1]))
+          continue
+        }
+        // MySQL 方言：INSERT INTO `schema_info` (...) VALUES (...) ON DUPLICATE KEY UPDATE ...
+        if (
+          /^INSERT INTO `?schema_info`?/i.test(trimmed) &&
+          /ON DUPLICATE KEY UPDATE/i.test(trimmed)
+        ) {
+          schemaInfo.set(String(params[0]), String(params[1]))
+          continue
+        }
+        // 通用数据行：INSERT INTO `table` (`c1`, `c2`, ...) VALUES (?, ?, ...)
+        const ins = trimmed.match(
           /^INSERT INTO `?(\w+)`? \(([^)]+)\) VALUES \(([^)]+)\)/i,
         )
-        if (m) {
-          const table = m[1]
-          const cols = m[2].split(",").map((c) => c.trim().replace(/`/g, ""))
+        if (ins) {
+          const table = ins[1]
+          const cols = ins[2].split(",").map((c) => c.trim().replace(/`/g, ""))
           const row: any = {}
           cols.forEach((c, i) => {
             row[c] = params[i]
           })
           ensureTable(table).push(row)
-          continue
-        }
-        // INSERT OR REPLACE INTO schema_info (k, v) VALUES (?, ?)
-        if (/^INSERT OR REPLACE INTO schema_info/i.test(trimmed)) {
-          schemaInfo.set(String(params[0]), String(params[1]))
           continue
         }
         throw new Error(`mock-sql unsupported statement: ${sql}`)
@@ -125,7 +135,10 @@ const SAMPLE_DB = {
 }
 
 test("schema: columnar tables match Go backend structure", () => {
+  // 往返表 6 张（sshkeys 不参与，避免清空 Go 的 x_ssh_public_keys）
   assert.equal(TABLE_NAMES.length, 6)
+  // DDL 表 7 张（含 sshkeys，保持与 Go 共享库的结构一致）
+  assert.equal(DDL_TABLE_NAMES.length, 7)
   assert.equal(TABLE_KEY.settings, "key")
   assert.equal(TABLE_KEY.users, "id")
   assert.equal(keyOf("settings", { key: "site_title" }), "site_title")
@@ -137,11 +150,12 @@ test("schema: columnar tables match Go backend structure", () => {
   assert.ok(TABLES.storages.columns.some((c) => c.name === "mount_path"))
   assert.ok(TABLES.metas.columns.some((c) => c.name === "read_users"))
   assert.ok(TABLES.plugins.columns.some((c) => c.name === "script_content"))
+  assert.ok(TABLES.sshkeys.columns.some((c) => c.name === "key_str"))
   // 不应再有宽表的 data 列
   assert.ok(!TABLES.users.columns.some((c) => c.name === "data"))
-  // DDL 幂等生成（schema_info + 6 张业务表）
-  assert.ok(D1_SCHEMA.length >= 7)
-  assert.ok(MYSQL_SCHEMA.length >= 7)
+  // DDL 幂等生成（schema_info + 7 张业务表）
+  assert.ok(D1_SCHEMA.length >= 8)
+  assert.ok(MYSQL_SCHEMA.length >= 8)
 })
 
 test("schema: SQL table names align with Go GORM naming", () => {
@@ -226,6 +240,14 @@ test("key format: roundtrip via mock KV driver (per-table keys)", async () => {
 
 test("sql format: roundtrip via mock SQL driver (columnar)", async () => {
   const driver = createMockSqlDriver()
+  assert.equal(await sqlFormat.save(SAMPLE_DB, driver), true)
+  assert.deepEqual(await sqlFormat.load(driver), SAMPLE_DB)
+})
+
+test("sql format: MySQL dialect uses ON DUPLICATE KEY UPDATE (no INSERT OR REPLACE)", async () => {
+  // 回归防护：MySQL 不支持 INSERT OR REPLACE，若方言分支失效，
+  // mock 驱动会在收到该语句时抛错，从而让本测试失败。
+  const driver = createMockSqlDriver("mysql")
   assert.equal(await sqlFormat.save(SAMPLE_DB, driver), true)
   assert.deepEqual(await sqlFormat.load(driver), SAMPLE_DB)
 })

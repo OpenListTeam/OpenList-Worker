@@ -46,15 +46,17 @@ function isKvLike(v) {
 
 /* ─────────────────────────── 密钥获取 ─────────────────────────── */
 
-let cachedSecret = null
-
 /**
  * 获取 JWT 密钥，优先级与 Node 侧 getJwtSecret 一致。
+ *
+ * **不缓存**。KV 密钥可能被 Node 侧随时写入或轮换，任何形式的模块级
+ * 缓存（哪怕带 TTL）都会让本实例在一段时间内持有旧值，导致
+ * X-Internal-Call 鉴权失败。env 读取本身几乎无开销，KV 读取仅在
+ * 未配置 env 时发生，成本可接受。用最简单的方式换取"永不失效"。
+ *
  * @returns {Promise<string|null>}
  */
 export async function getJwtSecret(env) {
-  if (cachedSecret) return cachedSecret
-
   // 1) 环境变量（长度需 >= 16，与 Node 侧一致）
   const envSecret =
     env?.JWT_SECRET ||
@@ -62,8 +64,7 @@ export async function getJwtSecret(env) {
     globalThis?.JWT_SECRET ||
     globalThis?.ENCRYPTION_SECRET
   if (typeof envSecret === "string" && envSecret.length >= 16) {
-    cachedSecret = envSecret
-    return cachedSecret
+    return envSecret
   }
 
   // 2) KV 持久化密钥（与 Node 侧共用 openlist_jwt_secret）
@@ -72,8 +73,7 @@ export async function getJwtSecret(env) {
     if (kv) {
       const val = await kv.get(JWT_SECRET_KV_KEY, { type: "text" })
       if (typeof val === "string" && val.length >= 16) {
-        cachedSecret = val
-        return cachedSecret
+        return val
       }
     }
   } catch {

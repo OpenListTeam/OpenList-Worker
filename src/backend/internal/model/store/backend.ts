@@ -100,29 +100,66 @@ export function readFormat(env?: any): StorageFormat {
 }
 
 /**
- * Serverless / Worker 类运行环境检测。
+ * 是否处于 Serverless / Worker 类运行环境。
  *
- * 这些环境（Cloudflare Workers、EdgeOne Node 云函数等）多实例、随时冷启，
- * 内存存储完全无法持久化，且会给出「写入成功」的假象。
+ * 判定目的：这些环境（Cloudflare Workers、EdgeOne Edge/Node 云函数、
+ * 阿里云 ESA 函数等）多实例、随时冷启，**内存存储完全无法持久化**，
+ * 且会给出「写入成功」的假象。因此在此类环境中永不使用内存后端。
  *
- * 判定依据（任一成立即可，均为运行时特征而非环境变量，故无需用户配置）：
- *  - 存在 Web 平台特有对象（caches / WebSocketPair / EdgeOne 全局绑定）
- *  - 请求上下文中带有边缘平台注入的字段
+ * 判定依据全部为运行时特征（不依赖用户配置），命中任一即成立：
+ *  1. EdgeOne：请求上下文标记、KV/Blob 相关绑定、EdgeOne 专属全局变量
+ *  2. Cloudflare Workers：WebSocketPair / caches.default / CF 绑定
+ *  3. 阿里云 ESA：ESA 全局对象与绑定
+ *  4. 通用：注入型请求上下文（__requestOrigin / __requestContext）
  */
 export function isServerlessRuntime(env?: any): boolean {
   const g = globalThis as any
   try {
-    // Cloudflare Workers 特有
-    if (typeof g.WebSocketPair === "function") return true
-    if (typeof g.caches !== "undefined" && typeof g.caches?.default === "undefined") {
-      // CF 的 caches.default 是 Workers 特征
+    // ── 通用：请求上下文由平台注入 ──
+    if (env?.__requestOrigin || env?.__requestContext || env?.__makersContext) {
       return true
     }
-    // EdgeOne / 边缘平台注入的请求上下文标记
-    if (env?.__requestOrigin) return true
-    if (env?.EO_KV || env?.EDGEONE_KV || env?.worker_kv) return true
+
+    // ── EdgeOne ──
+    if (
+      env?.EO_KV ||
+      env?.EDGEONE_KV ||
+      env?.EDGEONE_KV_NAME ||
+      env?.EDGEONE_BLOB ||
+      env?.worker_kv ||
+      g?.EO_KV ||
+      g?.EDGEONE_KV ||
+      g?.EDGEONE_BLOB ||
+      typeof g?.EdgeOne !== "undefined"
+    ) {
+      return true
+    }
+
+    // ── Cloudflare Workers ──
+    // WebSocketPair 是 Workers 运行时专有的全局构造函数
+    if (typeof g.WebSocketPair === "function") return true
+    // caches.default 是 Workers 的 Cache API 形态
+    if (typeof g.caches !== "undefined" && g.caches?.default) return true
+
+    // ── 阿里云 ESA ──
+    if (
+      env?.ESA_BLOB ||
+      env?.ESA_KV ||
+      g?.ESA_BLOB ||
+      typeof g?.ESA !== "undefined"
+    ) {
+      return true
+    }
+
+    // ── EdgeOne Node 云函数环境变量特征 ──
+    // 平台会注入 SCF 相关变量，可据此识别
+    const scfVars =
+      env?.TENCENTCLOUD_SCF_FUNCTIONNAME ||
+      env?.SCF_FUNCTIONNAME ||
+      (typeof process !== "undefined" && process.env?.TENCENTCLOUD_SCF_FUNCTIONNAME)
+    if (scfVars) return true
   } catch {
-    // 忽略：检测失败时按非 serverless 处理（本地/容器）
+    // 检测自身的异常不应影响判定；保守视为非 serverless（本地/容器）
   }
   return false
 }
@@ -173,28 +210,65 @@ export const NO_STORAGE_MESSAGE =
   "  DB_DRIVER=blob | kv | cfkv | d1\n" +
   "  DB_FORMAT=map | key | sql"
 
+/** 驱动名 → 实现 */
+const DRIVER_MAP: Record<string, Driver> = {
+  blob: blobDriver,
+  cfkv: cfkvDriver,
+  kv: kvDriver,
+  d1: d1Driver,
+  do: doDriver,
+  mysql: mysqlDriver,
+}
+
 /**
  * 解析驱动。
+ *
+ * 语义约定：
+ *  - `auto`：按优先级探测，全部不可用时：worker 环境报错，本地回退内存。
+ *  - 显式指定（如 DB_DRIVER=kv）：**不回退**。若该驱动不可用则直接报错，
+ *    避免用户以为在用 KV、实际却落到别的后端或内存里。
  */
 async function resolveDriver(name: StorageDriver, env?: any): Promise<Driver> {
-  switch (name) {
-    case "blob":
-      return blobDriver
-    case "cfkv":
-      return cfkvDriver
-    case "kv":
-      return kvDriver
-    case "d1":
-      return d1Driver
-    case "do":
-      return doDriver
-    case "mysql":
-      return mysqlDriver
-    case "auto":
-      return await autoDetectDriver(env)
-    default:
-      throw new Error(`Unknown driver: ${name}`)
+  if (name === "auto") {
+    return await autoDetectDriver(env)
   }
+
+  const driver = DRIVER_MAP[name]
+  if (!driver) {
+    throw new Error(
+      `Unknown DB_DRIVER "${name}". Valid values: auto, ${Object.keys(
+        DRIVER_MAP,
+      ).join(", ")}`,
+    )
+  }
+
+  // 显式指定时必须可用，否则报错（不回退）
+  let available = false
+  try {
+    available = await driver.isAvailable(env)
+  } catch {
+    available = false
+  }
+
+  // 内存驱动在 worker 环境永不接受：数据会随实例销毁而消失，
+  // 但接口仍返回成功，属于最危险的一类「静默数据丢失」。
+  if (driver === memoryDriver && isServerlessRuntime(env)) {
+    throw new Error(NO_STORAGE_MESSAGE)
+  }
+
+  if (!available) {
+    throw new Error(
+      `DB_DRIVER is set to "${name}", but that driver is not available in ` +
+        `this runtime. No fallback is performed for an explicitly configured ` +
+        `driver.\n` +
+        `Check the binding/credentials for "${name}", or set DB_DRIVER=auto ` +
+        `to let the platform pick an available backend.\n` +
+        `Environment: ${isServerlessRuntime(env) ? "serverless/worker" : "local/container"}`,
+    )
+  }
+
+  console.log(`[DB] Using explicitly configured driver: ${driver.name}`)
+  return driver
 }
 
 /**
@@ -221,6 +295,30 @@ let cachedFormat: FormatAdapter | null = null
 let cachedConfig: string | null = null
 
 /**
+ * env 对象的稳定身份编号。
+ *
+ * 为什么需要：auto 模式下驱动探测结果取决于「该 env 里有哪些绑定」。
+ * 若仅以 driverName:formatName 做缓存键，同一个进程内先后出现两个不同
+ * env（一个有 Blob、一个只有 KV）时会串味。这里给每个 env 对象分配一个
+ * 稳定的自增 ID（WeakMap，不阻止 GC），把「是否同一个 env」纳入缓存键。
+ *
+ * 代价极低：同一 env 对象多次调用恒得同一 ID；不同对象则重探测一次。
+ */
+const envIds = new WeakMap<object, number>()
+let envIdSeq = 0
+function envFingerprint(env?: any): string {
+  if (env && (typeof env === "object" || typeof env === "function")) {
+    let id = envIds.get(env as object)
+    if (id === undefined) {
+      id = ++envIdSeq
+      envIds.set(env as object, id)
+    }
+    return String(id)
+  }
+  return "none"
+}
+
+/**
  * 获取存储后端（驱动 + 格式）。
  */
 export async function getStorageBackend(
@@ -230,10 +328,11 @@ export async function getStorageBackend(
   const formatName = readFormat(env)
   // 缓存键必须包含「影响探测结果的环境特征」。
   // 仅用 driverName:formatName 是不够的：当 DB_DRIVER=auto 时，不同 env
-  // 可能探测出不同驱动（如本地 env 回退 memory、serverless env 报错），
-  // 共用缓存会返回错误结果。
+  // 可能探测出不同驱动（如本地 env 回退 memory、serverless env 报错，
+  // 或一个 env 有 Blob 绑定、另一个只有 KV），共用缓存会返回错误结果。
+  // 因此额外纳入「运行时类型 + env 身份」。
   const runtimeTag = isServerlessRuntime(env) ? "sl" : "local"
-  const config = `${driverName}:${formatName}:${runtimeTag}`
+  const config = `${driverName}:${formatName}:${runtimeTag}:${envFingerprint(env)}`
 
   if (cachedDriver && cachedFormat && cachedConfig === config) {
     return { driver: cachedDriver, format: cachedFormat }
@@ -361,15 +460,26 @@ export async function getStoreConfigError(env?: any): Promise<string | null> {
       }
     }
   } catch (err: any) {
-    // 驱动解析失败（如 serverless 环境无可用存储）也要作为配置错误
-    // 上报，而不是静默放行导致后续请求以内存模式"成功"。
+    // 驱动解析失败（如显式指定驱动不可用、worker 环境无存储）也要作为
+    // 配置错误上报，而不是静默放行导致后续请求以内存模式"成功"。
     const msg = String(err?.message || err)
-    if (msg.includes("No storage backend is available")) {
+
+    // 优先给出更精确的原因：显式配置 kv 但缺少代理密钥时，
+    // 直接提示补密钥比笼统的"驱动不可用"更可操作。
+    const isKvRequested =
+      String(env?.DB_DRIVER || "").trim().toLowerCase() === "kv"
+    const kvSecretIssue = isKvRequested ? checkProxyConfig(env) : null
+
+    if (kvSecretIssue) {
+      result = kvSecretIssue
+      console.error("[DB] KV proxy configuration error:\n" + result)
+    } else if (msg.includes("No storage backend is available")) {
       result = NO_STORAGE_MESSAGE
+      console.error("[DB] Storage configuration error:\n" + result)
     } else {
       result = msg
+      console.error("[DB] Storage configuration error:\n" + result)
     }
-    console.error("[DB] Storage configuration error:\n" + result)
   }
 
   configErrorCache.set(env, result)

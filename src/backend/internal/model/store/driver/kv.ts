@@ -257,7 +257,25 @@ export const kvDriver: Driver = {
     
     // 模式1: Binding 模式
     if (kv) {
-      return await kv.get(key, "text")
+      // Cloudflare KV 用 get(key, "text")，EdgeOne KV 用 get(key, {type:"text"})。
+      // 两者签名不兼容，按序尝试并对返回值做归一化，避免拿到对象导致上游 JSON.parse 失败。
+      let value: any
+      try {
+        value = await kv.get(key, "text")
+      } catch {
+        value = undefined
+      }
+      if (value === undefined || value === null) {
+        try {
+          value = await kv.get(key, { type: "text" })
+        } catch {
+          value = null
+        }
+      }
+      if (value === undefined || value === null) return null
+      if (typeof value === "string") return value
+      // 绑定误返回对象时统一序列化，保持 Driver.get 的 string 契约
+      return JSON.stringify(value)
     }
     
     // 模式2: HTTP 代理模式

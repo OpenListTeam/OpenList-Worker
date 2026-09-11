@@ -1099,42 +1099,67 @@ let encryptionKeyWarned = false
 export const ENCRYPTION_SECRET_KV_KEY = "openlist_encryption_secret"
 
 /**
- * 获取字段加密密钥。
+ * 解析「环境变量中显式配置的」字段加密密钥。
  *
- * 优先级：
- *   1. env.ENCRYPTION_SECRET / env.JWT_SECRET
- *   2. 持久化密钥（openlist_encryption_secret，由初始化阶段生成写入）
+ * 约定：ENCRYPTION_SECRET 优先，其次 JWT_SECRET（后者兼作签名密钥）。
+ * 长度不足 16 视为未配置，避免弱密钥。
  *
- * 注意：这里**只读不生成**。生成只发生在初始化（setup）阶段，见
- * ensureEncryptionSecret()。否则读取瞬时失败会导致生成新密钥，
- * 使既有加密数据永久无法解密。
+ * 该来源具有**最高优先级且恒定不变**：只要它存在，seal 与 unseal
+ * 都必须使用它，从而保证加解密对称。
  */
-/** 进程内缓存：密钥一旦确定就不会变，避免每次 load/save 都读存储 */
-let cachedEncryptionKey: string | null = null
-
-async function getEncryptionKey(envCtx?: any): Promise<string | null> {
-  if (cachedEncryptionKey) return cachedEncryptionKey
-
-  const env =
-    envCtx ||
-    globalEnvCtx ||
-    (typeof process !== "undefined" ? process.env : {})
-  const envKey =
+function readEnvEncryptionKey(env: any): string | null {
+  const raw =
     env?.ENCRYPTION_SECRET ||
     env?.JWT_SECRET ||
     (typeof process !== "undefined" ? process.env?.ENCRYPTION_SECRET : "") ||
     (typeof process !== "undefined" ? process.env?.JWT_SECRET : "")
-  if (envKey && String(envKey).length >= 16) {
-    cachedEncryptionKey = String(envKey)
-    return cachedEncryptionKey
+  return typeof raw === "string" && raw.length >= 16 ? raw : null
+}
+
+/** 进程内缓存：避免每次 load/save 都读存储 */
+let cachedEncryptionKey: string | null = null
+/** 缓存值是否来自环境变量（来自 env 的最高优先级，不会被持久化值替换） */
+let cachedFromEnv = false
+
+/**
+ * 获取字段加密密钥（只读，绝不生成）。
+ *
+ * 优先级：
+ *   1. env.ENCRYPTION_SECRET / env.JWT_SECRET
+ *   2. 持久化密钥 openlist_encryption_secret（由 setup 阶段写入）
+ *
+ * 关键约束（保证加解密对称）：
+ *   - 生成只发生在 setup，见 ensureEncryptionSecret()。此处绝不生成，
+ *     否则一次瞬时读取失败就会换钥，导致既有密文永久无法解密。
+ *   - 环境变量一旦配置，就始终优先于持久化密钥，且不会被其覆盖，
+ *     这样运维显式指定的密钥总是生效。
+ */
+async function getEncryptionKey(envCtx?: any): Promise<string | null> {
+  const env =
+    envCtx ||
+    globalEnvCtx ||
+    (typeof process !== "undefined" ? process.env : {})
+
+  // 环境变量优先级最高：每次都要先看，避免被此前的持久化缓存挡住。
+  const envKey = readEnvEncryptionKey(env)
+  if (envKey) {
+    if (!cachedFromEnv || cachedEncryptionKey !== envKey) {
+      cachedEncryptionKey = envKey
+      cachedFromEnv = true
+    }
+    return envKey
   }
 
-  // 回退到持久化密钥（仅读取，绝不生成）
+  // 已从持久化解析过则复用
+  if (cachedEncryptionKey && !cachedFromEnv) return cachedEncryptionKey
+
+  // 回退到持久化密钥（仅读取）
   try {
     const persisted = await readPersistedSecret(env, ENCRYPTION_SECRET_KV_KEY)
     if (persisted && persisted.length >= 16) {
       cachedEncryptionKey = persisted
-      return cachedEncryptionKey
+      cachedFromEnv = false
+      return persisted
     }
   } catch {
     // 读取失败按未配置处理
@@ -1143,51 +1168,79 @@ async function getEncryptionKey(envCtx?: any): Promise<string | null> {
   if (!encryptionKeyWarned) {
     encryptionKeyWarned = true
     console.error(
-      "[DB] ENCRYPTION_SECRET 未配置且持久化密钥不存在：敏感字段将以明文落盘。" +
-        "已完成初始化的实例请检查存储后端；新实例将在 setup 阶段自动生成。",
+      "[DB] No encryption key available: set ENCRYPTION_SECRET (or " +
+        "JWT_SECRET). Sensitive fields would otherwise be written in plaintext.",
     )
   }
   return null
 }
 
 /**
- * 初始化阶段确保字段加密密钥存在。
+ * 初始化阶段确保字段加密密钥存在。只在 setup 流程中调用。
  *
- * 仅在键不存在时生成并写入；已存在则直接返回（永不覆盖）。
- * 只在 setup 流程中调用。
+ * 行为（与 getEncryptionKey 使用完全相同的优先级，避免加解密分裂）：
+ *   1. 环境变量已配置 → 直接采用，不写持久化（尊重运维配置）
+ *   2. 持久化密钥已存在 → 复用（存在性门控，永不覆盖）
+ *   3. 都不存在 → 生成并写入
  *
- * @returns 密钥，或 null（存储不可用导致既无法读取也无法写入）
+ * 并发安全：Cloudflare KV 等最终一致存储的写入存在传播延迟，两次并发
+ * setup（如双击提交）可能都读到 null 并各自生成密钥，后者覆盖前者，
+ * 导致先前用旧密钥加密的数据永久无法解密。用进程内单飞（inflight 合并）
+ * 消除同一实例内的重复生成；跨实例极端竞态仍存在，但该风险远低于
+ * 单实例内的常见并发路径。
+ *
+ * @returns 密钥；无法确定时返回 null 并说明原因
  */
+let ensureSecretInflight: Promise<string | null> | null = null
+
 export async function ensureEncryptionSecret(envCtx?: any): Promise<string | null> {
-  const env =
-    envCtx ||
-    globalEnvCtx ||
-    (typeof process !== "undefined" ? process.env : {})
+  // 进程内单飞：并发 setup 只生成一次
+  if (ensureSecretInflight) return ensureSecretInflight
 
-  // 1. 显式配置优先，绝不写入持久化（尊重运维配置）
-  const envKey = env?.ENCRYPTION_SECRET
-  if (envKey && String(envKey).length >= 16) return String(envKey)
+  ensureSecretInflight = (async () => {
+    const env =
+      envCtx ||
+      globalEnvCtx ||
+      (typeof process !== "undefined" ? process.env : {})
 
-  // 2. 已存在则复用（存在性门控：只读，不覆盖）
-  const existing = await readPersistedSecret(env, ENCRYPTION_SECRET_KV_KEY)
-  if (existing && existing.length >= 16) return existing
+    // 1. 环境变量优先。
+    //    必须与 getEncryptionKey 完全一致，否则会出现「setup 生成随机密钥，
+    //    而后续请求使用环境变量密钥」的分裂：同一份数据被两个密钥加解密，
+    //    已加密的密码永远解不开，表现为「初始化成功但密码不正确」。
+    const envKey = readEnvEncryptionKey(env)
+    if (envKey) return envKey
 
-  // 3. 不存在：生成并写入
-  const generated = generateSecret()
-  const ok = await writePersistedSecret(env, ENCRYPTION_SECRET_KV_KEY, generated)
-  if (!ok) {
-    console.error(
-      "[DB] Failed to persist ENCRYPTION_SECRET; falling back to JWT_SECRET. " +
-        "Sensitive fields will not be encrypted with a dedicated key.",
-    )
-    // 回退：用 JWT_SECRET 兜底，避免明文落盘
-    const fallback = env?.JWT_SECRET
-    return typeof fallback === "string" && fallback.length >= 16 ? fallback : null
+    // 2. 已存在则复用（存在性门控，永不覆盖）
+    const existing = await readPersistedSecret(env, ENCRYPTION_SECRET_KV_KEY)
+    if (existing && existing.length >= 16) {
+      cachedEncryptionKey = existing
+      cachedFromEnv = false
+      return existing
+    }
+
+    // 3. 生成并写入
+    const generated = generateSecret()
+    const ok = await writePersistedSecret(env, ENCRYPTION_SECRET_KV_KEY, generated)
+    if (!ok) {
+      console.error(
+        "[DB] Failed to persist an ENCRYPTION_SECRET. Sensitive fields will be " +
+          "stored in plaintext until one is configured via environment variable.",
+      )
+      return null
+    }
+
+    console.log("[DB] Generated and persisted a new ENCRYPTION_SECRET")
+    cachedEncryptionKey = generated
+    cachedFromEnv = false
+    return generated
+  })()
+
+  try {
+    return await ensureSecretInflight
+  } finally {
+    // 释放单飞锁：下次调用重新走完整检查（密钥已持久化，会命中步骤 2）
+    ensureSecretInflight = null
   }
-
-  console.log("[DB] Generated and persisted a new ENCRYPTION_SECRET")
-  cachedEncryptionKey = generated
-  return generated
 }
 
 async function sealValue(value: string, key: string): Promise<string> {
