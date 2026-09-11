@@ -948,7 +948,7 @@ const ensureDefaultMetas = (db: any) => {
  * Trade-off worth knowing: on Workers `env` is shared across requests within
  * an isolate, so a cache hung directly on it would never expire.
  * AsyncLocalStorage would give exact per-request scope but is unavailable on
- * EdgeOne/ESA/Vercel (nodejs_compat is only declared in wrangler.toml). A 1s
+ * EdgeOne/ESA/Vercel (nodejs_compat is only declared in wrangler.jsonc). A 1s
  * TTL is the portable middle ground — worst case a concurrent isolate sees
  * config up to 1s stale, and saveDb() refreshes the cache on every write.
  *

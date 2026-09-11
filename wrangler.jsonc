@@ -1,0 +1,79 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "openlist-tsworkers",
+  "main": "src/backend/worker.ts",
+  "compatibility_date": "2026-08-04",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+
+  // 保留 Dashboard 中配置的普通变量；此文件中显式声明的同名变量仍优先。
+  "keep_vars": true,
+
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS"
+  },
+
+  "vars": {
+    "ENVIRONMENT": "production",
+
+    // 默认值由代码提供，可在 Dashboard 的运行时变量中覆盖。
+    // DB_FORMAT: map (整对象 JSON)、key (逐条键值)、sql (关系表)。
+    // "DB_FORMAT": "map",
+    // DB_DRIVER: auto、blob、cfkv、kv、d1、do、mysql。
+    // auto 按 blob → cfkv → kv → d1 检测；无存储时仅使用内存。
+    // "DB_DRIVER": "auto",
+
+    // SQL 表名前缀，与 Go 后端默认值一致。
+    // "TABLE_PREFIX": "x_",
+
+    // 旧版 JSON/KV 适配器的自定义绑定名；当前 KV 驱动使用 KV 或 EDGEONE_KV。
+    // "KV_NAME": "KV",
+
+    // Cloudflare KV REST API (DB_DRIVER=cfkv) 还需配置 CF_API_TOKEN Secret。
+    // "CF_ACCOUNT_ID": "",
+    // "CF_KV_NAMESPACE_ID": "",
+
+    // MySQL 仅用于 Node 容器；连接凭据通过运行时 Secret 配置。
+    // "MYSQL_HOST": "127.0.0.1",
+    // "MYSQL_PORT": "3306",
+    // "MYSQL_DATABASE": "openlist",
+
+    // CORS 允许来源，多个来源用逗号分隔。
+    // "ALLOWED_ORIGINS": "https://yourdomain.com",
+
+    // 仅用于本地调试的内存数据库，重启后数据丢失。
+    // "DATABASE_JSON": "",
+  },
+
+  // JWT_SECRET (推荐至少 32 字符)、ENCRYPTION_SECRET、ADMIN_PASSWORD、
+  // CRON_SECRET、CF_API_TOKEN 和 MySQL 凭据应使用运行时 Secret，
+  // 不要在 vars 中定义空值或真实密钥，以免覆盖云端同名 Secret。
+  // 本地开发使用未纳入 Git 的 .dev.vars。
+  // 未配置 JWT_SECRET 时会尝试将随机密钥写入 KV；仅使用 D1/DO/MySQL
+  // 且没有 KV/Blob 时，应显式配置 JWT_SECRET 以保持会话稳定。
+  // ENCRYPTION_SECRET 用于敏感字段加密；未设置时尝试使用 JWT_SECRET。
+
+  // Wrangler >=4.45.0 自动创建/关联资源，无需填写 id。
+  // 复用已有 namespace 时可显式添加其 id。
+  "kv_namespaces": [
+    { "binding": "KV" }
+  ],
+
+  // D1: 启用此绑定，并将 DB_DRIVER 设为 d1；关系表使用 DB_FORMAT=sql。
+  // 省略 database_id 可自动创建资源，不要填写空字符串。
+  // "d1_databases": [
+  //   { "binding": "DB", "database_name": "openlist" }
+  // ],
+
+  // Durable Objects: 启用绑定与迁移，并将 DB_DRIVER 设为 do。
+  // "durable_objects": {
+  //   "bindings": [
+  //     { "name": "DO", "class_name": "OpenListDB" }
+  //   ]
+  // },
+  // "migrations": [
+  //   { "tag": "v1", "new_sqlite_classes": ["OpenListDB"] }
+  // ],
+}

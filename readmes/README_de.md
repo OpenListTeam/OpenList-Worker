@@ -98,7 +98,7 @@ Zusätzlich zu den oben genannten echten Speichern werden auch virtuelle/funktio
 
 ### Voraussetzungen
 
-- Node.js 18+ (pnpm empfohlen)
+- Node.js 22.12+ (pnpm empfohlen)
 - Ein Cloudflare-Konto (für die Bereitstellung auf Workers)
 
 ### Lokale Entwicklung
@@ -107,7 +107,7 @@ Zusätzlich zu den oben genannten echten Speichern werden auch virtuelle/funktio
 # 1. Abhängigkeiten installieren
 pnpm install
 
-# 2. wrangler.toml konfigurieren (JWT_SECRET, KV/D1-Bindungen eintragen)
+# 2. Optionale KV/D1-Bindungen in wrangler.jsonc konfigurieren; Secrets separat setzen
 
 # 3. Entwicklungsserver starten (holt automatisch das offizielle Frontend und führt den Worker aus)
 pnpm run dev:unified

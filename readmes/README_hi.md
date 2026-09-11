@@ -98,7 +98,7 @@ OpenList-Worker आधिकारिक [OpenListTeam/OpenList](https://github.
 
 ### पूर्वापेक्षाएँ
 
-- Node.js 18+（pnpm अनुशंसित）
+- Node.js 22.12+（pnpm अनुशंसित）
 - Cloudflare खाता（Workers पर तैनात करने के लिए）
 
 ### स्थानीय विकास
@@ -107,7 +107,7 @@ OpenList-Worker आधिकारिक [OpenListTeam/OpenList](https://github.
 # 1. निर्भरताएँ स्थापित करें
 pnpm install
 
-# 2. wrangler.toml कॉन्फ़िगर करें（JWT_SECRET, KV/D1 बाइंडिंग भरें）
+# 2. wrangler.jsonc में वैकल्पिक KV/D1 बाइंडिंग कॉन्फ़िगर करें; सीक्रेट अलग से सेट करें
 
 # 3. विकास सर्वर शुरू करें（आधिकारिक फ्रंटएंड को स्वचालित रूप से प्राप्त करता है और Worker चलाता है）
 pnpm run dev:unified

@@ -3,6 +3,9 @@
   "version": "4.2.3",
   "type": "module",
   "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "author": {
     "name": "The OpenListTeam Contributors"
   },
@@ -23,6 +26,7 @@
     "fetch:frontend": "node scripts/fetch-frontend.mjs",
     "build": "node scripts/fetch-frontend.mjs && node scripts/build-edge.mjs",
     "build:edge": "node scripts/build-edge.mjs",
+    "build:worker": "node scripts/fetch-frontend.mjs && wrangler deploy --dry-run",
     "dev:unified": "node scripts/fetch-frontend.mjs && wrangler dev",
     "dev:worker": "wrangler dev",
     "deploy:worker": "wrangler deploy --yes",
@@ -31,7 +35,8 @@
     "test:189": "tsx --test src/backend/drivers/189/*.test.ts",
     "test:drivers": "tsx --test \"src/backend/drivers/**/*.test.ts\"",
     "test:server": "tsx --test \"src/backend/server/*.test.ts\"",
-    "test:all": "npm run test:189 && npm run test:drivers && npm run test:server",
+    "test:deploy": "node --test scripts/test-deploy.js",
+    "test:all": "npm run test:deploy && npm run test:189 && npm run test:drivers && npm run test:server",
     "sls:deploy": "serverless deploy",
     "sls:package": "serverless package",
     "sls:info": "serverless info",
@@ -43,9 +48,6 @@
   "license": "AGPL-3.0",
   "devDependencies": {
     "@crowdin/cli": "^4.14.3",
-    "@rolldown/binding-linux-x64-gnu": "1.2.2",
-    "@rolldown/binding-linux-x64-musl": "1.2.2",
-    "@rolldown/binding-win32-x64-msvc": "1.2.2",
     "@types/bcryptjs": "^2.4.6",
     "@types/bencode": "^2.0.4",
     "@types/crypto-js": "^4.2.2",
@@ -75,7 +77,7 @@
     "vite-plugin-dynamic-base": "^1.3.0",
     "vite-plugin-solid": "^2.11.12",
     "vite-plugin-static-copy": "^3.4.0",
-    "wrangler": "^4.0.0"
+    "wrangler": "^4.118.0"
   },
   "dependencies": {
     "@edgeone/pages-blob": "^0.0.14",

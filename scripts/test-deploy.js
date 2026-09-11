@@ -1,63 +1,84 @@
-// 测试 deploy.js 的解析与 wrangler.toml 更新逻辑（不调用真实 Cloudflare API）
-const { execSync } = require("node:child_process")
-const fs = require("node:fs")
+import assert from "node:assert/strict"
+import { spawnSync } from "node:child_process"
+import { fileURLToPath } from "node:url"
+import test from "node:test"
 
-// 1. 模拟 `wrangler kv namespace list` 表格输出（wrangler 4.x 格式）
-const mockList = `
-🌀 Listing namespaces with title filter "OpenListTeam-OpenList"
-┌──────────────────────────────────────┬──────────────────────────────┐
-│ id                                   │ title                        │
-├──────────────────────────────────────┼──────────────────────────────┤
-│ 0e48234248a84d4dbdc5a70e886773ea    │ openlist-KV │
-└──────────────────────────────────────┴──────────────────────────────┘
-`
-const re = /\|\s*([0-9a-fA-F]{32})\s*\|\s*([^|\n]+?)\s*\|/g
-const map = {}
-let m
-while ((m = re.exec(mockList)) !== null) map[m[2].trim()] = m[1].trim()
-console.log("解析 namespace:", JSON.stringify(map))
-const found = Object.keys(map).find((t) => t.includes("KV"))
-console.log("匹配:", found, "→ id:", found ? map[found] : null)
+const deployUrl = new URL("./deploy.js", import.meta.url)
+const root = fileURLToPath(new URL("../", import.meta.url))
 
-// 2. 模拟 create 输出
-const mockCreate = `
-🌀 Creating namespace with title "KV"
-✨ Success!
-Add the following to your configuration file in your kv_namespaces array:
-[[kv_namespaces]]
-binding = "KV"
-id = "abc123def456abc123def456abc123def4"
-`
-const idM = mockCreate.match(/id\s*=\s*"([0-9a-fA-F]{32})"/)
-console.log("create 解析 id:", idM ? idM[1] : null)
+// Intercept child processes so these tests cannot build, install, or deploy.
+function runDeploy(args = [], failedStep = -1) {
+  const harness = [
+    'import childProcess from "node:child_process"',
+    'import { syncBuiltinESMExports } from "node:module"',
+    "let step = 0",
+    "childProcess.spawnSync = (command, args, options) => {",
+    '  console.log("STEP " + JSON.stringify({ command, args, cwd: options.cwd }))',
+    "  return { status: step++ === " + failedStep + " ? 23 : 0 }",
+    "}",
+    "syncBuiltinESMExports()",
+    'process.argv = ["node", "deploy.js", ...' + JSON.stringify(args) + "]",
+    "await import(" + JSON.stringify(deployUrl.href) + ")",
+  ].join("\n")
+  const result = spawnSync(
+    process.execPath,
+    ["--input-type=module", "--eval", harness],
+    { cwd: fileURLToPath(new URL("./", import.meta.url)), encoding: "utf8" },
+  )
+  if (result.error) throw result.error
+  const steps = result.stdout
+    .split("\n")
+    .filter((line) => line.startsWith("STEP "))
+    .map((line) => JSON.parse(line.slice(5)))
+  return { ...result, steps }
+}
 
-// 3. wrangler.toml 更新逻辑
-const toml = fs.readFileSync("wrangler.toml", "utf8")
-const kvBlockRe = /(\[\[kv_namespaces\]\][\s\S]*?id\s*=\s*)"([^"]*)"/m
-const newId = "abc123def456abc123def456abc123def4"
-const updated = toml.replace(kvBlockRe, `$1"${newId}"`)
-console.log("toml 更新后含新 id:", updated.includes(newId))
-console.log(
-  "toml 其他内容保留:",
-  updated.includes('name = "openlist"') &&
-    updated.includes('binding = "KV"'),
-)
+test("deployment leaves resource provisioning to Wrangler", () => {
+  const result = runDeploy()
+  assert.equal(result.status, 0, result.stderr)
+  assert.deepEqual(
+    result.steps.map((step) => step.args),
+    [
+      ["scripts/fetch-frontend.mjs"],
+      ["node_modules/wrangler/bin/wrangler.js", "deploy"],
+    ],
+  )
+  for (const step of result.steps) {
+    assert.equal(step.command, process.execPath)
+    assert.equal(step.cwd, root)
+  }
+})
 
-// 4. 无 kv 块时追加
-const noKv = 'name = "test"\nmain = "src/backend/worker.ts"\n'
-const block = `\n[[kv_namespaces]]\nbinding = "KV"\nid = "${newId}"\n`
-const appended = noKv.replace(/\s*$/, "") + block
-console.log(
-  "无块追加成功:",
-  appended.includes("[[kv_namespaces]]") && appended.includes(newId),
-)
+test("existing assets can be bundled with Wrangler arguments", () => {
+  const result = runDeploy(["--skip-build", "--dry-run", "--env", "staging"])
+  assert.equal(result.status, 0, result.stderr)
+  assert.deepEqual(result.steps.map((step) => step.args), [
+    ["node_modules/wrangler/bin/wrangler.js", "deploy", "--dry-run", "--env", "staging"],
+  ])
+})
 
-// 5. 原 wrangler.toml 的 id 提取
-const origId = toml.match(
-  /(\[\[kv_namespaces\]\][\s\S]*?id\s*=\s*"([^"]*)")/m,
-)?.[2]
-console.log("原 toml 现有 id:", origId)
+test("frontend failure stops deployment and preserves the exit status", () => {
+  const result = runDeploy([], 0)
+  assert.equal(result.status, 23)
+  assert.equal(result.steps.length, 1)
+})
 
-// 恢复原文件
-fs.writeFileSync("wrangler.toml", toml)
-console.log("✅ 逻辑测试完成，wrangler.toml 已恢复")
+test("Wrangler failure preserves the exit status", () => {
+  const result = runDeploy(["--skip-build"], 0)
+  assert.equal(result.status, 23)
+  assert.equal(result.steps.length, 1)
+})
+
+test("help runs no build or deployment commands", () => {
+  const result = runDeploy(["--help"])
+  assert.equal(result.status, 0)
+  assert.equal(result.steps.length, 0)
+  assert.match(result.stdout, /runtime secrets/)
+})
+
+test("legacy KV creation is rejected without creating unused resources", () => {
+  const result = runDeploy(["--kv"])
+  assert.equal(result.status, 1)
+  assert.equal(result.steps.length, 0)
+  assert.match(result.stderr, /Wrangler provisions it during deployment/)
+})

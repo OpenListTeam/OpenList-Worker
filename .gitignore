@@ -20,6 +20,8 @@ public_data
 .vscode
 .env
 .env.local
+.dev.vars
+.dev.vars.*
 .env.*.local
 .wrangler
 .reasonix

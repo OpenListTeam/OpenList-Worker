@@ -98,33 +98,43 @@ In addition to the real storages above, virtual/functional drivers such as `Loca
 
 ### Prerequisites
 
-- Node.js 18+ (pnpm recommended)
+- Node.js 22.12+ and the project's pinned pnpm 9.15.4
 - A Cloudflare account (for deploying to Workers)
 
 ### Local Development
 
 ```bash
 # 1. Install dependencies
-pnpm install
+pnpm install --frozen-lockfile
 
-# 2. Configure wrangler.toml (fill in JWT_SECRET, KV/D1 bindings)
+# 2. Review optional wrangler.jsonc settings; use .dev.vars or runtime secrets
 
 # 3. Start the dev server (auto-fetches the official frontend and runs the Worker)
 pnpm run dev:unified
 
-# Or run the Worker only (without fetching the frontend)
+# Run only the Worker when frontend assets already exist
 pnpm run dev:worker
 ```
 
 ### Production Deployment
 
 ```bash
-# One-click deploy: ensure the KV namespace exists → fetch the official frontend → deploy to Cloudflare Workers
+# Fetch the frontend, then let Wrangler bundle, deploy, and provision resources
 pnpm run deploy
 
-# Or deploy the Worker directly (skip KV check and frontend build)
+# Deploy directly when frontend assets already exist
 pnpm run deploy:worker
 ```
+
+The default KV binding needs no ID. Wrangler provides local KV during development and provisions or reuses the remote resource during deployment. To reuse a specific existing namespace, add its id to the binding.
+
+Configure JWT_SECRET, ENCRYPTION_SECRET, and other credentials as Secret values in the Cloudflare Dashboard under Runtime Variables and Secrets. Use an untracked .dev.vars file locally. Never declare these secrets in Wrangler vars, even as empty strings. Workers Builds variables do not replace Worker runtime secrets.
+
+DB_DRIVER and DB_FORMAT use the code defaults auto and map and can be overridden with Dashboard runtime variables. keep_vars preserves remote variables; values explicitly declared in the configuration still take precedence.
+
+For Cloudflare Workers Builds, use `pnpm run build:worker` as the build command and `pnpm run deploy:worker` as the deploy command. The build fetches the frontend and runs Wrangler in dry-run mode without provisioning remote resources. The generic build command also builds artifacts for other platforms.
+
+Both `dev:worker` and `deploy:worker` require existing frontend assets. Run fetch:frontend first, or provide a previously built frontend through FRONTEND_DIST to skip frontend dependency installation and compilation. `deploy --skip-build` also reuses existing assets. The old --kv mode has been removed; Wrangler manages resources during deployment.
 
 ---
 
@@ -209,9 +219,11 @@ The prefix defaults to `x_` and is controlled by the `TABLE_PREFIX` env var (mat
 
 #### Security Configuration
 
-- `ENCRYPTION_SECRET`: Data encryption key (required)
-- `JWT_SECRET`: JWT token signing key (required)
-- `ADMIN_PASSWORD`: Initial admin password
+- `ENCRYPTION_SECRET`: Sensitive-field encryption key; explicitly configure it in production. Falls back to JWT_SECRET when absent.
+- `JWT_SECRET`: JWT signing key; at least 32 characters is recommended. If absent, the Worker attempts to persist a generated key in KV. Without KV/Blob, configure it explicitly to keep sessions stable.
+- `ADMIN_PASSWORD`: Optional initial admin password.
+
+Configure these values as runtime secrets, not as Wrangler vars.
 
 #### Other Configuration
 

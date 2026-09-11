@@ -98,7 +98,7 @@ OpenList-Worker هو المنفذ الرسمي TypeScript + Serverless لمشر�
 
 ### المتطلبات الأساسية
 
-- Node.js 18+ (يُوصى باستخدام pnpm)
+- Node.js 22.12+ (يُوصى باستخدام pnpm)
 - حساب Cloudflare (للنشر على Workers)
 
 ### التطوير المحلي
@@ -107,7 +107,7 @@ OpenList-Worker هو المنفذ الرسمي TypeScript + Serverless لمشر�
 # 1. تثبيت التبعيات
 pnpm install
 
-# 2. إعداد wrangler.toml (تعبئة JWT_SECRET وارتباطات KV/D1)
+# 2. إعداد ارتباطات KV/D1 الاختيارية في wrangler.jsonc وضبط الأسرار بشكل منفصل
 
 # 3. تشغيل خادم التطوير (يجلب الواجهة الأمامية الرسمية تلقائيًا ويشغّل Worker)
 pnpm run dev:unified

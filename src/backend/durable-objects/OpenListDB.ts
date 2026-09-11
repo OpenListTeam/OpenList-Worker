@@ -3,7 +3,7 @@
  *
  * 调研结论（2026-09）：
  * - Durable Objects 提供内置 SQLite 存储（`ctx.storage.sql`），自 2024 年 GA，
- *   需要 `wrangler.toml` 的 migrations 声明 `new_sqlite_classes = ["OpenListDB"]`。
+ *   需要在 Wrangler 的 migrations 中声明 OpenListDB 为 new_sqlite_classes。
  * - 强一致性 + 事务，适合需要一致性的单租户部署。
  * - 限制：单 DO 实例有 CPU/内存/存储上限，高吞吐场景需自行分片；按计算与
  *   SQL 读写计费，成本高于 D1/KV。

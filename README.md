@@ -98,33 +98,43 @@ OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTea
 
 ### 前置要求
 
-- Node.js 18+（推荐使用 pnpm）
+- Node.js 22.12+ 和项目指定的 pnpm 9.15.4
 - Cloudflare 账号（用于部署到 Workers）
 
 ### 本地开发
 
 ```bash
 # 1. 安装依赖
-pnpm install
+pnpm install --frozen-lockfile
 
-# 2. 配置 wrangler.toml（填写 JWT_SECRET、KV/D1 绑定）
+# 2. 按需调整 wrangler.jsonc；Secret 使用 .dev.vars 或云端运行时配置
 
 # 3. 启动开发服务器（自动拉取官方前端并运行 Worker）
 pnpm run dev:unified
 
-# 或仅运行 Worker（不拉取前端）
+# 已有前端产物时，仅运行 Worker
 pnpm run dev:worker
 ```
 
 ### 生产部署
 
 ```bash
-# 一键部署：确保 KV namespace 存在 → 拉取官方前端 → 部署到 Cloudflare Workers
+# 获取前端，再由 Wrangler 打包、部署并配置资源
 pnpm run deploy
 
-# 或直接部署 Worker（跳过 KV 检查与前端构建）
+# 已有前端产物时直接部署
 pnpm run deploy:worker
 ```
+
+默认 KV 绑定无需填写 ID，Wrangler 在本地提供本地 KV，在部署时自动创建或关联云端资源。复用指定的已有 namespace 时，可在绑定中添加其 id。
+
+JWT_SECRET、ENCRYPTION_SECRET 等凭据应在 Cloudflare Dashboard 的 Runtime Variables and Secrets 中配置为 Secret；本地使用未纳入 Git 的 .dev.vars。不要在 Wrangler 的 vars 中定义这些密钥，包括空字符串。Workers Builds 的构建变量不能代替 Worker 运行时 Secret。
+
+DB_DRIVER 和 DB_FORMAT 使用代码默认值 auto 和 map，可通过 Dashboard 的运行时变量覆盖。keep_vars 保留云端普通变量；配置文件中显式声明的同名变量仍然优先。
+
+Cloudflare Workers Builds 的构建命令使用 `pnpm run build:worker`，部署命令使用 `pnpm run deploy:worker`。构建阶段获取前端并执行 Wrangler dry run，不创建云端资源。通用 build 命令还构建其他平台产物。
+
+`dev:worker` 和 `deploy:worker` 需要已有前端产物。可先运行 fetch:frontend，或通过 FRONTEND_DIST 提供已构建的前端以跳过前端依赖安装和构建。`deploy --skip-build` 同样复用现有产物。旧的 --kv 模式已移除，资源由 Wrangler 部署流程统一管理。
 
 ---
 
@@ -209,9 +219,11 @@ CF_API_TOKEN=your_api_token
 
 #### 安全配置
 
-- `ENCRYPTION_SECRET`：数据加密密钥（必填）
-- `JWT_SECRET`：JWT 令牌签名密钥（必填）
-- `ADMIN_PASSWORD`：初始管理员密码
+- `ENCRYPTION_SECRET`: 敏感字段加密密钥，生产环境建议显式配置；缺省时尝试使用 JWT_SECRET。
+- `JWT_SECRET`: JWT 签名密钥，推荐至少 32 字符；缺省时尝试持久化到 KV。没有 KV/Blob 时，应显式配置以保持会话稳定。
+- `ADMIN_PASSWORD`: 可选的初始管理员密码。
+
+以上值使用运行时 Secret 配置，不写入 Wrangler 的 vars。
 
 #### 其他配置
 

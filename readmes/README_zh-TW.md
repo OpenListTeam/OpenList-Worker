@@ -98,7 +98,7 @@ OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTea
 
 ### 前置要求
 
-- Node.js 18+（推薦使用 pnpm）
+- Node.js 22.12+（推薦使用 pnpm）
 - Cloudflare 帳號（用於部署到 Workers）
 
 ### 本地開發
@@ -107,7 +107,7 @@ OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTea
 # 1. 安裝依賴
 pnpm install
 
-# 2. 配置 wrangler.toml（填寫 JWT_SECRET、KV/D1 綁定）
+# 2. 在 wrangler.jsonc 配置可選 KV/D1 綁定；Secret 另行設定
 
 # 3. 啟動開發伺服器（自動拉取官方前端並運行 Worker）
 pnpm run dev:unified

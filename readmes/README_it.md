@@ -98,7 +98,7 @@ Oltre agli storage reali sopra indicati, sono forniti anche driver virtuali/funz
 
 ### Prerequisiti
 
-- Node.js 18+ (pnpm consigliato)
+- Node.js 22.12+ (pnpm consigliato)
 - Un account Cloudflare (per il deploy su Workers)
 
 ### Sviluppo locale
@@ -107,7 +107,7 @@ Oltre agli storage reali sopra indicati, sono forniti anche driver virtuali/funz
 # 1. Installa le dipendenze
 pnpm install
 
-# 2. Configura wrangler.toml (inserisci JWT_SECRET, binding KV/D1)
+# 2. Configura i binding KV/D1 opzionali in wrangler.jsonc; imposta i segreti separatamente
 
 # 3. Avvia il server di sviluppo (ottiene automaticamente il frontend ufficiale ed esegue il Worker)
 pnpm run dev:unified

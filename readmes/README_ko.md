@@ -98,7 +98,7 @@ OpenList-Worker는 공식 [OpenListTeam/OpenList](https://github.com/OpenListTea
 
 ### 사전 요구 사항
 
-- Node.js 18+（pnpm 권장）
+- Node.js 22.12+（pnpm 권장）
 - Cloudflare 계정（Workers 배포용）
 
 ### 로컬 개발
@@ -107,7 +107,7 @@ OpenList-Worker는 공식 [OpenListTeam/OpenList](https://github.com/OpenListTea
 # 1. 의존성 설치
 pnpm install
 
-# 2. wrangler.toml 설정（JWT_SECRET, KV/D1 바인딩 입력）
+# 2. wrangler.jsonc에서 선택적 KV/D1 바인딩을 설정하고 Secret은 별도로 설정
 
 # 3. 개발 서버 시작（공식 프런트엔드를 자동으로 가져와 Worker 실행）
 pnpm run dev:unified

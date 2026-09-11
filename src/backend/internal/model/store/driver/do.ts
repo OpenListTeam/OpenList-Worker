@@ -8,13 +8,11 @@
  * - DO_BINDING: DO namespace binding 名称（默认 "DO"）
  * - DO_ID: DO 实例名称（默认 "openlist-db"）
  *
- * 需在 wrangler.toml 配置（见文件顶部说明）：
- *   [[durable_objects.bindings]]
- *   name = "DO"
- *   class_name = "OpenListDB"
- *   [[migrations]]
- *   tag = "v1"
- *   new_sqlite_classes = ["OpenListDB"]
+ * wrangler.jsonc 配置：
+ *   "durable_objects": {
+ *     "bindings": [{ "name": "DO", "class_name": "OpenListDB" }]
+ *   },
+ *   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["OpenListDB"] }]
  */
 import type { Driver } from "../types"
 

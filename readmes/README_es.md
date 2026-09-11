@@ -98,7 +98,7 @@ Además de los almacenamientos reales anteriores, también se proporcionan contr
 
 ### Requisitos previos
 
-- Node.js 18+ (se recomienda pnpm)
+- Node.js 22.12+ (se recomienda pnpm)
 - Una cuenta de Cloudflare (para desplegar en Workers)
 
 ### Desarrollo local
@@ -107,7 +107,7 @@ Además de los almacenamientos reales anteriores, también se proporcionan contr
 # 1. Instalar dependencias
 pnpm install
 
-# 2. Configurar wrangler.toml (rellenar JWT_SECRET, enlaces KV/D1)
+# 2. Configurar enlaces KV/D1 opcionales en wrangler.jsonc; definir los secretos por separado
 
 # 3. Iniciar el servidor de desarrollo (obtiene automáticamente el frontend oficial y ejecuta el Worker)
 pnpm run dev:unified
