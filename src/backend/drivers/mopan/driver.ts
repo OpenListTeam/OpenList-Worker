@@ -55,6 +55,7 @@ function mopanFileToFileItem(file: MoPanFile): FileItem {
     thumb: file.icon?.smallURL || file.icon?.largeURL || "",
     raw_url: "",
     hash: file.md5 || undefined,
+    hashes: file.md5 ? { md5: file.md5 } : undefined,
   }
 }
 

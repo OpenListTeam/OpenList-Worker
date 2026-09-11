@@ -49,6 +49,7 @@ function cloud189PCFileToFileItem(file: Cloud189PCFile): FileItem {
     thumb: file.icon?.smallUrl || file.icon?.largeUrl || "",
     raw_url: file.downloadUrl || "",
     hash: file.md5 || undefined,
+    hashes: file.md5 ? { md5: file.md5 } : undefined,
   }
 }
 

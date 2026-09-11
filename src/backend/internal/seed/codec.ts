@@ -2,6 +2,7 @@ import { md5, sha1 } from "hash-wasm"
 import {
   CasFileEntry,
   CasPayload,
+  DEFAULT_CAS_CLOUD,
   DEFAULT_PIECE_SIZE,
   normalizeSeed,
   ParsedSeed,
@@ -235,7 +236,7 @@ async function buildCasExtension(
   }
   if (!sliceMd5) return undefined
   return {
-    cloud: "189",
+    cloud: file.cas_cloud || DEFAULT_CAS_CLOUD,
     file_md5: file.hashes.md5.toUpperCase(),
     slice_md5: sliceMd5,
     slice_md5s: hashes,
@@ -292,6 +293,7 @@ async function buildCasFileEntry(
     md5: file.hashes.md5,
     sliceMd5,
     create_time: file.cas_create_time || String(Math.floor(Date.now() / 1000)),
+    cloud: file.cas_cloud || DEFAULT_CAS_CLOUD,
   }
   if (file.hashes.pieces.md5.length > 0) {
     entry.slice_md5s = file.hashes.pieces.md5.map((hash) => hash.toUpperCase())
@@ -314,6 +316,7 @@ export async function encodeCas(seedInput: SharingSeed): Promise<Uint8Array> {
       create_time: entry.create_time,
       slice_md5s: entry.slice_md5s,
       slice_size: entry.slice_size,
+      cloud: entry.cloud,
     }
   } else {
     const entries: CasFileEntry[] = []
@@ -379,6 +382,7 @@ export function decodeCas(data: Uint8Array): ParsedSeed {
       sources: [],
       cas_slice_md5: sliceMd5,
       cas_create_time: entry.create_time || "",
+      cas_cloud: String(entry.cloud || ""),
       missing_channels: [],
     }
   }
@@ -392,6 +396,7 @@ export function decodeCas(data: Uint8Array): ParsedSeed {
       md5: "",
       sliceMd5: "",
       create_time: "",
+      cloud: String(value.cloud || ""),
       files: value.files,
     }
     return {
@@ -430,6 +435,7 @@ export function decodeCas(data: Uint8Array): ParsedSeed {
     create_time: String(value.create_time || ""),
     slice_md5s: value.slice_md5s,
     slice_size: value.slice_size,
+    cloud: String(value.cloud || ""),
   }
   return {
     format: "cas",
@@ -541,6 +547,10 @@ function decodeTorrentFiles(
       entries.length === 1 && casExtension
         ? asString(casExtension.create_time)
         : ""
+    const casCloud =
+      entries.length === 1 && casExtension
+        ? asString(casExtension.cloud)
+        : ""
     return {
       path: entry.path,
       size: entry.size,
@@ -555,6 +565,7 @@ function decodeTorrentFiles(
       sources: [],
       cas_slice_md5: casSliceMd5.toLowerCase(),
       cas_create_time: casCreateTime,
+      cas_cloud: casCloud,
       missing_channels: [],
     }
   })
