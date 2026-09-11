@@ -126,25 +126,25 @@ pnpm run deploy
 pnpm run deploy:worker
 ```
 
-默认 KV 绑定无需填写 ID，Wrangler 在本地提供本地 KV。部署脚本先复用 Worker 当前的 KV 绑定，再查找与 Wrangler 默认命名相同的 namespace，仅在不存在时创建，并在部署结束后还原配置文件。显式填写的 id 优先保留，已有 KV 数据不会被删除。
+默认 KV 绑定无需填写 ID，Wrangler 在本地提供本地 KV，在部署时自动创建或关联云端资源。项目通过 pnpm 的依赖补丁处理同名 namespace 冲突：创建返回 10014 时，Wrangler 使用自己的分页查询找到同名资源并继续绑定。已有绑定和显式配置的 id 仍按 Wrangler 原有规则处理。
+
+请使用 pnpm 安装依赖，以应用锁文件中记录的 Wrangler 补丁。补丁同时覆盖正式部署和预览上传，无需手动填写 namespace ID。升级 Wrangler 时应重新检查补丁；上游修复此问题后可移除补丁。
 
 JWT_SECRET、ENCRYPTION_SECRET 等凭据应在 Cloudflare Dashboard 的 Runtime Variables and Secrets 中配置为 Secret；本地使用未纳入 Git 的 .dev.vars。不要在 Wrangler 的 vars 中定义这些密钥，包括空字符串。Workers Builds 的构建变量不能代替 Worker 运行时 Secret。
 
 DB_DRIVER 和 DB_FORMAT 使用代码默认值 auto 和 map，可通过 Dashboard 的运行时变量覆盖。keep_vars 保留云端普通变量；配置文件中显式声明的同名变量仍然优先。
 
-Cloudflare Workers Builds 配置如下：
+Cloudflare Workers Builds 可以保留默认部署命令：
 
 | 设置 | 命令 |
 | --- | --- |
 | 构建命令 | `pnpm run build:worker` |
-| 生产分支部署命令 | `pnpm run deploy:worker` |
-| 非生产分支部署命令 | `pnpm run upload:worker` |
+| 生产分支部署命令 | `npx wrangler deploy` |
+| 非生产分支部署命令 | `npx wrangler versions upload` |
 
-构建阶段获取前端并执行 Wrangler dry run，不创建云端资源。通用 build 命令还构建其他平台产物。非生产分支仅上传版本，不切换正式服务的流量；全新 Worker 应先完成一次生产部署。
+构建阶段获取前端并执行 Wrangler dry run，不创建云端资源。现有的 `pnpm run build` 也可继续使用，它还构建其他平台产物。非生产分支上传版本，不切换正式服务的流量；全新 Worker 应先完成一次生产部署。命令和分支行为见 [Workers Builds 配置](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)。
 
-两个部署命令都通过项目脚本自动处理 KV。默认的 `npx wrangler versions upload` 会绕过此处理；Wrangler 4.118.0 在没有继承到 KV 绑定时，可能重复创建同名 namespace 并触发 10014。不要为修复此错误删除已有 KV。命令与分支行为见 [Workers Builds 配置](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)，相关上游讨论见 [workers-sdk #8721](https://github.com/cloudflare/workers-sdk/issues/8721)。
-
-`dev:worker`、`deploy:worker` 和 `upload:worker` 需要已有前端产物。可先运行 fetch:frontend，或通过 FRONTEND_DIST 提供已构建的前端以跳过前端依赖安装和构建。`deploy --skip-build` 同样复用现有产物。旧的 --kv 模式已移除。本地部署前使用 Wrangler 登录；Workers Builds 使用其配置的部署凭据。
+`dev:worker` 和 `deploy:worker` 需要已有前端产物。可先运行 fetch:frontend，或通过 FRONTEND_DIST 提供已构建的前端以跳过前端依赖安装和构建。`deploy --skip-build` 同样复用现有产物。旧的 --kv 模式已移除，资源由 Wrangler 部署流程统一管理。
 
 ---
 
