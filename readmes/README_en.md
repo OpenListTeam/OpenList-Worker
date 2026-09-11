@@ -126,15 +126,25 @@ pnpm run deploy
 pnpm run deploy:worker
 ```
 
-The default KV binding needs no ID. Wrangler provides local KV during development and provisions or reuses the remote resource during deployment. To reuse a specific existing namespace, add its id to the binding.
+The default KV binding needs no ID. Wrangler provides local KV during development. Deployment scripts reuse the Worker's current KV binding first, then look for Wrangler's default namespace title, and create a namespace only if neither exists. They restore the source config after deployment. Explicit IDs take precedence, and existing KV data is never deleted.
 
 Configure JWT_SECRET, ENCRYPTION_SECRET, and other credentials as Secret values in the Cloudflare Dashboard under Runtime Variables and Secrets. Use an untracked .dev.vars file locally. Never declare these secrets in Wrangler vars, even as empty strings. Workers Builds variables do not replace Worker runtime secrets.
 
 DB_DRIVER and DB_FORMAT use the code defaults auto and map and can be overridden with Dashboard runtime variables. keep_vars preserves remote variables; values explicitly declared in the configuration still take precedence.
 
-For Cloudflare Workers Builds, use `pnpm run build:worker` as the build command and `pnpm run deploy:worker` as the deploy command. The build fetches the frontend and runs Wrangler in dry-run mode without provisioning remote resources. The generic build command also builds artifacts for other platforms.
+Configure Cloudflare Workers Builds as follows:
 
-Both `dev:worker` and `deploy:worker` require existing frontend assets. Run fetch:frontend first, or provide a previously built frontend through FRONTEND_DIST to skip frontend dependency installation and compilation. `deploy --skip-build` also reuses existing assets. The old --kv mode has been removed; Wrangler manages resources during deployment.
+| Setting | Command |
+| --- | --- |
+| Build command | `pnpm run build:worker` |
+| Production branch deploy command | `pnpm run deploy:worker` |
+| Non-production branch deploy command | `pnpm run upload:worker` |
+
+The build fetches the frontend and runs Wrangler in dry-run mode without provisioning remote resources. The generic build command also builds artifacts for other platforms. Non-production branches upload versions without switching production traffic. A new Worker must complete a production deployment first.
+
+Both deployment commands resolve KV through the project script. The default `npx wrangler versions upload` bypasses this handling. When Wrangler 4.118.0 cannot inherit a KV binding, it may attempt to create an existing namespace title and fail with 10014. Do not delete existing KV data to fix this error. See the [Workers Builds configuration](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/) and the related upstream discussion in [workers-sdk #8721](https://github.com/cloudflare/workers-sdk/issues/8721).
+
+`dev:worker`, `deploy:worker`, and `upload:worker` require existing frontend assets. Run fetch:frontend first, or provide a previously built frontend through FRONTEND_DIST to skip frontend dependency installation and compilation. `deploy --skip-build` also reuses existing assets. The old --kv mode has been removed. Log in with Wrangler before deploying locally; Workers Builds uses its configured deployment credentials.
 
 ---
 
