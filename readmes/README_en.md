@@ -126,9 +126,7 @@ pnpm run deploy
 pnpm run deploy:worker
 ```
 
-The default KV binding needs no ID. Wrangler provides local KV during development and provisions or reuses the remote resource during deployment. A pnpm dependency patch handles duplicate namespace titles: when creation returns 10014, Wrangler uses its own paginated lookup to find the matching namespace and continue binding it. Existing bindings and explicitly configured IDs retain Wrangler's normal behavior.
-
-Install dependencies with pnpm to apply the Wrangler patch recorded in the lockfile. The patch covers both production deployments and preview uploads without manually filling in namespace IDs. Recheck the patch when upgrading Wrangler and remove it once the upstream issue is fixed.
+The default KV binding needs no ID. Wrangler provides local KV during development and creates the remote resource on the first deployment. Later deployments can inherit the same KV binding from the Worker's currently deployed version. If a namespace exists but is not bound to that version, non-interactive deployment may still try to create the same title and fail with 10014.
 
 Configure JWT_SECRET, ENCRYPTION_SECRET, and other credentials as Secret values in the Cloudflare Dashboard under Runtime Variables and Secrets. Use an untracked .dev.vars file locally. Never declare these secrets in Wrangler vars, even as empty strings. Workers Builds variables do not replace Worker runtime secrets.
 

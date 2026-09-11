@@ -55,8 +55,8 @@
   // 且没有 KV/Blob 时，应显式配置 JWT_SECRET 以保持会话稳定。
   // ENCRYPTION_SECRET 用于敏感字段加密；未设置时尝试使用 JWT_SECRET。
 
-  // Wrangler 自动创建/关联资源，无需填写 id。
-  // pnpm 依赖补丁处理同名 namespace 冲突，deploy 和 versions upload 均适用。
+  // 首次部署由 Wrangler 创建 KV，无需填写 id。
+  // 后续部署继承当前已部署版本中的同名 KV 绑定。
   "kv_namespaces": [
     { "binding": "KV" }
   ],

@@ -126,9 +126,7 @@ pnpm run deploy
 pnpm run deploy:worker
 ```
 
-默认 KV 绑定无需填写 ID，Wrangler 在本地提供本地 KV，在部署时自动创建或关联云端资源。项目通过 pnpm 的依赖补丁处理同名 namespace 冲突：创建返回 10014 时，Wrangler 使用自己的分页查询找到同名资源并继续绑定。已有绑定和显式配置的 id 仍按 Wrangler 原有规则处理。
-
-请使用 pnpm 安装依赖，以应用锁文件中记录的 Wrangler 补丁。补丁同时覆盖正式部署和预览上传，无需手动填写 namespace ID。升级 Wrangler 时应重新检查补丁；上游修复此问题后可移除补丁。
+默认 KV 绑定无需填写 ID，Wrangler 在本地提供本地 KV，在首次部署时自动创建云端资源。后续部署可以继承 Worker 当前已部署版本中的同名 KV 绑定；仅有同名 namespace、但尚未绑定到当前已部署版本时，非交互部署仍可能重复创建并报 10014。
 
 JWT_SECRET、ENCRYPTION_SECRET 等凭据应在 Cloudflare Dashboard 的 Runtime Variables and Secrets 中配置为 Secret；本地使用未纳入 Git 的 .dev.vars。不要在 Wrangler 的 vars 中定义这些密钥，包括空字符串。Workers Builds 的构建变量不能代替 Worker 运行时 Secret。
 
