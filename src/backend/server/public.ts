@@ -2,12 +2,172 @@ import { Hono } from "hono"
 import {
   ensureEncryptionSecret,
   getDb,
+  getStoreStatus,
   isEncryptionReady,
   saveDb,
 } from "../internal/model/db"
+import {
+  isServerlessRuntime,
+  readDriver,
+  readFormat,
+} from "../internal/model/store/backend"
 import { setUserPassword } from "../pkg/password"
 
 export const publicRouter = new Hono()
+
+/** 文档基址（配置与存储说明） */
+const DOC_BASE = "https://doc.oplist.org"
+const DOC_STORAGE = `${DOC_BASE}/ecosystem/official_worker/guide_env`
+const DOC_DRIVER = `${DOC_BASE}/ecosystem/official_worker/guide`
+
+/**
+ * 初始化前的环境自检。
+ *
+ * 该接口**无需鉴权**（初始化页在未登录时就需要它），且**不泄露任何敏感值**：
+ * 只报告「配置了什么」「是否就绪」「哪里不对」，绝不回显密钥或 DSN 原文。
+ *
+ * 返回：
+ *   - config：DB_FORMAT / DB_DRIVER 的配置值与实际解析值
+ *   - storage：驱动可用性、健康状态、连接错误
+ *   - jwt：签名/加密密钥是否就绪
+ *   - ready：综合就绪判定（数据库 + 密钥都就绪）
+ *   - issues：问题清单，每项含 code / level / message / docUrl
+ */
+publicRouter.get("/env_check", async (c) => {
+  const env = c.env as any
+  const driverCfg = readDriver(env)
+  const formatCfg = readFormat(env)
+  const serverless = isServerlessRuntime(env)
+
+  // ── 存储状态（不抛错，内部已做容错）──
+  const status = await getStoreStatus(env).catch((err: any) => ({
+    driver: "none",
+    format: "none",
+    available: false,
+    configError: String(err?.message || err),
+  }))
+
+  // 驱动名可用于判定「真实持久化」与「内存兜底」。
+  // 内存模式在 serverless 下不可接受（实例短暂、多租户，写入会静默丢失）。
+  const resolvedDriver = String(status?.driver ?? "none")
+  const isMemory = resolvedDriver === "memory"
+  const hasDriver = resolvedDriver !== "none" && resolvedDriver !== ""
+  const hasConfigError = Boolean(status?.configError)
+
+  // 可用 = 有驱动 && 非内存 && 无配置错误 && 驱动自报可用。
+  // getStoreStatus 在健康检查失败时会带 available:false（例如 KV 代理 401、
+  // 数据库连接失败），此时即便配置齐全也不能视为可用。
+  const driverHealthy = status?.available !== false
+
+  const storageAvailable =
+    hasDriver && !isMemory && !hasConfigError && driverHealthy
+
+  // ── JWT 密钥就绪（真实来源，绕过缓存）──
+  const jwtReady = await isEncryptionReady(env).catch(() => false)
+
+  // ── 问题清单（可操作提示 + 文档链接）──
+  const issues: {
+    code: string
+    level: "error" | "warning"
+    message: string
+    docUrl: string
+  }[] = []
+
+  if (isMemory) {
+    issues.push({
+      code: "STORAGE_MEMORY_ONLY",
+      level: serverless ? "error" : "warning",
+      message: serverless
+        ? "This serverless runtime fell back to in-memory storage. Data will " +
+          "be lost immediately. Configure DB_DRIVER (blob / kv / cfkv / d1 / do) " +
+          "or bind a KV namespace."
+        : "No persistent storage configured — data is kept in memory and " +
+          "will be lost on restart. Fine for local development only.",
+      docUrl: DOC_STORAGE,
+    })
+  } else if (!hasDriver) {
+    issues.push({
+      code: "STORAGE_UNAVAILABLE",
+      level: "error",
+      message:
+        "No storage backend is available. Configure DB_DRIVER " +
+        "(blob / kv / cfkv / d1 / do) or bind a KV namespace.",
+      docUrl: DOC_STORAGE,
+    })
+  }
+
+  if (hasConfigError) {
+    issues.push({
+      code: "STORAGE_CONFIG_ERROR",
+      level: "error",
+      message: String(status?.configError),
+      docUrl: DOC_DRIVER,
+    })
+  }
+
+  // 配置齐全但驱动自检失败（如 KV 代理 401、数据库连不上）
+  if (hasDriver && !isMemory && !hasConfigError && !driverHealthy) {
+    issues.push({
+      code: "STORAGE_UNHEALTHY",
+      level: "error",
+      message:
+        `Storage driver "${resolvedDriver}" is configured but not reachable: ` +
+        `${status?.error || "health check failed"}. Verify credentials and bindings.`,
+      docUrl: DOC_DRIVER,
+    })
+  }
+
+  if (!jwtReady) {
+    issues.push({
+      code: "JWT_SECRET_MISSING",
+      level: serverless ? "error" : "warning",
+      message:
+        "JWT_SECRET is not set. It signs tokens and encrypts sensitive fields " +
+        "(drive credentials, 2FA secrets). Without it, data may be stored in " +
+        "plaintext and tokens cannot be verified across instances.",
+      docUrl: DOC_STORAGE,
+    })
+  }
+
+  // ── 综合就绪：数据库可用 + 密钥就绪 ──
+  // 内存模式（本地开发）允许初始化，但会带 warning。
+  const ready = storageAvailable && jwtReady
+
+  return c.json({
+    code: 200,
+    message: "success",
+    data: {
+      runtime: {
+        serverless,
+        platform: status?.platform ?? null,
+      },
+      config: {
+        // 配置值（用户显式设置，或默认值）
+        db_format: formatCfg,
+        db_driver: driverCfg,
+        // 实际解析值（auto 探测后的结果）
+        resolved_driver: status?.driver ?? null,
+        resolved_format: status?.format ?? null,
+      },
+      storage: {
+        available: storageAvailable,
+        configured: status?.configured ?? null,
+        connected: status?.connected ?? null,
+        platform: status?.platform ?? null,
+        /** 是否处于内存兜底模式（重启即失，serverless 下不可接受） */
+        memory: isMemory,
+      },
+      jwt: {
+        ready: jwtReady,
+        // 仅告知来源类型，不回显任何值
+        source: jwtReady ? "env-or-persisted" : "none",
+      },
+      ready,
+      issues,
+      docUrl: DOC_STORAGE,
+    },
+  })
+})
 
 publicRouter.get("/settings", async (c) => {
   const db = await getDb(c.env)
