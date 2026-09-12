@@ -80,5 +80,8 @@ docs/3-Audit-Reports/
 docs/*AUDIT*.md
 docs/*SECURITY*.md
 docs/TASK-COMPLETION-REPORT.md
+# Local design/PR notes (kept on disk, not tracked)
+docs/storage-architecture.md
+docs/PR-config-unification.md
 wrangler.d1.jsonc
 .wrangler-dryrun/
