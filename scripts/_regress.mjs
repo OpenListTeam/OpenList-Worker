@@ -241,7 +241,7 @@ try {
     }).then(b => b.driver.name).catch(e => "ERR")
     check("CF 仅绑 D1 → 选中 d1", onlyD1 === "d1")
 
-    // CF：KV + D1 同时存在 → d1 优先（顺序 mysql→d1→kv→blob→do）
+    // CF：KV + D1 同时存在 → d1 优先（顺序 mysql→d1→kv→cfkv→blob→do）
     const kvAndD1 = await backendMod.getStorageBackend({
       DB_DRIVER: "auto", DB_FORMAT: "map", DB: d1Like, KV: webKvB,
     }).then(b => b.driver.name).catch(e => "ERR")
@@ -258,6 +258,14 @@ try {
       DB_DRIVER: "auto", DB_FORMAT: "map", KV: webKvB,
     }).then(b => b.driver.name).catch(e => "ERR")
     check("无 MYSQL 配置 → 不选 mysql", noMysqlCfg === "kv")
+
+    // KV binding 与 CF REST 同时可用 → 优先本地 binding（kv 在 cfkv 之前）
+    const kvAndRest = await backendMod.getStorageBackend({
+      DB_DRIVER: "auto", DB_FORMAT: "map",
+      KV: webKvB,
+      CF_ACCOUNT: "acc", CF_KV_UUID: "uuid", CF_API_KEY: "token",
+    }).then(b => b.driver.name).catch(e => "ERR")
+    check("KV + CF_REST → kv 优先于 cfkv", kvAndRest === "kv")
   } finally {
     if (hadWSP) globalThis.WebSocketPair = prevWSP
     else delete globalThis.WebSocketPair

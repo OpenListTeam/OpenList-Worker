@@ -43,7 +43,7 @@
     "DB_FORMAT": "map",
 
     // 数据库驱动：
-    //   auto（默认）- 自动检测，顺序 mysql → d1 → kv → blob → do → cfkv
+    //   auto（默认）- 自动检测，顺序 mysql → d1 → kv → cfkv → blob → do
     //   blob       - 腾讯云 EdgeOne Blob / 阿里云 ESA Blob
     //   cfkv       - Cloudflare KV REST API（需 CF_ACCOUNT / CF_KV_UUID / CF_API_KEY）
     //   kv         - Cloudflare KV binding（需下方 kv_namespaces）

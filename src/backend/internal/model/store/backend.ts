@@ -135,7 +135,7 @@ export function isServerlessRuntime(env?: any): boolean {
 }
 
 /**
- * 自动检测可用的驱动（优先级：mysql → d1 → kv → blob → do → cfkv）。
+ * 自动检测可用的驱动（优先级：mysql → d1 → kv → cfkv → blob → do）。
  *
  * mysql 仅在显式配置连接信息时参与探测（详见 hasMysqlConfig）。
  *
@@ -145,14 +145,16 @@ export function isServerlessRuntime(env?: any): boolean {
  *    避免「操作成功但数据丢失」的假象
  */
 async function autoDetectDriver(env?: any): Promise<Driver> {
-  // 检测顺序：mysql → d1 → kv → blob → do → cfkv
+  // 检测顺序：mysql → d1 → kv → cfkv → blob → do
   //
-  // mysql 需要网络连接，只有显式配置了连接信息才尝试，否则每次 auto 探测
-  // 都会先尝试建 TCP 连接（失败后继续），在 CF/EO 等边缘环境上纯属浪费。
+  // - mysql 需要网络连接，只有显式配置了连接信息才尝试，否则每次 auto 探测
+  //   都会先尝试建 TCP 连接（失败后继续），在 CF/EO 等边缘环境上纯属浪费。
+  // - kv 与 cfkv 同为 KV 语义：优先本地 binding（更直接、更快），
+  //   其次才走 Cloudflare REST API。
   const candidates: Driver[] = []
 
   if (hasMysqlConfig(env)) candidates.push(mysqlDriver)
-  candidates.push(d1Driver, kvDriver, blobDriver, doDriver, cfkvDriver)
+  candidates.push(d1Driver, kvDriver, cfkvDriver, blobDriver, doDriver)
 
   for (const driver of candidates) {
     if (await driver.isAvailable(env)) {

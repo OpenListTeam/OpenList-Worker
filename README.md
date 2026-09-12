@@ -160,7 +160,7 @@ pnpm run deploy:worker
 - `sql`：关系数据库表格式，与 Go 后端完全一致，适用于 D1/MySQL
 
 **DB_DRIVER**（数据库驱动）
-- `auto`（默认）：自动检测可用驱动（优先级：blob → cfkv → kv → d1）
+- `auto`（默认）：自动检测可用驱动（优先级：mysql → d1 → kv → cfkv → blob → do）
 - `blob`：EdgeOne Blob Storage（SDK）/ ESA Blob（binding）
 - `cfkv`：Cloudflare KV REST API（需配置 `CF_ACCOUNT`、`CF_KV_UUID`、`CF_API_KEY`）
 - `kv`：KV 存储（binding 名固定为 `KV`；EdgeOne Node 云函数自动走 HTTP 代理模式）
