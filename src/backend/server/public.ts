@@ -104,20 +104,15 @@ publicRouter.get("/env_check", async (c) => {
       code: "STORAGE_MEMORY_ONLY",
       level: serverless ? "error" : "warning",
       message: serverless
-        ? "This serverless runtime fell back to in-memory storage. Data will " +
-          "be lost immediately. Configure DB_DRIVER (blob / kv / cfkv / d1 / do) " +
-          "or bind a KV namespace."
-        : "No persistent storage configured — data is kept in memory and " +
-          "will be lost on restart. Fine for local development only.",
+        ? "In-memory storage only; data will be lost immediately."
+        : "In-memory storage only; data will be lost on restart (fine for local dev).",
       docUrl: DOC_STORAGE,
     })
   } else if (!hasDriver) {
     issues.push({
       code: "STORAGE_UNAVAILABLE",
       level: "error",
-      message:
-        "No storage backend is available. Configure DB_DRIVER " +
-        "(blob / kv / cfkv / d1 / do) or bind a KV namespace.",
+      message: "No storage backend available.",
       docUrl: DOC_STORAGE,
     })
   }
@@ -126,9 +121,11 @@ publicRouter.get("/env_check", async (c) => {
     issues.push({
       code: "STORAGE_CONFIG_ERROR",
       level: "error",
-      // 该接口免鉴权，因此不返回原始错误文本（可能含内部 DSN、主机名或堆栈），
-      // 仅回第一行摘要并截断，保留可操作性的同时降低信息暴露面。
-      message: redact(storage.configError),
+      // 该接口免鉴权，因此不返回原始错误文本（可能含内部 DSN、主机名或堆栈）。
+      // 驱动未探测到时 backend 会给出 NO_STORAGE_MESSAGE 这种面向终端的长文
+      // 配置指引，逐条展示到界面上是一屏难以消化的文字，故此处统一收敛为
+      // 一句摘要，细节由 docUrl 指向的文档承接。
+      message: "Storage driver is not configured correctly.",
       docUrl: DOC_DRIVER,
     })
   }
@@ -140,8 +137,7 @@ publicRouter.get("/env_check", async (c) => {
       level: "error",
       message:
         `Storage driver "${resolvedDriver}" is configured but not reachable` +
-        `${storage.error ? ": " + redact(storage.error) : ""}. ` +
-        `Verify credentials and bindings.`,
+        `${storage.error ? ": " + redact(storage.error) : ""}.`,
       docUrl: DOC_DRIVER,
     })
   }
@@ -150,10 +146,7 @@ publicRouter.get("/env_check", async (c) => {
     issues.push({
       code: "JWT_SECRET_MISSING",
       level: serverless ? "error" : "warning",
-      message:
-        "JWT_SECRET is not set. It signs tokens and encrypts sensitive fields " +
-        "(drive credentials, 2FA secrets). Without it, data may be stored in " +
-        "plaintext and tokens cannot be verified across instances.",
+      message: "JWT_SECRET is not set.",
       docUrl: DOC_STORAGE,
     })
   }
