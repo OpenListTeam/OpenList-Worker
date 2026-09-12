@@ -26,6 +26,13 @@
  * 显式配置的 `EO_KV_URLS` 视为可信（运维意图），但仍需通过 1/2；
  * 对它的 https 要求放宽，便于本地 http 调试。
  *
+ * 刻意**不做**内网地址（RFC1918 / 云元数据 169.254.169.254）黑名单：
+ *   - 该类校验需先做 DNS 解析才能防住重绑定，而边缘运行时无法可靠解析；
+ *   - 纯字符串判断防不住 `evil.com -> 内网IP` 的解析结果，属虚假安全感；
+ *   - 会误伤合法的内网自托管部署（`EO_KV_URLS` 本就可指向内网 origin）。
+ * 真正的防线是上面第 3 条：请求派生的 origin 必须是 https，且 Host 由
+ * 平台校验，攻击者无法在不控制 Host 的前提下把密钥外发出去。
+ *
  * @returns 归一化后的 origin（去掉结尾 `/`），不可用时返回 null
  */
 export function sanitizeProxyOrigin(raw: any, env?: any): string | null {

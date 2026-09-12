@@ -153,20 +153,15 @@ function getProxyBaseUrl(env?: EnvContext): string {
 }
 
 /**
- * Resolve the proxy base URL, throwing an explicit error when it cannot be
- * determined.
- *
- * Centralises both preconditions (secret + origin) so the individual methods
- * do not repeat the checks, and so a cryptic ERR_INVALID_URL never reaches
- * the logs.
- */
-/**
  * KV 代理健康探测（唯一实现）。
  *
  * isAvailable() 与 health() 共用，避免两处各自实现导致判定标准漂移。
  * 判定：HTTP 200 表示代理与 KV 均可用；401 表示代理可达但鉴权失败，
- * 属于「代理部署存在但密钥不对」，对外仍报告可用（由 checkProxyConfig
- * 在更早阶段拦下缺少密钥的情况）。
+ * 属于「代理部署存在但密钥不对」。
+ *
+ * 注意两个调用方对 401 的取舍不同，故这里只返回原始探测结果：
+ *   - isAvailable() 把 401 视为可用（代理已部署，驱动可被选中）
+ *   - health() 把 401 视为不可用（鉴权失败，持久化不可依赖）
  */
 async function probeProxy(
   env?: EnvContext,
@@ -199,6 +194,12 @@ async function probeProxy(
   }
 }
 
+/**
+ * 解析代理基础 URL，无法确定时抛出明确错误。
+ *
+ * 集中校验「密钥 + origin」两个前置条件，避免各方法重复检查，
+ * 也让 Node 的 ERR_INVALID_URL 不会以晦涩形式出现在日志里。
+ */
 function requireProxyBaseUrl(env?: EnvContext): string {
   const configError = checkProxyConfig(env)
   if (configError) {
@@ -298,8 +299,11 @@ export const kvDriver: Driver = {
         throw new Error(`KV proxy get failed: ${response.status}`)
       }
 
-      const data = await response.json() as { value: string | null }
-      return data.value
+      const data = await response.json() as { value?: string | null }
+      // 归一化为 string | null：Edge Function 在错误分支只返回 { error }，
+      // 此时 data.value 为 undefined，不能直接透传（调用方按 === null 判断会漏掉）。
+      if (data?.value === undefined || data?.value === null) return null
+      return typeof data.value === "string" ? data.value : String(data.value)
     } catch (err) {
       console.error(`[KV] get(${key}) failed:`, err)
       throw err

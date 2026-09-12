@@ -483,8 +483,13 @@ function isPersistentStatus(status: any): boolean {
 export async function getStoreConfigError(env?: any): Promise<string | null> {
   if (!env || typeof env !== "object") return null
 
-  // 显式请求 kv 但缺代理密钥时，优先给出「补密钥」这种可操作提示，
-  // 而不是笼统的「驱动不可用」。checkProxyConfig 是纯同步读取，开销可忽略。
+  // 缺代理密钥时优先给出「补密钥」这种可操作提示，而不是笼统的驱动错误。
+  // checkProxyConfig 是纯同步读取，开销可忽略。
+  //
+  // 两种入口都要覆盖：
+  //   1. 显式 DB_DRIVER=kv
+  //   2. auto 模式最终选中 kv 驱动（否则用户只会看到不可读的 "HTTP 401"，
+  //      而真正原因是 X-Internal-Call 的密钥与 Edge Function 不一致）
   const isKvRequested =
     String(env?.DB_DRIVER || "").trim().toLowerCase() === "kv"
   if (isKvRequested) {
@@ -500,6 +505,26 @@ export async function getStoreConfigError(env?: any): Promise<string | null> {
   // 配置齐全且健康：无错误
   if (isPersistentStatus(status)) return null
 
+  // 选中了 kv 但代理不可用：区分「缺密钥」与「密钥不匹配」。
+  // 后者表现为 HTTP 401 —— 代理已部署，只是 JWT_SECRET 与 Edge Function
+  // 不一致或被轮换过，需要明确指出来才能排查。
+  if (!isKvRequested && String(status?.driver ?? "") === "kv") {
+    const kvIssue = checkProxyConfig(env)
+    if (kvIssue) {
+      console.error("[DB] KV proxy configuration error:\n" + kvIssue)
+      return kvIssue
+    }
+    if (status?.mode === "proxy" && status?.error?.includes("401")) {
+      const hint =
+        "KV proxy rejected the internal call (HTTP 401). The JWT_SECRET used " +
+        "by this deployment does not match the one configured on the Edge " +
+        "Functions serving the proxy. Make sure both use the same JWT_SECRET.\n" +
+        "Alternatively set EO_KV_URLS to the correct deployment origin."
+      console.error("[DB] KV proxy authentication failed:\n" + hint)
+      return hint
+    }
+  }
+
   // 已有明确原因（缺密钥 / 驱动解析失败 / 健康检查失败）
   const reason: string | null = status?.configError
     ? String(status.configError)
@@ -509,8 +534,9 @@ export async function getStoreConfigError(env?: any): Promise<string | null> {
     return reason
   }
 
-  // 配置齐全但驱动不健康（连接失败、鉴权失败等）：给出驱动自身错误
+  // 内存兜底：serverless 下写入会静默丢失，需要可操作提示
   if (String(status?.driver ?? "none") === "memory") {
+    console.error("[DB] Storage configuration error:\n" + NO_STORAGE_MESSAGE)
     return NO_STORAGE_MESSAGE
   }
 
@@ -520,5 +546,16 @@ export async function getStoreConfigError(env?: any): Promise<string | null> {
     return healthError
   }
 
-  return null
+  // 走到这里说明 isPersistentStatus 判为「不可用」但没有任何具体原因字段
+  // （例如驱动自报 available:false 却未提供 error 文本）。此时**不能返回 null**，
+  // 否则 503 拦截会静默失效，请求继续以「看似成功」的方式写进不可用后端。
+  // 给出一条基于驱动名的兜底错误，保证判定与拦截始终一致。
+  const driverName = String(status?.driver ?? "none")
+  const fallback =
+    driverName === "none" || driverName === ""
+      ? NO_STORAGE_MESSAGE
+      : `Storage driver "${driverName}" is not available in this runtime. ` +
+        `Check its configuration and bindings, or set DB_DRIVER=auto.`
+  console.error("[DB] Storage unavailable:\n" + fallback)
+  return fallback
 }
