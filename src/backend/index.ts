@@ -23,6 +23,31 @@ function isStaticOrShell(pathname: string, accept: string, method: string): bool
   return false
 }
 
+/**
+ * 诊断类接口：必须豁免存储配置错误拦截。
+ *
+ * 这类接口存在的意义就是「报告哪里出了问题」。若在存储出错时把它们也
+ * 一并 503 掉，调用方只会看到一个空洞的失败，拿不到任何可操作信息
+ * （前端表现为「只显示存储不可用，其余字段全部空白」）。
+ *
+ * 注意：豁免的是「拦截」，不是「鉴权」。这些接口本身仍是免鉴权的公开
+ * 诊断端点，且只返回脱敏后的状态，不泄露密钥或 DSN。
+ */
+const DIAGNOSTIC_PATHS = [
+  // 环境自检：返回 config/storage/jwt/ready/issues 全量诊断
+  "/api/public/env_check",
+  // 初始化状态：存储不可用时必须能报告「未初始化」，否则前端无法
+  // 判断该停留在初始化向导还是跳转登录页。
+  "/api/public/init_status",
+  // 真实就绪探针：存储故障时应由它自己给出结构化 503，
+  // 而不是被中间件替换成通用错误。
+  "/api/healthz",
+]
+
+function isDiagnosticPath(pathname: string): boolean {
+  return DIAGNOSTIC_PATHS.includes(pathname)
+}
+
 app.use("*", async (c, next) => {
   // 关键：每个请求注入 KV binding 上下文（CF Workers 多实例/冷启动时
   // 模块级 globalEnvCtx 为 null，会导致 getDb()/saveDb() 退回内存模式，
@@ -47,7 +72,10 @@ app.use("*", async (c, next) => {
   // 而不是静默退回内存模式（表现为「操作成功但数据丢失」）。
   // 静态资源与 SPA 壳放行，保证前端能加载并展示该错误。
   const { pathname } = new URL(c.req.url)
-  if (!isStaticOrShell(pathname, c.req.header("accept") || "", c.req.method)) {
+  const exempt =
+    isStaticOrShell(pathname, c.req.header("accept") || "", c.req.method) ||
+    isDiagnosticPath(pathname)
+  if (!exempt) {
     const configError = await getStoreConfigError(env)
     if (configError) {
       return c.json(

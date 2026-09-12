@@ -7,6 +7,7 @@ import {
   saveDb,
 } from "../internal/model/db"
 import {
+  isPersistentStorageAvailable,
   isServerlessRuntime,
   readDriver,
   readFormat,
@@ -19,6 +20,31 @@ export const publicRouter = new Hono()
 const DOC_BASE = "https://doc.oplist.org"
 const DOC_STORAGE = `${DOC_BASE}/ecosystem/official_worker/guide_env`
 const DOC_DRIVER = `${DOC_BASE}/ecosystem/official_worker/guide`
+
+/**
+ * 对错误文本做脱敏，供免鉴权接口使用。
+ *
+ * 目标：保留「问题类别」的可操作性，同时抹掉可能泄漏实现细节的部分：
+ *   - 只取第一行（去掉多行堆栈）
+ *   - 抹除形如 `scheme://user:pass@host` 的连接串凭据
+ *   - 截断长度，避免回显大段内部信息
+ */
+function redact(raw: any): string {
+  if (raw === null || raw === undefined) return "unknown error"
+  let s = String(raw)
+  // 仅保留首行
+  s = s.split("\n")[0].trim()
+  // 抹除连接串中的凭据（如 mysql://user:pass@host）
+  s = s.replace(/(\w+:\/\/)[^/@\s]+@/g, "$1***@")
+  // 抹除常见的 key=value 形式的令牌
+  s = s.replace(
+    /\b(token|secret|password|passwd|pwd|api[_-]?key)\s*[=:]\s*\S+/gi,
+    "$1=***",
+  )
+  // 截断
+  const MAX = 160
+  return s.length > MAX ? s.slice(0, MAX) + "…" : s
+}
 
 /**
  * 初始化前的环境自检。
@@ -40,7 +66,7 @@ publicRouter.get("/env_check", async (c) => {
   const serverless = isServerlessRuntime(env)
 
   // ── 存储状态（不抛错，内部已做容错）──
-  const status = await getStoreStatus(env).catch((err: any) => ({
+  const storage: any = await getStoreStatus(env).catch((err: any) => ({
     driver: "none",
     format: "none",
     available: false,
@@ -49,15 +75,15 @@ publicRouter.get("/env_check", async (c) => {
 
   // 驱动名可用于判定「真实持久化」与「内存兜底」。
   // 内存模式在 serverless 下不可接受（实例短暂、多租户，写入会静默丢失）。
-  const resolvedDriver = String(status?.driver ?? "none")
+  const resolvedDriver = String(storage?.driver ?? "none")
   const isMemory = resolvedDriver === "memory"
   const hasDriver = resolvedDriver !== "none" && resolvedDriver !== ""
-  const hasConfigError = Boolean(status?.configError)
+  const hasConfigError = Boolean(storage?.configError)
 
   // 可用 = 有驱动 && 非内存 && 无配置错误 && 驱动自报可用。
   // getStoreStatus 在健康检查失败时会带 available:false（例如 KV 代理 401、
   // 数据库连接失败），此时即便配置齐全也不能视为可用。
-  const driverHealthy = status?.available !== false
+  const driverHealthy = storage?.available !== false
 
   const storageAvailable =
     hasDriver && !isMemory && !hasConfigError && driverHealthy
@@ -100,7 +126,9 @@ publicRouter.get("/env_check", async (c) => {
     issues.push({
       code: "STORAGE_CONFIG_ERROR",
       level: "error",
-      message: String(status?.configError),
+      // 该接口免鉴权，因此不返回原始错误文本（可能含内部 DSN、主机名或堆栈），
+      // 仅回第一行摘要并截断，保留可操作性的同时降低信息暴露面。
+      message: redact(storage.configError),
       docUrl: DOC_DRIVER,
     })
   }
@@ -111,8 +139,9 @@ publicRouter.get("/env_check", async (c) => {
       code: "STORAGE_UNHEALTHY",
       level: "error",
       message:
-        `Storage driver "${resolvedDriver}" is configured but not reachable: ` +
-        `${status?.error || "health check failed"}. Verify credentials and bindings.`,
+        `Storage driver "${resolvedDriver}" is configured but not reachable` +
+        `${storage.error ? ": " + redact(storage.error) : ""}. ` +
+        `Verify credentials and bindings.`,
       docUrl: DOC_DRIVER,
     })
   }
@@ -139,21 +168,21 @@ publicRouter.get("/env_check", async (c) => {
     data: {
       runtime: {
         serverless,
-        platform: status?.platform ?? null,
+        platform: storage?.platform ?? null,
       },
       config: {
         // 配置值（用户显式设置，或默认值）
         db_format: formatCfg,
         db_driver: driverCfg,
         // 实际解析值（auto 探测后的结果）
-        resolved_driver: status?.driver ?? null,
-        resolved_format: status?.format ?? null,
+        resolved_driver: storage?.driver ?? null,
+        resolved_format: storage?.format ?? null,
       },
       storage: {
         available: storageAvailable,
-        configured: status?.configured ?? null,
-        connected: status?.connected ?? null,
-        platform: status?.platform ?? null,
+        configured: storage?.configured ?? null,
+        connected: storage?.connected ?? null,
+        platform: storage?.platform ?? null,
         /** 是否处于内存兜底模式（重启即失，serverless 下不可接受） */
         memory: isMemory,
       },
@@ -365,14 +394,25 @@ publicRouter.get("/plugins", async (c) => {
 
 // 系统是否已初始化：存在已设置密码的管理员账号即为已初始化。
 //
-// 注意：存储配置错误（如 EdgeOne KV 代理缺少 JWT_SECRET）已在全局中间件
-// （index.ts）统一拦截并返回 503，因此这里无需重复处理。
+// 「可持久化存储可用」是「已初始化」的前提，而不是并列的另一个检查：
+// 初始化结果必须能被持久化才算真正完成。若存储不可用，getDb() 只能退回
+// 内存，此刻即便读到了管理员账号，也无法证明它会被保存下来 —— 重启即丢。
+// 因此这里把存储不可用直接判为 initialized=false，让前端停留在初始化向导
+// （那是唯一能提示用户去修配置的地方），而不是欢快地跳去登录页。
+//
+// 本接口已在 index.ts 的诊断豁免名单中，不会被存储配置错误中间件拦截，
+// 否则它在最需要报告问题的场景下反而拿不到任何信息。
 publicRouter.get("/init_status", async (c) => {
-  const db = await getDb(c.env)
-  const admin = (db.users || []).find((u: any) => u.role === 2)
-  const initialized = Boolean(
-    admin && String(admin.password || "").trim() !== "",
-  )
+  const storageReady = await isPersistentStorageAvailable(c.env)
+
+  // 存储不可用时不再尝试读库：此时 getDb() 只会返回内存副本，
+  // 据此得出的 initialized=true 是假象。
+  let initialized = false
+  if (storageReady) {
+    const db = await getDb(c.env)
+    const admin = (db.users || []).find((u: any) => u.role === 2)
+    initialized = Boolean(admin && String(admin.password || "").trim() !== "")
+  }
 
   // 就绪判定：加密密钥在**真实来源**（env 或 KV）可读。
   // 前端据此轮询等待，避免 KV 最终一致性导致的「刚初始化完登录失败」。

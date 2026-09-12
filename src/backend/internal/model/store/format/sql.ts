@@ -102,21 +102,37 @@ export const sqlFormat: FormatAdapter = {
 
     const statements: Array<{ sql: string; params: any[] }> = []
 
-    // 清空所有表
+    // 策略：**UPSERT 每行 + 删除已不存在的行**，而非「先清空再插入」。
+    //
+    // 为什么不用 DELETE 全表：DELETE 与 INSERT 之间存在「表为空」的窗口，
+    // 若批量执行中途失败，数据会整体丢失；与 Go 后端共享同一物理库时，
+    // DELETE 还会清掉 Go 侧并发写入的行。
+    //
+    // UPSERT 保证既有行先被覆盖（不丢数据），再删除本端不再持有的键。
+    // 注意：仍需按主键比对以删除"本端删除了的记录"，且该删除是必要的，
+    // 否则历史残留行不会被清理。
     for (const table of TABLE_NAMES) {
-      statements.push({ sql: `DELETE FROM ${qn(table, env)}`, params: [] })
-    }
+      const keyCol = TABLE_KEY[table]
+      const entities: any[] = data?.[table] || []
+      const keepKeys: string[] = []
 
-    // 插入新数据
-    for (const table of TABLE_NAMES) {
-      for (const entity of data?.[table] || []) {
+      for (const entity of entities) {
         const { columns, values } = entityToRow(table, entity)
-        const placeholders = columns.map(() => "?").join(", ")
-        const sql = `INSERT INTO ${qn(table, env)} (${columns
-          .map((c) => quote(c))
-          .join(", ")}) VALUES (${placeholders})`
-        statements.push({ sql, params: values })
+        const upsert = upsertSql(qn(table, env), columns, values, driver)
+        statements.push({ sql: upsert.sql, params: upsert.params })
+
+        const pk = entity?.[keyCol]
+        if (pk !== undefined && pk !== null) keepKeys.push(String(pk))
       }
+
+      // 删除本端已移除的行（keys 为空则整表清空，与原语义一致）
+      const delSql =
+        keepKeys.length > 0
+          ? `DELETE FROM ${qn(table, env)} WHERE ${quote(keyCol)} NOT IN (${keepKeys
+              .map(() => "?")
+              .join(", ")})`
+          : `DELETE FROM ${qn(table, env)}`
+      statements.push({ sql: delSql, params: keepKeys })
     }
 
     // 标记已初始化（方言兼容的 UPSERT）

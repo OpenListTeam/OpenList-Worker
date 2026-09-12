@@ -104,6 +104,62 @@ export function isWebKv(b: any): boolean {
 }
 
 /**
+ * 校验并归一化 KV 代理目标 origin。
+ *
+ * 安全背景：`__requestOrigin` 由中间件从 `c.req.url` 派生，而后者源自请求的
+ * Host 头。若平台未严格校验 Host，攻击者构造 `Host: evil.com` 可能让 Node 侧
+ * 把携带 **完整 JWT_SECRET** 的 `X-Internal-Call` 请求发往攻击者服务器（SSRF
+ * 兼密钥泄漏）。因此这里做三重约束：
+ *
+ *  1. **必须是 http/https 绝对地址**（拒绝相对路径、协议相对 URL）；
+ *  2. **必须是能解析出 hostname 的合法 URL**；
+ *  3. **生产环境（非 localhost）必须为 https**，避免明文传输密钥。
+ *
+ * 显式配置的 `EDGE_KV_BASE_URL` 视为可信（运维意图），但仍需通过 1/2；
+ * 对它的 https 要求放宽，便于本地 http 调试。
+ *
+ * @returns 归一化后的 origin（去掉结尾 `/`），不可用时返回 null
+ */
+export function sanitizeProxyOrigin(raw: any, env?: any): string | null {
+  if (typeof raw !== "string") return null
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+
+  let url: URL
+  try {
+    url = new URL(trimmed)
+  } catch {
+    return null
+  }
+
+  // 仅允许 http / https，拒绝其他协议（file:、ftp: 等）
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null
+  if (!url.hostname) return null
+
+  // 显式配置的基址视为可信来源，仅做协议与 hostname 校验
+  const explicit = env?.EDGE_KV_BASE_URL
+  const isExplicit =
+    typeof explicit === "string" && explicit.trim() === trimmed
+
+  if (!isExplicit) {
+    const isLocal =
+      url.hostname === "localhost" ||
+      url.hostname === "127.0.0.1" ||
+      url.hostname === "[::1]"
+    // 请求派生的 origin 在非本地环境必须为 https，杜绝明文外发密钥
+    if (!isLocal && url.protocol !== "https:") {
+      console.warn(
+        "[DB] Rejecting non-HTTPS proxy origin derived from request: " +
+          `${url.protocol}//${url.hostname} (would leak X-Internal-Call in clear text)`,
+      )
+      return null
+    }
+  }
+
+  return `${url.protocol}//${url.host}`.replace(/\/$/, "")
+}
+
+/**
  * 创建基于 HTTP 代理的 KV 适配器。
  *
  * 用于 EdgeOne Node 云函数：拿不到 KV binding，必须经 Edge Function
@@ -114,10 +170,11 @@ function createProxyBinding(origin: string, env: any): any {
   const base = String(origin).replace(/\/$/, "")
   const headers = (): Record<string, string> => {
     const h: Record<string, string> = { "Content-Type": "application/json" }
-    // 用密钥前 16 位作为内部调用标识（Edge Function 侧常量时间比对）
+    // 内部调用标识使用**完整密钥**（Edge Function 侧常量时间比对）。
+    // 不截断：截断会把熵降到 64 bit，且该通道会绕过管理员角色校验。
     const secret = env?.JWT_SECRET
     if (typeof secret === "string" && secret.length >= 16) {
-      h["X-Internal-Call"] = secret.slice(0, 16)
+      h["X-Internal-Call"] = secret
     }
     return h
   }
@@ -217,10 +274,11 @@ export async function getKvBinding(envCtx?: any): Promise<{
     } catch {
       origin = undefined
     }
-    if (typeof origin === "string" && origin.startsWith("http")) {
+    const safeOrigin = sanitizeProxyOrigin(origin, env)
+    if (safeOrigin) {
       console.log("[DB] getKvBinding: using EdgeOne KV via Edge Function proxy")
       return {
-        binding: createProxyBinding(origin, env),
+        binding: createProxyBinding(safeOrigin, env),
         platform: "EdgeOne KV (via Edge Function proxy)",
         mode: "proxy",
       }

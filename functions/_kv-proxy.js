@@ -7,7 +7,7 @@
  * - KV 绑定名在运行时直接可用（官方示例做法，非 env.KV）
  *
  * 鉴权策略（三层）：
- *  1. 内部调用：X-Internal-Call 常量时间比对密钥前 16 位
+ *  1. 内部调用：X-Internal-Call 常量时间比对**完整**密钥
  *     —— 用于 Node 云函数（初始化、后台任务等无用户 token 的场景）
  *  2. 用户调用：真实校验 HS256 JWT 签名 + exp/nbf + 管理员角色
  *     —— 用于外部直接访问 /kv-* 的请求
@@ -191,7 +191,12 @@ export async function authorize(request, env) {
   const internal = request.headers.get("X-Internal-Call")
   if (internal) {
     const secret = await getJwtSecret(env)
-    if (secret && timingSafeEqual(internal, secret.slice(0, 16))) {
+    // 使用**完整密钥**比对（不做截断）。
+    //
+    // 历史实现只比对前 16 个字符，导致熵从 256 bit 降到 64 bit，
+    // 且内部通道会绕过后续的管理员角色校验 —— 一旦猜中即可任意读写 KV。
+    // 现在要求提交完整密钥，熵与 JWT_SECRET 一致。
+    if (secret && timingSafeEqual(internal, secret)) {
       return { ok: true, mode: "internal" }
     }
     // 带了内部调用头但不匹配：直接拒绝，不继续尝试用户鉴权，

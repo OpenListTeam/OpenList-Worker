@@ -7,6 +7,7 @@
  * 
  * 自动检测环境并选择合适的模式。
  */
+import { sanitizeProxyOrigin } from "../json"
 import type { Driver, EnvContext } from "../types"
 
 /**
@@ -57,7 +58,7 @@ function isEdgeOneNodeEnv(env?: any): boolean {
 /**
  * 获取代理内部调用密钥。
  *
- * Edge Function 侧用它的前 16 位校验 X-Internal-Call。
+ * Edge Function 侧用**完整密钥**校验 X-Internal-Call。
  *
  * 只从环境变量读取，原因：
  *  1. 若走 KV 回退读取密钥，则需要先访问 KV 才能拿密钥、拿密钥才能访问 KV，
@@ -119,10 +120,11 @@ function buildProxyHeaders(env?: EnvContext): HeadersInit {
     "Content-Type": "application/json",
   }
 
-  // 内部调用标识（使用密钥前 16 位，Edge Function 侧常量时间比对）
+  // 内部调用标识：提交**完整密钥**（Edge Function 侧常量时间比对）。
+  // 不截断 —— 截断会把熵降到 64 bit，且该通道绕过管理员角色校验。
   const sharedSecret = getProxySecret(env)
   if (sharedSecret) {
-    headers["X-Internal-Call"] = sharedSecret.slice(0, 16)
+    headers["X-Internal-Call"] = sharedSecret
   }
 
   // 如果有用户 token，也携带上（用于角色校验）
@@ -147,13 +149,15 @@ function getProxyBaseUrl(env?: EnvContext): string {
   if (!env) return ""
 
   const explicit = (env as any).EDGE_KV_BASE_URL
-  if (typeof explicit === "string" && explicit.startsWith("http")) {
-    return explicit.replace(/\/$/, "")
+  if (explicit) {
+    const safe = sanitizeProxyOrigin(explicit, env)
+    if (safe) return safe
   }
 
   const origin = (env as any).__requestOrigin
-  if (typeof origin === "string" && origin.startsWith("http")) {
-    return origin.replace(/\/$/, "")
+  if (origin) {
+    const safe = sanitizeProxyOrigin(origin, env)
+    if (safe) return safe
   }
 
   return ""
@@ -237,21 +241,38 @@ export const kvDriver: Driver = {
     
     // 模式1: Binding 模式
     if (kv) {
-      // Cloudflare KV 用 get(key, "text")，EdgeOne KV 用 get(key, {type:"text"})。
-      // 两者签名不兼容，按序尝试并对返回值做归一化，避免拿到对象导致上游 JSON.parse 失败。
+      // Cloudflare KV 用 get(key, "text")，EdgeOne KV 用 get(key, {type:"text"})，
+      // 两者签名不兼容，需按序尝试并归一化返回值（避免拿到对象导致上游 JSON.parse 失败）。
+      //
+      // 但要区分「签名不兼容」与「真实故障」：
+      //   - 签名不兼容会抛 TypeError（参数类型不符），此时才应回退到第二种签名；
+      //   - 网络/权限错误（401、超时等）必须**原样抛出**，否则会被第二次尝试
+      //     掩盖成 "key not found"，让调用方误判为数据不存在而写入错误状态。
+      const isSignatureError = (e: any): boolean =>
+        e instanceof TypeError ||
+        /not a function|invalid|unexpected|argument/i.test(
+          String(e?.message || ""),
+        )
+
       let value: any
       try {
         value = await kv.get(key, "text")
-      } catch {
+      } catch (e) {
+        if (!isSignatureError(e)) throw e
         value = undefined
       }
+
       if (value === undefined || value === null) {
         try {
           value = await kv.get(key, { type: "text" })
-        } catch {
+        } catch (e) {
+          // 若第一种签名已成功执行（未抛签名错误），说明第二种只是"空结果"的回退，
+          // 此时真实错误同样要抛出，不得吞掉。
+          if (!isSignatureError(e)) throw e
           value = null
         }
       }
+
       if (value === undefined || value === null) return null
       if (typeof value === "string") return value
       // 绑定误返回对象时统一序列化，保持 Driver.get 的 string 契约

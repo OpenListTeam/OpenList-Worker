@@ -435,6 +435,33 @@ let configErrorCacheKey: object | null = null
 let configErrorCacheValue: string | null = null
 
 /**
+ * 判断当前环境是否拥有「可持久化」的存储。
+ *
+ * 与 /public/env_check 使用完全相同的判定规则，避免两处结论不一致
+ * （那会导致「自检说不可用、init_status 却说已初始化」这类自相矛盾）。
+ *
+ * 判定为不可用的情况：
+ *   - 没有任何驱动（driver 为 none / 空）
+ *   - 退化为内存驱动（重启即丢，serverless 下不可接受）
+ *   - 驱动配置存在错误
+ *   - 驱动自报不健康（连接失败、鉴权失败等）
+ */
+export async function isPersistentStorageAvailable(env?: any): Promise<boolean> {
+  try {
+    const status: any = await getStoreStatus(env)
+    const driver = String(status?.driver ?? "none")
+    const hasDriver = driver !== "none" && driver !== ""
+    const isMemory = driver === "memory"
+    const hasConfigError = Boolean(status?.configError)
+    // health 失败时 getStoreStatus 会带 available:false
+    const driverHealthy = status?.available !== false
+    return hasDriver && !isMemory && !hasConfigError && driverHealthy
+  } catch {
+    return false
+  }
+}
+
+/**
  * 仅返回存储配置错误（无错误时为 null）。
  *
  * 供全局中间件在每个 API 请求上快速判断，避免为健康检查发起

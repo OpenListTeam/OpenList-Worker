@@ -9,6 +9,7 @@ const dbMod = await import("../src/backend/internal/model/db.ts")
 const kvDrv = await import("../src/backend/internal/model/store/driver/kv.ts")
 const codec = await import("../src/backend/internal/model/store/keycodec.ts")
 const keyFormat = await import("../src/backend/internal/model/store/format/key.ts")
+const jsonMod = await import("../src/backend/internal/model/store/json.ts")
 const { encrypt, decrypt } = await import("../src/backend/pkg/crypto.ts")
 
 const JWT_SECRET = "jwt-secret-32-characters-long!!"
@@ -181,6 +182,47 @@ try {
   check("字符串不算", kvDrv.checkProxyConfig({ DB_DRIVER: "kv", KV: "n" }) !== null)
   check("空对象不算", kvDrv.checkProxyConfig({ DB_DRIVER: "kv", KV: {} }) !== null)
   check("Web KV 算", kvDrv.checkProxyConfig({ DB_DRIVER: "kv", KV: { async get() {}, async put() {} } }) === null)
+
+  console.log("=== I2. 安全：内部调用必须提交完整密钥 ===")
+  const mkReq = (headers) => ({
+    headers: { get: (k) => headers[k] ?? null },
+  })
+  // 完整密钥 → 通过
+  const okFull = await proxy.authorize(
+    mkReq({ "X-Internal-Call": JWT_SECRET }),
+    { JWT_SECRET },
+  )
+  check("完整密钥 → internal 通过", okFull.ok === true && okFull.mode === "internal")
+  // 仅前 16 位（历史实现）→ 必须拒绝
+  const okTrunc = await proxy.authorize(
+    mkReq({ "X-Internal-Call": JWT_SECRET.slice(0, 16) }),
+    { JWT_SECRET },
+  )
+  check("截断密钥 → 拒绝", okTrunc.ok === false)
+  // 空/错误密钥 → 拒绝
+  const okEmpty = await proxy.authorize(mkReq({ "X-Internal-Call": "" }), { JWT_SECRET })
+  check("空密钥 → 拒绝", okEmpty.ok === false)
+  // 内部头带入但不匹配时，不得回退到用户鉴权
+  const okMix = await proxy.authorize(
+    mkReq({ "X-Internal-Call": "wrong", Authorization: "Bearer whatever" }),
+    { JWT_SECRET },
+  )
+  check("错误内部头 → 不回退用户鉴权", okMix.ok === false)
+
+  console.log("=== I3. 安全：代理 origin 校验 ===")
+  const sanitize = jsonMod.sanitizeProxyOrigin
+  check("http 远程 → 拒绝", sanitize("http://evil.com", {}) === null)
+  check("https 远程 → 通过", sanitize("https://ok.com", {}) === "https://ok.com")
+  check("localhost http → 通过", sanitize("http://localhost:8787", {}) === "http://localhost:8787")
+  check("127.0.0.1 http → 通过", sanitize("http://127.0.0.1:1", {}) === "http://127.0.0.1:1")
+  check("file: 协议 → 拒绝", sanitize("file:///etc/passwd", {}) === null)
+  check("相对路径 → 拒绝", sanitize("/kv-get", {}) === null)
+  check("非法串 → 拒绝", sanitize("not a url", {}) === null)
+  check(
+    "显式 EDGE_KV_BASE_URL 的 http 允许",
+    sanitize("http://192.168.1.5:8787", { EDGE_KV_BASE_URL: "http://192.168.1.5:8787" }) === "http://192.168.1.5:8787",
+  )
+  check("末尾斜杠归一化", sanitize("https://ok.com/", {}) === "https://ok.com")
 
   console.log("=== J. 密钥就绪仲裁（KV 最终一致性）===")
   // 模拟写入延迟传播的 KV：put 后 delayMs 才对 get 可见

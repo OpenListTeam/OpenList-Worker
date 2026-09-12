@@ -82,10 +82,24 @@ function createMockSqlDriver(name = "mock-sql"): Driver {
     ): Promise<void> {
       for (const { sql, params } of statements) {
         const trimmed = sql.trim()
-        // DELETE FROM `table`
-        const m = trimmed.match(/^DELETE FROM `?(\w+)`?/i)
-        if (m) {
-          tables.set(m[1], [])
+        // DELETE FROM `table`（整表清空）
+        const delAll = trimmed.match(/^DELETE FROM `?(\w+)`?$/i)
+        if (delAll) {
+          tables.set(delAll[1], [])
+          continue
+        }
+        // DELETE FROM `table` WHERE `key` NOT IN (?, ?, ...)（UPSERT 后清理已删行）
+        const delNotIn = trimmed.match(
+          /^DELETE FROM `?(\w+)`? WHERE `?(\w+)`? NOT IN \(([^)]*)\)/i,
+        )
+        if (delNotIn) {
+          const [, table, keyCol] = delNotIn
+          const keep = new Set(params.map((p) => String(p)))
+          const rows = ensureTable(table)
+          tables.set(
+            table,
+            rows.filter((r: any) => keep.has(String(r[keyCol]))),
+          )
           continue
         }
         // schema_info 的 UPSERT 必须先于通用 INSERT 匹配，否则会被当作数据行。
@@ -102,10 +116,15 @@ function createMockSqlDriver(name = "mock-sql"): Driver {
           schemaInfo.set(String(params[0]), String(params[1]))
           continue
         }
-        // 通用数据行：INSERT INTO `table` (`c1`, `c2`, ...) VALUES (?, ?, ...)
-        const ins = trimmed.match(
+        // 数据行 UPSERT（SQLite）：INSERT OR REPLACE INTO `table` (...) VALUES (...)
+        const upSqlite = trimmed.match(
+          /^INSERT OR REPLACE INTO `?(\w+)`? \(([^)]+)\) VALUES \(([^)]+)\)/i,
+        )
+        // 数据行 UPSERT（MySQL）：INSERT INTO `table` (...) VALUES (...) ON DUPLICATE KEY UPDATE ...
+        const upMysql = trimmed.match(
           /^INSERT INTO `?(\w+)`? \(([^)]+)\) VALUES \(([^)]+)\)/i,
         )
+        const ins = upSqlite || upMysql
         if (ins) {
           const table = ins[1]
           const cols = ins[2].split(",").map((c) => c.trim().replace(/`/g, ""))
@@ -113,7 +132,14 @@ function createMockSqlDriver(name = "mock-sql"): Driver {
           cols.forEach((c, i) => {
             row[c] = params[i]
           })
-          ensureTable(table).push(row)
+          // UPSERT 语义：按首列（主键）替换同键行
+          const pkCol = cols[0]
+          const rows = ensureTable(table)
+          const idx = rows.findIndex(
+            (r: any) => String(r[pkCol]) === String(row[pkCol]),
+          )
+          if (idx >= 0) rows[idx] = row
+          else rows.push(row)
           continue
         }
         throw new Error(`mock-sql unsupported statement: ${sql}`)
