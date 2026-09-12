@@ -2,14 +2,18 @@
 /**
  * OpenList 一键部署脚本（Cloudflare Workers）
  *
- * wrangler.toml 只声明绑定（[[kv_namespaces]] binding = "KV"），
- * **不存储 id** —— wrangler 4.x 的 Automatic provisioning 会在部署时自动
- * 创建/关联同名 KV namespace，无需手动填写 id。
+ * wrangler.jsonc **刻意不声明任何存储绑定**。原因见该文件顶部注释：
+ * 声明绑定会让一键部署强制创建用不到的资源，且二次部署时源仓库中的空 id
+ * 与账户内已有资源冲突，导致构建失败。
  *
- * 本脚本额外做两件事：
+ * 因此本脚本在部署后引导用户在控制台完成绑定：
+ *   Workers & Pages → 选择本 Worker → Settings → Bindings → 添加 KV
+ *   （变量名填 KV，选择本脚本创建的 namespace）
+ *
+ * 本脚本做三件事：
  *   1. 检测云端是否已有 KV namespace；没有则显式创建
- *      （确保资源存在；兼容不支持自动配置的旧版 wrangler）
- *   2. 获取官方前端产物 + wrangler deploy
+ *   2. 获取官方前端产物
+ *   3. wrangler deploy，然后提示手动绑定 KV
  *
  * 用法：
  *   node scripts/deploy.js          # 自动部署（构建 + 确保 KV + deploy）
@@ -36,8 +40,8 @@ OpenList 一键部署脚本（KV 自动绑定，无需手动填写 id）
   node scripts/deploy.js --skip-build  跳过前端构建（默认自动构建）
   node scripts/deploy.js --help   显示帮助
 
-说明：wrangler.toml 只声明 binding（不存 id），由 wrangler 4.x 的
-Automatic provisioning 在部署时自动创建/关联 KV namespace。
+说明：wrangler.jsonc 不声明存储绑定。部署后请在 Cloudflare 控制台手动绑定
+KV（变量名填 KV），否则前端初始化页的环境自检会提示存储未就绪。
 `)
   process.exit(0)
 }
@@ -81,7 +85,7 @@ function parseCreatedId(stdout) {
 }
 
 /** 确保 KV namespace 存在（不存在则创建）。
- *  注意：只创建云端资源，不修改 wrangler.toml —— id 由 wrangler 自动配置。 */
+ *  注意：只创建云端资源，不修改 wrangler.jsonc —— 绑定由用户在控制台完成。 */
 function ensureKvNamespace() {
   let listOut = ""
   try {
@@ -119,16 +123,16 @@ function ensureKvNamespace() {
   }
   console.log(
     `[KV] 已创建 namespace ${KV_TITLE} (id=${id})。` +
-      `wrangler.toml 无需改动 —— wrangler 4.x 部署时会自动绑定同名 namespace。`,
+      `请在 Cloudflare 控制台把该 namespace 绑定到本 Worker（变量名填 KV）。`,
   )
 }
 
 function main() {
   console.log(
-    `[KV] wrangler.toml 仅声明绑定（不存 id），由 wrangler 自动配置。`,
+    `[KV] wrangler.jsonc 不声明绑定，部署后需在控制台手动绑定 KV。`,
   )
 
-  // 确保 KV namespace 存在（兜底创建，不写 wrangler.toml）
+  // 确保 KV namespace 存在（不修改 wrangler.jsonc）
   ensureKvNamespace()
 
   if (onlyKv) {
@@ -150,6 +154,14 @@ function main() {
 
   console.log("\n✅ 部署完成！")
   console.log("   验证：访问 https://<你的域名>/api/health 应返回 OpenList")
+  console.log("")
+  console.log("⚠️  还需手动绑定 KV 才能持久化数据：")
+  console.log(
+    `   Workers & Pages → 选择本 Worker → Settings → Bindings → 添加 KV namespace`,
+  )
+  console.log(
+    `   变量名填 KV，选择 namespace "${KV_TITLE}"；保存后重新部署一次即可。`,
+  )
 }
 
 main()

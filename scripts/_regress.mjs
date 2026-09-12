@@ -216,6 +216,52 @@ try {
   // 幂等：再次调用复用同一密钥，不覆盖
   const again = await dbMod.ensureEncryptionSecret(envR1)
   check("幂等复用同密钥", again === genKey)
+
+  console.log("=== K. auto 驱动检测（顺序与平台边界）===")
+  const webKvB = { async get() { return null }, async put() { return true }, async delete() {}, async list() { return { keys: [] } } }
+  const d1Like = { prepare() { return { async run() {}, async all() { return { results: [] } }, async first() { return null } } } }
+  const doLike = { idFromName() { return { get() { return {} } } } }
+
+  // 注意：isServerlessRuntime 依据 globalThis 上的运行时特征（WebSocketPair）判定，
+  // 与真实 Workers 环境一致。这里临时注入 globalThis.WebSocketPair 模拟 CF。
+  const hadWSP = "WebSocketPair" in globalThis
+  const prevWSP = globalThis.WebSocketPair
+  globalThis.WebSocketPair = function () {}
+
+  try {
+    // CF：仅绑定 DO 必须能被 auto 探测到（此前 doDriver 不在候选里 → 误报无存储）
+    const onlyDo = await backendMod.getStorageBackend({
+      DB_DRIVER: "auto", DB_FORMAT: "map", DO: doLike,
+    }).then(b => b.driver.name).catch(e => "ERR")
+    check("CF 仅绑 DO → 选中 do", onlyDo === "do")
+
+    // CF：仅绑定 D1 → 选中 d1
+    const onlyD1 = await backendMod.getStorageBackend({
+      DB_DRIVER: "auto", DB_FORMAT: "map", DB: d1Like,
+    }).then(b => b.driver.name).catch(e => "ERR")
+    check("CF 仅绑 D1 → 选中 d1", onlyD1 === "d1")
+
+    // CF：KV + D1 同时存在 → d1 优先（顺序 mysql→d1→kv→blob→do）
+    const kvAndD1 = await backendMod.getStorageBackend({
+      DB_DRIVER: "auto", DB_FORMAT: "map", DB: d1Like, KV: webKvB,
+    }).then(b => b.driver.name).catch(e => "ERR")
+    check("CF KV+D1 → d1 优先", kvAndD1 === "d1")
+
+    // serverless 无任何存储 → 抛错（不得回退内存，避免数据丢失）
+    const noStore = await backendMod.getStorageBackend({
+      DB_DRIVER: "auto", DB_FORMAT: "map",
+    }).then(() => "OK").catch(() => "THROWN")
+    check("serverless 无存储 → 抛错", noStore === "THROWN")
+
+    // 未配置 mysql 时不探测 mysql（避免无谓 TCP 建连）
+    const noMysqlCfg = await backendMod.getStorageBackend({
+      DB_DRIVER: "auto", DB_FORMAT: "map", KV: webKvB,
+    }).then(b => b.driver.name).catch(e => "ERR")
+    check("无 MYSQL 配置 → 不选 mysql", noMysqlCfg === "kv")
+  } finally {
+    if (hadWSP) globalThis.WebSocketPair = prevWSP
+    else delete globalThis.WebSocketPair
+  }
 } catch (err) {
   check("测试执行", false, err.message)
   console.error(err)

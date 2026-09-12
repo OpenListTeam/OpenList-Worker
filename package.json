@@ -3,6 +3,25 @@
   "version": "4.2.3",
   "type": "module",
   "packageManager": "pnpm@9.15.4",
+  "cloudflare": {
+    "bindings": {
+      "JWT_SECRET": {
+        "description": "Signs tokens and encrypts sensitive fields (drive credentials, 2FA secrets). Generate one with `openssl rand -hex 32`."
+      },
+      "ADMIN_PASS": {
+        "description": "Optional. If set, skips the setup wizard and initializes the admin account with this password."
+      },
+      "ALLOW_URLS": {
+        "description": "Optional. Comma-separated CORS allowlist, e.g. `https://yourdomain.com`. Leave empty to allow same-origin only."
+      },
+      "DB_FORMAT": {
+        "description": "Storage format: `map` (whole JSON), `key` (per-key), `sql` (relational, Go-compatible). Defaults to `map`."
+      },
+      "DB_DRIVER": {
+        "description": "Storage driver: `auto` (default), `blob`, `cfkv`, `kv`, `d1`, `do`, `mysql`. Leave as `auto` unless you need to force one."
+      }
+    }
+  },
   "author": {
     "name": "The OpenListTeam Contributors"
   },

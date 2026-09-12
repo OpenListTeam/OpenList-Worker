@@ -107,7 +107,7 @@ OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTea
 # 1. 安装依赖
 pnpm install
 
-# 2. 配置 wrangler.toml（填写 JWT_SECRET、KV/D1 绑定）
+# 2. 编辑 wrangler.jsonc / .env，配置 JWT_SECRET 与存储（KV/D1 在控制台绑定）
 
 # 3. 启动开发服务器（自动拉取官方前端并运行 Worker）
 pnpm run dev:unified

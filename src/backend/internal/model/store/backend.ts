@@ -135,7 +135,9 @@ export function isServerlessRuntime(env?: any): boolean {
 }
 
 /**
- * 自动检测可用的驱动（优先级：blob → cfkv → kv → d1）。
+ * 自动检测可用的驱动（优先级：mysql → d1 → kv → blob → do → cfkv）。
+ *
+ * mysql 仅在显式配置连接信息时参与探测（详见 hasMysqlConfig）。
  *
  * 若全部不可用：
  *  - 本地/容器环境：回退内存（便于开发调试）
@@ -143,7 +145,14 @@ export function isServerlessRuntime(env?: any): boolean {
  *    避免「操作成功但数据丢失」的假象
  */
 async function autoDetectDriver(env?: any): Promise<Driver> {
-  const candidates = [blobDriver, cfkvDriver, kvDriver, d1Driver]
+  // 检测顺序：mysql → d1 → kv → blob → do → cfkv
+  //
+  // mysql 需要网络连接，只有显式配置了连接信息才尝试，否则每次 auto 探测
+  // 都会先尝试建 TCP 连接（失败后继续），在 CF/EO 等边缘环境上纯属浪费。
+  const candidates: Driver[] = []
+
+  if (hasMysqlConfig(env)) candidates.push(mysqlDriver)
+  candidates.push(d1Driver, kvDriver, blobDriver, doDriver, cfkvDriver)
 
   for (const driver of candidates) {
     if (await driver.isAvailable(env)) {
@@ -161,6 +170,25 @@ async function autoDetectDriver(env?: any): Promise<Driver> {
     "[DB] No storage binding detected, falling back to memory (data will not persist).",
   )
   return memoryDriver
+}
+
+/**
+ * 是否显式配置了 MySQL 连接信息。
+ *
+ * 用于决定 auto 模式是否尝试 mysql 驱动：MySQL 是网络连接，
+ * 无配置时探测会产生无谓的 TCP 建连开销，必须由运维显式声明。
+ */
+function hasMysqlConfig(env?: any): boolean {
+  const e = env || {}
+  const p = typeof process !== "undefined" ? process.env || {} : {}
+  return Boolean(
+    e.MYSQL_URL ||
+      p.MYSQL_URL ||
+      e.MYSQL_HOST ||
+      p.MYSQL_HOST ||
+      e.MYSQL_URLS ||
+      p.MYSQL_URLS,
+  )
 }
 
 /**

@@ -1,63 +1,73 @@
-// 测试 deploy.js 的解析与 wrangler.toml 更新逻辑（不调用真实 Cloudflare API）
-const { execSync } = require("node:child_process")
-const fs = require("node:fs")
+// 测试 deploy.js 中 wrangler 输出解析逻辑（不调用真实 Cloudflare API）
+//
+// 覆盖：`wrangler kv namespace list` 表格解析、`kv namespace create` id 提取。
+// 这些解析依赖 wrangler 的输出格式，容易因版本变化悄悄失效，因此单独验证。
+import assert from "node:assert/strict"
 
-// 1. 模拟 `wrangler kv namespace list` 表格输出（wrangler 4.x 格式）
-const mockList = `
+// ── 被测逻辑（与 deploy.js 保持同步）──────────────────────────────
+
+/** 解析 `wrangler kv namespace list` 的表格输出，返回 { title: id } */
+function parseNamespaceList(stdout) {
+  const map = {}
+  // 表格行: │ <id> │ <title> │  （兼容 | 和 │）
+  const re = /[|│]\s*([0-9a-fA-F]{32})\s*[|│]\s*([^|│\n]+?)\s*[|│]/g
+  let m
+  while ((m = re.exec(stdout)) !== null) {
+    map[m[2].trim()] = m[1].trim()
+  }
+  return map
+}
+
+/** 从 `wrangler kv namespace create` 输出提取 id（剥离 ANSI 颜色码） */
+function parseCreatedId(stdout) {
+  const clean = String(stdout).replace(/\x1b\[[0-9;]*m/g, "")
+  const m = clean.match(/id\s*=\s*"([0-9a-fA-F]{32})"/)
+  return m ? m[1] : null
+}
+
+// ── 1. list 解析（Unicode 边框，wrangler 4.x 常见形态）──────────────
+const unicodeList = `
 🌀 Listing namespaces with title filter "OpenListTeam-OpenList"
-┌──────────────────────────────────────┬──────────────────────────────┐
-│ id                                   │ title                        │
-├──────────────────────────────────────┼──────────────────────────────┤
-│ 0e48234248a84d4dbdc5a70e886773ea    │ openlist-KV │
-└──────────────────────────────────────┴──────────────────────────────┘
+┌──────────────────────────────────┬──────────────────────┐
+│ id                               │ title                │
+├──────────────────────────────────┼──────────────────────┤
+│ 0e48234248a84d4dbdc5a70e886773ea │ openlist-KV          │
+└──────────────────────────────────┴──────────────────────┘
 `
-const re = /\|\s*([0-9a-fA-F]{32})\s*\|\s*([^|\n]+?)\s*\|/g
-const map = {}
-let m
-while ((m = re.exec(mockList)) !== null) map[m[2].trim()] = m[1].trim()
-console.log("解析 namespace:", JSON.stringify(map))
-const found = Object.keys(map).find((t) => t.includes("KV"))
-console.log("匹配:", found, "→ id:", found ? map[found] : null)
+const u = parseNamespaceList(unicodeList)
+assert.equal(u["openlist-KV"], "0e48234248a84d4dbdc5a70e886773ea")
+assert.equal(Object.keys(u).length, 1)
+console.log("✅ list 解析（Unicode 边框）")
 
-// 2. 模拟 create 输出
+// ── 2. list 解析（ASCII 竖线）────────────────────────────────────
+const asciiList = `
+| id                               | title     |
+| 0123456789abcdef0123456789abcdef | KV        |
+`
+const a = parseNamespaceList(asciiList)
+assert.equal(a["KV"], "0123456789abcdef0123456789abcdef")
+console.log("✅ list 解析（ASCII 竖线）")
+
+// ── 3. list 解析（无 namespace）→ 空映射 ─────────────────────────
+assert.deepEqual(parseNamespaceList("No namespaces found"), {})
+console.log("✅ 空列表解析")
+
+// ── 4. create 输出提取 id（含 ANSI 颜色码）────────────────────────
+// KV namespace id 为 32 位十六进制字符
+const SAMPLE_ID = "0123456789abcdef0123456789abcdef"
+assert.equal(SAMPLE_ID.length, 32)
 const mockCreate = `
-🌀 Creating namespace with title "KV"
-✨ Success!
+\x1b[32m✨ Success!\x1b[0m
 Add the following to your configuration file in your kv_namespaces array:
 [[kv_namespaces]]
 binding = "KV"
-id = "abc123def456abc123def456abc123def4"
+id = "${SAMPLE_ID}"
 `
-const idM = mockCreate.match(/id\s*=\s*"([0-9a-fA-F]{32})"/)
-console.log("create 解析 id:", idM ? idM[1] : null)
+assert.equal(parseCreatedId(mockCreate), SAMPLE_ID)
+console.log("✅ create id 提取（剥离 ANSI）")
 
-// 3. wrangler.toml 更新逻辑
-const toml = fs.readFileSync("wrangler.toml", "utf8")
-const kvBlockRe = /(\[\[kv_namespaces\]\][\s\S]*?id\s*=\s*)"([^"]*)"/m
-const newId = "abc123def456abc123def456abc123def4"
-const updated = toml.replace(kvBlockRe, `$1"${newId}"`)
-console.log("toml 更新后含新 id:", updated.includes(newId))
-console.log(
-  "toml 其他内容保留:",
-  updated.includes('name = "openlist"') &&
-    updated.includes('binding = "KV"'),
-)
+// ── 5. create 输出无 id → null ───────────────────────────────────
+assert.equal(parseCreatedId("something went wrong"), null)
+console.log("✅ 无 id 时返回 null")
 
-// 4. 无 kv 块时追加
-const noKv = 'name = "test"\nmain = "src/backend/worker.ts"\n'
-const block = `\n[[kv_namespaces]]\nbinding = "KV"\nid = "${newId}"\n`
-const appended = noKv.replace(/\s*$/, "") + block
-console.log(
-  "无块追加成功:",
-  appended.includes("[[kv_namespaces]]") && appended.includes(newId),
-)
-
-// 5. 原 wrangler.toml 的 id 提取
-const origId = toml.match(
-  /(\[\[kv_namespaces\]\][\s\S]*?id\s*=\s*"([^"]*)")/m,
-)?.[2]
-console.log("原 toml 现有 id:", origId)
-
-// 恢复原文件
-fs.writeFileSync("wrangler.toml", toml)
-console.log("✅ 逻辑测试完成，wrangler.toml 已恢复")
+console.log("\n✅ 全部通过")

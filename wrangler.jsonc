@@ -1,0 +1,67 @@
+// OpenList-TSWorker · Cloudflare Workers 配置
+// 文档：https://developers.cloudflare.com/workers/wrangler/configuration/
+//
+// ⚠️ 本文件刻意不声明任何存储绑定（KV / D1 / DO）。
+//
+// 原因：一键部署（Deploy to Cloudflare）只读取仓库内的本文件来预配资源，
+// 且不支持通过 URL 参数传入变量。若在此声明绑定，会导致：
+//   1. 首次部署强制创建所有声明的资源（用户往往只需要其中一个）；
+//   2. 二次部署时，源仓库中仍为空 id，与账户内已存在的资源冲突，构建失败。
+//
+// 因此存储绑定请按需在 Cloudflare 控制台手动添加（见文件末尾的说明），
+// 部署成功后再绑定即可。前端初始化页的环境自检会校验存储是否就绪。
+{
+  "name": "openlist-tsworkers",
+  "main": "src/backend/worker.ts",
+  "compatibility_date": "2026-08-04",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS"
+  },
+
+  // 默认变量。DB_DRIVER=auto 会在运行时按平台能力自动选择驱动：
+  //   mysql → d1 → kv → blob → do → cfkv
+  // （mysql 仅在配置了 MYSQL_URL/MYSQL_HOST 时才参与探测）
+  "vars": {
+    "ENVIRONMENT": "production",
+    "DB_FORMAT": "map",
+    "DB_DRIVER": "auto"
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // 存储绑定（按需在控制台添加其一；如需在仓库内声明，取消对应注释）
+  // ─────────────────────────────────────────────────────────────
+  //
+  // ▶ 方案 A：KV（推荐，免费额度大、最通用）
+  //   控制台：Workers & Pages → KV → 创建命名空间 → 绑定到 Worker，变量名填 KV
+  //   或取消以下注释（id 留空，首次部署由 Cloudflare 自动创建）：
+  //
+  // "kv_namespaces": [
+  //   { "binding": "KV", "id": "" }
+  // ],
+  //
+  // ▶ 方案 B：D1（关系型，可与 Go 后端共享库；DB_FORMAT 建议改为 sql）
+  //   控制台：Workers & Pages → D1 → 创建数据库 → 绑定到 Worker，变量名填 DB
+  //
+  // "d1_databases": [
+  //   { "binding": "DB", "database_name": "openlist", "database_id": "" }
+  // ],
+  //
+  // ▶ 方案 C：Durable Objects（内置 SQLite，强一致；DB_FORMAT 建议改为 sql）
+  //   注意：DO 需要 migrations，且删除成本高，适合单租户部署。
+  //
+  // "durable_objects": {
+  //   "bindings": [{ "name": "DO", "class_name": "OpenListDB" }]
+  // },
+  // "migrations": [
+  //   { "tag": "v1", "new_sqlite_classes": ["OpenListDB"] }
+  // ],
+  //
+  // ▶ 方案 D：Blob / MySQL
+  //   Blob 由 EdgeOne / ESA 自动注入，无需配置；
+  //   MySQL 通过 Secrets 配置 MYSQL_URL（或 MYSQL_HOST 等分项）。
+}
