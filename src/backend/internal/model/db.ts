@@ -1160,22 +1160,73 @@ async function getEncryptionKey(envCtx?: any): Promise<string | null> {
 }
 
 /**
+ * 加密密钥是否已就绪（**绕过进程内缓存**，直查真实来源）。
+ *
+ * 用途：供 `/public/init_status` 向前端暴露「后端是否已准备好接受登录」。
+ *
+ * 为什么需要绕过缓存：setup 完成后，同一实例的缓存里必然有密钥；但
+ * 用户实际登录请求很可能落在**另一个实例**（其缓存为空，需重新读 KV）。
+ * 只有真实来源（env 或 KV 持久化）可读，才代表**任意实例**都能解密。
+ *
+ * @returns true 表示任意实例都能取得密钥
+ */
+export async function isEncryptionReady(envCtx?: any): Promise<boolean> {
+  const env =
+    envCtx ||
+    globalEnvCtx ||
+    (typeof process !== "undefined" ? process.env : {})
+
+  // 环境变量存在即永远就绪
+  if (readEnvEncryptionKey(env)) return true
+
+  // 直查持久化（不走缓存）
+  try {
+    const persisted = await readPersistedSecret(env, ENCRYPTION_SECRET_KV_KEY)
+    return Boolean(persisted && persisted.length >= 16)
+  } catch {
+    return false
+  }
+}
+
+/**
  * 初始化阶段确保字段加密密钥存在。只在 setup 流程中调用。
  *
  * 行为（与 getEncryptionKey 使用完全相同的优先级，避免加解密分裂）：
  *   1. 环境变量已配置 → 直接采用，不写持久化（尊重运维配置）
  *   2. 持久化密钥已存在 → 复用（存在性门控，永不覆盖）
- *   3. 都不存在 → 生成并写入
+ *   3. 都不存在 → 生成 → 写入 → **回读校验（带重试）**
  *
- * 并发安全：Cloudflare KV 等最终一致存储的写入存在传播延迟，两次并发
- * setup（如双击提交）可能都读到 null 并各自生成密钥，后者覆盖前者，
- * 导致先前用旧密钥加密的数据永久无法解密。用进程内单飞（inflight 合并）
- * 消除同一实例内的重复生成；跨实例极端竞态仍存在，但该风险远低于
- * 单实例内的常见并发路径。
+ * ## 为什么必须「写后回读校验」
+ *
+ * Cloudflare KV / EdgeOne KV 等**最终一致**存储存在写入传播延迟：
+ * 刚 `put` 的键，紧接着 `get` 可能返回 null（跨隔离实例尤其明显）。
+ *
+ * 若 setup 写入密钥后直接返回，会出现严重故障：
+ *   - setup 请求（实例 I₁）生成密钥 A 并写入，用 A 加密密码落盘；
+ *   - 紧随其后的登录请求可能落在**另一个实例 I₂**，其缓存为空，
+ *     重新读 KV 时 A 尚未传播 → 读到 null → `getEncryptionKey` 返回 null
+ *     → `unsealDb` 跳过解密 → `password` 保持 `enc:v1:` 密文
+ *     → `verifyUserPassword` 判定非 64 位 hex → **密码认证失败**。
+ *   - 等待数十秒后 KV 传播完成，又能登录（「过一会就好了」）。
+ *
+ * 因此这里在写入后**主动回读确认**，读不到则按指数退避重试，直到
+ * 密钥真正可读（或超出重试上限，明确报错而非静默返回）。
+ * 这样 setup 只有在密钥**确实可被后续请求读到**时才报告成功。
+ *
+ * 并发安全：用进程内单飞（inflight 合并）消除同一实例内的重复生成。
  *
  * @returns 密钥；无法确定时返回 null 并说明原因
  */
 let ensureSecretInflight: Promise<string | null> | null = null
+
+/** 写后回读重试参数：总等待上限约 1.9s（0.1+0.2+0.4+0.8+... 封顶） */
+const SECRET_VERIFY_RETRIES = 6
+const SECRET_VERIFY_BASE_MS = 100
+const SECRET_VERIFY_MAX_MS = 1000
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 export async function ensureEncryptionSecret(envCtx?: any): Promise<string | null> {
   // 进程内单飞：并发 setup 只生成一次
@@ -1213,9 +1264,44 @@ export async function ensureEncryptionSecret(envCtx?: any): Promise<string | nul
       return null
     }
 
-    console.log("[DB] Generated and persisted a new encryption key (JWT_SECRET)")
+    // 4. 写后回读校验（关键）：确保密钥已传播，后续请求能读到同一密钥。
+    //    立即设缓存，保证**本实例**后续调用（saveDb 加密）与写入值一致。
     cachedEncryptionKey = generated
     cachedFromEnv = false
+
+    let delay = SECRET_VERIFY_BASE_MS
+    for (let i = 0; i < SECRET_VERIFY_RETRIES; i++) {
+      const readBack = await readPersistedSecret(env, ENCRYPTION_SECRET_KV_KEY)
+      if (readBack === generated) {
+        console.log(
+          `[DB] Generated and persisted a new encryption key ` +
+            `(verified after ${i} retr${i === 1 ? "y" : "ies"})`,
+        )
+        return generated
+      }
+      // 读到的值不是我们写的那把（可能被并发 setup 覆盖）：说明存在竞态，
+      // 采用「先写入者优先」——复用已存在的密钥，避免用两把钥匙加解密。
+      if (readBack && readBack.length >= 16 && readBack !== generated) {
+        console.warn(
+          "[DB] A different encryption key already exists; adopting it to " +
+            "keep encrypt/decrypt symmetric.",
+        )
+        cachedEncryptionKey = readBack
+        cachedFromEnv = false
+        return readBack
+      }
+      // 尚未传播：退避重试
+      await sleep(delay)
+      delay = Math.min(delay * 2, SECRET_VERIFY_MAX_MS)
+    }
+
+    // 超出重试上限：密钥写入成功但暂时读不回。返回它并让本实例缓存生效，
+    // 但明确告警——此时跨实例的首次登录可能短暂失败，稍后自动恢复。
+    console.warn(
+      `[DB] Encryption key written but not yet readable after ` +
+        `${SECRET_VERIFY_RETRIES} retries. Cross-instance reads may lag ` +
+        `briefly due to eventual consistency; retry shortly.`,
+    )
     return generated
   })()
 

@@ -1,5 +1,10 @@
 import { Hono } from "hono"
-import { ensureEncryptionSecret, getDb, saveDb } from "../internal/model/db"
+import {
+  ensureEncryptionSecret,
+  getDb,
+  isEncryptionReady,
+  saveDb,
+} from "../internal/model/db"
 import { setUserPassword } from "../pkg/password"
 
 export const publicRouter = new Hono()
@@ -209,10 +214,14 @@ publicRouter.get("/init_status", async (c) => {
     admin && String(admin.password || "").trim() !== "",
   )
 
+  // 就绪判定：加密密钥在**真实来源**（env 或 KV）可读。
+  // 前端据此轮询等待，避免 KV 最终一致性导致的「刚初始化完登录失败」。
+  const ready = initialized ? await isEncryptionReady(c.env) : false
+
   return c.json({
     code: 200,
     message: "success",
-    data: { initialized },
+    data: { initialized, ready },
   })
 })
 

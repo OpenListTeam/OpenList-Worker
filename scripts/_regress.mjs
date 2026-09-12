@@ -181,6 +181,41 @@ try {
   check("字符串不算", kvDrv.checkProxyConfig({ DB_DRIVER: "kv", KV: "n" }) !== null)
   check("空对象不算", kvDrv.checkProxyConfig({ DB_DRIVER: "kv", KV: {} }) !== null)
   check("Web KV 算", kvDrv.checkProxyConfig({ DB_DRIVER: "kv", KV: { async get() {}, async put() {} } }) === null)
+
+  console.log("=== J. 密钥就绪仲裁（KV 最终一致性）===")
+  // 模拟写入延迟传播的 KV：put 后 delayMs 才对 get 可见
+  function makeDelayedKv(delayMs) {
+    const s = new Map()
+    return {
+      store: s,
+      binding: {
+        async get(k) { return s.has(k) ? s.get(k) : null },
+        async put(k, v) { setTimeout(() => s.set(k, v), delayMs) },
+        async delete(k) { s.delete(k) },
+        async list() { return { keys: [...s.keys()].map((name) => ({ name })) } },
+      },
+    }
+  }
+
+  // 未初始化（无 env 密钥、KV 无持久化密钥）→ ready=false
+  const dkv0 = makeDelayedKv(0)
+  const envR0 = { DB_DRIVER: "kv", DB_FORMAT: "map", KV: dkv0.binding, __requestOrigin: origin }
+  check("无密钥 → 未就绪", (await dbMod.isEncryptionReady(envR0)) === false)
+
+  // 有 env 密钥 → 立即就绪（不依赖 KV）
+  check("env 密钥 → 就绪", (await dbMod.isEncryptionReady({ ...envR0, JWT_SECRET })) === true)
+
+  // 写入延迟 200ms：ensureEncryptionSecret 应通过回读重试等到可读
+  const dkv1 = makeDelayedKv(200)
+  const envR1 = { DB_DRIVER: "kv", DB_FORMAT: "map", KV: dkv1.binding, __requestOrigin: origin }
+  const genKey = await dbMod.ensureEncryptionSecret(envR1)
+  check("延迟 KV 下生成成功", typeof genKey === "string" && genKey.length >= 16)
+  check("生成后 KV 内可读", dkv1.store.get("openlist_encryption_secret") === genKey)
+  check("生成后判定就绪", (await dbMod.isEncryptionReady(envR1)) === true)
+
+  // 幂等：再次调用复用同一密钥，不覆盖
+  const again = await dbMod.ensureEncryptionSecret(envR1)
+  check("幂等复用同密钥", again === genKey)
 } catch (err) {
   check("测试执行", false, err.message)
   console.error(err)
