@@ -162,7 +162,7 @@ pnpm run deploy:worker
 **DB_DRIVER** (Database Driver)
 - `auto` (default): Auto-detect available drivers (priority: blob → cfkv → kv → d1)
 - `blob`: Tencent EdgeOne Blob / Alibaba ESA Blob
-- `cfkv`: Cloudflare KV REST API (requires `CF_ACCOUNT_ID`, `CF_KV_NAMESPACE_ID`, `CF_API_TOKEN`)
+- `cfkv`: Cloudflare KV REST API (requires `CF_ACCOUNT`, `CF_KV_UUID`, `CF_API_KEY`)
 - `kv`: Cloudflare KV binding (binding name is fixed to `KV`)
 - `d1`: Cloudflare D1 (SQLite)
 - `do`: Cloudflare Durable Objects (SQLite)
@@ -185,9 +185,9 @@ DB_DRIVER=kv
 # Remote Cloudflare KV access
 DB_FORMAT=key
 DB_DRIVER=cfkv
-CF_ACCOUNT_ID=your_account_id
-CF_KV_NAMESPACE_ID=your_namespace_id
-CF_API_TOKEN=your_api_token
+CF_ACCOUNT=your_account_id
+CF_KV_UUID=your_namespace_id
+CF_API_KEY=your_api_token
 ```
 
 **Backward Compatibility:**

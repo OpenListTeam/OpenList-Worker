@@ -267,14 +267,14 @@ export async function getKvBinding(envCtx?: any): Promise<{
   // 3. Cloudflare REST API 模式（显式 DB_DRIVER=cfkv 或凭据齐全时自动启用）
   {
     const cfAccountId =
-      env.CF_ACCOUNT_ID ||
-      (typeof process !== "undefined" ? process.env.CF_ACCOUNT_ID : "")
+      env.CF_ACCOUNT ||
+      (typeof process !== "undefined" ? process.env.CF_ACCOUNT : "")
     const cfNamespaceId =
-      env.CF_KV_NAMESPACE_ID ||
-      (typeof process !== "undefined" ? process.env.CF_KV_NAMESPACE_ID : "")
+      env.CF_KV_UUID ||
+      (typeof process !== "undefined" ? process.env.CF_KV_UUID : "")
     const cfApiToken =
-      env.CF_API_TOKEN ||
-      (typeof process !== "undefined" ? process.env.CF_API_TOKEN : "")
+      env.CF_API_KEY ||
+      (typeof process !== "undefined" ? process.env.CF_API_KEY : "")
 
     if (cfAccountId && cfNamespaceId && cfApiToken) {
       console.log("[DB] getKvBinding: using Cloudflare KV REST API")

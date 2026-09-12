@@ -24,7 +24,7 @@ const requiredEnvVars = [
 ]
 
 const optionalEnvVars = [
-  { name: 'MAX_UPLOAD_SIZE', description: '最大上传大小（字节）' },
+  { name: 'MAX_UPLOAD', description: '最大上传大小（字节）' },
   { name: 'LOGIN_MAX_FAILURES', description: '登录失败锁定阈值' }
 ]
 

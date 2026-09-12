@@ -191,9 +191,9 @@ function encodedResult(
 
 function allowedHosts(c: any): string[] {
   const raw =
-    c.env?.SEED_SOURCE_ALLOWED_HOSTS ??
+    c.env?.ALLOW_SEED ??
     (typeof process !== "undefined"
-      ? process.env?.SEED_SOURCE_ALLOWED_HOSTS
+      ? process.env?.ALLOW_SEED
       : "")
   return String(raw || "")
     .split(/[\s,;]+/)

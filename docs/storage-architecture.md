@@ -160,11 +160,11 @@ storages_1         → {"id":1,"mount_path":"/x",...}
 | 驱动 | 底层存储 | 运行平台 | 具备能力 | 典型配置 |
 |---|---|---|---|---|
 | `blob` | EdgeOne Blob（SDK）/ ESA Blob（binding） | EdgeOne、阿里云 ESA | get/put/delete/list | 零配置（EdgeOne 自动提供） |
-| `cfkv` | Cloudflare KV REST API | 任意（远程访问） | get/put/delete/list | `CF_ACCOUNT_ID`+`CF_KV_NAMESPACE_ID`+`CF_API_TOKEN` |
+| `cfkv` | Cloudflare KV REST API | 任意（远程访问） | get/put/delete/list | `CF_ACCOUNT`+`CF_KV_UUID`+`CF_API_KEY` |
 | `kv` | KV binding / EdgeOne KV 代理 | Cloudflare、EdgeOne | get/put/delete/list | 绑定 KV namespace + `JWT_SECRET` |
 | `d1` | Cloudflare D1（SQLite） | Cloudflare Workers | SQL | 绑定 D1 database |
 | `do` | Durable Object SQLite | Cloudflare Workers | SQL | 绑定 DO namespace |
-| `mysql` | MySQL / TiDB | 任意（长连接） | SQL | `MYSQL_DSN` 或 `SQL_DSN` |
+| `mysql` | MySQL / TiDB | 任意（长连接） | SQL | `MYSQL_URL` 或 `MYSQL_*` 分项 |
 | `memory` | 模块级 `Map` | 仅本地/容器 | get/put/delete/list | 无需配置（**不持久化**） |
 
 ### 3.1 `blob`
@@ -176,7 +176,7 @@ storages_1         → {"id":1,"mount_path":"/x",...}
 ### 3.2 `cfkv`（Cloudflare KV REST）
 
 通过 REST API 远程访问，**无需 Worker binding**，适合外部服务 / CI / 跨账号。
-需要 `CF_ACCOUNT_ID`、`CF_KV_NAMESPACE_ID`、`CF_API_TOKEN` 三者齐全。
+需要 `CF_ACCOUNT`、`CF_KV_UUID`、`CF_API_KEY` 三者齐全。
 
 ### 3.3 `kv`
 
@@ -311,13 +311,13 @@ blob → cfkv → kv → d1
 | `JWT_SECRET` | ≥16 字符 | — | JWT 签名 / 字段加密 / 定时任务鉴权（三合一） |
 | `ADMIN_PASS` | 字符串 | — | 跳过安装向导，自动初始化 admin |
 | `ALLOW_URLS` | Host 列表 | — | CORS 白名单（逗号分隔） |
-| `MAX_UPLOAD_SIZE` | 字节 | `26214400` | 整体上传上限（25MB） |
-| `MAX_PART_SIZE` | 字节 | `16777216` | 分片单片上限（16MB） |
-| `CDN_URL` | URL | — | 前端静态资源 CDN（支持 `$version`） |
-| `SEED_SOURCE_ALLOWED_HOSTS` | Host 列表 | — | 种子数据来源白名单 |
-| `MYSQL_URL` / `DATABASE_URL` | DSN 字符串 | — | MySQL 连接串（优先） |
-| `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_USER`/`MYSQL_PASSWORD`/`MYSQL_DATABASE` | 字符串 | — | MySQL 分项配置 |
-| `CF_ACCOUNT_ID` / `CF_KV_NAMESPACE_ID` / `CF_API_TOKEN` | 字符串 | — | Cloudflare KV REST |
+| `MAX_UPLOAD` | 字节 | `26214400` | 整体上传上限（25MB） |
+| `MAX_UPPART` | 字节 | `16777216` | 分片单片上限（16MB） |
+| `ASSET_URLS` | URL | — | 前端静态资源 CDN（支持 `$version`） |
+| `ALLOW_SEED` | Host 列表 | — | 种子数据来源白名单 |
+| `MYSQL_URL` | DSN 字符串 | — | MySQL 连接串（优先） |
+| `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_USER`/`MYSQL_PASS`/`MYSQL_NAME` | 字符串 | — | MySQL 分项配置 |
+| `CF_ACCOUNT` / `CF_KV_UUID` / `CF_API_KEY` | 字符串 | — | Cloudflare KV REST |
 
 ### 各平台推荐组合
 

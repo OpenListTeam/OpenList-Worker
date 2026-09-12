@@ -162,7 +162,7 @@ pnpm run deploy:worker
 **DB_DRIVER**（数据库驱动）
 - `auto`（默认）：自动检测可用驱动（优先级：blob → cfkv → kv → d1）
 - `blob`：EdgeOne Blob Storage（SDK）/ ESA Blob（binding）
-- `cfkv`：Cloudflare KV REST API（需配置 `CF_ACCOUNT_ID`、`CF_KV_NAMESPACE_ID`、`CF_API_TOKEN`）
+- `cfkv`：Cloudflare KV REST API（需配置 `CF_ACCOUNT`、`CF_KV_UUID`、`CF_API_KEY`）
 - `kv`：KV 存储（binding 名固定为 `KV`；EdgeOne Node 云函数自动走 HTTP 代理模式）
 - `d1`：Cloudflare D1（SQLite）
 - `do`：Cloudflare Durable Objects（SQLite）
@@ -189,9 +189,9 @@ DB_DRIVER=kv
 # 远程访问 Cloudflare KV
 DB_FORMAT=key
 DB_DRIVER=cfkv
-CF_ACCOUNT_ID=your_account_id
-CF_KV_NAMESPACE_ID=your_namespace_id
-CF_API_TOKEN=your_api_token
+CF_ACCOUNT=your_account_id
+CF_KV_UUID=your_namespace_id
+CF_API_KEY=your_api_token
 ```
 
 **向后兼容：**

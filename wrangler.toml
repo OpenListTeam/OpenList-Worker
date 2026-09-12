@@ -9,96 +9,99 @@ preview_urls = false
 directory = "./dist"
 binding = "ASSETS"
 
-
 [vars]
 ENVIRONMENT = "production"
 
-# ===================== 数据存储格式（DB_FORMAT）=====================
-# 决定数据在数据库中的存储方式（大小写不敏感）：
-#   map（默认）- 整对象序列化为单个 JSON 键值，适合 KV/Blob 等简单存储
-#   key        - 分 key 存储，每实体一条记录（<table>_<主键>，如 users_1），
-#   sql        - 关系数据库表格式，与 Go 后端完全一致（适用于 D1 / MySQL）
+# ============================================================
+# 数据存储格式
+# ============================================================
+# map（默认）- 整对象序列化为单个 JSON 键值，适合 KV/Blob
+# key        - 分 key 存储，每实体一条记录（如 users_1）
+# sql        - 关系表格式，与 Go 后端一致（适用于 D1/MySQL）
 DB_FORMAT = "map"
 
-# ===================== 数据库驱动（DB_DRIVER）======================
-# 决定底层存储系统（大小写不敏感）：
-#   auto（默认）- 自动检测，优先级 blob → cfkv → kv → d1 → memory
-#   blob  - 腾讯云 EdgeOne Blob / 阿里云 ESA Blob
-#   cfkv  - Cloudflare KV API（需 CF_ACCOUNT_ID / CF_KV_NAMESPACE_ID / CF_API_TOKEN）
-#   kv    - Cloudflare KV binding（需下方 [[kv_namespaces]] 绑定）
-#   d1    - Cloudflare D1（需下方 [[d1_databases]] 绑定）
-#   do    - Cloudflare Durable Objects（需下方 [[durable_objects]] 绑定与 migrations）
-#   mysql - 外部 MySQL（仅 Node 容器运行时，需 MYSQL_URL 或 MYSQL_* 分项）
+# ============================================================
+# 数据库驱动
+# ============================================================
+# auto（默认）- 自动检测：blob → cfkv → kv → d1 → memory
+# blob       - 腾讯云 EdgeOne Blob / 阿里云 ESA Blob
+# cfkv       - Cloudflare KV API（需 CF_ACCOUNT/CF_KV_UUID/CF_API_KEY）
+# kv         - Cloudflare KV binding（需下方 [[kv_namespaces]]）
+# d1         - Cloudflare D1（需下方 [[d1_databases]]）
+# do         - Cloudflare Durable Objects（需下方 [[durable_objects]]）
+# mysql      - 外部 MySQL（仅 Node 容器，需 MYSQL_URL 或分项）
 DB_DRIVER = "auto"
 
-# ===================== 安全 / 鉴权 =====================
-# 请在 Cloudflare Worker 的 变量 中以 Secret 类型配置
-
-# JWT 签名密钥（>=16字符；用于字段加密与定时任务鉴权）
+# ============================================================
+# 安全鉴权
+# ============================================================
+# 请以 Secret 类型配置
+# JWT 签名密钥（>=16字符，兼作字段加密与定时任务鉴权）
 # JWT_SECRET = ""
-
-# 跳过安装向导，自动以该密码初始化 admin（可选兼容项）
+# 跳过安装向导，自动以该密码初始化admin
 # ADMIN_PASS = ""
-
-# CORS 白名单（跨域允许 Host，多个用逗号分隔；不设则仅放行同源）
+# CORS白名单（逗号分隔，不设则仅同源）
 # ALLOW_URLS = "https://yourdomain.com"
 
-# ===================== 可选运行参数 =====================
-# 单次整体上传（/put、/form）大小上限，单位字节。默认 26214400（25MB）
-# MAX_UPLOAD_SIZE = "26214400"
+# ============================================================
+# 可选参数
+# ============================================================
+# 单次整体上传上限（字节），默认26214400
+# MAX_UPLOAD = "26214400"
+# 分片单片上传上限（字节），默认16777216
+# MAX_UPPART = "16777216"
+# 前端静态资源CDN地址，支持$version占位符
+# ASSET_URLS = "https://registry.npmmirror.com/@openlist-frontend/openlist-frontend/$version/files/dist"
+# 种子数据来源主机白名单（逗号/空格分隔）
+# ALLOW_SEED = ""
 
-# 分片上传单片大小上限，单位字节。默认 16777216（16MB）
-# MAX_PART_SIZE = "16777216"
+# ============================================================
+# KV/Blob存储
+# ============================================================
+# KV binding名固定为KV
+# Cloudflare KV API三项需全部填写
+# CF_ACCOUNT = ""
+# CF_KV_UUID = ""
+# CF_API_KEY = ""
 
-# 前端静态资源 CDN 地址，支持 $version 占位符
-# CDN_URL = "https://registry.npmmirror.com/@openlist-frontend/openlist-frontend/$version/files/dist"
-
-# 允许作为种子数据来源的主机白名单，逗号/空格分隔
-# SEED_SOURCE_ALLOWED_HOSTS = ""
-
-# ===================== KV / Blob 存储 =====================
-# KV binding 名固定为 KV（见下方 [[kv_namespaces]]）
-# Cloudflare KV REST API（DB_DRIVER = "cfkv" 时需以下三项，全部填写）
-# CF_ACCOUNT_ID = ""
-# CF_KV_NAMESPACE_ID = ""
-# CF_API_TOKEN = ""
-
-# ===================== MySQL =====================
-# 方式一：连接串（MYSQL_URL 优先，也可用 DATABASE_URL）
+# ============================================================
+# MySQL
+# ============================================================
+# 方式一：连接串
 # MYSQL_URL = "mysql://user:pass@host:3306/db"
 # 方式二：分项配置
 # MYSQL_HOST = "127.0.0.1"
 # MYSQL_PORT = "3306"
 # MYSQL_USER = "root"
-# MYSQL_PASSWORD = ""
-# MYSQL_DATABASE = "openlist"
+# MYSQL_PASS = ""
+# MYSQL_NAME = "openlist"
 
-
-
-# ===================== KV =====================
+# ============================================================
+# KV
+# ============================================================
 # [[kv_namespaces]]
 # binding = "KV"
+# id = ""
 
-# ===================== D1 =====================
-# 使用 Cloudflare 的 Automatic resource provisioning：
-# 省略 database_id，部署时 wrangler（>= 4.45.0）会自动创建同名 D1 库并回写 id。
-# 若你的 wrangler 版本较旧，可取消下方注释并填入你自己的 database_id。
+# ============================================================
+# D1
+# ============================================================
+# 省略database_id时，wrangler(>=4.45.0)自动创建同名库并回写
+# 旧版本wrangler请填写自己的database_id
 # [[d1_databases]]
 # binding = "DB"
 # database_name = "openlist"
 # database_id = ""
 
-# ===================== Durable Objects（DB_DRIVER = "do" 时启用）=====================
-# DO 内置 SQLite 存储（强一致性 + 事务），适合需要一致性的单租户部署。
-# 启用方式：取消以下注释，并把 DB_DRIVER 设为 "do"。
+# ============================================================
+# Durable Objects
+# ============================================================
+# DO内置SQLite存储（强一致性+事务），适合单租户部署
+# 启用时取消注释，并把DB_DRIVER设为do
 # [[durable_objects.bindings]]
 # name = "DO"
 # class_name = "OpenListDB"
-# 
+
 # [[migrations]]
 # tag = "v1"
 # new_sqlite_classes = ["OpenListDB"]
-
-
-
-
