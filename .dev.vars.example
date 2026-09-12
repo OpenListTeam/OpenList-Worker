@@ -33,7 +33,13 @@ ALLOW_URLS=
 
 # MySQL 连接串（DB_DRIVER=mysql 时必填），如 mysql://user:pass@host:3306/db
 # 也可改用 wrangler.jsonc 中注释的 MYSQL_HOST / MYSQL_PORT / MYSQL_USER / MYSQL_PASS / MYSQL_NAME 分项。
-MYSQL_URL=
+MYSQL_URLS=
+
+# EdgeOne Node 云函数专用：KV 代理地址（DB_DRIVER=kv 且运行在 EdgeOne Node 云函数时必填）。
+# EdgeOne 的 KV 绑定不会注入 Node 云函数，必须经同部署的 Edge Functions 代理访问，
+# 此处填写部署的 origin，如 https://your-project.edgeone.app
+# 留空时自动使用当前请求的 origin（同一部署自调用）；跨域或本地调试才需显式设置。
+EO_KV_URLS=
 
 # Cloudflare KV REST API 凭据（DB_DRIVER=cfkv 时三项均必填）。
 # 账户 ID

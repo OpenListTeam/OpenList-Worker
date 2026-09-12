@@ -219,8 +219,8 @@ try {
   check("相对路径 → 拒绝", sanitize("/kv-get", {}) === null)
   check("非法串 → 拒绝", sanitize("not a url", {}) === null)
   check(
-    "显式 EDGE_KV_BASE_URL 的 http 允许",
-    sanitize("http://192.168.1.5:8787", { EDGE_KV_BASE_URL: "http://192.168.1.5:8787" }) === "http://192.168.1.5:8787",
+    "显式 EO_KV_URLS 的 http 允许",
+    sanitize("http://192.168.1.5:8787", { EO_KV_URLS: "http://192.168.1.5:8787" }) === "http://192.168.1.5:8787",
   )
   check("末尾斜杠归一化", sanitize("https://ok.com/", {}) === "https://ok.com")
 

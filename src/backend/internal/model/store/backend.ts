@@ -184,12 +184,10 @@ function hasMysqlConfig(env?: any): boolean {
   const e = env || {}
   const p = typeof process !== "undefined" ? process.env || {} : {}
   return Boolean(
-    e.MYSQL_URL ||
-      p.MYSQL_URL ||
+    e.MYSQL_URLS ||
+      p.MYSQL_URLS ||
       e.MYSQL_HOST ||
-      p.MYSQL_HOST ||
-      e.MYSQL_URLS ||
-      p.MYSQL_URLS,
+      p.MYSQL_HOST,
   )
 }
 
@@ -429,16 +427,8 @@ export async function getStoreStatus(env?: any): Promise<any> {
   }
 }
 
-/** 配置校验结果缓存，避免每请求重复计算（值随 env 罕见变化） */
-const configErrorCache = new WeakMap<object, string | null>()
-let configErrorCacheKey: object | null = null
-let configErrorCacheValue: string | null = null
-
 /**
  * 判断当前环境是否拥有「可持久化」的存储。
- *
- * 与 /public/env_check 使用完全相同的判定规则，避免两处结论不一致
- * （那会导致「自检说不可用、init_status 却说已初始化」这类自相矛盾）。
  *
  * 判定为不可用的情况：
  *   - 没有任何驱动（driver 为 none / 空）
@@ -447,70 +437,88 @@ let configErrorCacheValue: string | null = null
  *   - 驱动自报不健康（连接失败、鉴权失败等）
  */
 export async function isPersistentStorageAvailable(env?: any): Promise<boolean> {
+  const status = await getStorageStatusSafe(env)
+  return isPersistentStatus(status)
+}
+
+/** 存储状态查询，任何异常都折叠成「不可用」状态而非抛出。 */
+async function getStorageStatusSafe(env?: any): Promise<any> {
   try {
-    const status: any = await getStoreStatus(env)
-    const driver = String(status?.driver ?? "none")
-    const hasDriver = driver !== "none" && driver !== ""
-    const isMemory = driver === "memory"
-    const hasConfigError = Boolean(status?.configError)
-    // health 失败时 getStoreStatus 会带 available:false
-    const driverHealthy = status?.available !== false
-    return hasDriver && !isMemory && !hasConfigError && driverHealthy
-  } catch {
-    return false
+    return await getStoreStatus(env)
+  } catch (err: any) {
+    return {
+      driver: "none",
+      format: "none",
+      available: false,
+      configError: String(err?.message || err),
+    }
   }
+}
+
+/**
+ * 持久化可用性的统一判定（单一来源）。
+ *
+ * 供 isPersistentStorageAvailable() 与 getStoreConfigError() 共用，
+ * 避免两处规则漂移导致「自检说不可用、实际请求却放行」。
+ */
+function isPersistentStatus(status: any): boolean {
+  const driver = String(status?.driver ?? "none")
+  const hasDriver = driver !== "none" && driver !== ""
+  const isMemory = driver === "memory"
+  const hasConfigError = Boolean(status?.configError)
+  // health 失败时 getStoreStatus 会带 available:false
+  const driverHealthy = status?.available !== false
+  return hasDriver && !isMemory && !hasConfigError && driverHealthy
 }
 
 /**
  * 仅返回存储配置错误（无错误时为 null）。
  *
- * 供全局中间件在每个 API 请求上快速判断，避免为健康检查发起
- * 额外的网络探测。结果按 env 对象缓存。
+ * 供全局中间件在每个 API 请求上做快速拦截。判定复用 getStoreStatus，
+ * 因此与 isPersistentStorageAvailable() / /public/env_check 结论一致。
+ *
+ * 不额外做缓存：getStorageBackend 内部已按 env 指纹缓存驱动解析，
+ * 而 checkProxyConfig 是纯同步读取 env，开销可忽略。
  */
 export async function getStoreConfigError(env?: any): Promise<string | null> {
   if (!env || typeof env !== "object") return null
 
-  // WeakMap 直查
-  if (configErrorCache.has(env)) {
-    return configErrorCache.get(env) ?? null
-  }
-  // 同一引用快路径
-  if (configErrorCacheKey === env) return configErrorCacheValue
-
-  let result: string | null = null
-  try {
-    const { driver } = await getStorageBackend(env)
-    if (driver.name === "kv") {
-      result = checkProxyConfig(env)
-      if (result) {
-        console.error("[DB] KV proxy configuration error:\n" + result)
-      }
-    }
-  } catch (err: any) {
-    // 驱动解析失败（如显式指定驱动不可用、worker 环境无存储）也要作为
-    // 配置错误上报，而不是静默放行导致后续请求以内存模式"成功"。
-    const msg = String(err?.message || err)
-
-    // 优先给出更精确的原因：显式配置 kv 但缺少代理密钥时，
-    // 直接提示补密钥比笼统的"驱动不可用"更可操作。
-    const isKvRequested =
-      String(env?.DB_DRIVER || "").trim().toLowerCase() === "kv"
-    const kvSecretIssue = isKvRequested ? checkProxyConfig(env) : null
-
-    if (kvSecretIssue) {
-      result = kvSecretIssue
-      console.error("[DB] KV proxy configuration error:\n" + result)
-    } else if (msg.includes("No storage backend is available")) {
-      result = NO_STORAGE_MESSAGE
-      console.error("[DB] Storage configuration error:\n" + result)
-    } else {
-      result = msg
-      console.error("[DB] Storage configuration error:\n" + result)
+  // 显式请求 kv 但缺代理密钥时，优先给出「补密钥」这种可操作提示，
+  // 而不是笼统的「驱动不可用」。checkProxyConfig 是纯同步读取，开销可忽略。
+  const isKvRequested =
+    String(env?.DB_DRIVER || "").trim().toLowerCase() === "kv"
+  if (isKvRequested) {
+    const kvIssue = checkProxyConfig(env)
+    if (kvIssue) {
+      console.error("[DB] KV proxy configuration error:\n" + kvIssue)
+      return kvIssue
     }
   }
 
-  configErrorCache.set(env, result)
-  configErrorCacheKey = env
-  configErrorCacheValue = result
-  return result
+  const status = await getStorageStatusSafe(env)
+
+  // 配置齐全且健康：无错误
+  if (isPersistentStatus(status)) return null
+
+  // 已有明确原因（缺密钥 / 驱动解析失败 / 健康检查失败）
+  const reason: string | null = status?.configError
+    ? String(status.configError)
+    : null
+  if (reason) {
+    console.error("[DB] Storage configuration error:\n" + reason)
+    return reason
+  }
+
+  // 配置齐全但驱动不健康（连接失败、鉴权失败等）：给出驱动自身错误
+  if (String(status?.driver ?? "none") === "memory") {
+    return NO_STORAGE_MESSAGE
+  }
+
+  const healthError = status?.error ? String(status.error) : null
+  if (healthError) {
+    console.error("[DB] Storage unhealthy:\n" + healthError)
+    return healthError
+  }
+
+  return null
 }

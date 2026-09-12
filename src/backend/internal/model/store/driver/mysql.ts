@@ -4,7 +4,7 @@
  * 通过 mysql2/promise 动态加载，仅在 Node.js 运行时可用。
  * 
  * 环境变量：
- * - MYSQL_URL（优先）
+ * - MYSQL_URLS（优先，连接串）
  * - MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASS, MYSQL_NAME
  */
 import type { Driver } from "../types"
@@ -16,7 +16,7 @@ function isNode(): boolean {
 
 function getMysqlConfig(env: any): any | null {
   const e = env || (typeof process !== "undefined" ? process.env : {}) || {}
-  const url = e?.MYSQL_URL
+  const url = e?.MYSQL_URLS
   if (url) return url
 
   const host = e?.MYSQL_HOST

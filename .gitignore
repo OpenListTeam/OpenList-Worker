@@ -91,3 +91,4 @@ docs/PR-config-unification.md
 docs/code-review-*.md
 wrangler.d1.jsonc
 .wrangler-dryrun/
+.tmp-dryrun/

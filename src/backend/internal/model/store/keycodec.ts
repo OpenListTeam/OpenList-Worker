@@ -20,7 +20,7 @@
  */
 
 /** 键名分隔符 */
-export const KEY_SEP = "_"
+const KEY_SEP = "_"
 
 /**
  * 判断字符是否属于 KV 合法字符集（且无需转义）。
@@ -40,6 +40,8 @@ function isPlain(ch: string): boolean {
  * 按 Unicode 码点遍历，避免拆散代理对（emoji）；多字节字符整体交给
  * TextEncoder 处理。空字符串映射为 `0`，否则会产生形如 `users_` 的键名，
  * 与表前缀无法区分。
+ *
+ * 导出供单元测试验证「编码结果合法 且 decodeKeyPart 可逆」。
  */
 export function encodeKeyPart(input: string): string {
   const s = String(input ?? "")

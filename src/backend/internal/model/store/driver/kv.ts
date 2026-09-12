@@ -7,7 +7,7 @@
  * 
  * 自动检测环境并选择合适的模式。
  */
-import { sanitizeProxyOrigin } from "../json"
+import { sanitizeProxyOrigin } from "../proxy"
 import type { Driver, EnvContext } from "../types"
 
 /**
@@ -42,17 +42,6 @@ function getKvBinding(env?: any): any | null {
   if (isWebKvLike(env?.KV)) return env.KV
   if (isWebKvLike(g?.KV)) return g.KV
   return null
-}
-
-/**
- * 检测是否应走 HTTP 代理模式。
- *
- * 条件：当前 env 中没有 KV binding。
- * 注意不能要求 JWT_SECRET 存在——密钥可能只存于 KV（由 getJwtSecret 回退读取），
- * 因此这里放宽判断，真正是否可用由 isAvailable() 的实际探测决定。
- */
-function isEdgeOneNodeEnv(env?: any): boolean {
-  return getKvBinding(env) === null
 }
 
 /**
@@ -141,14 +130,14 @@ function buildProxyHeaders(env?: EnvContext): HeadersInit {
  *
  * Node 的 fetch 不接受相对 URL（会抛 ERR_INVALID_URL），因此这里不能返回 ""。
  * 优先级：
- *  1. EDGE_KV_BASE_URL —— 显式配置的完整地址（跨域 / 本地调试）
+ *  1. EO_KV_URLS —— 显式配置的完整地址（跨域 / 本地调试）
  *  2. __requestOrigin —— 由 index.ts 中间件注入的当前请求 origin，
  *     即同一部署的自身域名，用于 Node 云函数自调用 Edge Function
  */
 function getProxyBaseUrl(env?: EnvContext): string {
   if (!env) return ""
 
-  const explicit = (env as any).EDGE_KV_BASE_URL
+  const explicit = (env as any).EO_KV_URLS
   if (explicit) {
     const safe = sanitizeProxyOrigin(explicit, env)
     if (safe) return safe
@@ -171,6 +160,45 @@ function getProxyBaseUrl(env?: EnvContext): string {
  * do not repeat the checks, and so a cryptic ERR_INVALID_URL never reaches
  * the logs.
  */
+/**
+ * KV 代理健康探测（唯一实现）。
+ *
+ * isAvailable() 与 health() 共用，避免两处各自实现导致判定标准漂移。
+ * 判定：HTTP 200 表示代理与 KV 均可用；401 表示代理可达但鉴权失败，
+ * 属于「代理部署存在但密钥不对」，对外仍报告可用（由 checkProxyConfig
+ * 在更早阶段拦下缺少密钥的情况）。
+ */
+async function probeProxy(
+  env?: EnvContext,
+): Promise<{ ok: boolean; status: number; error?: string }> {
+  const configError = checkProxyConfig(env)
+  if (configError) {
+    return { ok: false, status: 0, error: configError.split("\n")[0] }
+  }
+
+  const baseUrl = getProxyBaseUrl(env)
+  if (!baseUrl) {
+    return {
+      ok: false,
+      status: 0,
+      error:
+        "cannot determine deployment origin. " +
+        "Set EO_KV_URLS to the deployment origin.",
+    }
+  }
+
+  try {
+    const url = `${baseUrl}/kv-list?prefix=__health__`
+    const response = await fetch(url, {
+      method: "GET",
+      headers: buildProxyHeaders(env),
+    })
+    return { ok: response.ok, status: response.status }
+  } catch (err: any) {
+    return { ok: false, status: 0, error: err?.message || String(err) }
+  }
+}
+
 function requireProxyBaseUrl(env?: EnvContext): string {
   const configError = checkProxyConfig(env)
   if (configError) {
@@ -181,7 +209,7 @@ function requireProxyBaseUrl(env?: EnvContext): string {
   if (!baseUrl) {
     throw new Error(
       "KV proxy base URL unavailable: cannot determine deployment origin. " +
-        "Set EDGE_KV_BASE_URL to the deployment origin.",
+        "Set EO_KV_URLS to the deployment origin.",
     )
   }
 
@@ -197,39 +225,13 @@ export const kvDriver: Driver = {
       return true
     }
 
-    // 模式2: 检查 HTTP 代理是否可用（EdgeOne Node Functions）
-    if (isEdgeOneNodeEnv(env)) {
-      // 缺少必需密钥时直接判定不可用，并给出明确原因，
-      // 避免发起注定 401 的请求让排查变困难。
-      const configError = checkProxyConfig(env)
-      if (configError) {
-        console.error("[DB] KV proxy unavailable:\n" + configError)
-        return false
-      }
-
-      const baseUrl = getProxyBaseUrl(env)
-      if (!baseUrl) {
-        console.error(
-          "[DB] KV proxy unavailable: cannot determine deployment origin. " +
-            "Set EDGE_KV_BASE_URL to the deployment origin.",
-        )
-        return false
-      }
-
-      try {
-        const url = `${baseUrl}/kv-list?prefix=__health__`
-        const response = await fetch(url, {
-          method: "GET",
-          headers: buildProxyHeaders(env),
-        })
-        // 200 表示代理与 KV 均可用；401 表示代理存在但鉴权失败
-        return response.ok || response.status === 401
-      } catch {
-        return false
-      }
+    // 模式2: HTTP 代理（EdgeOne Node Functions 拿不到 binding）
+    const probe = await probeProxy(env)
+    if (!probe.ok && probe.status !== 401) {
+      if (probe.error) console.error("[DB] KV proxy unavailable: " + probe.error)
+      return false
     }
-    
-    return false
+    return true
   },
 
   async init(env?: any): Promise<void> {
@@ -279,33 +281,29 @@ export const kvDriver: Driver = {
       return JSON.stringify(value)
     }
     
-    // 模式2: HTTP 代理模式
-    if (isEdgeOneNodeEnv(env)) {
-      const baseUrl = requireProxyBaseUrl(env)
-      const url = `${baseUrl}/kv-get?key=${encodeURIComponent(key)}`
-      
-      try {
-        const response = await fetch(url, {
-          method: "GET",
-          headers: buildProxyHeaders(env),
-        })
+    // 模式2: HTTP 代理模式（无原生 binding → 经 Edge Function 代理）
+    const baseUrl = requireProxyBaseUrl(env)
+    const url = `${baseUrl}/kv-get?key=${encodeURIComponent(key)}`
 
-        if (!response.ok) {
-          if (response.status === 404) {
-            return null
-          }
-          throw new Error(`KV proxy get failed: ${response.status}`)
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        headers: buildProxyHeaders(env),
+      })
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          return null
         }
-
-        const data = await response.json() as { value: string | null }
-        return data.value
-      } catch (err) {
-        console.error(`[KV] get(${key}) failed:`, err)
-        throw err
+        throw new Error(`KV proxy get failed: ${response.status}`)
       }
+
+      const data = await response.json() as { value: string | null }
+      return data.value
+    } catch (err) {
+      console.error(`[KV] get(${key}) failed:`, err)
+      throw err
     }
-    
-    throw new Error("KV binding not found")
   },
 
   async put(key: string, value: string, env?: any): Promise<void> {
@@ -318,28 +316,23 @@ export const kvDriver: Driver = {
     }
     
     // 模式2: HTTP 代理模式
-    if (isEdgeOneNodeEnv(env)) {
-      const baseUrl = requireProxyBaseUrl(env)
-      const url = `${baseUrl}/kv-put`
-      
-      try {
-        const response = await fetch(url, {
-          method: "POST",
-          headers: buildProxyHeaders(env),
-          body: JSON.stringify({ key, value }),
-        })
+    const baseUrl = requireProxyBaseUrl(env)
+    const url = `${baseUrl}/kv-put`
 
-        if (!response.ok) {
-          throw new Error(`KV proxy put failed: ${response.status}`)
-        }
-      } catch (err) {
-        console.error(`[KV] put(${key}) failed:`, err)
-        throw err
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: buildProxyHeaders(env),
+        body: JSON.stringify({ key, value }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`KV proxy put failed: ${response.status}`)
       }
-      return
+    } catch (err) {
+      console.error(`[KV] put(${key}) failed:`, err)
+      throw err
     }
-    
-    throw new Error("KV binding not found")
   },
 
   async delete(key: string, env?: any): Promise<void> {
@@ -352,27 +345,22 @@ export const kvDriver: Driver = {
     }
     
     // 模式2: HTTP 代理模式
-    if (isEdgeOneNodeEnv(env)) {
-      const baseUrl = requireProxyBaseUrl(env)
-      const url = `${baseUrl}/kv-delete?key=${encodeURIComponent(key)}`
-      
-      try {
-        const response = await fetch(url, {
-          method: "DELETE",
-          headers: buildProxyHeaders(env),
-        })
+    const baseUrl = requireProxyBaseUrl(env)
+    const url = `${baseUrl}/kv-delete?key=${encodeURIComponent(key)}`
 
-        if (!response.ok && response.status !== 404) {
-          throw new Error(`KV proxy delete failed: ${response.status}`)
-        }
-      } catch (err) {
-        console.error(`[KV] delete(${key}) failed:`, err)
-        throw err
+    try {
+      const response = await fetch(url, {
+        method: "DELETE",
+        headers: buildProxyHeaders(env),
+      })
+
+      if (!response.ok && response.status !== 404) {
+        throw new Error(`KV proxy delete failed: ${response.status}`)
       }
-      return
+    } catch (err) {
+      console.error(`[KV] delete(${key}) failed:`, err)
+      throw err
     }
-    
-    throw new Error("KV binding not found")
   },
 
   async list(prefix: string, env?: any): Promise<string[]> {
@@ -409,29 +397,25 @@ export const kvDriver: Driver = {
     }
     
     // 模式2: HTTP 代理模式
-    if (isEdgeOneNodeEnv(env)) {
-      const baseUrl = requireProxyBaseUrl(env)
-      const url = `${baseUrl}/kv-list?prefix=${encodeURIComponent(prefix)}`
-      
-      try {
-        const response = await fetch(url, {
-          method: "GET",
-          headers: buildProxyHeaders(env),
-        })
+    const baseUrl = requireProxyBaseUrl(env)
+    const url = `${baseUrl}/kv-list?prefix=${encodeURIComponent(prefix)}`
 
-        if (!response.ok) {
-          throw new Error(`KV proxy list failed: ${response.status}`)
-        }
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        headers: buildProxyHeaders(env),
+      })
 
-        const data = await response.json() as { keys: string[] }
-        return data.keys || []
-      } catch (err) {
-        console.error(`[KV] list(${prefix}) failed:`, err)
-        throw err
+      if (!response.ok) {
+        throw new Error(`KV proxy list failed: ${response.status}`)
       }
+
+      const data = await response.json() as { keys: string[] }
+      return data.keys || []
+    } catch (err) {
+      console.error(`[KV] list(${prefix}) failed:`, err)
+      throw err
     }
-    
-    throw new Error("KV binding not found")
   },
 
   async health(env?: any): Promise<any> {
@@ -457,48 +441,26 @@ export const kvDriver: Driver = {
       }
     }
     
-    // 模式2: HTTP 代理模式
-    if (isEdgeOneNodeEnv(env)) {
-      try {
-        const baseUrl = getProxyBaseUrl(env)
-        const url = `${baseUrl}/kv-list?prefix=__health__`
-        
-        const response = await fetch(url, {
-          method: "GET",
-          headers: buildProxyHeaders(env),
-        })
-
-        if (!response.ok) {
-          const text = await response.text()
-          return {
-            driver: "kv",
-            mode: "proxy",
-            available: false,
-            error: `HTTP ${response.status}: ${text}`,
-          }
-        }
-
-        return {
-          driver: "kv",
-          mode: "proxy",
-          available: true,
-          platform: "EdgeOne KV (via Edge Function proxy)",
-        }
-      } catch (err: any) {
-        return {
-          driver: "kv",
-          mode: "proxy",
-          available: false,
-          error: err.message || String(err),
-        }
+    // 模式2: HTTP 代理模式。
+    //
+    // 判定比 isAvailable 更严格：健康状态必须真正可读写，401 表示鉴权
+    // 失败（代理在但密钥不对），对依赖持久化的接口而言应报不可用，
+    // 而不是被 /env_check 判定为 ready。共用 probeProxy 仅复用探测动作。
+    const probe = await probeProxy(env)
+    if (!probe.ok) {
+      return {
+        driver: "kv",
+        mode: "proxy",
+        available: false,
+        error: probe.error || `HTTP ${probe.status}`,
       }
     }
-    
+
     return {
       driver: "kv",
-      mode: "unknown",
-      available: false,
-      error: "KV binding not found and not in EdgeOne Node environment",
+      mode: "proxy",
+      available: true,
+      platform: "EdgeOne KV (via Edge Function proxy)",
     }
   },
 }

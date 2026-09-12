@@ -1,73 +1,65 @@
-// 测试 deploy.js 中 wrangler 输出解析逻辑（不调用真实 Cloudflare API）
+// deploy.js / wrangler.jsonc 相关约束的回归测试
 //
-// 覆盖：`wrangler kv namespace list` 表格解析、`kv namespace create` id 提取。
-// 这些解析依赖 wrangler 的输出格式，容易因版本变化悄悄失效，因此单独验证。
+// 【历史】本文件原先测试 deploy.js 中解析 `wrangler kv namespace list` 表格
+// 与 `kv namespace create` 输出的逻辑。该逻辑已废弃（见 deploy.js 末尾的注释块
+// 与 Issue #34）：wrangler 的自动预配无法按 title 复用已有命名空间，脚本手动
+// 创建只会产生孤儿资源并导致重复创建冲突。
+//
+// 现在 KV 由 wrangler.jsonc 中的 kv_namespaces 声明（省略 id 字段）自动创建
+// 与绑定，deploy.js 不再包含任何 KV 解析逻辑，因此这里只保留对关键约束的静态
+// 校验，防止有人又把脚本级 KV 创建逻辑加回来。
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
+import path from "node:path"
 
-// ── 被测逻辑（与 deploy.js 保持同步）──────────────────────────────
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const ROOT = path.resolve(__dirname, "..")
 
-/** 解析 `wrangler kv namespace list` 的表格输出，返回 { title: id } */
-function parseNamespaceList(stdout) {
-  const map = {}
-  // 表格行: │ <id> │ <title> │  （兼容 | 和 │）
-  const re = /[|│]\s*([0-9a-fA-F]{32})\s*[|│]\s*([^|│\n]+?)\s*[|│]/g
-  let m
-  while ((m = re.exec(stdout)) !== null) {
-    map[m[2].trim()] = m[1].trim()
-  }
-  return map
+const deploySrc = readFileSync(path.join(ROOT, "scripts/deploy.js"), "utf8")
+const configSrc = readFileSync(path.join(ROOT, "wrangler.jsonc"), "utf8")
+
+// 剥掉注释：文档说明与废弃实现里都会出现这些关键字，必须先排除。
+function stripComments(src) {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, "") // 块注释（含文件头文档与废弃块）
+    .replace(/(^|[^:])\/\/.*$/gm, "$1") // 行注释（避免误伤 http:// 之类）
 }
 
-/** 从 `wrangler kv namespace create` 输出提取 id（剥离 ANSI 颜色码） */
-function parseCreatedId(stdout) {
-  const clean = String(stdout).replace(/\x1b\[[0-9;]*m/g, "")
-  const m = clean.match(/id\s*=\s*"([0-9a-fA-F]{32})"/)
-  return m ? m[1] : null
-}
+// ── 1. deploy.js 的生效代码不应再主动创建 KV namespace ───────────────
+const activeSrc = stripComments(deploySrc)
+assert.ok(
+  !/wrangler kv namespace create/.test(activeSrc),
+  "deploy.js 的生效代码不应调用 `wrangler kv namespace create`（应交给 wrangler 自动预配）",
+)
+assert.ok(
+  !/ensureKvNamespace\s*\(/.test(activeSrc),
+  "deploy.js 的生效代码不应调用 ensureKvNamespace()",
+)
+console.log("✅ deploy.js 未主动创建 KV namespace")
 
-// ── 1. list 解析（Unicode 边框，wrangler 4.x 常见形态）──────────────
-const unicodeList = `
-🌀 Listing namespaces with title filter "OpenListTeam-OpenList"
-┌──────────────────────────────────┬──────────────────────┐
-│ id                               │ title                │
-├──────────────────────────────────┼──────────────────────┤
-│ 0e48234248a84d4dbdc5a70e886773ea │ openlist-KV          │
-└──────────────────────────────────┴──────────────────────┘
-`
-const u = parseNamespaceList(unicodeList)
-assert.equal(u["openlist-KV"], "0e48234248a84d4dbdc5a70e886773ea")
-assert.equal(Object.keys(u).length, 1)
-console.log("✅ list 解析（Unicode 边框）")
+// ── 2. deploy.js 会执行 wrangler deploy ─────────────────────────────
+assert.ok(
+  /npx wrangler deploy/.test(deploySrc),
+  "deploy.js 应调用 `npx wrangler deploy`",
+)
+console.log("✅ deploy.js 会执行 wrangler deploy")
 
-// ── 2. list 解析（ASCII 竖线）────────────────────────────────────
-const asciiList = `
-| id                               | title     |
-| 0123456789abcdef0123456789abcdef | KV        |
-`
-const a = parseNamespaceList(asciiList)
-assert.equal(a["KV"], "0123456789abcdef0123456789abcdef")
-console.log("✅ list 解析（ASCII 竖线）")
+// ── 3. wrangler.jsonc 声明了 KV 绑定 ────────────────────────────────
+// 只匹配行首未被注释的声明，避免命中说明文字里的示例。
+// 兼容单行（"kv_namespaces": [{ ... }]）与多行两种写法。
+const m = configSrc.match(/^\s*"kv_namespaces"\s*:\s*\[([\s\S]*?)\]/m)
+assert.ok(m, 'wrangler.jsonc 应声明 "kv_namespaces"')
+const kvEntry = m[1].match(/\{([^}]*)\}/)
+assert.ok(kvEntry, '"kv_namespaces" 应包含至少一个绑定对象')
+assert.match(kvEntry[1], /"binding"\s*:\s*"KV"/, 'KV 绑定的 binding 应为 "KV"')
+console.log("✅ wrangler.jsonc 声明了 KV 绑定")
 
-// ── 3. list 解析（无 namespace）→ 空映射 ─────────────────────────
-assert.deepEqual(parseNamespaceList("No namespaces found"), {})
-console.log("✅ 空列表解析")
-
-// ── 4. create 输出提取 id（含 ANSI 颜色码）────────────────────────
-// KV namespace id 为 32 位十六进制字符
-const SAMPLE_ID = "0123456789abcdef0123456789abcdef"
-assert.equal(SAMPLE_ID.length, 32)
-const mockCreate = `
-\x1b[32m✨ Success!\x1b[0m
-Add the following to your configuration file in your kv_namespaces array:
-[[kv_namespaces]]
-binding = "KV"
-id = "${SAMPLE_ID}"
-`
-assert.equal(parseCreatedId(mockCreate), SAMPLE_ID)
-console.log("✅ create id 提取（剥离 ANSI）")
-
-// ── 5. create 输出无 id → null ───────────────────────────────────
-assert.equal(parseCreatedId("something went wrong"), null)
-console.log("✅ 无 id 时返回 null")
+// ── 4. 该绑定必须省略 id（不能写 "id": ""，否则 wrangler 校验失败）──
+assert.ok(
+  !/"id"\s*:/.test(kvEntry[1]),
+  'kv_namespaces 的 KV 绑定应完全省略 id 字段（"id": "" 会被 wrangler 拒绝）',
+)
+console.log("✅ KV 绑定省略了 id 字段")
 
 console.log("\n✅ 全部通过")

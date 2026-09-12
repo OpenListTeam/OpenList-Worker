@@ -5,6 +5,10 @@
  * Cloudflare KV REST API、内存回退。行为与原实现完全一致。
  */
 import type { StoreBackend } from "./types"
+import { sanitizeProxyOrigin } from "./proxy"
+
+// 保持既有引用路径不变（scripts/_regress.mjs 通过 jsonMod 访问）
+export { sanitizeProxyOrigin } from "./proxy"
 
 // ---- EdgeOne Blob SDK (HTTP API, avoids Redis RESP protocol crashes) ----
 let _blobStore: any = null
@@ -104,130 +108,39 @@ export function isWebKv(b: any): boolean {
 }
 
 /**
- * 校验并归一化 KV 代理目标 origin。
- *
- * 安全背景：`__requestOrigin` 由中间件从 `c.req.url` 派生，而后者源自请求的
- * Host 头。若平台未严格校验 Host，攻击者构造 `Host: evil.com` 可能让 Node 侧
- * 把携带 **完整 JWT_SECRET** 的 `X-Internal-Call` 请求发往攻击者服务器（SSRF
- * 兼密钥泄漏）。因此这里做三重约束：
- *
- *  1. **必须是 http/https 绝对地址**（拒绝相对路径、协议相对 URL）；
- *  2. **必须是能解析出 hostname 的合法 URL**；
- *  3. **生产环境（非 localhost）必须为 https**，避免明文传输密钥。
- *
- * 显式配置的 `EDGE_KV_BASE_URL` 视为可信（运维意图），但仍需通过 1/2；
- * 对它的 https 要求放宽，便于本地 http 调试。
- *
- * @returns 归一化后的 origin（去掉结尾 `/`），不可用时返回 null
- */
-export function sanitizeProxyOrigin(raw: any, env?: any): string | null {
-  if (typeof raw !== "string") return null
-  const trimmed = raw.trim()
-  if (!trimmed) return null
-
-  let url: URL
-  try {
-    url = new URL(trimmed)
-  } catch {
-    return null
-  }
-
-  // 仅允许 http / https，拒绝其他协议（file:、ftp: 等）
-  if (url.protocol !== "http:" && url.protocol !== "https:") return null
-  if (!url.hostname) return null
-
-  // 显式配置的基址视为可信来源，仅做协议与 hostname 校验
-  const explicit = env?.EDGE_KV_BASE_URL
-  const isExplicit =
-    typeof explicit === "string" && explicit.trim() === trimmed
-
-  if (!isExplicit) {
-    const isLocal =
-      url.hostname === "localhost" ||
-      url.hostname === "127.0.0.1" ||
-      url.hostname === "[::1]"
-    // 请求派生的 origin 在非本地环境必须为 https，杜绝明文外发密钥
-    if (!isLocal && url.protocol !== "https:") {
-      console.warn(
-        "[DB] Rejecting non-HTTPS proxy origin derived from request: " +
-          `${url.protocol}//${url.hostname} (would leak X-Internal-Call in clear text)`,
-      )
-      return null
-    }
-  }
-
-  return `${url.protocol}//${url.host}`.replace(/\/$/, "")
-}
-
-/**
  * 创建基于 HTTP 代理的 KV 适配器。
  *
  * 用于 EdgeOne Node 云函数：拿不到 KV binding，必须经 Edge Function
  * （functions/kv-*）代为访问。对外暴露与原生 binding 相同的接口，
  * 使调用方（middlewares/auth/admin）无需感知差异。
+ *
+ * 实现**直接委托给 kvDriver**（该代理协议的唯一实现），避免同一协议
+ * 在本文件中重复一份、与 driver/kv.ts 的行为产生漂移。
+ * 这里只负责把 Driver 的 `string[]` 契约适配成 binding 的 `{name,key}[]`。
+ *
+ * kvDriver 用动态 import 引入：driver/kv.ts 需要本模块的
+ * sanitizeProxyOrigin，静态互相导入会形成循环依赖。
  */
-function createProxyBinding(origin: string, env: any): any {
-  const base = String(origin).replace(/\/$/, "")
-  const headers = (): Record<string, string> => {
-    const h: Record<string, string> = { "Content-Type": "application/json" }
-    // 内部调用标识使用**完整密钥**（Edge Function 侧常量时间比对）。
-    // 不截断：截断会把熵降到 64 bit，且该通道会绕过管理员角色校验。
-    const secret = env?.JWT_SECRET
-    if (typeof secret === "string" && secret.length >= 16) {
-      h["X-Internal-Call"] = secret
-    }
-    return h
-  }
-
-  const decode = (v: any): string | null => {
-    if (v === null || v === undefined) return null
-    return typeof v === "string" ? v : String(v)
-  }
+function createProxyBinding(_origin: string, env: any): any {
+  const load = async () => (await import("./driver/kv")).kvDriver
 
   return {
     async get(key: string): Promise<string | null> {
-      const res = await fetch(`${base}/kv-get?key=${encodeURIComponent(key)}`, {
-        method: "GET",
-        headers: headers(),
-      })
-      if (!res.ok) {
-        if (res.status === 404) return null
-        throw new Error(`KV proxy get failed: HTTP ${res.status}`)
-      }
-      const body: any = await res.json().catch(() => ({}))
-      return decode(body?.value)
+      return (await load()).get(key, env)
     },
 
     async put(key: string, value: string): Promise<void> {
-      const res = await fetch(`${base}/kv-put`, {
-        method: "POST",
-        headers: headers(),
-        body: JSON.stringify({ key, value }),
-      })
-      if (!res.ok) throw new Error(`KV proxy put failed: HTTP ${res.status}`)
+      return (await load()).put(key, value, env)
     },
 
     async delete(key: string): Promise<void> {
-      const res = await fetch(
-        `${base}/kv-delete?key=${encodeURIComponent(key)}`,
-        { method: "DELETE", headers: headers() },
-      )
-      if (!res.ok && res.status !== 404) {
-        throw new Error(`KV proxy delete failed: HTTP ${res.status}`)
-      }
+      return (await load()).delete(key, env)
     },
 
     async list(opts: { prefix?: string } = {}): Promise<{ keys: any[] }> {
-      const prefix = opts?.prefix || ""
-      const res = await fetch(
-        `${base}/kv-list?prefix=${encodeURIComponent(prefix)}`,
-        { method: "GET", headers: headers() },
-      )
-      if (!res.ok) throw new Error(`KV proxy list failed: HTTP ${res.status}`)
-      const body: any = await res.json().catch(() => ({}))
-      const keys = Array.isArray(body?.keys) ? body.keys : []
+      const keys = await (await load()).list(opts?.prefix || "", env)
       // 兼容 binding 形态：调用方读取 k.name / k.key 两种写法
-      return { keys: keys.map((name: string) => ({ name, key: name })) }
+      return { keys: keys.map((name) => ({ name, key: name })) }
     },
   }
 }
@@ -270,7 +183,7 @@ export async function getKvBinding(envCtx?: any): Promise<{
   if (kvPreferred && !nativeKv) {
     let origin: any
     try {
-      origin = env?.EDGE_KV_BASE_URL || env?.__requestOrigin
+      origin = env?.EO_KV_URLS || env?.__requestOrigin
     } catch {
       origin = undefined
     }
@@ -285,7 +198,7 @@ export async function getKvBinding(envCtx?: any): Promise<{
     }
     console.warn(
       "[DB] getKvBinding: KV proxy requested but no origin available " +
-        "(set EDGE_KV_BASE_URL or ensure request origin is injected)",
+        "(set EO_KV_URLS or ensure request origin is injected)",
     )
   }
 

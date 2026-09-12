@@ -1087,7 +1087,12 @@ export const ENCRYPTION_SECRET_KV_KEY = "openlist_encryption_secret"
 /**
  * 解析「环境变量中显式配置的」字段加密密钥。
  *
- * 约定：加密统一使用 JWT_SECRET（签名与加密共用同一密钥）。
+ * 约定：字段加密与 JWT 签名都优先使用 JWT_SECRET 环境变量。
+ * 但两者在「未配置 env」时的持久化槽位是独立的
+ * （加密 → openlist_encryption_secret，签名 → openlist_jwt_secret），
+ * 因此未配置 JWT_SECRET 的部署中二者会是不同的随机值——这不影响正确性，
+ * 加密与签名本就无需同钥。
+ *
  * 长度不足 16 视为未配置，避免弱密钥。
  *
  * 该来源具有**最高优先级且恒定不变**：只要它存在，seal 与 unseal
