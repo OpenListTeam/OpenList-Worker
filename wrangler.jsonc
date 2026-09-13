@@ -127,7 +127,7 @@
   //   二次部署通过 inherit 复用已有绑定，不会重复创建。
   //   若想改用账户里已有的 KV，把该命名空间的 id 填进来即可。
   //
-  "kv_namespaces": [{ "binding": "KV" }],
+  //  "kv_namespaces": [{ "binding": "KV" }],
   //
   // ▶ 方案 B：D1（关系型，可与 Go 后端共享库；DB_FORMAT 建议改为 "sql"）
   //   控制台：Workers & Pages → D1 → 创建数据库 → 绑定到 Worker，变量名填 DB
