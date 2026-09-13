@@ -31,9 +31,9 @@ const currentAdmin = async () => {
   return db.users.find((u: any) => u.username === "admin")
 }
 
-test("Initialization: a fresh deployment stays uninitialized without ADMIN_PASSWORD", async () => {
+test("Initialization: a fresh deployment stays uninitialized without ADMIN_PASS", async () => {
   // 隔离 CI/宿主机环境变量，避免影响“未初始化”断言
-  delete process.env.ADMIN_PASSWORD
+  delete process.env.ADMIN_PASS
   await seed([])
   await getOrInitUsers(env)
   const admin = await currentAdmin()
@@ -45,7 +45,7 @@ test("Initialization: a fresh deployment stays uninitialized without ADMIN_PASSW
 })
 
 test("Security(F-11): a legacy-format hash is left untouched (no silent reset on upgrade)", async () => {
-  delete process.env.ADMIN_PASSWORD
+  delete process.env.ADMIN_PASS
   // The old code reset any non-64-hex password back to admin/admin — meaning
   // a routine upgrade silently reopened the admin account. It must stay.
   const legacyHash = "pbkdf2:100000:somesalt:deadbeef"
@@ -65,7 +65,7 @@ test("Security(F-11): a legacy-format hash is left untouched (no silent reset on
 })
 
 test("Initialization: an empty admin password stays empty (uninitialized), not a random one", async () => {
-  delete process.env.ADMIN_PASSWORD
+  delete process.env.ADMIN_PASS
   await seed([adminUser("")])
   await getOrInitUsers(env)
   const admin = await currentAdmin()
@@ -76,9 +76,9 @@ test("Initialization: an empty admin password stays empty (uninitialized), not a
   )
 })
 
-test("Security(F-11): ADMIN_PASSWORD still forces an explicit reset (to salted double-SHA256)", async () => {
+test("Security(F-11): ADMIN_PASS still forces an explicit reset (to salted double-SHA256)", async () => {
   await seed([adminUser("pbkdf2:100000:somesalt:deadbeef")])
-  const envWithPass: any = { ...env, ADMIN_PASSWORD: "operator-chosen" }
+  const envWithPass: any = { ...env, ADMIN_PASS: "operator-chosen" }
   await getOrInitUsers(envWithPass)
   const admin = await currentAdmin()
   assert.ok(isHex64(admin.password), "reset must store a 64-hex SHA-256 value")
@@ -86,7 +86,7 @@ test("Security(F-11): ADMIN_PASSWORD still forces an explicit reset (to salted d
   assert.equal(
     await verifyUserPassword(admin, "operator-chosen"),
     true,
-    "the ADMIN_PASSWORD value must verify",
+    "the ADMIN_PASS value must verify",
   )
   assert.equal(
     await verifyUserPassword(admin, "wrong-password"),

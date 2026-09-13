@@ -1,8 +1,195 @@
 import { Hono } from "hono"
-import { getDb, saveDb } from "../internal/model/db"
+import {
+  ensureEncryptionSecret,
+  getDb,
+  getStoreStatus,
+  isEncryptionReady,
+  saveDb,
+} from "../internal/model/db"
+import {
+  isPersistentStorageAvailable,
+  isServerlessRuntime,
+  readDriver,
+  readFormat,
+} from "../internal/model/store/backend"
 import { setUserPassword } from "../pkg/password"
 
 export const publicRouter = new Hono()
+
+/** 文档基址（配置与存储说明） */
+const DOC_BASE = "https://doc.oplist.org"
+const DOC_STORAGE = `${DOC_BASE}/ecosystem/official_worker/guide_env`
+const DOC_DRIVER = `${DOC_BASE}/ecosystem/official_worker/guide`
+
+/**
+ * 对错误文本做脱敏，供免鉴权接口使用。
+ *
+ * 目标：保留「问题类别」的可操作性，同时抹掉可能泄漏实现细节的部分：
+ *   - 只取第一行（去掉多行堆栈）
+ *   - 抹除形如 `scheme://user:pass@host` 的连接串凭据
+ *   - 截断长度，避免回显大段内部信息
+ */
+function redact(raw: any): string {
+  if (raw === null || raw === undefined) return "unknown error"
+  let s = String(raw)
+  // 仅保留首行
+  s = s.split("\n")[0].trim()
+  // 抹除连接串中的凭据（如 mysql://user:pass@host）
+  s = s.replace(/(\w+:\/\/)[^/@\s]+@/g, "$1***@")
+  // 抹除常见的 key=value 形式的令牌
+  s = s.replace(
+    /\b(token|secret|password|passwd|pwd|api[_-]?key)\s*[=:]\s*\S+/gi,
+    "$1=***",
+  )
+  // 截断
+  const MAX = 160
+  return s.length > MAX ? s.slice(0, MAX) + "…" : s
+}
+
+/**
+ * 初始化前的环境自检。
+ *
+ * 该接口**无需鉴权**（初始化页在未登录时就需要它），且**不泄露任何敏感值**：
+ * 只报告「配置了什么」「是否就绪」「哪里不对」，绝不回显密钥或 DSN 原文。
+ *
+ * 返回：
+ *   - config：DB_FORMAT / DB_DRIVER 的配置值与实际解析值
+ *   - storage：驱动可用性、健康状态、连接错误
+ *   - jwt：签名/加密密钥是否就绪
+ *   - ready：综合就绪判定（数据库 + 密钥都就绪）
+ *   - issues：问题清单，每项含 code / level / message / docUrl
+ */
+publicRouter.get("/env_check", async (c) => {
+  const env = c.env as any
+  const driverCfg = readDriver(env)
+  const formatCfg = readFormat(env)
+  const serverless = isServerlessRuntime(env)
+
+  // ── 存储状态（不抛错，内部已做容错）──
+  const storage: any = await getStoreStatus(env).catch((err: any) => ({
+    driver: "none",
+    format: "none",
+    available: false,
+    configError: String(err?.message || err),
+  }))
+
+  // 驱动名可用于判定「真实持久化」与「内存兜底」。
+  // 内存模式在 serverless 下不可接受（实例短暂、多租户，写入会静默丢失）。
+  const resolvedDriver = String(storage?.driver ?? "none")
+  const isMemory = resolvedDriver === "memory"
+  const hasDriver = resolvedDriver !== "none" && resolvedDriver !== ""
+  const hasConfigError = Boolean(storage?.configError)
+
+  // 可用 = 有驱动 && 非内存 && 无配置错误 && 驱动自报可用。
+  // getStoreStatus 在健康检查失败时会带 available:false（例如 KV 代理 401、
+  // 数据库连接失败），此时即便配置齐全也不能视为可用。
+  const driverHealthy = storage?.available !== false
+
+  const storageAvailable =
+    hasDriver && !isMemory && !hasConfigError && driverHealthy
+
+  // ── JWT 密钥就绪（真实来源，绕过缓存）──
+  const jwtReady = await isEncryptionReady(env).catch(() => false)
+
+  // ── 问题清单（可操作提示 + 文档链接）──
+  const issues: {
+    code: string
+    level: "error" | "warning"
+    message: string
+    docUrl: string
+  }[] = []
+
+  if (isMemory) {
+    issues.push({
+      code: "STORAGE_MEMORY_ONLY",
+      level: serverless ? "error" : "warning",
+      message: serverless
+        ? "In-memory storage only; data will be lost immediately."
+        : "In-memory storage only; data will be lost on restart (fine for local dev).",
+      docUrl: DOC_STORAGE,
+    })
+  } else if (!hasDriver) {
+    issues.push({
+      code: "STORAGE_UNAVAILABLE",
+      level: "error",
+      message: "No storage backend available.",
+      docUrl: DOC_STORAGE,
+    })
+  }
+
+  if (hasConfigError) {
+    issues.push({
+      code: "STORAGE_CONFIG_ERROR",
+      level: "error",
+      // 该接口免鉴权，因此不返回原始错误文本（可能含内部 DSN、主机名或堆栈）。
+      // 驱动未探测到时 backend 会给出 NO_STORAGE_MESSAGE 这种面向终端的长文
+      // 配置指引，逐条展示到界面上是一屏难以消化的文字，故此处统一收敛为
+      // 一句摘要，细节由 docUrl 指向的文档承接。
+      message: "Storage driver is not configured correctly.",
+      docUrl: DOC_DRIVER,
+    })
+  }
+
+  // 配置齐全但驱动自检失败（如 KV 代理 401、数据库连不上）
+  if (hasDriver && !isMemory && !hasConfigError && !driverHealthy) {
+    issues.push({
+      code: "STORAGE_UNHEALTHY",
+      level: "error",
+      message:
+        `Storage driver "${resolvedDriver}" is configured but not reachable` +
+        `${storage.error ? ": " + redact(storage.error) : ""}.`,
+      docUrl: DOC_DRIVER,
+    })
+  }
+
+  if (!jwtReady) {
+    issues.push({
+      code: "JWT_SECRET_MISSING",
+      level: serverless ? "error" : "warning",
+      message: "JWT_SECRET is not set.",
+      docUrl: DOC_STORAGE,
+    })
+  }
+
+  // ── 综合就绪：数据库可用 + 密钥就绪 ──
+  // 内存模式（本地开发）允许初始化，但会带 warning。
+  const ready = storageAvailable && jwtReady
+
+  return c.json({
+    code: 200,
+    message: "success",
+    data: {
+      runtime: {
+        serverless,
+        platform: storage?.platform ?? null,
+      },
+      config: {
+        // 配置值（用户显式设置，或默认值）
+        db_format: formatCfg,
+        db_driver: driverCfg,
+        // 实际解析值（auto 探测后的结果）
+        resolved_driver: storage?.driver ?? null,
+        resolved_format: storage?.format ?? null,
+      },
+      storage: {
+        available: storageAvailable,
+        configured: storage?.configured ?? null,
+        connected: storage?.connected ?? null,
+        platform: storage?.platform ?? null,
+        /** 是否处于内存兜底模式（重启即失，serverless 下不可接受） */
+        memory: isMemory,
+      },
+      jwt: {
+        ready: jwtReady,
+        // 仅告知来源类型，不回显任何值
+        source: jwtReady ? "env-or-persisted" : "none",
+      },
+      ready,
+      issues,
+      docUrl: DOC_STORAGE,
+    },
+  })
+})
 
 publicRouter.get("/settings", async (c) => {
   const db = await getDb(c.env)
@@ -199,16 +386,35 @@ publicRouter.get("/plugins", async (c) => {
 })
 
 // 系统是否已初始化：存在已设置密码的管理员账号即为已初始化。
+//
+// 「可持久化存储可用」是「已初始化」的前提，而不是并列的另一个检查：
+// 初始化结果必须能被持久化才算真正完成。若存储不可用，getDb() 只能退回
+// 内存，此刻即便读到了管理员账号，也无法证明它会被保存下来 —— 重启即丢。
+// 因此这里把存储不可用直接判为 initialized=false，让前端停留在初始化向导
+// （那是唯一能提示用户去修配置的地方），而不是欢快地跳去登录页。
+//
+// 本接口已在 index.ts 的诊断豁免名单中，不会被存储配置错误中间件拦截，
+// 否则它在最需要报告问题的场景下反而拿不到任何信息。
 publicRouter.get("/init_status", async (c) => {
-  const db = await getDb(c.env)
-  const admin = (db.users || []).find((u: any) => u.role === 2)
-  const initialized = Boolean(
-    admin && String(admin.password || "").trim() !== "",
-  )
+  const storageReady = await isPersistentStorageAvailable(c.env)
+
+  // 存储不可用时不再尝试读库：此时 getDb() 只会返回内存副本，
+  // 据此得出的 initialized=true 是假象。
+  let initialized = false
+  if (storageReady) {
+    const db = await getDb(c.env)
+    const admin = (db.users || []).find((u: any) => u.role === 2)
+    initialized = Boolean(admin && String(admin.password || "").trim() !== "")
+  }
+
+  // 就绪判定：加密密钥在**真实来源**（env 或 KV）可读。
+  // 前端据此轮询等待，避免 KV 最终一致性导致的「刚初始化完登录失败」。
+  const ready = initialized ? await isEncryptionReady(c.env) : false
+
   return c.json({
     code: 200,
     message: "success",
-    data: { initialized },
+    data: { initialized, ready },
   })
 })
 
@@ -242,6 +448,12 @@ publicRouter.post("/init/setup", async (c) => {
       400,
     )
   }
+
+  // 初始化阶段：确保加密密钥存在。
+  //
+  // 只在 setup 中生成 —— 且仅当持久化键不存在时。一旦写入永不覆盖，
+  // 否则既有加密数据将无法解密。其他任何阶段都只读不生成。
+  await ensureEncryptionSecret(c.env)
 
   if (existing) {
     // admin 账号已存在但尚未设置密码（未初始化）：直接更新

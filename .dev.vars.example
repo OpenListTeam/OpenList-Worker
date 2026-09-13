@@ -1,14 +1,16 @@
 # =============================================================================
-# OpenList-TSWorker · 环境变量（模板）
+# OpenList-TSWorker · 需要配置的 Secret（模板）
 # =============================================================================
 #
-# 用途：Cloudflare「Deploy to Cloudflare」按钮会读取本文件（或 .dev.vars.example）
-#       识别需要用户填写的变量，并在部署页生成对应输入项。
+# 用途：Cloudflare「Deploy to Cloudflare」按钮会读取本文件，识别出部署时需要
+#       用户填写的 Secret，并在部署页生成对应的输入项。用户填入真实值后，
+#       Cloudflare 会把它保存为该 Worker 的 Secret（加密环境变量）。
 #
 # 为什么值留空：本文件会提交到公开仓库，绝不能包含真实密钥。
-#   部署时用户填入的值会成为该 Worker 的 Secret，后续更新不会被覆盖。
+# 更新 Worker 时：Secrets 不会被 wrangler deploy 覆盖或删除，
+#                 只有显式执行 `wrangler secret delete <name>` 才会移除。
 #
-# 本地开发：复制为 `.env`（已被 .gitignore 忽略）并填入真实值。
+# 本地开发：复制为 `.dev.vars`（已被 .gitignore 忽略）并填入真实值。
 #
 # 完整变量说明见：
 #   https://doc.oplist.org/ecosystem/official_worker/guide_env
@@ -25,7 +27,7 @@ JWT_SECRET=
 # 跳过安装向导，直接用此密码初始化 admin 账号。留空则由浏览器向导设置。
 ADMIN_PASS=
 
-# CORS 允许来源白名单，逗号分隔，如 https://yourdomain.com
+# CORS 允许来源白名单，逗号分隔，如 https://yourdomain.com,https://www.yourdomain.com
 # 留空表示仅允许同源请求。
 ALLOW_URLS=
 

@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import type { StorageDriver } from "../driver/base"
+import { getDb, saveDb } from "../model/db"
 import {
   getItem,
   getOrCreateDriver,
@@ -57,34 +58,23 @@ test("Node persistence is awaited without waitUntil", async () => {
 })
 
 test("mounted storage roots return without initializing the remote driver", async () => {
-  const previousDatabase = process.env.DATABASE_JSON
-  process.env.DATABASE_JSON = JSON.stringify({
-    settings: [],
-    users: [],
-    storages: [
-      {
-        id: "storage-root-fast-path",
-        driver: "189Cloud",
-        mount_path: "/189",
-        addition: JSON.stringify({ root_folder_id: "-11" }),
-        modified: "2026-08-23T00:00:00.000Z",
-        disabled: false,
-      },
-    ],
-    shares: [],
-  })
+  // 通过公开 API 写入内存库（无持久化后端时 getDb 使用模块级 memoryDb）
+  const db: any = await getDb()
+  db.storages = [
+    {
+      id: "storage-root-fast-path",
+      driver: "189Cloud",
+      mount_path: "/189",
+      addition: JSON.stringify({ root_folder_id: "-11" }),
+      modified: "2026-08-23T00:00:00.000Z",
+      disabled: false,
+    },
+  ]
+  await saveDb(db)
 
-  try {
-    const result = await getItem("/189")
-    assert.equal(result.provider, "189Cloud")
-    assert.equal(result.item.name, "189")
-    assert.equal(result.item.is_dir, true)
-    assert.equal(result.item.sign, "-11")
-  } finally {
-    if (previousDatabase === undefined) {
-      delete process.env.DATABASE_JSON
-    } else {
-      process.env.DATABASE_JSON = previousDatabase
-    }
-  }
+  const result = await getItem("/189")
+  assert.equal(result.provider, "189Cloud")
+  assert.equal(result.item.name, "189")
+  assert.equal(result.item.is_dir, true)
+  assert.equal(result.item.sign, "-11")
 })

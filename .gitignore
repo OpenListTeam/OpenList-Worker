@@ -21,6 +21,10 @@ public_data
 .env
 .env.local
 .env.*.local
+# real secrets (keep the *.example templates tracked)
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
 .wrangler
 .reasonix
 
@@ -28,8 +32,9 @@ public_data
 *.tsbuildinfo
 .rollup.cache
 
-# local-only dev config (D1 backend testing; not for deployment)
+# local-only dev config (may contain real secrets; never commit)
 wrangler.d1.toml
+wrangler.local.jsonc
 
 # OS files
 Thumbs.db
@@ -80,5 +85,10 @@ docs/3-Audit-Reports/
 docs/*AUDIT*.md
 docs/*SECURITY*.md
 docs/TASK-COMPLETION-REPORT.md
+# Local design/PR/review notes (kept on disk, not tracked)
+docs/storage-architecture.md
+docs/PR-config-unification.md
+docs/code-review-*.md
 wrangler.d1.jsonc
 .wrangler-dryrun/
+.tmp-dryrun/

@@ -37,7 +37,7 @@ Click the button below to deploy this project to the corresponding platform with
 
 | EdgeOne Makers · International | EdgeOne Makers · China | Cloudflare Workers · Global |
 | :---: | :---: | :---: |
-| [![Deploy to EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=ENCRYPTION_SECRET,JWT_SECRET) | [![Deploy to EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=ENCRYPTION_SECRET,JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
+| [![Deploy to EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
 
 </div>
 
@@ -156,16 +156,17 @@ pnpm run deploy:worker
 
 **DB_FORMAT** (Data Storage Format)
 - `map` (default): Whole object JSON format, suitable for KV/Blob simple storage
-- `key`: Per-key storage format, each entity as a separate record (e.g., `openlist_tbl:users:1`), avoids large JSON
+- `key`: Per-key storage format, each entity as a separate record (e.g., `users_1`), avoids large JSON
 - `sql`: Relational database table format, fully compatible with Go backend, suitable for D1/MySQL
 
 **DB_DRIVER** (Database Driver)
 - `auto` (default): Auto-detect available drivers (priority: blob → cfkv → kv → d1)
 - `blob`: Tencent EdgeOne Blob / Alibaba ESA Blob
-- `cfkv`: Cloudflare KV REST API (requires `CF_ACCOUNT_ID`, `CF_KV_NAMESPACE_ID`, `CF_API_TOKEN`)
-- `kv`: Cloudflare KV binding
+- `cfkv`: Cloudflare KV REST API (requires `CF_ACCOUNT`, `CF_KV_UUID`, `CF_API_KEY`)
+- `kv`: Cloudflare KV binding (binding name is fixed to `KV`)
 - `d1`: Cloudflare D1 (SQLite)
-- `mysql`: MySQL / PostgreSQL (Node.js container only)
+- `do`: Cloudflare Durable Objects (SQLite)
+- `mysql`: MySQL (Node.js container only)
 
 **Recommended Configurations:**
 ```bash
@@ -184,14 +185,13 @@ DB_DRIVER=kv
 # Remote Cloudflare KV access
 DB_FORMAT=key
 DB_DRIVER=cfkv
-CF_ACCOUNT_ID=your_account_id
-CF_KV_NAMESPACE_ID=your_namespace_id
-CF_API_TOKEN=your_api_token
+CF_ACCOUNT=your_account_id
+CF_KV_UUID=your_namespace_id
+CF_API_KEY=your_api_token
 ```
 
 **Backward Compatibility:**
 - `DB_DRIVER=json` auto-converts to `DB_FORMAT=map` + auto-detect driver
-- `DB_JSON_BACKEND` is deprecated and auto-converts to `DB_DRIVER`
 
 **Table Naming (SQL format only):**
 The `sql` format uses columnar tables with the same naming strategy as the Go backend's GORM (snake_case + pluralized names + prefix):
@@ -205,13 +205,12 @@ The `sql` format uses columnar tables with the same naming strategy as the Go ba
 | `Meta`        | `x_metas`          |
 | (TS only)     | `x_plugins`        |
 
-The prefix defaults to `x_` and is controlled by the `TABLE_PREFIX` env var (matching the Go backend). Keep the default to share the same physical database with the Go backend.
+The prefix is fixed to `x_` (matching the Go backend default), so no extra configuration is needed to share the same physical database with the Go backend.
 
 #### Security Configuration
 
-- `ENCRYPTION_SECRET`: Data encryption key (required)
-- `JWT_SECRET`: JWT token signing key (required)
-- `ADMIN_PASSWORD`: Initial admin password
+- `JWT_SECRET`: JWT signing key (required), also used for data encryption and cron task authentication
+- `ADMIN_PASS`: Initial admin password (optional, skips the setup wizard and auto-initializes admin)
 
 #### Other Configuration
 

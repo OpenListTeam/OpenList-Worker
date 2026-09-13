@@ -6,27 +6,26 @@
 // 此中间件在边缘层先行拦截：浏览器导航请求（Accept: text/html）且不属于
 // 后端路径时，透明改写为 /index.html，由静态 CDN 直接返回页面壳；
 // /api、/d、/p、/sd、/health 等后端路径照常放行到云函数。
+//
+// 注意：EdgeOne 的 middleware 属于轻量中间件，context 仅提供
+// request / next / redirect / rewrite / geo / clientIp，**没有 env**，
+// 因此无法访问 KV 或环境变量。KV 代理请使用 functions/ 目录下的
+// Edge Functions（见 functions/kv-get 等），那里才具备 KV 能力。
 export function middleware(context) {
-  const { request } = context
+  const { request, next, rewrite } = context
   const { pathname } = new URL(request.url)
   const accept = request.headers.get("accept") || ""
 
   const isBackend =
-    pathname === "/health" || /^\/(api|d|p|sd)(\/|$)/.test(pathname)
+    pathname === "/health" || /^\/(api|d|p|sd|kv-get|kv-put|kv-delete|kv-list)(\/|$)/.test(pathname)
 
   if (
     !isBackend &&
     (request.method === "GET" || request.method === "HEAD") &&
     accept.includes("text/html")
   ) {
-    return context.rewrite("/index.html")
+    return rewrite("/index.html")
   }
 
-  return context.next()
-}
-
-// 显式声明匹配所有路由（后端路径在 middleware 内部放行），
-// 避免构建时出现 "Could not find config in middleware file" 警告
-export const config = {
-  matcher: ["/:path*"],
+  return next()
 }

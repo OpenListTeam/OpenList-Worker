@@ -5,9 +5,9 @@
  * 适用于外部服务访问、CI/CD、跨账号访问等场景。
  * 
  * 环境变量：
- * - CF_ACCOUNT_ID / CLOUDFLARE_ACCOUNT_ID
- * - CF_KV_NAMESPACE_ID / CLOUDFLARE_KV_NAMESPACE_ID
- * - CF_API_TOKEN / CLOUDFLARE_API_TOKEN
+ * - CF_ACCOUNT / CLOUDFLARE_ACCOUNT_ID
+ * - CF_KV_UUID / CLOUDFLARE_KV_NAMESPACE_ID
+ * - CF_API_KEY / CLOUDFLARE_API_TOKEN
  */
 import type { Driver } from "../types"
 
@@ -19,9 +19,9 @@ interface CfKvConfig {
 
 function getCfKvConfig(env?: any): CfKvConfig | null {
   const e = env || (typeof process !== "undefined" ? process.env : {}) || {}
-  const accountId = e.CF_ACCOUNT_ID || e.CLOUDFLARE_ACCOUNT_ID
-  const namespaceId = e.CF_KV_NAMESPACE_ID || e.CLOUDFLARE_KV_NAMESPACE_ID
-  const apiToken = e.CF_API_TOKEN || e.CLOUDFLARE_API_TOKEN
+  const accountId = e.CF_ACCOUNT || e.CLOUDFLARE_ACCOUNT_ID
+  const namespaceId = e.CF_KV_UUID || e.CLOUDFLARE_KV_NAMESPACE_ID
+  const apiToken = e.CF_API_KEY || e.CLOUDFLARE_API_TOKEN
 
   if (!accountId || !namespaceId || !apiToken) return null
 
@@ -122,7 +122,7 @@ export const cfkvDriver: Driver = {
         platform: "Cloudflare KV API (REST)",
         mode: "cfkv",
         error:
-          "Missing CF_ACCOUNT_ID, CF_KV_NAMESPACE_ID, or CF_API_TOKEN",
+          "Missing CF_ACCOUNT, CF_KV_UUID, or CF_API_KEY",
       }
     }
 

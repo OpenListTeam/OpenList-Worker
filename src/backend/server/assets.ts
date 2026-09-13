@@ -31,16 +31,16 @@ assetsRouter.get("/favicon.ico", redirectToLogo)
 /**
  * CDN 静态资源重定向路由。
  * 
- * 当配置了 CDN_URL 时，前端静态资源（assets/、images/ 等）将重定向到 CDN 加载。
+ * 当配置了 ASSET_URLS 时，前端静态资源（assets/、images/ 等）将重定向到 CDN 加载。
  * 支持 $version 占位符自动替换为前端版本号。
  * 
  * 参考原版 OpenList 实现：https://github.com/OpenListTeam/OpenList/blob/main/server/static/static.go
  * 
- * 示例：CDN_URL = https://registry.npmmirror.com/@openlist-frontend/openlist-frontend/$version/files/dist
+ * 示例：ASSET_URLS = https://registry.npmmirror.com/@openlist-frontend/openlist-frontend/$version/files/dist
  */
 assetsRouter.get("/:folder/:filepath*", async (c) => {
   const env = c.env as any
-  const cdnUrl = env?.CDN_URL || process.env.CDN_URL
+  const cdnUrl = env?.ASSET_URLS || process.env.ASSET_URLS
   
   if (!cdnUrl) {
     // 未配置 CDN，返回 404

@@ -178,11 +178,7 @@ export default {
     }
     const edgeKvCtor = getEdgeKVCtorAtRequestTime()
     if (env && typeof env !== "undefined") {
-      const namespace =
-        env.KV_NAMESPACE ||
-        env.ESA_KV_NAMESPACE ||
-        env.EDGEONE_KV_NAME ||
-        "openlist"
+      const namespace = env.KV_NAMESPACE || "openlist"
       if (edgeKvCtor) {
         try {
           const edgeKv = new edgeKvCtor({ namespace })

@@ -3,6 +3,25 @@
   "version": "4.2.3",
   "type": "module",
   "packageManager": "pnpm@9.15.4",
+  "cloudflare": {
+    "bindings": {
+      "JWT_SECRET": {
+        "description": "Signs tokens and encrypts sensitive fields (drive credentials, 2FA secrets). Generate one with `openssl rand -hex 32`."
+      },
+      "ADMIN_PASS": {
+        "description": "Optional. If set, skips the setup wizard and initializes the admin account with this password."
+      },
+      "ALLOW_URLS": {
+        "description": "Optional. Comma-separated CORS allowlist, e.g. `https://yourdomain.com`. Leave empty to allow same-origin only."
+      },
+      "DB_FORMAT": {
+        "description": "Storage format: `map` (whole JSON), `key` (per-key), `sql` (relational, Go-compatible). Defaults to `map`."
+      },
+      "DB_DRIVER": {
+        "description": "Storage driver: `auto` (default), `blob`, `cfkv`, `kv`, `d1`, `do`, `mysql`. Leave as `auto` unless you need to force one."
+      }
+    }
+  },
   "author": {
     "name": "The OpenListTeam Contributors"
   },
@@ -31,7 +50,11 @@
     "test:189": "tsx --test src/backend/drivers/189/*.test.ts",
     "test:drivers": "tsx --test \"src/backend/drivers/**/*.test.ts\"",
     "test:server": "tsx --test \"src/backend/server/*.test.ts\"",
-    "test:all": "npm run test:189 && npm run test:drivers && npm run test:server",
+    "test:store": "tsx --test src/backend/internal/model/store/store.test.ts",
+    "test:regress": "tsx scripts/_regress.mjs",
+    "test:deploy": "node scripts/test-deploy.js",
+    "env:check": "tsx scripts/env-check.mjs",
+    "test:all": "npm run test:189 && npm run test:drivers && npm run test:server && npm run test:store && npm run test:regress",
     "sls:deploy": "serverless deploy",
     "sls:package": "serverless package",
     "sls:info": "serverless info",

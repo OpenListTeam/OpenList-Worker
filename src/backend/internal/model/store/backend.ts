@@ -7,7 +7,6 @@
  *
  * 向后兼容（旧配置自动映射）：
  * - DB_DRIVER=json → DB_FORMAT=map + 自动检测驱动
- * - DB_JSON_BACKEND=blob/kv/cf_rest → DB_DRIVER=blob/kv/cfkv
  */
 import type {
   Driver,
@@ -18,7 +17,7 @@ import type {
 } from "./types"
 import { blobDriver } from "./driver/blob"
 import { cfkvDriver } from "./driver/cfkv"
-import { kvDriver } from "./driver/kv"
+import { checkProxyConfig, kvDriver } from "./driver/kv"
 import { d1Driver } from "./driver/d1"
 import { doDriver } from "./driver/do"
 import { mysqlDriver } from "./driver/mysql"
@@ -40,29 +39,6 @@ function readEnv(key: string, defaultValue: string, env?: any): string {
  */
 export function readDriver(env?: any): StorageDriver {
   const e = env || (typeof process !== "undefined" ? process.env : {}) || {}
-
-  // 向后兼容：DB_JSON_BACKEND → DB_DRIVER
-  if (e.DB_JSON_BACKEND) {
-    const backend = String(e.DB_JSON_BACKEND).trim().toLowerCase()
-    console.warn(
-      "[DEPRECATED] DB_JSON_BACKEND is deprecated. Use DB_DRIVER instead.",
-    )
-    switch (backend) {
-      case "blob":
-        return "blob"
-      case "kv":
-      case "binding":
-        return "kv"
-      case "cf_rest":
-      case "cf-rest":
-      case "cfrest":
-      case "rest":
-      case "api":
-        return "cfkv"
-      default:
-        return "auto"
-    }
-  }
 
   const driver = readEnv("DB_DRIVER", "auto", env) as StorageDriver
 
@@ -100,10 +76,85 @@ export function readFormat(env?: any): StorageFormat {
 }
 
 /**
- * 自动检测可用的驱动（优先级：blob → cfkv → kv → d1 → memory 回退）。
+ * 是否处于 Serverless / Worker 类运行环境。
+ *
+ * 判定目的：这些环境（Cloudflare Workers、EdgeOne Edge/Node 云函数、
+ * 阿里云 ESA 函数等）多实例、随时冷启，**内存存储完全无法持久化**，
+ * 且会给出「写入成功」的假象。因此在此类环境中永不使用内存后端。
+ *
+ * 判定依据全部为运行时特征（不依赖用户配置），命中任一即成立：
+ *  1. EdgeOne：请求上下文标记、KV/Blob 相关绑定、EdgeOne 专属全局变量
+ *  2. Cloudflare Workers：WebSocketPair / caches.default / CF 绑定
+ *  3. 阿里云 ESA：ESA 全局对象与绑定
+ *  4. 通用：注入型请求上下文（__requestOrigin / __requestContext）
+ */
+export function isServerlessRuntime(env?: any): boolean {
+  const g = globalThis as any
+  try {
+    // ── 通用：请求上下文由平台注入 ──
+    if (env?.__requestOrigin || env?.__requestContext || env?.__makersContext) {
+      return true
+    }
+
+    // ── EdgeOne ──
+    if (
+      env?.EDGEONE_BLOB ||
+      g?.EDGEONE_BLOB ||
+      typeof g?.EdgeOne !== "undefined"
+    ) {
+      return true
+    }
+
+    // ── Cloudflare Workers ──
+    // WebSocketPair 是 Workers 运行时专有的全局构造函数
+    if (typeof g.WebSocketPair === "function") return true
+    // caches.default 是 Workers 的 Cache API 形态
+    if (typeof g.caches !== "undefined" && g.caches?.default) return true
+
+    // ── 阿里云 ESA ──
+    if (
+      env?.ESA_BLOB ||
+      g?.ESA_BLOB ||
+      typeof g?.ESA !== "undefined"
+    ) {
+      return true
+    }
+
+    // ── EdgeOne Node 云函数环境变量特征 ──
+    // 平台会注入 SCF 相关变量，可据此识别（固定变量名，平台自动注入）
+    if (
+      env?.TENCENTCLOUD_SCF_FUNCTIONNAME ||
+      (typeof process !== "undefined" && process.env?.TENCENTCLOUD_SCF_FUNCTIONNAME)
+    ) {
+      return true
+    }
+  } catch {
+    // 检测自身的异常不应影响判定；保守视为非 serverless（本地/容器）
+  }
+  return false
+}
+
+/**
+ * 自动检测可用的驱动（优先级：mysql → d1 → kv → cfkv → blob → do）。
+ *
+ * mysql 仅在显式配置连接信息时参与探测（详见 hasMysqlConfig）。
+ *
+ * 若全部不可用：
+ *  - 本地/容器环境：回退内存（便于开发调试）
+ *  - Serverless / Worker 环境：**不回退内存**，抛错并引导用户配置，
+ *    避免「操作成功但数据丢失」的假象
  */
 async function autoDetectDriver(env?: any): Promise<Driver> {
-  const candidates = [blobDriver, cfkvDriver, kvDriver, d1Driver]
+  // 检测顺序：mysql → d1 → kv → cfkv → blob → do
+  //
+  // - mysql 需要网络连接，只有显式配置了连接信息才尝试，否则每次 auto 探测
+  //   都会先尝试建 TCP 连接（失败后继续），在 CF/EO 等边缘环境上纯属浪费。
+  // - kv 与 cfkv 同为 KV 语义：优先本地 binding（更直接、更快），
+  //   其次才走 Cloudflare REST API。
+  const candidates: Driver[] = []
+
+  if (hasMysqlConfig(env)) candidates.push(mysqlDriver)
+  candidates.push(d1Driver, kvDriver, cfkvDriver, blobDriver, doDriver)
 
   for (const driver of candidates) {
     if (await driver.isAvailable(env)) {
@@ -112,7 +163,11 @@ async function autoDetectDriver(env?: any): Promise<Driver> {
     }
   }
 
-  // 无可用存储绑定 → 回退到内存（不持久化），与旧版 json 后端行为一致
+  if (isServerlessRuntime(env)) {
+    // 禁止在 serverless 环境静默使用内存存储
+    throw new Error(NO_STORAGE_MESSAGE)
+  }
+
   console.warn(
     "[DB] No storage binding detected, falling back to memory (data will not persist).",
   )
@@ -120,27 +175,98 @@ async function autoDetectDriver(env?: any): Promise<Driver> {
 }
 
 /**
+ * 是否显式配置了 MySQL 连接信息。
+ *
+ * 用于决定 auto 模式是否尝试 mysql 驱动：MySQL 是网络连接，
+ * 无配置时探测会产生无谓的 TCP 建连开销，必须由运维显式声明。
+ */
+function hasMysqlConfig(env?: any): boolean {
+  const e = env || {}
+  const p = typeof process !== "undefined" ? process.env || {} : {}
+  return Boolean(
+    e.MYSQL_URLS ||
+      p.MYSQL_URLS ||
+      e.MYSQL_HOST ||
+      p.MYSQL_HOST,
+  )
+}
+
+/**
+ * 无可用存储驱动时的错误信息（英文）。
+ *
+ * 面向用户，需说明「为什么失败」与「如何解决」。
+ */
+export const NO_STORAGE_MESSAGE =
+  "No storage backend is available. Data cannot be persisted in this " +
+  "runtime (serverless environments cannot use in-memory storage).\n" +
+  "Configure one of the following:\n" +
+  "  1. EdgeOne Blob (recommended, zero config if the project provides it)\n" +
+  "  2. EdgeOne KV: bind a KV namespace to Edge Functions, then set " +
+  "DB_DRIVER=kv (DB_FORMAT=map or key) and JWT_SECRET\n" +
+  "  3. Cloudflare KV / D1: bind the namespace and set DB_DRIVER accordingly\n" +
+  "Environment variables to set in the project settings:\n" +
+  "  DB_DRIVER=blob | kv | cfkv | d1 | do | mysql\n" +
+  "  DB_FORMAT=map | key | sql"
+
+/** 驱动名 → 实现 */
+const DRIVER_MAP: Record<string, Driver> = {
+  blob: blobDriver,
+  cfkv: cfkvDriver,
+  kv: kvDriver,
+  d1: d1Driver,
+  do: doDriver,
+  mysql: mysqlDriver,
+}
+
+/**
  * 解析驱动。
+ *
+ * 语义约定：
+ *  - `auto`：按优先级探测，全部不可用时：worker 环境报错，本地回退内存。
+ *  - 显式指定（如 DB_DRIVER=kv）：**不回退**。若该驱动不可用则直接报错，
+ *    避免用户以为在用 KV、实际却落到别的后端或内存里。
  */
 async function resolveDriver(name: StorageDriver, env?: any): Promise<Driver> {
-  switch (name) {
-    case "blob":
-      return blobDriver
-    case "cfkv":
-      return cfkvDriver
-    case "kv":
-      return kvDriver
-    case "d1":
-      return d1Driver
-    case "do":
-      return doDriver
-    case "mysql":
-      return mysqlDriver
-    case "auto":
-      return await autoDetectDriver(env)
-    default:
-      throw new Error(`Unknown driver: ${name}`)
+  if (name === "auto") {
+    return await autoDetectDriver(env)
   }
+
+  const driver = DRIVER_MAP[name]
+  if (!driver) {
+    throw new Error(
+      `Unknown DB_DRIVER "${name}". Valid values: auto, ${Object.keys(
+        DRIVER_MAP,
+      ).join(", ")}`,
+    )
+  }
+
+  // 显式指定时必须可用，否则报错（不回退）
+  let available = false
+  try {
+    available = await driver.isAvailable(env)
+  } catch {
+    available = false
+  }
+
+  // 内存驱动在 worker 环境永不接受：数据会随实例销毁而消失，
+  // 但接口仍返回成功，属于最危险的一类「静默数据丢失」。
+  if (driver === memoryDriver && isServerlessRuntime(env)) {
+    throw new Error(NO_STORAGE_MESSAGE)
+  }
+
+  if (!available) {
+    throw new Error(
+      `DB_DRIVER is set to "${name}", but that driver is not available in ` +
+        `this runtime. No fallback is performed for an explicitly configured ` +
+        `driver.\n` +
+        `Check the binding/credentials for "${name}", or set DB_DRIVER=auto ` +
+        `to let the platform pick an available backend.\n` +
+        `Environment: ${isServerlessRuntime(env) ? "serverless/worker" : "local/container"}`,
+    )
+  }
+
+  console.log(`[DB] Using explicitly configured driver: ${driver.name}`)
+  return driver
 }
 
 /**
@@ -167,6 +293,30 @@ let cachedFormat: FormatAdapter | null = null
 let cachedConfig: string | null = null
 
 /**
+ * env 对象的稳定身份编号。
+ *
+ * 为什么需要：auto 模式下驱动探测结果取决于「该 env 里有哪些绑定」。
+ * 若仅以 driverName:formatName 做缓存键，同一个进程内先后出现两个不同
+ * env（一个有 Blob、一个只有 KV）时会串味。这里给每个 env 对象分配一个
+ * 稳定的自增 ID（WeakMap，不阻止 GC），把「是否同一个 env」纳入缓存键。
+ *
+ * 代价极低：同一 env 对象多次调用恒得同一 ID；不同对象则重探测一次。
+ */
+const envIds = new WeakMap<object, number>()
+let envIdSeq = 0
+function envFingerprint(env?: any): string {
+  if (env && (typeof env === "object" || typeof env === "function")) {
+    let id = envIds.get(env as object)
+    if (id === undefined) {
+      id = ++envIdSeq
+      envIds.set(env as object, id)
+    }
+    return String(id)
+  }
+  return "none"
+}
+
+/**
  * 获取存储后端（驱动 + 格式）。
  */
 export async function getStorageBackend(
@@ -174,7 +324,13 @@ export async function getStorageBackend(
 ): Promise<{ driver: Driver; format: FormatAdapter }> {
   const driverName = readDriver(env)
   const formatName = readFormat(env)
-  const config = `${driverName}:${formatName}`
+  // 缓存键必须包含「影响探测结果的环境特征」。
+  // 仅用 driverName:formatName 是不够的：当 DB_DRIVER=auto 时，不同 env
+  // 可能探测出不同驱动（如本地 env 回退 memory、serverless env 报错，
+  // 或一个 env 有 Blob 绑定、另一个只有 KV），共用缓存会返回错误结果。
+  // 因此额外纳入「运行时类型 + env 身份」。
+  const runtimeTag = isServerlessRuntime(env) ? "sl" : "local"
+  const config = `${driverName}:${formatName}:${runtimeTag}:${envFingerprint(env)}`
 
   if (cachedDriver && cachedFormat && cachedConfig === config) {
     return { driver: cachedDriver, format: cachedFormat }
@@ -217,20 +373,189 @@ export async function getStoreBackend(env?: any): Promise<StoreBackend> {
 
 /**
  * 当前后端的健康/连接状态，用于 /debug/info 与 /admin/kv/status。
+ *
+ * 若为 EdgeOne KV 代理模式且缺少必需的密钥，会返回 configError，
+ * 由上层接口透传给前端，避免用户只看到莫名的 401。
  */
 export async function getStoreStatus(env?: any): Promise<any> {
-  const { driver, format } = await getStorageBackend(env)
-  let health: any = null
+  let driver: any = null
+  let format: any = null
+  let configError: string | null = null
 
+  try {
+    const resolved = await getStorageBackend(env)
+    driver = resolved.driver
+    format = resolved.format
+  } catch (err: any) {
+    // 无可用存储（如 serverless 环境未配置）时不应让状态接口崩溃，
+    // 而是返回可读的配置错误。
+    const msg = String(err?.message || err)
+    return {
+      driver: "none",
+      format: "none",
+      available: false,
+      configError: msg.includes("No storage backend is available")
+        ? NO_STORAGE_MESSAGE
+        : msg,
+    }
+  }
+
+  let health: any = null
   try {
     health = await driver.health(env)
   } catch (err: any) {
     health = { connected: false, error: err?.message || String(err) }
   }
 
+  // 代理模式下的配置校验（缺密钥时给出可操作的提示）
+  if (driver.name === "kv") {
+    try {
+      configError = checkProxyConfig(env)
+    } catch {
+      configError = null
+    }
+    if (configError) {
+      console.error("[DB] KV proxy configuration error:\n" + configError)
+    }
+  }
+
   return {
     driver: driver.name,
     format: format.name,
     ...(health || {}),
+    ...(configError ? { configError, available: false } : {}),
   }
+}
+
+/**
+ * 判断当前环境是否拥有「可持久化」的存储。
+ *
+ * 判定为不可用的情况：
+ *   - 没有任何驱动（driver 为 none / 空）
+ *   - 退化为内存驱动（重启即丢，serverless 下不可接受）
+ *   - 驱动配置存在错误
+ *   - 驱动自报不健康（连接失败、鉴权失败等）
+ */
+export async function isPersistentStorageAvailable(env?: any): Promise<boolean> {
+  const status = await getStorageStatusSafe(env)
+  return isPersistentStatus(status)
+}
+
+/** 存储状态查询，任何异常都折叠成「不可用」状态而非抛出。 */
+async function getStorageStatusSafe(env?: any): Promise<any> {
+  try {
+    return await getStoreStatus(env)
+  } catch (err: any) {
+    return {
+      driver: "none",
+      format: "none",
+      available: false,
+      configError: String(err?.message || err),
+    }
+  }
+}
+
+/**
+ * 持久化可用性的统一判定（单一来源）。
+ *
+ * 供 isPersistentStorageAvailable() 与 getStoreConfigError() 共用，
+ * 避免两处规则漂移导致「自检说不可用、实际请求却放行」。
+ */
+function isPersistentStatus(status: any): boolean {
+  const driver = String(status?.driver ?? "none")
+  const hasDriver = driver !== "none" && driver !== ""
+  const isMemory = driver === "memory"
+  const hasConfigError = Boolean(status?.configError)
+  // health 失败时 getStoreStatus 会带 available:false
+  const driverHealthy = status?.available !== false
+  return hasDriver && !isMemory && !hasConfigError && driverHealthy
+}
+
+/**
+ * 仅返回存储配置错误（无错误时为 null）。
+ *
+ * 供全局中间件在每个 API 请求上做快速拦截。判定复用 getStoreStatus，
+ * 因此与 isPersistentStorageAvailable() / /public/env_check 结论一致。
+ *
+ * 不额外做缓存：getStorageBackend 内部已按 env 指纹缓存驱动解析，
+ * 而 checkProxyConfig 是纯同步读取 env，开销可忽略。
+ */
+export async function getStoreConfigError(env?: any): Promise<string | null> {
+  if (!env || typeof env !== "object") return null
+
+  // 缺代理密钥时优先给出「补密钥」这种可操作提示，而不是笼统的驱动错误。
+  // checkProxyConfig 是纯同步读取，开销可忽略。
+  //
+  // 两种入口都要覆盖：
+  //   1. 显式 DB_DRIVER=kv
+  //   2. auto 模式最终选中 kv 驱动（否则用户只会看到不可读的 "HTTP 401"，
+  //      而真正原因是 X-Internal-Call 的密钥与 Edge Function 不一致）
+  const isKvRequested =
+    String(env?.DB_DRIVER || "").trim().toLowerCase() === "kv"
+  if (isKvRequested) {
+    const kvIssue = checkProxyConfig(env)
+    if (kvIssue) {
+      console.error("[DB] KV proxy configuration error:\n" + kvIssue)
+      return kvIssue
+    }
+  }
+
+  const status = await getStorageStatusSafe(env)
+
+  // 配置齐全且健康：无错误
+  if (isPersistentStatus(status)) return null
+
+  // 选中了 kv 但代理不可用：区分「缺密钥」与「密钥不匹配」。
+  // 后者表现为 HTTP 401 —— 代理已部署，只是 JWT_SECRET 与 Edge Function
+  // 不一致或被轮换过，需要明确指出来才能排查。
+  if (!isKvRequested && String(status?.driver ?? "") === "kv") {
+    const kvIssue = checkProxyConfig(env)
+    if (kvIssue) {
+      console.error("[DB] KV proxy configuration error:\n" + kvIssue)
+      return kvIssue
+    }
+    if (status?.mode === "proxy" && status?.error?.includes("401")) {
+      const hint =
+        "KV proxy rejected the internal call (HTTP 401). The JWT_SECRET used " +
+        "by this deployment does not match the one configured on the Edge " +
+        "Functions serving the proxy. Make sure both use the same JWT_SECRET.\n" +
+        "Alternatively set EO_KV_URLS to the correct deployment origin."
+      console.error("[DB] KV proxy authentication failed:\n" + hint)
+      return hint
+    }
+  }
+
+  // 已有明确原因（缺密钥 / 驱动解析失败 / 健康检查失败）
+  const reason: string | null = status?.configError
+    ? String(status.configError)
+    : null
+  if (reason) {
+    console.error("[DB] Storage configuration error:\n" + reason)
+    return reason
+  }
+
+  // 内存兜底：serverless 下写入会静默丢失，需要可操作提示
+  if (String(status?.driver ?? "none") === "memory") {
+    console.error("[DB] Storage configuration error:\n" + NO_STORAGE_MESSAGE)
+    return NO_STORAGE_MESSAGE
+  }
+
+  const healthError = status?.error ? String(status.error) : null
+  if (healthError) {
+    console.error("[DB] Storage unhealthy:\n" + healthError)
+    return healthError
+  }
+
+  // 走到这里说明 isPersistentStatus 判为「不可用」但没有任何具体原因字段
+  // （例如驱动自报 available:false 却未提供 error 文本）。此时**不能返回 null**，
+  // 否则 503 拦截会静默失效，请求继续以「看似成功」的方式写进不可用后端。
+  // 给出一条基于驱动名的兜底错误，保证判定与拦截始终一致。
+  const driverName = String(status?.driver ?? "none")
+  const fallback =
+    driverName === "none" || driverName === ""
+      ? NO_STORAGE_MESSAGE
+      : `Storage driver "${driverName}" is not available in this runtime. ` +
+        `Check its configuration and bindings, or set DB_DRIVER=auto.`
+  console.error("[DB] Storage unavailable:\n" + fallback)
+  return fallback
 }

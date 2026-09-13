@@ -1,0 +1,325 @@
+/**
+ * 回归验证：本轮全部改动
+ */
+import http from "node:http"
+
+const proxy = await import("../functions/_kv-proxy.js")
+const backendMod = await import("../src/backend/internal/model/store/backend.ts")
+const dbMod = await import("../src/backend/internal/model/db.ts")
+const kvDrv = await import("../src/backend/internal/model/store/driver/kv.ts")
+const codec = await import("../src/backend/internal/model/store/keycodec.ts")
+const keyFormat = await import("../src/backend/internal/model/store/format/key.ts")
+const jsonMod = await import("../src/backend/internal/model/store/json.ts")
+const { encrypt, decrypt } = await import("../src/backend/pkg/crypto.ts")
+
+const JWT_SECRET = "jwt-secret-32-characters-long!!"
+const ENC_PREFIX = "enc:v1:"
+const KV_RE = /^[A-Za-z0-9_]+$/
+const results = []
+const check = (n, ok, d = "") => {
+  results.push({ n, ok })
+  if (!ok) console.log(`FAIL  ${n}${d ? `  ${d}` : ""}`)
+}
+
+const store = new Map()
+function readBody(req) {
+  return new Promise((r) => {
+    let b = ""
+    req.on("data", (c) => (b += c))
+    req.on("end", () => r(b))
+  })
+}
+const server = http.createServer(async (req, res) => {
+  const { pathname, searchParams } = new URL(req.url, "http://x")
+  const raw = await readBody(req)
+  const request = {
+    url: `http://x${req.url}`,
+    method: req.method,
+    headers: { get: (k) => req.headers[String(k).toLowerCase()] ?? null },
+    json: async () => JSON.parse(raw || "{}"),
+  }
+  const auth = await proxy.authorize(request, { JWT_SECRET })
+  let status = 200
+  let body
+  if (!auth.ok) {
+    status = 401
+    body = { error: auth.reason }
+  } else if (pathname === "/kv-get") {
+    const k = searchParams.get("key")
+    body = { value: store.has(k) ? store.get(k) : null }
+  } else if (pathname === "/kv-put") {
+    const { key, value } = JSON.parse(raw || "{}")
+    if (!KV_RE.test(key)) {
+      status = 400
+      body = { error: "Key can only contain letters, numbers, and underscores" }
+    } else {
+      store.set(key, String(value))
+      body = { success: true }
+    }
+  } else if (pathname === "/kv-list") {
+    const prefix = searchParams.get("prefix") || ""
+    body = { keys: [...store.keys()].filter((k) => k.startsWith(prefix)) }
+  } else if (pathname === "/kv-delete") {
+    store.delete(searchParams.get("key"))
+    body = { success: true }
+  } else {
+    status = 404
+    body = { error: "nf" }
+  }
+  res.writeHead(status, { "Content-Type": "application/json" })
+  res.end(JSON.stringify(body))
+})
+await new Promise((r) => server.listen(0, r))
+const origin = `http://127.0.0.1:${server.address().port}`
+
+const respClient = { status: "ready", send() { throw new Error("cannot find the collection by name") } }
+
+try {
+  console.log("=== A. 键名编码 ===")
+  check("users_1", codec.entityKeyOf("users", "1") === "users_1", codec.entityKeyOf("users", "1"))
+  check("下划线不转义", codec.entityKeyOf("settings", "site_title") === "settings_site_title")
+  check("无 xx 冗余", !codec.entityKeyOf("settings", "site_title").includes("xx"))
+  check("无历史前缀", !codec.entityKeyOf("users", "1").includes("openlist_tbl"))
+  const uuid = "550e8400-e29b-41d4-a716-446655440000"
+  check("UUID 合法", KV_RE.test(codec.entityKeyOf("users", uuid)))
+  check("UUID 可逆", codec.decodeKeyPart(codec.encodeKeyPart(uuid)) === uuid)
+  for (const s of ["a:b", "a/b", "a b", "用户", "emoji-😀", "a.b-c_d"]) {
+    check(`"${s}" 合法`, KV_RE.test(codec.encodeKeyPart(s)), codec.encodeKeyPart(s))
+    check(`"${s}" 可逆`, codec.decodeKeyPart(codec.encodeKeyPart(s)) === s)
+  }
+  check("空串 -> 0", codec.encodeKeyPart("") === "0")
+
+  console.log("=== B. 分表往返（严格键名）===")
+  const strict = {
+    name: "s",
+    async isAvailable() { return true },
+    async init() {},
+    async get(k) { return store.has(k) ? store.get(k) : null },
+    async put(k, v) {
+      if (!KV_RE.test(k)) throw new Error("Key can only contain letters, numbers, and underscores")
+      store.set(k, String(v))
+    },
+    async delete(k) { store.delete(k) },
+    async list(p) { return [...store.keys()].filter((k) => k.startsWith(p)) },
+    async health() { return { connected: true } },
+  }
+  store.clear()
+  await keyFormat.keyFormat.save(
+    {
+      users: [{ id: 1, username: "admin" }, { id: uuid, username: "u2" }],
+      storages: [{ id: "s-1" }],
+      settings: [{ key: "site_title", value: "OpenList" }],
+      shares: [{ id: "a/b" }], metas: [], plugins: [],
+    },
+    strict, {},
+  )
+  const back = await keyFormat.keyFormat.load(strict, {})
+  check("users 读回 2 条", back?.users?.length === 2, String(back?.users?.length))
+  check("数字主键", back?.users?.[0]?.username === "admin")
+  check("UUID 主键", back?.users?.[1]?.id === uuid)
+  let allLegal = true
+  for (const k of store.keys()) if (!KV_RE.test(k)) allLegal = false
+  check("全部键名合法", allLegal)
+  console.log("   键名:", [...store.keys()].slice(0, 3).join(" | "))
+
+  console.log("=== C. 密钥一致性 ===")
+  store.clear()
+  const envJwt = { DB_DRIVER: "kv", JWT_SECRET, __requestOrigin: origin }
+  check("env 有密钥 → 直接用", (await dbMod.ensureEncryptionSecret(envJwt)) === JWT_SECRET)
+  check("不写持久化", store.size === 0)
+
+  console.log("=== D. 加解密对称 ===")
+  const hashed = "a".repeat(64)
+  const sealed = ENC_PREFIX + (await encrypt(hashed, JWT_SECRET))
+  check("同密钥可解", (await decrypt(sealed.slice(ENC_PREFIX.length), JWT_SECRET)) === hashed)
+  let threw = false
+  try { await decrypt(sealed.slice(ENC_PREFIX.length), "other-key-32-characters-xxxx") } catch { threw = true }
+  check("异密钥失败", threw)
+
+  console.log("=== E. worker 禁内存 ===")
+  for (const [n, e] of [
+    ["__requestOrigin", { __requestOrigin: origin }],
+    ["EDGEONE_BLOB", { EDGEONE_BLOB: {} }],
+    ["ESA_BLOB", { ESA_BLOB: {} }],
+    ["TENCENTCLOUD_SCF_FUNCTIONNAME", { TENCENTCLOUD_SCF_FUNCTIONNAME: "f" }],
+  ]) check(`识别 ${n}`, backendMod.isServerlessRuntime(e) === true)
+  check("本地不误判", backendMod.isServerlessRuntime({}) === false)
+  let e1 = false
+  try { await backendMod.getStorageBackend({ __requestOrigin: origin }) } catch (x) { e1 = String(x.message).includes("No storage backend is available") }
+  check("worker 无存储抛错", e1)
+
+  console.log("=== F. 显式驱动不回退 ===")
+  let e2 = false
+  try { await backendMod.getStorageBackend({ DB_DRIVER: "blob" }) } catch (x) { e2 = String(x.message).includes("No fallback") }
+  check("显式 blob 不可用 → 抛错", e2)
+  let e3 = false
+  try { await backendMod.getStorageBackend({ DB_DRIVER: "bogus" }) } catch (x) { e3 = String(x.message).includes("Unknown DB_DRIVER") }
+  check("未知驱动 → 抛错", e3)
+  const ok = await backendMod.getStorageBackend({ DB_DRIVER: "kv", DB_FORMAT: "key", JWT_SECRET, __requestOrigin: origin })
+  check("显式 kv 可用 → 成功", ok.driver.name === "kv")
+
+  console.log("=== G. 代理端到端（RESP 陷阱）===")
+  const envP = { DB_DRIVER: "kv", DB_FORMAT: "key", KV: respClient, JWT_SECRET, __requestOrigin: origin }
+  const st = await backendMod.getStoreStatus(envP)
+  check("driver=kv format=key", st.driver === "kv" && st.format === "key")
+  check("无 configError", !st.configError)
+  store.clear()
+  const b2 = await backendMod.getStoreBackend(envP)
+  await b2.save({ users: [{ id: 1, username: "admin" }], storages: [], settings: [], shares: [], metas: [], plugins: [] }, envP)
+  const ld = await b2.load(envP)
+  check("代理 save/load 正常", ld?.users?.[0]?.username === "admin")
+
+  console.log("=== H. 配置错误透出 ===")
+  const ce1 = await backendMod.getStoreConfigError({ __requestOrigin: origin })
+  check("worker 无存储错误", typeof ce1 === "string" && ce1.includes("No storage backend"))
+  const ce2 = await backendMod.getStoreConfigError({ DB_DRIVER: "kv", KV: respClient })
+  check("KV 缺密钥错误（精确）", typeof ce2 === "string" && ce2.includes("JWT_SECRET"), String(ce2).slice(0, 50))
+  const ce3 = await backendMod.getStoreConfigError({ DB_DRIVER: "kv", KV: respClient, JWT_SECRET, __requestOrigin: origin })
+  check("配置完整 → null", ce3 === null)
+
+  console.log("=== I. 绑定形态 ===")
+  check("RESP 不算 binding", kvDrv.checkProxyConfig({ DB_DRIVER: "kv", KV: respClient }) !== null)
+  check("字符串不算", kvDrv.checkProxyConfig({ DB_DRIVER: "kv", KV: "n" }) !== null)
+  check("空对象不算", kvDrv.checkProxyConfig({ DB_DRIVER: "kv", KV: {} }) !== null)
+  check("Web KV 算", kvDrv.checkProxyConfig({ DB_DRIVER: "kv", KV: { async get() {}, async put() {} } }) === null)
+
+  console.log("=== I2. 安全：内部调用必须提交完整密钥 ===")
+  const mkReq = (headers) => ({
+    headers: { get: (k) => headers[k] ?? null },
+  })
+  // 完整密钥 → 通过
+  const okFull = await proxy.authorize(
+    mkReq({ "X-Internal-Call": JWT_SECRET }),
+    { JWT_SECRET },
+  )
+  check("完整密钥 → internal 通过", okFull.ok === true && okFull.mode === "internal")
+  // 仅前 16 位（历史实现）→ 必须拒绝
+  const okTrunc = await proxy.authorize(
+    mkReq({ "X-Internal-Call": JWT_SECRET.slice(0, 16) }),
+    { JWT_SECRET },
+  )
+  check("截断密钥 → 拒绝", okTrunc.ok === false)
+  // 空/错误密钥 → 拒绝
+  const okEmpty = await proxy.authorize(mkReq({ "X-Internal-Call": "" }), { JWT_SECRET })
+  check("空密钥 → 拒绝", okEmpty.ok === false)
+  // 内部头带入但不匹配时，不得回退到用户鉴权
+  const okMix = await proxy.authorize(
+    mkReq({ "X-Internal-Call": "wrong", Authorization: "Bearer whatever" }),
+    { JWT_SECRET },
+  )
+  check("错误内部头 → 不回退用户鉴权", okMix.ok === false)
+
+  console.log("=== I3. 安全：代理 origin 校验 ===")
+  const sanitize = jsonMod.sanitizeProxyOrigin
+  check("http 远程 → 拒绝", sanitize("http://evil.com", {}) === null)
+  check("https 远程 → 通过", sanitize("https://ok.com", {}) === "https://ok.com")
+  check("localhost http → 通过", sanitize("http://localhost:8787", {}) === "http://localhost:8787")
+  check("127.0.0.1 http → 通过", sanitize("http://127.0.0.1:1", {}) === "http://127.0.0.1:1")
+  check("file: 协议 → 拒绝", sanitize("file:///etc/passwd", {}) === null)
+  check("相对路径 → 拒绝", sanitize("/kv-get", {}) === null)
+  check("非法串 → 拒绝", sanitize("not a url", {}) === null)
+  check(
+    "显式 EO_KV_URLS 的 http 允许",
+    sanitize("http://192.168.1.5:8787", { EO_KV_URLS: "http://192.168.1.5:8787" }) === "http://192.168.1.5:8787",
+  )
+  check("末尾斜杠归一化", sanitize("https://ok.com/", {}) === "https://ok.com")
+
+  console.log("=== J. 密钥就绪仲裁（KV 最终一致性）===")
+  // 模拟写入延迟传播的 KV：put 后 delayMs 才对 get 可见
+  function makeDelayedKv(delayMs) {
+    const s = new Map()
+    return {
+      store: s,
+      binding: {
+        async get(k) { return s.has(k) ? s.get(k) : null },
+        async put(k, v) { setTimeout(() => s.set(k, v), delayMs) },
+        async delete(k) { s.delete(k) },
+        async list() { return { keys: [...s.keys()].map((name) => ({ name })) } },
+      },
+    }
+  }
+
+  // 未初始化（无 env 密钥、KV 无持久化密钥）→ ready=false
+  const dkv0 = makeDelayedKv(0)
+  const envR0 = { DB_DRIVER: "kv", DB_FORMAT: "map", KV: dkv0.binding, __requestOrigin: origin }
+  check("无密钥 → 未就绪", (await dbMod.isEncryptionReady(envR0)) === false)
+
+  // 有 env 密钥 → 立即就绪（不依赖 KV）
+  check("env 密钥 → 就绪", (await dbMod.isEncryptionReady({ ...envR0, JWT_SECRET })) === true)
+
+  // 写入延迟 200ms：ensureEncryptionSecret 应通过回读重试等到可读
+  const dkv1 = makeDelayedKv(200)
+  const envR1 = { DB_DRIVER: "kv", DB_FORMAT: "map", KV: dkv1.binding, __requestOrigin: origin }
+  const genKey = await dbMod.ensureEncryptionSecret(envR1)
+  check("延迟 KV 下生成成功", typeof genKey === "string" && genKey.length >= 16)
+  check("生成后 KV 内可读", dkv1.store.get("openlist_encryption_secret") === genKey)
+  check("生成后判定就绪", (await dbMod.isEncryptionReady(envR1)) === true)
+
+  // 幂等：再次调用复用同一密钥，不覆盖
+  const again = await dbMod.ensureEncryptionSecret(envR1)
+  check("幂等复用同密钥", again === genKey)
+
+  console.log("=== K. auto 驱动检测（顺序与平台边界）===")
+  const webKvB = { async get() { return null }, async put() { return true }, async delete() {}, async list() { return { keys: [] } } }
+  const d1Like = { prepare() { return { async run() {}, async all() { return { results: [] } }, async first() { return null } } } }
+  const doLike = { idFromName() { return { get() { return {} } } } }
+
+  // 注意：isServerlessRuntime 依据 globalThis 上的运行时特征（WebSocketPair）判定，
+  // 与真实 Workers 环境一致。这里临时注入 globalThis.WebSocketPair 模拟 CF。
+  const hadWSP = "WebSocketPair" in globalThis
+  const prevWSP = globalThis.WebSocketPair
+  globalThis.WebSocketPair = function () {}
+
+  try {
+    // CF：仅绑定 DO 必须能被 auto 探测到（此前 doDriver 不在候选里 → 误报无存储）
+    const onlyDo = await backendMod.getStorageBackend({
+      DB_DRIVER: "auto", DB_FORMAT: "map", DO: doLike,
+    }).then(b => b.driver.name).catch(e => "ERR")
+    check("CF 仅绑 DO → 选中 do", onlyDo === "do")
+
+    // CF：仅绑定 D1 → 选中 d1
+    const onlyD1 = await backendMod.getStorageBackend({
+      DB_DRIVER: "auto", DB_FORMAT: "map", DB: d1Like,
+    }).then(b => b.driver.name).catch(e => "ERR")
+    check("CF 仅绑 D1 → 选中 d1", onlyD1 === "d1")
+
+    // CF：KV + D1 同时存在 → d1 优先（顺序 mysql→d1→kv→cfkv→blob→do）
+    const kvAndD1 = await backendMod.getStorageBackend({
+      DB_DRIVER: "auto", DB_FORMAT: "map", DB: d1Like, KV: webKvB,
+    }).then(b => b.driver.name).catch(e => "ERR")
+    check("CF KV+D1 → d1 优先", kvAndD1 === "d1")
+
+    // serverless 无任何存储 → 抛错（不得回退内存，避免数据丢失）
+    const noStore = await backendMod.getStorageBackend({
+      DB_DRIVER: "auto", DB_FORMAT: "map",
+    }).then(() => "OK").catch(() => "THROWN")
+    check("serverless 无存储 → 抛错", noStore === "THROWN")
+
+    // 未配置 mysql 时不探测 mysql（避免无谓 TCP 建连）
+    const noMysqlCfg = await backendMod.getStorageBackend({
+      DB_DRIVER: "auto", DB_FORMAT: "map", KV: webKvB,
+    }).then(b => b.driver.name).catch(e => "ERR")
+    check("无 MYSQL 配置 → 不选 mysql", noMysqlCfg === "kv")
+
+    // KV binding 与 CF REST 同时可用 → 优先本地 binding（kv 在 cfkv 之前）
+    const kvAndRest = await backendMod.getStorageBackend({
+      DB_DRIVER: "auto", DB_FORMAT: "map",
+      KV: webKvB,
+      CF_ACCOUNT: "acc", CF_KV_UUID: "uuid", CF_API_KEY: "token",
+    }).then(b => b.driver.name).catch(e => "ERR")
+    check("KV + CF_REST → kv 优先于 cfkv", kvAndRest === "kv")
+  } finally {
+    if (hadWSP) globalThis.WebSocketPair = prevWSP
+    else delete globalThis.WebSocketPair
+  }
+} catch (err) {
+  check("测试执行", false, err.message)
+  console.error(err)
+} finally {
+  server.close()
+}
+
+const p = results.filter((x) => x.ok).length
+console.log(`\n${"=".repeat(44)}\n结果: ${p}/${results.length} 通过`)
+console.log(results.every((x) => x.ok) ? "ALL PASS" : "SOME FAILED")
+process.exit(results.every((x) => x.ok) ? 0 : 1)

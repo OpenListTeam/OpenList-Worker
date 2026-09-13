@@ -75,20 +75,20 @@ const permissionDenied = (c: any) =>
 
 // ---- 上传大小限制（M-5：防止超大请求体被整体读入内存导致 Worker OOM）----
 // 单次整体上传（/put /form）与分片单片（/upload/part）分开设限，
-// 均可通过环境变量 MAX_UPLOAD_SIZE / MAX_PART_SIZE 覆盖。
-const DEFAULT_MAX_UPLOAD_SIZE = 25 * 1024 * 1024 // 25MB
-const DEFAULT_MAX_PART_SIZE = 16 * 1024 * 1024 // 16MB
+// 均可通过环境变量 MAX_UPLOAD / MAX_UPPART 覆盖。
+const DEFAULT_MAX_UPLOAD = 25 * 1024 * 1024 // 25MB
+const DEFAULT_MAX_UPPART = 16 * 1024 * 1024 // 16MB
 
 function getUploadSizeLimit(c: any, part: boolean): number {
   const env = c.env || {}
-  const key = part ? "MAX_PART_SIZE" : "MAX_UPLOAD_SIZE"
+  const key = part ? "MAX_UPPART" : "MAX_UPLOAD"
   const raw =
     env[key] || (typeof process !== "undefined" ? process.env?.[key] : "")
   if (raw) {
     const n = parseInt(String(raw), 10)
     if (Number.isFinite(n) && n > 0) return n
   }
-  return part ? DEFAULT_MAX_PART_SIZE : DEFAULT_MAX_UPLOAD_SIZE
+  return part ? DEFAULT_MAX_UPPART : DEFAULT_MAX_UPLOAD
 }
 
 /** 返回超限时的上限字节数；未超限或无法判断（无 Content-Length）返回 null */

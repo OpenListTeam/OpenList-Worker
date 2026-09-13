@@ -8,10 +8,38 @@
 import type { Driver } from "../types"
 import { buildDdl, KV_SCHEMA_SQLITE } from "../schema"
 
+/**
+ * 判断对象是否具备 D1 绑定接口形态。
+ *
+ * 必须校验：环境变量 `DB` 可能只是「绑定名」字符串，而非绑定对象，
+ * 直接使用会得到 "db.prepare is not a function"。
+ */
+function isD1Like(b: any): boolean {
+  if (!b || typeof b !== "object") return false
+  try {
+    return typeof b.prepare === "function"
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 获取 D1 绑定。
+ *
+ * env 与 globalThis 独立检查：env 为真值时不阻断对 globalThis 的探测
+ * （EdgeOne Edge Functions 会把绑定注入为全局标识符）。
+ */
 function getD1(env?: any): any | null {
-  const e =
-    env || (typeof globalThis !== "undefined" ? (globalThis as any) : {})
-  return e?.DB || e?.OPENLIST_DB || null
+  const g = typeof globalThis !== "undefined" ? (globalThis as any) : {}
+
+  for (const name of ["DB", "OPENLIST_DB"]) {
+    const fromEnv = env?.[name]
+    if (isD1Like(fromEnv)) return fromEnv
+    const fromGlobal = g?.[name]
+    if (isD1Like(fromGlobal)) return fromGlobal
+  }
+
+  return null
 }
 
 const d1Inited = new WeakMap<object, boolean>()

@@ -297,8 +297,8 @@ export async function getOrInitUsers(envCtx: any) {
   const db = await getDb(envCtx)
   if (!db.users || db.users.length === 0) {
     const envPass =
-      (envCtx && envCtx.ADMIN_PASSWORD) ||
-      (typeof process !== "undefined" ? process.env?.ADMIN_PASSWORD : "") ||
+      (envCtx && envCtx.ADMIN_PASS) ||
+      (typeof process !== "undefined" ? process.env?.ADMIN_PASS : "") ||
       ""
     const guest = {
       id: 2,
@@ -313,7 +313,7 @@ export async function getOrInitUsers(envCtx: any) {
       pwd_update_at: new Date().toISOString(),
     }
     if (envPass) {
-      // 显式配置了 ADMIN_PASSWORD：自动初始化 admin（保持兼容）
+      // 显式配置了 ADMIN_PASS：自动初始化 admin（保持兼容）
       const admin: any = {
         id: 1,
         username: "admin",
@@ -338,7 +338,7 @@ export async function getOrInitUsers(envCtx: any) {
     // FIX(F-11): the old logic silently reset any non-64-hex password (e.g. a
     // legacy PBKDF2 hash) back to admin/admin — meaning a routine upgrade
     // could quietly reopen the admin account to the world. New behavior:
-    //   ADMIN_PASSWORD set -> explicit reset to that value (operator intent)
+    //   ADMIN_PASS set     -> explicit reset to that value (operator intent)
     //   password empty    -> random password, printed once to the log
     //   legacy-format     -> LEFT UNTOUCHED, only a warning is logged, so an
     //                        existing deployment is never locked out nor
@@ -347,8 +347,8 @@ export async function getOrInitUsers(envCtx: any) {
     const isValidFormat = /^[0-9a-f]{64}$/i.test(adminPass)
     if (adminUser && !isValidFormat) {
       const envPass =
-        (envCtx && envCtx.ADMIN_PASSWORD) ||
-        (typeof process !== "undefined" ? process.env?.ADMIN_PASSWORD : "") ||
+        (envCtx && envCtx.ADMIN_PASS) ||
+        (typeof process !== "undefined" ? process.env?.ADMIN_PASS : "") ||
         ""
       if (envPass) {
         await setUserPassword(adminUser, envPass)
@@ -357,14 +357,14 @@ export async function getOrInitUsers(envCtx: any) {
         // 未初始化：不再自动生成随机密码，交由 Web 安装向导（POST /api/public/init/setup）完成。
         // 前端会在 /api/public/init_status 返回未初始化时自动跳转到安装向导。
         console.warn(
-          "[SECURITY] Admin password is empty and no ADMIN_PASSWORD is set — the system is NOT initialized. " +
-            "Open the site in a browser to run the setup wizard, or set ADMIN_PASSWORD to initialize automatically.",
+          "[SECURITY] Admin password is empty and no ADMIN_PASS is set — the system is NOT initialized. " +
+            "Open the site in a browser to run the setup wizard, or set ADMIN_PASS to initialize automatically.",
         )
       } else {
         console.warn(
           "[SECURITY] Admin password uses a legacy hash format this build cannot verify; " +
             "it has been left untouched. Log in with your existing password and re-set it, " +
-            "or set ADMIN_PASSWORD to force a reset. It will NOT be reset to a default value.",
+            "or set ADMIN_PASS to force a reset. It will NOT be reset to a default value.",
         )
       }
     }

@@ -67,9 +67,9 @@ test("StaticHash produces consistent 64-char sha256 output (Go StaticHash)", asy
 
 test("getOrInitUsers preserves a legacy PBKDF2 admin hash instead of silently resetting to admin/admin", async () => {
   const env: any = {}
-  // 隔离 CI 环境变量：若 CI 设置了 ADMIN_PASSWORD，getOrInitUsers 会优先取
-  // process.env.ADMIN_PASSWORD，导致断言失败
-  delete process.env.ADMIN_PASSWORD
+  // 隔离 CI 环境变量：若 CI 设置了 ADMIN_PASS，getOrInitUsers 会优先取
+  // process.env.ADMIN_PASS，导致断言失败
+  delete process.env.ADMIN_PASS
   // Simulate leftover from the PBKDF2 build (PR #33 era): stored hash is
   // `pbkdf2:100000:<salt>:<hash>`, unverifiable by the current SHA-256 scheme.
   const fakePdkdf2Hash = `pbkdf2:100000:${"a".repeat(64)}:${"b".repeat(64)}`

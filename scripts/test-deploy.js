@@ -1,63 +1,65 @@
-// 测试 deploy.js 的解析与 wrangler.toml 更新逻辑（不调用真实 Cloudflare API）
-const { execSync } = require("node:child_process")
-const fs = require("node:fs")
+// deploy.js / wrangler.jsonc 相关约束的回归测试
+//
+// 【历史】本文件原先测试 deploy.js 中解析 `wrangler kv namespace list` 表格
+// 与 `kv namespace create` 输出的逻辑。该逻辑已废弃（见 deploy.js 末尾的注释块
+// 与 Issue #34）：wrangler 的自动预配无法按 title 复用已有命名空间，脚本手动
+// 创建只会产生孤儿资源并导致重复创建冲突。
+//
+// 现在 KV 由 wrangler.jsonc 中的 kv_namespaces 声明（省略 id 字段）自动创建
+// 与绑定，deploy.js 不再包含任何 KV 解析逻辑，因此这里只保留对关键约束的静态
+// 校验，防止有人又把脚本级 KV 创建逻辑加回来。
+import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
+import path from "node:path"
 
-// 1. 模拟 `wrangler kv namespace list` 表格输出（wrangler 4.x 格式）
-const mockList = `
-🌀 Listing namespaces with title filter "OpenListTeam-OpenList"
-┌──────────────────────────────────────┬──────────────────────────────┐
-│ id                                   │ title                        │
-├──────────────────────────────────────┼──────────────────────────────┤
-│ 0e48234248a84d4dbdc5a70e886773ea    │ openlist-KV │
-└──────────────────────────────────────┴──────────────────────────────┘
-`
-const re = /\|\s*([0-9a-fA-F]{32})\s*\|\s*([^|\n]+?)\s*\|/g
-const map = {}
-let m
-while ((m = re.exec(mockList)) !== null) map[m[2].trim()] = m[1].trim()
-console.log("解析 namespace:", JSON.stringify(map))
-const found = Object.keys(map).find((t) => t.includes("KV"))
-console.log("匹配:", found, "→ id:", found ? map[found] : null)
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const ROOT = path.resolve(__dirname, "..")
 
-// 2. 模拟 create 输出
-const mockCreate = `
-🌀 Creating namespace with title "KV"
-✨ Success!
-Add the following to your configuration file in your kv_namespaces array:
-[[kv_namespaces]]
-binding = "KV"
-id = "abc123def456abc123def456abc123def4"
-`
-const idM = mockCreate.match(/id\s*=\s*"([0-9a-fA-F]{32})"/)
-console.log("create 解析 id:", idM ? idM[1] : null)
+const deploySrc = readFileSync(path.join(ROOT, "scripts/deploy.js"), "utf8")
+const configSrc = readFileSync(path.join(ROOT, "wrangler.jsonc"), "utf8")
 
-// 3. wrangler.toml 更新逻辑
-const toml = fs.readFileSync("wrangler.toml", "utf8")
-const kvBlockRe = /(\[\[kv_namespaces\]\][\s\S]*?id\s*=\s*)"([^"]*)"/m
-const newId = "abc123def456abc123def456abc123def4"
-const updated = toml.replace(kvBlockRe, `$1"${newId}"`)
-console.log("toml 更新后含新 id:", updated.includes(newId))
-console.log(
-  "toml 其他内容保留:",
-  updated.includes('name = "openlist"') &&
-    updated.includes('binding = "KV"'),
+// 剥掉注释：文档说明与废弃实现里都会出现这些关键字，必须先排除。
+function stripComments(src) {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, "") // 块注释（含文件头文档与废弃块）
+    .replace(/(^|[^:])\/\/.*$/gm, "$1") // 行注释（避免误伤 http:// 之类）
+}
+
+// ── 1. deploy.js 的生效代码不应再主动创建 KV namespace ───────────────
+const activeSrc = stripComments(deploySrc)
+assert.ok(
+  !/wrangler kv namespace create/.test(activeSrc),
+  "deploy.js 的生效代码不应调用 `wrangler kv namespace create`（应交给 wrangler 自动预配）",
 )
-
-// 4. 无 kv 块时追加
-const noKv = 'name = "test"\nmain = "src/backend/worker.ts"\n'
-const block = `\n[[kv_namespaces]]\nbinding = "KV"\nid = "${newId}"\n`
-const appended = noKv.replace(/\s*$/, "") + block
-console.log(
-  "无块追加成功:",
-  appended.includes("[[kv_namespaces]]") && appended.includes(newId),
+assert.ok(
+  !/ensureKvNamespace\s*\(/.test(activeSrc),
+  "deploy.js 的生效代码不应调用 ensureKvNamespace()",
 )
+console.log("✅ deploy.js 未主动创建 KV namespace")
 
-// 5. 原 wrangler.toml 的 id 提取
-const origId = toml.match(
-  /(\[\[kv_namespaces\]\][\s\S]*?id\s*=\s*"([^"]*)")/m,
-)?.[2]
-console.log("原 toml 现有 id:", origId)
+// ── 2. deploy.js 会执行 wrangler deploy ─────────────────────────────
+assert.ok(
+  /npx wrangler deploy/.test(deploySrc),
+  "deploy.js 应调用 `npx wrangler deploy`",
+)
+console.log("✅ deploy.js 会执行 wrangler deploy")
 
-// 恢复原文件
-fs.writeFileSync("wrangler.toml", toml)
-console.log("✅ 逻辑测试完成，wrangler.toml 已恢复")
+// ── 3. wrangler.jsonc 声明了 KV 绑定 ────────────────────────────────
+// 只匹配行首未被注释的声明，避免命中说明文字里的示例。
+// 兼容单行（"kv_namespaces": [{ ... }]）与多行两种写法。
+const m = configSrc.match(/^\s*"kv_namespaces"\s*:\s*\[([\s\S]*?)\]/m)
+assert.ok(m, 'wrangler.jsonc 应声明 "kv_namespaces"')
+const kvEntry = m[1].match(/\{([^}]*)\}/)
+assert.ok(kvEntry, '"kv_namespaces" 应包含至少一个绑定对象')
+assert.match(kvEntry[1], /"binding"\s*:\s*"KV"/, 'KV 绑定的 binding 应为 "KV"')
+console.log("✅ wrangler.jsonc 声明了 KV 绑定")
+
+// ── 4. 该绑定必须省略 id（不能写 "id": ""，否则 wrangler 校验失败）──
+assert.ok(
+  !/"id"\s*:/.test(kvEntry[1]),
+  'kv_namespaces 的 KV 绑定应完全省略 id 字段（"id": "" 会被 wrangler 拒绝）',
+)
+console.log("✅ KV 绑定省略了 id 字段")
+
+console.log("\n✅ 全部通过")

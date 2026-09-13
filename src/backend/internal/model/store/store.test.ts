@@ -7,6 +7,7 @@ import { keyFormat } from "./format/key"
 import { sqlFormat } from "./format/sql"
 import {
   TABLE_NAMES,
+  DDL_TABLE_NAMES,
   TABLE_KEY,
   keyOf,
   TABLES,
@@ -42,7 +43,7 @@ function createMockKvDriver(): Driver {
 }
 
 /** 基于局部 Map 的简易 SQL 驱动（隔离测试，支持 sqlFormat 用到的 SQL）。 */
-function createMockSqlDriver(): Driver {
+function createMockSqlDriver(name = "mock-sql"): Driver {
   // table -> rows (对象数组)
   const tables = new Map<string, any[]>()
   // schema_info: k -> v
@@ -54,7 +55,7 @@ function createMockSqlDriver(): Driver {
   }
 
   return {
-    name: "mock-sql",
+    name,
     isAvailable: async () => true,
     init: async () => {},
     get: async () => null,
@@ -81,29 +82,64 @@ function createMockSqlDriver(): Driver {
     ): Promise<void> {
       for (const { sql, params } of statements) {
         const trimmed = sql.trim()
-        // DELETE FROM `table`
-        let m = trimmed.match(/^DELETE FROM `?(\w+)`?/i)
-        if (m) {
-          tables.set(m[1], [])
+        // DELETE FROM `table`（整表清空）
+        const delAll = trimmed.match(/^DELETE FROM `?(\w+)`?$/i)
+        if (delAll) {
+          tables.set(delAll[1], [])
           continue
         }
-        // INSERT INTO `table` (`c1`, `c2`, ...) VALUES (?, ?, ...)
-        m = trimmed.match(
+        // DELETE FROM `table` WHERE `key` NOT IN (?, ?, ...)（UPSERT 后清理已删行）
+        const delNotIn = trimmed.match(
+          /^DELETE FROM `?(\w+)`? WHERE `?(\w+)`? NOT IN \(([^)]*)\)/i,
+        )
+        if (delNotIn) {
+          const [, table, keyCol] = delNotIn
+          const keep = new Set(params.map((p) => String(p)))
+          const rows = ensureTable(table)
+          tables.set(
+            table,
+            rows.filter((r: any) => keep.has(String(r[keyCol]))),
+          )
+          continue
+        }
+        // schema_info 的 UPSERT 必须先于通用 INSERT 匹配，否则会被当作数据行。
+        // SQLite 方言：INSERT OR REPLACE INTO `schema_info` (`k`, `v`) VALUES (?, ?)
+        if (/^INSERT OR REPLACE INTO `?schema_info`?/i.test(trimmed)) {
+          schemaInfo.set(String(params[0]), String(params[1]))
+          continue
+        }
+        // MySQL 方言：INSERT INTO `schema_info` (...) VALUES (...) ON DUPLICATE KEY UPDATE ...
+        if (
+          /^INSERT INTO `?schema_info`?/i.test(trimmed) &&
+          /ON DUPLICATE KEY UPDATE/i.test(trimmed)
+        ) {
+          schemaInfo.set(String(params[0]), String(params[1]))
+          continue
+        }
+        // 数据行 UPSERT（SQLite）：INSERT OR REPLACE INTO `table` (...) VALUES (...)
+        const upSqlite = trimmed.match(
+          /^INSERT OR REPLACE INTO `?(\w+)`? \(([^)]+)\) VALUES \(([^)]+)\)/i,
+        )
+        // 数据行 UPSERT（MySQL）：INSERT INTO `table` (...) VALUES (...) ON DUPLICATE KEY UPDATE ...
+        const upMysql = trimmed.match(
           /^INSERT INTO `?(\w+)`? \(([^)]+)\) VALUES \(([^)]+)\)/i,
         )
-        if (m) {
-          const table = m[1]
-          const cols = m[2].split(",").map((c) => c.trim().replace(/`/g, ""))
+        const ins = upSqlite || upMysql
+        if (ins) {
+          const table = ins[1]
+          const cols = ins[2].split(",").map((c) => c.trim().replace(/`/g, ""))
           const row: any = {}
           cols.forEach((c, i) => {
             row[c] = params[i]
           })
-          ensureTable(table).push(row)
-          continue
-        }
-        // INSERT OR REPLACE INTO schema_info (k, v) VALUES (?, ?)
-        if (/^INSERT OR REPLACE INTO schema_info/i.test(trimmed)) {
-          schemaInfo.set(String(params[0]), String(params[1]))
+          // UPSERT 语义：按首列（主键）替换同键行
+          const pkCol = cols[0]
+          const rows = ensureTable(table)
+          const idx = rows.findIndex(
+            (r: any) => String(r[pkCol]) === String(row[pkCol]),
+          )
+          if (idx >= 0) rows[idx] = row
+          else rows.push(row)
           continue
         }
         throw new Error(`mock-sql unsupported statement: ${sql}`)
@@ -125,7 +161,10 @@ const SAMPLE_DB = {
 }
 
 test("schema: columnar tables match Go backend structure", () => {
+  // 往返表 6 张（sshkeys 不参与，避免清空 Go 的 x_ssh_public_keys）
   assert.equal(TABLE_NAMES.length, 6)
+  // DDL 表 7 张（含 sshkeys，保持与 Go 共享库的结构一致）
+  assert.equal(DDL_TABLE_NAMES.length, 7)
   assert.equal(TABLE_KEY.settings, "key")
   assert.equal(TABLE_KEY.users, "id")
   assert.equal(keyOf("settings", { key: "site_title" }), "site_title")
@@ -137,11 +176,12 @@ test("schema: columnar tables match Go backend structure", () => {
   assert.ok(TABLES.storages.columns.some((c) => c.name === "mount_path"))
   assert.ok(TABLES.metas.columns.some((c) => c.name === "read_users"))
   assert.ok(TABLES.plugins.columns.some((c) => c.name === "script_content"))
+  assert.ok(TABLES.sshkeys.columns.some((c) => c.name === "key_str"))
   // 不应再有宽表的 data 列
   assert.ok(!TABLES.users.columns.some((c) => c.name === "data"))
-  // DDL 幂等生成（schema_info + 6 张业务表）
-  assert.ok(D1_SCHEMA.length >= 7)
-  assert.ok(MYSQL_SCHEMA.length >= 7)
+  // DDL 幂等生成（schema_info + 7 张业务表）
+  assert.ok(D1_SCHEMA.length >= 8)
+  assert.ok(MYSQL_SCHEMA.length >= 8)
 })
 
 test("schema: SQL table names align with Go GORM naming", () => {
@@ -152,14 +192,14 @@ test("schema: SQL table names align with Go GORM naming", () => {
   assert.equal(TABLE_SQL_NAMES.users, "users")
   assert.equal(TABLE_SQL_NAMES.metas, "metas")
 
-  // 表前缀（对齐 Go 的 TABLE_PREFIX，默认 x_）
+  // 表前缀固定 x_（对齐 Go 的默认值）
   assert.equal(getTablePrefix({}), "x_")
-  assert.equal(getTablePrefix({ TABLE_PREFIX: "abc_" }), "abc_")
+  assert.equal(getTablePrefix({ TABLE_PREFIX: "abc_" }), "x_")
 
   // 完整表名 = 前缀 + 复数名
   assert.equal(tableSqlName("settings", {}), "x_setting_items")
   assert.equal(tableSqlName("shares", {}), "x_sharing_dbs")
-  assert.equal(tableSqlName("settings", { TABLE_PREFIX: "abc_" }), "abc_setting_items")
+  assert.equal(tableSqlName("settings", { TABLE_PREFIX: "abc_" }), "x_setting_items")
 
   // DDL 里应包含带前缀的复数表名
   assert.ok(D1_SCHEMA.some((d) => d.includes("x_setting_items")))
@@ -194,10 +234,6 @@ test("backend factory: readDriver/readFormat backward compat", () => {
   assert.equal(readDriver({ DB_DRIVER: "d1" }), "d1")
   assert.equal(readDriver({ DB_DRIVER: "MYSQL" }), "mysql")
   assert.equal(readDriver({ DB_DRIVER: "cfkv" }), "cfkv")
-  // DB_JSON_BACKEND 自动映射
-  assert.equal(readDriver({ DB_JSON_BACKEND: "blob" }), "blob")
-  assert.equal(readDriver({ DB_JSON_BACKEND: "kv" }), "kv")
-  assert.equal(readDriver({ DB_JSON_BACKEND: "cf_rest" }), "cfkv")
   // DB_DRIVER=json → auto（旧整对象语义）
   assert.equal(readDriver({ DB_DRIVER: "json" }), "auto")
 
@@ -226,6 +262,14 @@ test("key format: roundtrip via mock KV driver (per-table keys)", async () => {
 
 test("sql format: roundtrip via mock SQL driver (columnar)", async () => {
   const driver = createMockSqlDriver()
+  assert.equal(await sqlFormat.save(SAMPLE_DB, driver), true)
+  assert.deepEqual(await sqlFormat.load(driver), SAMPLE_DB)
+})
+
+test("sql format: MySQL dialect uses ON DUPLICATE KEY UPDATE (no INSERT OR REPLACE)", async () => {
+  // 回归防护：MySQL 不支持 INSERT OR REPLACE，若方言分支失效，
+  // mock 驱动会在收到该语句时抛错，从而让本测试失败。
+  const driver = createMockSqlDriver("mysql")
   assert.equal(await sqlFormat.save(SAMPLE_DB, driver), true)
   assert.deepEqual(await sqlFormat.load(driver), SAMPLE_DB)
 })

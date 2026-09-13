@@ -26,24 +26,9 @@ function generateRandomSecret(): string {
 
 async function readKvSecret(env: any): Promise<string | null> {
   try {
-    const { getKvBinding } = await import("../internal/model/db")
-    const kvInfo = await getKvBinding(env)
-    if (kvInfo.mode === "none" || !kvInfo.binding) return null
-    const { binding, mode } = kvInfo
-    let val: any = null
-    if (mode === "blob") {
-      val = await binding.get(JWT_SECRET_KV_KEY)
-    } else {
-      try {
-        val = await binding.get(JWT_SECRET_KV_KEY, "text")
-      } catch {
-        val = await binding.get(JWT_SECRET_KV_KEY)
-      }
-    }
-    if (val && typeof val.text === "function") {
-      val = await val.text()
-    }
-    return val ? String(val) : null
+    // 复用 store/json 的通用密钥读取（已支持 binding/blob/api/proxy 全模式）
+    const { readPersistedSecret } = await import("../internal/model/db")
+    return await readPersistedSecret(env, JWT_SECRET_KV_KEY)
   } catch (e) {
     console.warn("[JWT] Failed to read secret from KV:", e)
     return null
@@ -52,22 +37,8 @@ async function readKvSecret(env: any): Promise<string | null> {
 
 async function writeKvSecret(env: any, secret: string): Promise<boolean> {
   try {
-    const { getKvBinding } = await import("../internal/model/db")
-    const kvInfo = await getKvBinding(env)
-    if (kvInfo.mode === "none" || !kvInfo.binding) return false
-    const { binding, mode } = kvInfo
-    if (mode === "blob") {
-      if (typeof binding.set === "function")
-        await binding.set(JWT_SECRET_KV_KEY, secret)
-      else if (typeof binding.put === "function")
-        await binding.put(JWT_SECRET_KV_KEY, secret)
-    } else {
-      if (typeof binding.put === "function")
-        await binding.put(JWT_SECRET_KV_KEY, secret)
-      else if (typeof binding.set === "function")
-        await binding.set(JWT_SECRET_KV_KEY, secret)
-    }
-    return true
+    const { writePersistedSecret } = await import("../internal/model/db")
+    return await writePersistedSecret(env, JWT_SECRET_KV_KEY, secret)
   } catch (e) {
     console.warn("[JWT] Failed to persist secret to KV:", e)
     return false
@@ -251,15 +222,15 @@ function timingSafeEqual(a: string, b: string): boolean {
 
 /**
  * 定时调度鉴权通道：EdgeOne Schedules 只能携带 path/method/payload，
- * 无法附加 Authorization 头。当环境变量 CRON_SECRET 已设置时，
+ * 无法附加 Authorization 头。复用 JWT_SECRET 作为调度密钥，
  * 允许请求通过 query（?cron_secret=）、JSON body { cron_secret }
  * 或 X-Cron-Secret 头携带匹配值触发受保护的任务接口。
  */
 export async function matchCronSecret(c: Context): Promise<boolean> {
   const env = (c as any)?.env || {}
   const secret =
-    env.CRON_SECRET ||
-    (typeof process !== "undefined" ? process.env?.CRON_SECRET : "")
+    env.JWT_SECRET ||
+    (typeof process !== "undefined" ? process.env?.JWT_SECRET : "")
   if (!secret || typeof secret !== "string") return false
 
   const header = c.req.header("x-cron-secret")

@@ -16,6 +16,18 @@
  * 所有列名统一用反引号包裹（SQLite 与 MySQL 均支持）。
  */
 
+/**
+ * 参与数据往返（load/save）的表。
+ *
+ * 这些表的内容由 `db.ts` 的配置对象持有，全量读写是有意义的。
+ *
+ * 注意：**不包含 sshkeys**。TS 侧 SSH 公钥存在 `user.ssh_keys` 内，
+ * 从不读写顶层的 `db.sshkeys`；而 Go 后端把公钥存于独立的
+ * `x_ssh_public_keys` 表。若把 sshkeys 纳入往返，`sqlFormat.save()` 会执行
+ * `DELETE FROM x_ssh_public_keys` 再写入空数组，**清空 Go 写入的 SSH 公钥**。
+ * 因此这里刻意排除，只保留其 DDL（见 TABLES），与 Go 共享同一物理库时
+ * 既不破坏也不接管该表。
+ */
 export const TABLE_NAMES = [
   "settings",
   "storages",
@@ -23,10 +35,18 @@ export const TABLE_NAMES = [
   "shares",
   "metas",
   "plugins",
-  "sshkeys",
 ] as const
 
 export type TableName = (typeof TABLE_NAMES)[number]
+
+/**
+ * 需要建表（DDL）的全部表，含不参与往返的 sshkeys。
+ *
+ * 与 TABLE_NAMES 分离：建表仍覆盖 sshkeys，便于与 Go 后端共享物理库时
+ * 表结构一致；但读写（load/save/batch）只针对 TABLE_NAMES。
+ */
+export const DDL_TABLE_NAMES = [...TABLE_NAMES, "sshkeys"] as const
+export type DdlTableName = (typeof DDL_TABLE_NAMES)[number]
 
 /** 字段类型（决定序列化与 SQL 列类型）。 */
 export type FieldType = "string" | "number" | "bool" | "json" | "date"
@@ -49,15 +69,18 @@ export interface ColumnDef {
 
 /** 表定义。 */
 export interface TableDef {
-  name: TableName
+  name: DdlTableName
   columns: ColumnDef[]
 }
 
 /**
  * 每张表的主键对应的「对象字段名」（用于从实体对象提取主键值）。
  * 供 key 格式（分 key 存储）与 SQL 格式共用。
+ *
+ * 覆盖全部 DDL 表（含 sshkeys），以便建表与反射逻辑完整；
+ * 参与往返的表由 TABLE_NAMES 决定。
  */
-export const TABLE_KEY: Record<TableName, string> = {
+export const TABLE_KEY: Record<DdlTableName, string> = {
   settings: "key",
   storages: "id",
   users: "id",
@@ -73,22 +96,6 @@ export function keyOf(table: TableName, entity: any): string {
 }
 
 /**
- * 附加索引列（主键之外冗余存储的常用查询字段）。
- *
- * @deprecated 仅供旧版宽表后端（store/d1.ts、store/mysql.ts）使用。新的
- * 列式表（TABLES）已把每个字段独立成列，不再需要该映射。保留仅为兼容遗留代码。
- */
-export const TABLE_EXTRA_COLUMNS: Record<TableName, string[]> = {
-  settings: [],
-  storages: ["mount_path"],
-  users: ["username"],
-  shares: [],
-  metas: ["path"],
-  plugins: [],
-  sshkeys: ["user_id"],
-}
-
-/**
  * 完整列式表定义。
  *
  * 字段与 Go 后端模型一一对应（json tag）：
@@ -99,7 +106,7 @@ export const TABLE_EXTRA_COLUMNS: Record<TableName, string[]> = {
  *   - metas    ← model.Meta
  *   - plugins  ← TS 独有（Go 无插件表）
  */
-export const TABLES: Record<TableName, TableDef> = {
+export const TABLES: Record<DdlTableName, TableDef> = {
   settings: {
     name: "settings",
     columns: [
@@ -261,7 +268,7 @@ export const TABLES: Record<TableName, TableDef> = {
  *
  * plugins 为 TS 独有（Go 无插件表），沿用复数名 plugins。
  */
-export const TABLE_SQL_NAMES: Record<TableName, string> = {
+export const TABLE_SQL_NAMES: Record<DdlTableName, string> = {
   settings: "setting_items",
   storages: "storages",
   users: "users",
@@ -272,17 +279,16 @@ export const TABLE_SQL_NAMES: Record<TableName, string> = {
 }
 
 /**
- * 读取表前缀（对齐 Go 的 TABLE_PREFIX，默认 "x_"）。
+ * 表前缀，固定为 "x_"（对齐 Go 后端的默认值）。
  */
-export function getTablePrefix(env?: any): string {
-  const e = env || (typeof process !== "undefined" ? process.env : {}) || {}
-  return String(e?.TABLE_PREFIX || "x_")
+export function getTablePrefix(_env?: any): string {
+  return "x_"
 }
 
 /**
  * 返回某张表在 SQL 中的完整表名（前缀 + 复数名）。
  */
-export function tableSqlName(table: TableName, env?: any): string {
+export function tableSqlName(table: DdlTableName, env?: any): string {
   return getTablePrefix(env) + TABLE_SQL_NAMES[table]
 }
 
@@ -364,7 +370,7 @@ export function deserializeColumn(col: ColumnDef, value: any): any {
  * 输出这些字段，避免 roundtrip 后对象被注入大量 null 键（与 map/key 格式
  * 的对象形态保持一致）。
  */
-export function rowToEntity(table: TableName, row: any): any {
+export function rowToEntity(table: DdlTableName, row: any): any {
   const def = TABLES[table]
   const out: any = {}
   for (const col of def.columns) {
@@ -380,7 +386,7 @@ export function rowToEntity(table: TableName, row: any): any {
 /**
  * 将对象转换为 INSERT 的列与参数。
  */
-export function entityToRow(table: TableName, entity: any): {
+export function entityToRow(table: DdlTableName, entity: any): {
   columns: string[]
   values: any[]
 } {
@@ -450,12 +456,13 @@ function buildSchemaInfoDdl(dialect: "sqlite" | "mysql"): string {
 }
 
 /**
- * 生成完整的建表语句数组（幂等）。表名前缀由 TABLE_PREFIX 环境变量决定
- * （默认 "x_"，对齐 Go），复数表名对齐 Go 的 GORM 命名策略。
+ * 生成完整的建表语句数组（幂等）。表名固定为 "x_" 前缀（对齐 Go），
+ * 复数表名对齐 Go 的 GORM 命名策略。
  */
 export function buildDdl(dialect: "sqlite" | "mysql", env?: any): string[] {
   const out: string[] = [buildSchemaInfoDdl(dialect)]
-  for (const name of TABLE_NAMES) {
+  // 建表覆盖全部 DDL 表（含不参与往返的 sshkeys），保证与 Go 共享库时结构一致
+  for (const name of DDL_TABLE_NAMES) {
     out.push(buildTableDdl(TABLES[name], dialect, tableSqlName(name, env)))
   }
   return out

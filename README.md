@@ -37,7 +37,7 @@
 
 | EdgeOne Makers · 国际站 | EdgeOne Makers · 中国站 | Cloudflare Workers · 全球站 |
 | :---: | :---: | :---: |
-| [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=ENCRYPTION_SECRET,JWT_SECRET) | [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=ENCRYPTION_SECRET,JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
+| [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
 
 </div>
 
@@ -107,7 +107,7 @@ OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTea
 # 1. 安装依赖
 pnpm install
 
-# 2. 配置 wrangler.toml（填写 JWT_SECRET、KV/D1 绑定）
+# 2. 编辑 wrangler.jsonc / .env，配置 JWT_SECRET 与存储（KV/D1 在控制台绑定）
 
 # 3. 启动开发服务器（自动拉取官方前端并运行 Worker）
 pnpm run dev:unified
@@ -156,16 +156,17 @@ pnpm run deploy:worker
 
 **DB_FORMAT**（数据存储格式）
 - `map`（默认）：整对象 JSON 格式，适用于 KV/Blob 等简单存储
-- `key`：分 key 存储格式，每个实体一条记录（如 `openlist_tbl:users:1`），避免大 JSON
+- `key`：分 key 存储格式，每个实体一条记录（如 `users_1`），避免大 JSON
 - `sql`：关系数据库表格式，与 Go 后端完全一致，适用于 D1/MySQL
 
 **DB_DRIVER**（数据库驱动）
-- `auto`（默认）：自动检测可用驱动（优先级：blob → cfkv → kv → d1）
-- `blob`：腾讯云 EdgeOne Blob / 阿里云 ESA Blob
-- `cfkv`：Cloudflare KV REST API（需配置 `CF_ACCOUNT_ID`、`CF_KV_NAMESPACE_ID`、`CF_API_TOKEN`）
-- `kv`：Cloudflare KV binding
+- `auto`（默认）：自动检测可用驱动（优先级：mysql → d1 → kv → cfkv → blob → do）
+- `blob`：EdgeOne Blob Storage（SDK）/ ESA Blob（binding）
+- `cfkv`：Cloudflare KV REST API（需配置 `CF_ACCOUNT`、`CF_KV_UUID`、`CF_API_KEY`）
+- `kv`：KV 存储（binding 名固定为 `KV`；EdgeOne Node 云函数自动走 HTTP 代理模式）
 - `d1`：Cloudflare D1（SQLite）
-- `mysql`：MySQL / PostgreSQL（仅 Node.js 容器）
+- `do`：Cloudflare Durable Objects（SQLite）
+- `mysql`：MySQL（仅 Node.js 容器）
 
 **推荐配置组合：**
 ```bash
@@ -173,25 +174,28 @@ pnpm run deploy:worker
 DB_FORMAT=sql
 DB_DRIVER=d1
 
-# EdgeOne + Blob
+# EdgeOne + Blob（推荐，零配置）
 DB_FORMAT=map
 DB_DRIVER=blob
 
-# Cloudflare KV（高频读写）
+# EdgeOne / Cloudflare KV（自动适配环境）
+DB_FORMAT=map
+DB_DRIVER=kv
+
+# Cloudflare KV（高频读写，需绑定）
 DB_FORMAT=key
 DB_DRIVER=kv
 
 # 远程访问 Cloudflare KV
 DB_FORMAT=key
 DB_DRIVER=cfkv
-CF_ACCOUNT_ID=your_account_id
-CF_KV_NAMESPACE_ID=your_namespace_id
-CF_API_TOKEN=your_api_token
+CF_ACCOUNT=your_account_id
+CF_KV_UUID=your_namespace_id
+CF_API_KEY=your_api_token
 ```
 
 **向后兼容：**
 - `DB_DRIVER=json` 自动转换为 `DB_FORMAT=map` + 自动检测驱动
-- `DB_JSON_BACKEND` 已废弃，会自动转换为 `DB_DRIVER`
 
 **表名对齐（仅 SQL 格式）：**
 `sql` 格式采用列式表，命名策略与 Go 后端的 GORM 一致（snake_case + 复数表名 + 前缀）：
@@ -205,13 +209,12 @@ CF_API_TOKEN=your_api_token
 | `Meta`        | `x_metas`           |
 | （仅 TS）     | `x_plugins`         |
 
-前缀默认为 `x_`，由 `TABLE_PREFIX` 环境变量控制（与 Go 后端一致）。要与 Go 后端共享同一物理数据库，保持默认值即可。
+前缀固定为 `x_`（与 Go 后端默认值一致）。要与 Go 后端共享同一物理数据库，无需额外配置。
 
 #### 安全配置
 
-- `ENCRYPTION_SECRET`：数据加密密钥（必填）
-- `JWT_SECRET`：JWT 令牌签名密钥（必填）
-- `ADMIN_PASSWORD`：初始管理员密码
+- `JWT_SECRET`：JWT 令牌签名密钥（必填），**同时用于数据加密与定时任务鉴权**
+- `ADMIN_PASS`：初始管理员密码（可选，设置后跳过安装向导自动初始化 admin）
 
 #### 其他配置
 
