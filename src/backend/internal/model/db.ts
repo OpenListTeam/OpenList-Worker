@@ -804,6 +804,81 @@ let memoryDb: any = null
 let globalEnvCtx: any = null
 
 /**
+ * 数据可信度状态（防止「读失败 → 回退空库 → 落盘覆盖」）。
+ *
+ * - `dbTrusted`: 当前 memoryDb 是否来自一次成功的持久化读取（或已成功写入）。
+ *   为 false 时表示 memoryDb 只是空壳兜底/默认值，绝不能写回存储。
+ * - `dbLastLoadError`: 最近一次读取失败的原因，用于给出可诊断的拦截日志。
+ * - `dbWriteBlocked`: 是否曾拦截过「疑似空数据写回」，供诊断与回归测试使用。
+ */
+let dbTrusted = false
+let dbWriteBlocked = false
+let dbLastLoadError: string | null = null
+
+/** 当前内存库是否可信（可安全写回持久化存储）。 */
+export function isDbTrusted(): boolean {
+  return dbTrusted
+}
+
+/** 最近一次读取持久化存储失败的错误信息（无错误时为 null）。 */
+export function getDbLoadError(): string | null {
+  return dbLastLoadError
+}
+
+/**
+ * 是否曾经拦截过一次「疑似空数据写回」。
+ * 供诊断接口/日志使用，说明写前守卫已生效。
+ */
+export function isDbWriteBlocked(): boolean {
+  return dbWriteBlocked
+}
+
+/**
+ * 判断一份数据是否为「疑似空库/空壳」。
+ *
+ * 判定顺序：
+ *  1) 有任何存储/分享/元数据/插件 → 不是空壳；
+ *  2) 有任一「已设置密码」的用户 → 不是空壳（说明已初始化）；
+ *     注意 defaultDb 自带的 admin/guest 占位用户密码为空，不算数；
+ *  3) 所有设置都等于默认值 → 是空壳。
+ *
+ * 空壳判定用于 saveDb 的写前守卫：读取失败后得到的默认库不会被写回。
+ */
+export function isDbShell(data: any): boolean {
+  if (!data || typeof data !== "object") return true
+
+  const countStorages = Array.isArray(data.storages) ? data.storages.length : 0
+  const countShares = Array.isArray(data.shares) ? data.shares.length : 0
+  const countMetas = Array.isArray(data.metas) ? data.metas.length : 0
+  const countPlugins = Array.isArray(data.plugins) ? data.plugins.length : 0
+
+  if (countStorages + countShares + countMetas + countPlugins > 0) {
+    return false
+  }
+
+  // 注意：不能以「是否存在用户」判断是否为真实库。
+  // defaultDb 自带 admin/guest 两个占位用户（密码为空），所以空壳里也有用户。
+  // 只有当存在「设置了密码的用户」时，才说明这是一份被初始化过的真实库。
+  const users = Array.isArray(data.users) ? data.users : []
+  const hasInitializedUser = users.some(
+    (u: any) => String(u?.password || "").trim() !== "",
+  )
+  if (hasInitializedUser) {
+    return false
+  }
+
+  // 没有任何实体时，只有当设置也全部停留在默认值时，才视作空壳。
+  const settings = Array.isArray(data.settings) ? data.settings : []
+  const defaults = Array.isArray(defaultDb.settings) ? defaultDb.settings : []
+  const defaultMap = new Map(defaults.map((s: any) => [String(s.key), s.value]))
+  return settings.every(
+    (s: any) =>
+      defaultMap.has(String(s.key)) &&
+      defaultMap.get(String(s.key)) === s.value,
+  )
+}
+
+/**
  * 在请求处理开始时注入当前环境的持久化后端上下文。
  * CF Workers 每个实例的模块级 globalEnvCtx 初始为 null，且请求会被负载均衡到
  * 不同实例——若不设置，getDb()/saveDb() 会退回内存模式，导致配置
@@ -893,10 +968,12 @@ const ensureDefaultSettings = (db: any) => {
     }
   }
 
-  if (modified || newSettings.length !== db.settings.length) {
-    db.settings = newSettings
-    saveDb(db).catch(() => {})
-  }
+  // 仅做内存补齐：绝不在这里隐式落盘。
+  //
+  // 历史缺陷：此处曾调用 saveDb(db)，导致「读取失败 → 回退默认库 → 立刻把空壳
+  // 写回存储」，从而覆盖真实配置并让系统反复回到未初始化状态。
+  // 缺失的默认项会在下一次显式写入时随之持久化。
+  db.settings = newSettings
 }
 
 const ensureDefaultStorages = (db: any) => {
@@ -990,13 +1067,41 @@ const loadDb = async (envCtx?: any) => {
       ensureDefaultShares(memoryDb)
       ensureDefaultPlugins(memoryDb)
       ensureDefaultMetas(memoryDb)
+      // 读取成功：内存库与持久化存储一致，允许后续写回。
+      dbTrusted = true
+      dbLastLoadError = null
       return memoryDb
     }
-  } catch (err) {
-    console.error(`[DB] Error reading config from ${backend.name}:`, err)
+    // 后端读取成功但没有数据：可能是全新部署（首次初始化）。
+    // 但若历史上曾成功读到过数据，则「读到空」极可能是最终一致性/后端切换导致的
+    // 短暂不可见，此时不能把默认库当成事实，更不能让它写回存储。
+    if (dbTrusted && memoryDb) {
+      console.warn(
+        `[DB] Backend ${backend.name} returned empty while a trusted snapshot exists; ` +
+          `keeping the in-memory snapshot to avoid overwriting real config.`,
+      )
+      ensureDefaultSettings(memoryDb)
+      ensureDefaultStorages(memoryDb)
+      ensureDefaultShares(memoryDb)
+      ensureDefaultPlugins(memoryDb)
+      ensureDefaultMetas(memoryDb)
+      return memoryDb
+    }
+    dbTrusted = false
+    dbLastLoadError = null
+  } catch (err: any) {
+    // 读取失败绝不能静默回退到默认库并落盘——这正是「数据库被清空」的根因。
+    console.error(
+      `[DB] Error reading config from ${backend.name}:`,
+      err?.message || err,
+    )
+    dbLastLoadError = String(err?.message || err)
+    dbTrusted = false
   }
 
-  if (memoryDb) {
+  // 只有在此前已经成功读取过（同一 isolate 内的可信快照）时，才允许继续使用内存库。
+  // 若从未成功读取过，则返回的只是「不可信空壳」，saveDb 会在落盘前将其拦截。
+  if (memoryDb && dbTrusted) {
     ensureDefaultSettings(memoryDb)
     ensureDefaultStorages(memoryDb)
     ensureDefaultShares(memoryDb)
@@ -1006,6 +1111,7 @@ const loadDb = async (envCtx?: any) => {
   }
 
   // Priority 2: In-Memory DB（模块级，进程内共享；重启即失，仅用于本地调试）
+  // 注意：此分支明确标记为「不可信」，禁止写回持久化存储。
   memoryDb = JSON.parse(JSON.stringify(defaultDb))
   ensureDefaultStorages(memoryDb)
   ensureDefaultShares(memoryDb)
@@ -1420,16 +1526,52 @@ async function unsealDb(data: any, key: string | null): Promise<void> {
   }
 }
 
-export const saveDb = async (data: any, envCtx?: any): Promise<boolean> => {
+export const saveDb = async (
+  data: any,
+  envCtx?: any,
+  options?: { force?: boolean },
+): Promise<boolean> => {
   if (envCtx) {
     globalEnvCtx = envCtx
   }
+
+  const activeEnv = envCtx || globalEnvCtx
+
+  // ============ 写前守卫：永远不得以「空数据」覆盖持久化配置 ============
+  //
+  // 历史缺陷链路：读取失败被吞掉 → 回退到默认（空）库 → 后续任意写操作把它
+  // 落盘，真实配置被空壳覆盖，系统随后被判为「未初始化」，用户看到的就是
+  // 「数据库被清空」。
+  //
+  // 核心不变量（务必长期保持）：
+  //   **默认拒绝写入空壳。** 空壳 = 没有任何存储/分享/元数据/插件，没有设置
+  //   密码的用户，且所有设置都还是默认值。无论当前是否「可信」，只要 payload
+  //   是空壳，就必须显式 force 才允许落盘。
+  //
+  // 这样即使某条调用链在读取失败后拿到默认库，也无法把它写回存储。
+  // 唯一的例外是调用方明确知情（首次初始化、管理员主动重置）并传入 force。
+  const shell = isDbShell(data)
+  if (shell && !options?.force) {
+    dbWriteBlocked = true
+    const reason = dbLastLoadError
+      ? `last load failed: ${dbLastLoadError}`
+      : dbTrusted
+        ? "payload is an empty/shell database"
+        : "database was never successfully loaded from the persistence backend"
+    console.error(
+      `[DB] saveDb BLOCKED: refusing to persist an empty/shell database (${reason}). ` +
+        `This guard prevents an empty payload from wiping real config. ` +
+        `Pass saveDb(db, env, { force: true }) to override intentionally.`,
+    )
+    return false
+  }
+
   memoryDb = data
+  dbWriteBlocked = false
   // Refresh the request cache so any getDb() later in this request observes
   // the write rather than a pre-write snapshot.
   if (envCtx) dbCache.set(envCtx, { ts: Date.now(), db: data })
 
-  const activeEnv = envCtx || globalEnvCtx
   const backend = await getStoreBackend(activeEnv)
   const configured = backend.isConfigured
     ? await backend.isConfigured(activeEnv)
@@ -1466,6 +1608,11 @@ export const saveDb = async (data: any, envCtx?: any): Promise<boolean> => {
   console.log(
     `[DB] Successfully persisted ${data.storages?.length || 0} storages to ${backend.name}`,
   )
+
+  // 写入成功 = 存储中的内容与内存库一致，因此内存库现在可视为可信；
+  // 这样同一 isolate 后续的写入不会被守卫误拦。
+  dbTrusted = true
+  dbLastLoadError = null
   return true
 }
 
