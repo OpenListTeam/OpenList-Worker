@@ -1,0 +1,97 @@
+name: "功能请求"
+description: 功能请求 / 增强（OpenList-Worker）
+title: "[Feature] 请修改标题为您的功能名称"
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢您为 OpenList-Worker 提出新想法，这会帮助 OpenList-Worker 变得更好。
+        提交前请先到[讨论区](https://github.com/OpenListTeam/OpenList-Worker/discussions)看看是否已有类似提议，避免重复。
+
+  - type: checkboxes
+    attributes:
+      label: 请确认以下事项
+      description: 请逐条勾选，这些都是为了让我们更快地评估您的建议。
+      options:
+        - label: 我确认描述清晰有礼貌，能让人快速看懂这个功能要解决的是什么问题。
+        - label: 我确认已经查过相关文档和已有问题和讨论，本次提议并非是重复提议。
+        - label: 我确认这是Worker项目问题，并非网络和操作导致，也不是Go版的问题。
+        - label: 我确认已阅读开源许可/免责条款/使用政策，理解使用的风险自行承担。
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台（必填）
+      description: 该功能主要面向哪个平台？
+      options:
+        - Cloudflare Workers
+        - Tencent EdgeOne Makers
+        - Alibaba Cloud ESA
+        - Vercel App
+        - Serverless
+        - Local Dev
+        - 全部平台
+        - Others
+    validations:
+      required: true
+
+  - type: dropdown
+    id: db_format
+    attributes:
+      label: DB_FORMAT（必填）
+      description: 该功能涉及或依赖的数据存储格式。若无关请选择“无关”。
+      options:
+        - map（整对象 JSON）
+        - key（分 key）
+        - sql（关系表）
+        - 无关
+        - 未设置 / 不清楚
+    validations:
+      required: true
+
+  - type: dropdown
+    id: db_driver
+    attributes:
+      label: DB_DRIVER（必填）
+      description: 该功能涉及或依赖的数据库驱动。若无关请选择“无关”。
+      options:
+        - auto
+        - blob
+        - kv
+        - cfkv
+        - d1
+        - do
+        - mysql
+        - 无关
+        - 未设置 / 不清楚
+    validations:
+      required: true
+
+  - type: input
+    id: storage_driver
+    attributes:
+      label: 存储驱动（必填）
+      description: 该功能涉及的存储驱动名称。若无关请填写“无关”。
+      placeholder: OneDrive
+    validations:
+      required: true
+
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: 需求描述（必填）
+      description: |
+        请说明：
+        - 功能场景：您想实现什么，现在遇到的不便是哪一点
+        - 期望表现：希望它如何使用、达到什么效果
+        （如果能说说您的实际使用场景会更有帮助）
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested-solution
+    attributes:
+      label: 实现思路（可选）
+      description: |
+        如果您对如何实现已有想法，欢迎写在这里；没有也没关系。
