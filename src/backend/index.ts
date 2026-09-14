@@ -6,6 +6,7 @@ import { webdavRouter } from "./server/webdav"
 import { s3Router } from "./server/s3"
 import { setEnvCtx } from "./internal/model/db"
 import { getStoreConfigError } from "./internal/model/store/backend"
+import { buildIndexHtml } from "./server/index-html"
 
 const app = new Hono()
 
@@ -122,6 +123,49 @@ export function setSpaFallbackHtml(html: string) {
   spaFallbackHtml = html
 }
 
+/**
+ * 从 ASSETS 取「未注入」的 index.html 模板。
+ *
+ * 不能直接复用 `env.ASSETS.fetch(c.req.raw)` 的响应体：设置必须在服务端注进
+ * HTML，而 ASSETS 直出的产物里只有字面量占位符（见 server/index-html.ts）。
+ * 这里显式按 `/index.html` 取模板，再交给 buildIndexHtml()。
+ *
+ * 失败一律返回 null，由调用方回退到原始直出 —— 取模板失败绝不能让 HTML 入口 500。
+ */
+async function readIndexHtmlTemplate(
+  env: any,
+  origin: string,
+  request: Request,
+): Promise<string | null> {
+  try {
+    const res = await env.ASSETS.fetch(
+      new Request(`${origin}/index.html`, request),
+    )
+    if (!res || res.status < 200 || res.status >= 300) return null
+    return await res.text()
+  } catch (err) {
+    console.error("[index] failed to read index.html template from ASSETS:", err)
+    return null
+  }
+}
+
+/**
+ * 统一的 HTML 响应构造。
+ *
+ * HTML 入口必须 no-cache：一是新版本部署后旧 HTML 会引用旧 hash 的 JS/CSS；
+ * 二是注入结果依赖当前站点设置，缓存住会让「改完设置不生效」以另一种形式复现。
+ */
+function indexHtmlResponse(
+  html: string,
+  status: number,
+  baseHeaders?: Headers,
+): Response {
+  const headers = new Headers(baseHeaders)
+  headers.set("Content-Type", "text/html; charset=utf-8")
+  headers.set("Cache-Control", "no-cache, must-revalidate")
+  return new Response(html, { status, headers })
+}
+
 app.all("*", async (c) => {
   const env = c.env as any
   if (env && env.ASSETS && typeof env.ASSETS.fetch === "function") {
@@ -131,7 +175,19 @@ app.all("*", async (c) => {
       // 修复「部署新版本后生产环境仍是旧界面」：index.html 若不设缓存头，
       // 会被 Cloudflare 边缘/浏览器长期缓存，导致旧 HTML 引用旧 hash 的 JS/CSS。
       // 只对 HTML 入口 no-cache（JS/CSS 带 hash 可安全长期缓存）。
+      //
+      // 修复「系统全局设置里的自定义头部/CSS/JS 不生效」：HTML 入口必须走
+      // buildIndexHtml() 做一次占位符替换，否则 ASSETS 直出的产物里
+      // <!-- customize head --> / <!-- customize body --> 会原样吐给浏览器。
       if (url.pathname === "/" || url.pathname === "/index.html") {
+        const template = await readIndexHtmlTemplate(env, url.origin, c.req.raw)
+        if (template !== null) {
+          return indexHtmlResponse(
+            await buildIndexHtml(template, env),
+            200,
+            res.headers,
+          )
+        }
         const headers = new Headers(res.headers)
         headers.set("Cache-Control", "no-cache, must-revalidate")
         return new Response(res.body, { status: res.status, headers })
@@ -140,17 +196,29 @@ app.all("*", async (c) => {
     }
     // SPA fallback: return index.html for non-asset routes (e.g. /login, /manage)
     // 注意：ASSETS.fetch 对 /index.html 也可能返回 307，直接 fetch "/" 获取实际 HTML
+    // 这条路径同样要注入站点设置：前端路由（/login、/@manage/* 等）在刷新时都会
+    // 落到这里拿 HTML，漏掉就会出现「首页有自定义 JS、刷新子路由就没了」。
     const rootReq = new Request(`${url.origin}/`, c.req.raw)
-    return env.ASSETS.fetch(rootReq)
+    const fallbackRes = await env.ASSETS.fetch(rootReq)
+    if (
+      fallbackRes.status >= 200 &&
+      fallbackRes.status < 300 &&
+      (c.req.method === "GET" || c.req.method === "HEAD")
+    ) {
+      const template = await fallbackRes.text()
+      return indexHtmlResponse(
+        await buildIndexHtml(template, env),
+        200,
+        fallbackRes.headers,
+      )
+    }
+    return fallbackRes
   }
   // EdgeOne 等 ASSETS 缺席的环境：直接返回构建期内联的 SPA 壳，
   // 避免前端路由（/add、/@manage/* 等）落到 404 文本导致整站不可达
+  // 内联壳里同样是未替换的占位符，必须过一遍 buildIndexHtml()。
   if (spaFallbackHtml && (c.req.method === "GET" || c.req.method === "HEAD")) {
-    return c.body(spaFallbackHtml, 200, {
-      "Content-Type": "text/html; charset=utf-8",
-      // HTML 入口必须 no-cache，否则新版本部署后旧 HTML 仍引用旧 hash 的 JS/CSS
-      "Cache-Control": "no-cache, must-revalidate",
-    })
+    return indexHtmlResponse(await buildIndexHtml(spaFallbackHtml, env), 200)
   }
   return c.text("404 Not Found", 404)
 })

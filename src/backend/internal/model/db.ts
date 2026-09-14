@@ -17,6 +17,37 @@ export {
 } from "./store/json"
 export { getStoreStatus } from "./store/backend"
 
+/**
+ * 「配置已写入」的旁路通知钩子。
+ *
+ * 为什么不用直接 import：server/index-html.ts 需要 getDb()，而 getDb() 定义在
+ * 本文件 —— 直接互相 import 会形成循环依赖（Node/打包器虽然能容忍，但在
+ * EdgeOne/ESA 的 CJS 产物里容易出现「一半初始化的模块」这类难查的运行时问题）。
+ * 这里反过来暴露一个注册点，由 index-html.ts 在加载时把自己挂上来，保持依赖
+ * 单向。
+ *
+ * 用途：index.html 的站点设置注入结果需要缓存（app.all("*") 是整站兜底路由），
+ * 而设置写入必须立刻让它失效，否则管理员改完自定义 JS 要等下次冷启动才生效。
+ * 所有设置写入最终都会走 saveDb()，挂在这里可以覆盖全部写入路径。
+ */
+type DbWriteListener = (env?: any) => void
+const dbWriteListeners: DbWriteListener[] = []
+
+export function onDbWrite(listener: DbWriteListener) {
+  dbWriteListeners.push(listener)
+}
+
+function notifyDbWrite(env?: any) {
+  for (const listener of dbWriteListeners) {
+    try {
+      listener(env)
+    } catch (err) {
+      // 监听器只做缓存失效这类副作用，失败不应影响写入本身的返回值。
+      console.error("[DB] write listener failed:", err)
+    }
+  }
+}
+
 // Global default configuration payload for Cloudflare Workers
 export const defaultDb = {
   settings: [
@@ -1428,6 +1459,11 @@ export const saveDb = async (data: any, envCtx?: any): Promise<boolean> => {
   // Refresh the request cache so any getDb() later in this request observes
   // the write rather than a pre-write snapshot.
   if (envCtx) dbCache.set(envCtx, { ts: Date.now(), db: data })
+
+  // 通知副作用缓存失效（当前是 index.html 的站点设置注入结果）。
+  // 位置在「内存已更新」之后、落盘之前：即使落盘失败抛错，内存里的配置也已经是
+  // 新的，注入缓存若不同步失效就会出现「内存配置新 / 页面还是旧」的不一致。
+  notifyDbWrite(envCtx)
 
   const activeEnv = envCtx || globalEnvCtx
   const backend = await getStoreBackend(activeEnv)
