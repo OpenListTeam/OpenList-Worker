@@ -32,7 +32,7 @@ body:
     id: platform
     attributes:
       label: Platform (required)
-      description: Which platform is OpenList-Worker deployed on? On EdgeOne, KV bindings are only injected into Edge Functions, not Node cloud functions — please use the blob driver there.
+      description: Which platform is OpenList-Worker deployed on?
       options:
         - Cloudflare Workers
         - EdgeOne Makers

@@ -32,7 +32,7 @@ body:
     id: platform
     attributes:
       label: 平台（必填）
-      description: 您将 OpenList-Worker 部署在哪个平台？EdgeOne 的 KV 绑定只注入 Edge Functions，不会注入 Node 云函数，在 EdgeOne 上请用 blob。
+      description: 您将 OpenList-Worker 部署在哪个平台？
       options:
         - Cloudflare Workers
         - Tencent EdgeOne Makers
