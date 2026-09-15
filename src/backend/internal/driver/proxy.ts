@@ -130,9 +130,22 @@ export function getStoragePolicy(storage: any): string {
   return typeof raw === "string" ? raw.trim() : ""
 }
 
-/** 从 storage.addition 中解析管理员配置的自定义下载代理地址 */
+/**
+ * 解析管理员配置的自定义下载代理地址（对齐 Go model.Proxy.DownProxyURL）。
+ *
+ * 优先读取存储行上的顶层字段（后台表单写入的就是这个位置），
+ * 再回退到 addition 内的历史别名，保证旧数据仍可用。
+ */
 export function getDownProxyUrl(storage: any): string {
   if (!storage) return ""
+
+  // 1) 顶层字段（正常路径）
+  for (const key of ["down_proxy_url", "downProxyUrl"]) {
+    const val = storage[key]
+    if (typeof val === "string" && val.trim()) return val.trim()
+  }
+
+  // 2) 回退到 addition 内的别名（兼容历史写法）
   let addition: any = storage.addition
   if (typeof addition === "string") {
     try {

@@ -1,6 +1,7 @@
 import { getDb } from "../internal/model/db"
 import { getJwtSecret } from "../server/middlewares"
 import { hmacSha256 } from "./crypto"
+import { getEnableSign } from "../internal/driver/storageopts"
 
 /**
  * 下载链接签名（防盗链 / 链接过期）。
@@ -104,15 +105,36 @@ export async function getNearestMeta(
 }
 
 /**
+ * 该路径所在存储是否开启了存储级签名（对齐 Go common.IsStorageSignEnabled）。
+ *
+ * Go 版通过 op.GetBalancedStorage(path) 由路径反查存储，再读 EnableSign。
+ * 这里用 storage 层已有的 resolvePath 做同样的解析，避免重复实现路径匹配。
+ */
+export async function isStorageSignEnabled(
+  c: any,
+  reqPath: string,
+): Promise<boolean> {
+  try {
+    const { resolvePath } = await import("../internal/model/db")
+    const resolved = await resolvePath(reqPath)
+    if (!resolved?.storage) return false
+    return getEnableSign(resolved.storage)
+  } catch {
+    return false
+  }
+}
+
+/**
  * 该路径是否处于「密码保护」状态（对齐 Go server/handles.isEncrypt）。
  *
- * Go 版还包含 IsStorageSignEnabled（存储级 EnableSign），TS 侧尚无该字段，
- * 故此处仅实现 meta 密码分支。
+ * Go 的 isEncrypt 判定顺序为：存储级 EnableSign → meta 密码 → 其余 false。
  */
 export async function isEncryptPath(
   c: any,
   reqPath: string,
 ): Promise<boolean> {
+  // 对齐 Go：存储级 EnableSign 优先于 meta 密码分支
+  if (await isStorageSignEnabled(c, reqPath)) return true
   const meta = await getNearestMeta(c, reqPath)
   if (!meta || !meta.password) return false
   return metaCoversPath(meta.path, reqPath, !!meta.p_sub)

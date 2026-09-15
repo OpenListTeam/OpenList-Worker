@@ -17,6 +17,7 @@ import {
   getDownProxyUrl,
   getDisableProxySign,
 } from "../internal/driver/proxy"
+import { getProxyRange } from "../internal/driver/storageopts"
 
 let fsPromises: any = null
 let createReadStream: any = null
@@ -106,6 +107,7 @@ async function proxyUpstream(
   fileItem: any,
   reqPath: string,
   trustedHosts?: ReadonlySet<string> | string[],
+  proxyRange = false,
 ) {
   // Start with driver-provided headers (Cookie, Referer, etc.)
   const headers: Record<string, string> = {
@@ -116,9 +118,11 @@ async function proxyUpstream(
     headers["User-Agent"] =
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
   }
-  // Forward Range header for video/audio/PDF seeking
+  // proxy_range（对齐 Go model.Proxy.ProxyRange）：
+  //   true  → 透传客户端 Range，上游 206 原样回传，支持拖进度条/断点续传
+  //   false → 丢弃 Range，上游返回完整文件（用于不支持 Range 的上游）
   const rangeReq = c.req.header("Range")
-  if (rangeReq) headers["Range"] = rangeReq
+  if (proxyRange && rangeReq) headers["Range"] = rangeReq
 
   let upstreamRes: Response
   try {
@@ -127,10 +131,15 @@ async function proxyUpstream(
     return c.text(ssrfErr.message || "SSRF blocked", 403)
   }
 
-  // If upstream returns 412 Precondition Failed (e.g. strict OSS check), retry with plain GET without Range
-  if (upstreamRes.status === 412) {
+  // 上游不支持 Range 的兜底：412（严格 OSS 校验）或「带 Range 却回了 200」
+  // 时去掉 Range 重试一次，保证请求最终能成功。
+  if (
+    headers["Range"] &&
+    (upstreamRes.status === 412 ||
+      (upstreamRes.status === 200 && !upstreamRes.headers.get("content-range")))
+  ) {
     console.warn(
-      `[rawRouter] Upstream returned 412 for '${reqPath}', retrying without Range header...`,
+      `[rawRouter] Upstream ignored/refused Range (status=${upstreamRes.status}) for '${reqPath}', retrying without Range header...`,
     )
     delete headers["Range"]
     upstreamRes = await safeProxyFetch(fileItem.raw_url, headers, trustedHosts)
@@ -400,11 +409,23 @@ rawRouter.get("/*", async (c) => {
               console.warn(
                 `[rawRouter] webdav_policy=use_proxy_url but down_proxy_url is empty (storage=${resolved.storage.id}); falling back to native proxy`,
               )
-              return proxyUpstream(c, fileItem, reqPath)
+              return proxyUpstream(
+                c,
+                fileItem,
+                reqPath,
+                trustedHosts,
+                getProxyRange(resolved.storage),
+              )
             }
 
             if (decision.needsProxy) {
-              return proxyUpstream(c, fileItem, reqPath, trustedHosts)
+              return proxyUpstream(
+                c,
+                fileItem,
+                reqPath,
+                trustedHosts,
+                getProxyRange(resolved.storage),
+              )
             }
 
             try {
