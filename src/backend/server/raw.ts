@@ -3,9 +3,20 @@ import { resolvePath } from "../internal/model/db"
 import { parseRangeHeader } from "../internal/stream/stream"
 import { flushPendingDriverState, getDriver } from "../internal/op/storage"
 import { resolveShare } from "../internal/op/share"
-import { needDownloadSign, verifyDownloadSign } from "../pkg/sign"
+import {
+  needDownloadSign,
+  verifyDownloadSign,
+  signDownloadPath,
+  getSignPolicy,
+  getSignExpiresIn,
+} from "../pkg/sign"
 import { safeErrorMessage } from "../pkg/errs"
 import { assertSafeUrl, getTrustedHosts } from "../pkg/http"
+import {
+  resolveProxyDecision,
+  getDownProxyUrl,
+  getDisableProxySign,
+} from "../internal/driver/proxy"
 
 let fsPromises: any = null
 let createReadStream: any = null
@@ -85,6 +96,163 @@ async function safeProxyFetch(
     return res
   }
   throw new Error("Proxy download blocked: too many redirects")
+}
+
+// 原生代理：拉取上游直链并回传字节流（含 Range、缓存头、CORS）。
+// 抽成独立函数是因为「webdav_policy=use_proxy_url 但未配置 down_proxy_url」
+// 与「驱动强制代理」两种情况都需要走同一套实现。
+async function proxyUpstream(
+  c: any,
+  fileItem: any,
+  reqPath: string,
+  trustedHosts?: ReadonlySet<string> | string[],
+) {
+  // Start with driver-provided headers (Cookie, Referer, etc.)
+  const headers: Record<string, string> = {
+    ...(fileItem.raw_url_headers || {}),
+  }
+  // Ensure a User-Agent is set (don't override if driver already set one)
+  if (!headers["User-Agent"]) {
+    headers["User-Agent"] =
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  }
+  // Forward Range header for video/audio/PDF seeking
+  const rangeReq = c.req.header("Range")
+  if (rangeReq) headers["Range"] = rangeReq
+
+  let upstreamRes: Response
+  try {
+    upstreamRes = await safeProxyFetch(fileItem.raw_url, headers, trustedHosts)
+  } catch (ssrfErr: any) {
+    return c.text(ssrfErr.message || "SSRF blocked", 403)
+  }
+
+  // If upstream returns 412 Precondition Failed (e.g. strict OSS check), retry with plain GET without Range
+  if (upstreamRes.status === 412) {
+    console.warn(
+      `[rawRouter] Upstream returned 412 for '${reqPath}', retrying without Range header...`,
+    )
+    delete headers["Range"]
+    upstreamRes = await safeProxyFetch(fileItem.raw_url, headers, trustedHosts)
+  }
+
+  // CORS headers
+  c.header("Access-Control-Allow-Origin", "*")
+  c.header("Access-Control-Allow-Methods", "GET, OPTIONS, HEAD")
+  c.header(
+    "Access-Control-Expose-Headers",
+    "Content-Range, Accept-Ranges, Content-Length, Content-Disposition",
+  )
+
+  // Content-Type: prefer upstream, fallback by extension
+  const extMap: Record<string, string> = {
+    pdf: "application/pdf",
+    mp4: "video/mp4",
+    webm: "video/webm",
+    mkv: "video/x-matroska",
+    mp3: "audio/mpeg",
+    flac: "audio/flac",
+    m3u8: "application/vnd.apple.mpegurl",
+    ts: "video/mp2t",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    svg: "image/svg+xml",
+  }
+  const fileExt = reqPath.split(".").pop()?.toLowerCase() || ""
+  const defaultContentType = extMap[fileExt] || "application/octet-stream"
+  c.header(
+    "Content-Type",
+    upstreamRes.headers.get("content-type") || defaultContentType,
+  )
+
+  // Forward range/length headers
+  const contentLength = upstreamRes.headers.get("content-length")
+  if (contentLength) c.header("Content-Length", contentLength)
+  const contentRange = upstreamRes.headers.get("content-range")
+  if (contentRange) c.header("Content-Range", contentRange)
+  // Always advertise range support so video/audio players can seek
+  c.header("Accept-Ranges", upstreamRes.headers.get("accept-ranges") || "bytes")
+
+  // Forward caching headers
+  const etag = upstreamRes.headers.get("etag")
+  if (etag) c.header("ETag", etag)
+  const lastModified = upstreamRes.headers.get("last-modified")
+  if (lastModified) c.header("Last-Modified", lastModified)
+  const cacheControl = upstreamRes.headers.get("cache-control")
+  if (cacheControl) c.header("Cache-Control", cacheControl)
+  // FIX(H-3): 上游响应头已按白名单回显，但对 Content-Disposition 额外
+  // 清洗 CR/LF 与控制字符，防止恶意上游注入额外响应头（Set-Cookie/Location）。
+  const contentDisposition = upstreamRes.headers.get("content-disposition")
+  if (contentDisposition) {
+    const safeDisposition = contentDisposition.replace(/[\r\n\u0000-\u001f]+/g, "")
+    c.header("Content-Disposition", safeDisposition)
+  }
+
+  return c.body(upstreamRes.body as any, upstreamRes.status as any)
+}
+
+/**
+ * 判断某个 URL 是否指向本站（用于决定是否附带下载签名）。
+ * 本站地址通常是 /p/... 之类的相对路径，或与请求同 host 的绝对地址。
+ */
+function isSameOriginUrl(url: string, c: any): boolean {
+  if (url.startsWith("/")) return true
+  try {
+    const target = new URL(url)
+    const host = c.req.header("host") || new URL(c.req.url).host
+    return target.host === host
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 构造 down_proxy_url 形式的下载地址。
+ *
+ * 对齐 Go internal/common/url.go 的 DownloadProxyURL：模板里的 $path 会被替换为
+ * 真实路径；若模板以 / 开头则视为同源相对路径，否则应为 http(s) 绝对地址。
+ *
+ * 注意：模板不携带本服务实例的密钥，因此 worker 场景下无法预先把签名写进模板，
+ * 这里在运行时补签（仅当目标是本站 且 需要签名 且 未禁用 disable_proxy_sign）。
+ */
+async function buildDownProxyUrl(
+  c: any,
+  template: string,
+  reqPath: string,
+  storage: any,
+): Promise<string> {
+  if (!template) return ""
+  const encoded = encodeURI(reqPath.startsWith("/") ? reqPath : "/" + reqPath)
+
+  let url = template.includes("$path")
+    ? template.replace(/\$path(?!\w)/g, encoded)
+    : template.replace(/\/+$/, "") + encoded
+
+  if (
+    isSameOriginUrl(url, c) &&
+    !getDisableProxySign(storage) &&
+    !/[?&]sign=/.test(url)
+  ) {
+    try {
+      const policy = await getSignPolicy(c)
+      if (policy.enabled) {
+        const sign = await signDownloadPath(
+          c,
+          reqPath,
+          await getSignExpiresIn(c),
+        )
+        if (sign) url += (url.includes("?") ? "&" : "?") + "sign=" + sign
+      }
+    } catch (e: any) {
+      console.warn(
+        `[rawRouter] failed to sign down_proxy_url for '${reqPath}': ${e?.message || e}`,
+      )
+    }
+  }
+  return url
 }
 
 rawRouter.get("/*", async (c) => {
@@ -196,132 +364,58 @@ rawRouter.get("/*", async (c) => {
           }
 
           if (fileItem && fileItem.raw_url) {
-            // WebDAV 等需要认证的驱动：强制使用代理模式，避免重定向导致认证丢失
-            const needsProxy =
-              isProxy ||
-              normDriver === "webdav" ||
-              normDriver === "sharepoint" ||
-              normDriver === "onedrive" ||
-              normDriver === "onedriveapp" ||
-              normDriver === "weiyun" ||
-              normDriver === "tencentweiyun"
-            if (needsProxy) {
-              console.log(
-                `[rawRouter] Proxying download for '${reqPath}' via ${resolved.storage.driver}`,
-              )
-              // Start with driver-provided headers (Cookie, Referer, etc.)
-              const headers: Record<string, string> = {
-                ...(fileItem.raw_url_headers || {}),
-              }
-              // Ensure a User-Agent is set (don't override if driver already set one)
-              if (!headers["User-Agent"]) {
-                headers["User-Agent"] =
-                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-              }
-              // Forward Range header for video/audio/PDF seeking
-              const rangeReq = c.req.header("Range")
-              if (rangeReq) headers["Range"] = rangeReq
+            // 下载模式决策：对齐 Go 的 ShouldProxy()/canProxy() + webdav_policy。
+            //   - 驱动强制代理（MustProxy）> 存储 web_proxy > /p、/sd 路径 >
+            //     存储 webdav_policy > 驱动默认（PreferProxy）> 302_redirect
+            // 存储级 webdav_policy 从此真正生效（此前该字段仅有表单、无逻辑）。
+            const decision = resolveProxyDecision(
+              resolved.storage,
+              normDriver,
+              isProxy,
+            )
 
-              let upstreamRes: Response
-              try {
-                upstreamRes = await safeProxyFetch(
-                  fileItem.raw_url,
-                  headers,
-                  trustedHosts,
+            // use_proxy_url：重定向到管理员配置的下载代理地址（注意与真实的
+            // 代理模式区分，后者用 needsProxy 表达，避免误落入 native_proxy）
+            if (decision.mode === "use_proxy_url") {
+              const downProxy = getDownProxyUrl(resolved.storage)
+              if (downProxy) {
+                const url = await buildDownProxyUrl(
+                  c,
+                  downProxy,
+                  reqPath,
+                  resolved.storage,
                 )
-              } catch (ssrfErr: any) {
-                return c.text(ssrfErr.message || "SSRF blocked", 403)
+                if (url) {
+                  try {
+                    assertSafeUrl(url, "Redirect download", trustedHosts)
+                  } catch (ssrfErr: any) {
+                    return c.text(ssrfErr.message || "SSRF blocked", 403)
+                  }
+                  console.log(
+                    `[rawRouter] Redirecting download for '${reqPath}' to configured proxy url via ${resolved.storage.driver}`,
+                  )
+                  return c.redirect(url, 302)
+                }
               }
-
-              // If upstream returns 412 Precondition Failed (e.g. strict OSS check), retry with plain GET without Range
-              if (upstreamRes.status === 412) {
-                console.warn(
-                  `[rawRouter] Upstream returned 412 for '${reqPath}', retrying without Range header...`,
-                )
-                delete headers["Range"]
-                upstreamRes = await safeProxyFetch(
-                  fileItem.raw_url,
-                  headers,
-                  trustedHosts,
-                )
-              }
-
-              // CORS headers
-              c.header("Access-Control-Allow-Origin", "*")
-              c.header("Access-Control-Allow-Methods", "GET, OPTIONS, HEAD")
-              c.header(
-                "Access-Control-Expose-Headers",
-                "Content-Range, Accept-Ranges, Content-Length, Content-Disposition",
+              console.warn(
+                `[rawRouter] webdav_policy=use_proxy_url but down_proxy_url is empty (storage=${resolved.storage.id}); falling back to native proxy`,
               )
-
-              // Content-Type: prefer upstream, fallback by extension
-              const extMap: Record<string, string> = {
-                pdf: "application/pdf",
-                mp4: "video/mp4",
-                webm: "video/webm",
-                mkv: "video/x-matroska",
-                mp3: "audio/mpeg",
-                flac: "audio/flac",
-                m3u8: "application/vnd.apple.mpegurl",
-                ts: "video/mp2t",
-                png: "image/png",
-                jpg: "image/jpeg",
-                jpeg: "image/jpeg",
-                gif: "image/gif",
-                webp: "image/webp",
-                svg: "image/svg+xml",
-              }
-              const fileExt = reqPath.split(".").pop()?.toLowerCase() || ""
-              const defaultContentType =
-                extMap[fileExt] || "application/octet-stream"
-              c.header(
-                "Content-Type",
-                upstreamRes.headers.get("content-type") || defaultContentType,
-              )
-
-              // Forward range/length headers
-              const contentLength = upstreamRes.headers.get("content-length")
-              if (contentLength) c.header("Content-Length", contentLength)
-              const contentRange = upstreamRes.headers.get("content-range")
-              if (contentRange) c.header("Content-Range", contentRange)
-              // Always advertise range support so video/audio players can seek
-              c.header(
-                "Accept-Ranges",
-                upstreamRes.headers.get("accept-ranges") || "bytes",
-              )
-
-              // Forward caching headers
-              const etag = upstreamRes.headers.get("etag")
-              if (etag) c.header("ETag", etag)
-              const lastModified = upstreamRes.headers.get("last-modified")
-              if (lastModified) c.header("Last-Modified", lastModified)
-              const cacheControl = upstreamRes.headers.get("cache-control")
-              if (cacheControl) c.header("Cache-Control", cacheControl)
-              // FIX(H-3): 上游响应头已按白名单回显，但对 Content-Disposition 额外
-              // 清洗 CR/LF 与控制字符，防止恶意上游注入额外响应头（Set-Cookie/Location）。
-              const contentDisposition = upstreamRes.headers.get(
-                "content-disposition",
-              )
-              if (contentDisposition) {
-                const safeDisposition = contentDisposition.replace(
-                  /[\r\n\u0000-\u001f]+/g,
-                  "",
-                )
-                c.header("Content-Disposition", safeDisposition)
-              }
-
-              return c.body(upstreamRes.body as any, upstreamRes.status as any)
-            } else {
-              try {
-                assertSafeUrl(fileItem.raw_url, "Redirect download", trustedHosts)
-              } catch (ssrfErr: any) {
-                return c.text(ssrfErr.message || "SSRF blocked", 403)
-              }
-              console.log(
-                `[rawRouter] Redirecting download for '${reqPath}' via ${resolved.storage.driver}`,
-              )
-              return c.redirect(fileItem.raw_url, 302)
+              return proxyUpstream(c, fileItem, reqPath)
             }
+
+            if (decision.needsProxy) {
+              return proxyUpstream(c, fileItem, reqPath, trustedHosts)
+            }
+
+            try {
+              assertSafeUrl(fileItem.raw_url, "Redirect download", trustedHosts)
+            } catch (ssrfErr: any) {
+              return c.text(ssrfErr.message || "SSRF blocked", 403)
+            }
+            console.log(
+              `[rawRouter] Redirecting download for '${reqPath}' via ${resolved.storage.driver}`,
+            )
+            return c.redirect(fileItem.raw_url, 302)
           } else if (
             typeof (driver as any).createReadStream === "function" &&
             fileItem &&

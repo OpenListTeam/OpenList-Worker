@@ -1,3 +1,5 @@
+import { registerDriverProxyCapability } from "../../internal/driver/proxy"
+
 export interface Addition {
   root_folder_path: string
   region: string
@@ -21,7 +23,17 @@ export const config = {
   name: "Onedrive",
   localSort: true,
   defaultRoot: "/",
+  // 对齐 Go drivers/onedrive/meta.go：config 里不设 only_proxy / prefer_proxy，
+  // 因此 webdav_policy 的默认值为 302_redirect，OneDrive 默认走直链。
+  preferProxy: false,
 }
+
+// 显式声明「不强制代理、不默认代理」：下载模式完全由存储级
+// web_proxy / webdav_policy 决定，默认 302 直链（与 Go 一致）。
+registerDriverProxyCapability(config.name, {
+  preferProxy: false,
+  forceProxy: false,
+})
 
 export const onedriveHostMap: Record<string, { oauth: string; api: string }> = {
   global: {

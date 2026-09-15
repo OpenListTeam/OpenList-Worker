@@ -519,7 +519,7 @@ adminRouter.get("/driver/names", (c) => {
   })
 })
 
-const COMMON_FIELDS = [
+const BASE_FIELDS = [
   {
     name: "mount_path",
     type: "string",
@@ -544,33 +544,82 @@ const COMMON_FIELDS = [
     default: "30",
     required: false,
   },
-  {
-    name: "web_proxy",
-    type: "bool",
-    default: "false",
-    required: false,
-  },
-  {
-    name: "webdav_policy",
-    type: "select",
-    options: "302_redirect,use_proxy_url,native_proxy",
-    default: "302_redirect",
-    required: false,
-  },
-  {
-    name: "down_proxy_url",
-    type: "string",
-    default: "",
-    required: false,
-  },
-  {
-    name: "seed_policy",
-    type: "select",
-    options: "inherit,on,off",
-    default: "inherit",
-    required: true,
-    help: "Override automatic transfer-seed generation for this storage",
-  },
+]
+
+const WEB_PROXY_FIELD = {
+  name: "web_proxy",
+  type: "bool",
+  default: "false",
+  required: false,
+}
+
+const WEBDAV_POLICY_FIELD = {
+  name: "webdav_policy",
+  type: "select",
+  options: "302_redirect,use_proxy_url,native_proxy",
+  default: "302_redirect",
+  required: false,
+}
+
+/**
+ * 按 Go internal/op/driver.go 的规则构造 web_proxy / webdav_policy 表单项：
+ *   - MustProxy()  ：没有 302 选项，策略强制 native_proxy（等价 Go 的默认值）
+ *   - DefaultProxy()：默认 native_proxy（PreferProxy 驱动，如 WebDav）
+ *   - 其余         ：默认 302_redirect（对齐 Go 默认值）
+ */
+function buildProxyFields(onlyProxy: boolean, preferProxy: boolean) {
+  if (onlyProxy) {
+    return [
+      {
+        ...WEBDAV_POLICY_FIELD,
+        options: "use_proxy_url,native_proxy",
+        default: "native_proxy",
+      },
+    ]
+  }
+  return [
+    preferProxy
+      ? { ...WEB_PROXY_FIELD, default: "true" }
+      : { ...WEB_PROXY_FIELD },
+    preferProxy
+      ? { ...WEBDAV_POLICY_FIELD, default: "native_proxy" }
+      : { ...WEBDAV_POLICY_FIELD },
+  ]
+}
+
+const SEED_POLICY_FIELD = {
+  name: "seed_policy",
+  type: "select",
+  options: "inherit,on,off",
+  default: "inherit",
+  required: true,
+  help: "Override automatic transfer-seed generation for this storage",
+}
+
+/** 对齐 Go：down_proxy_url 对所有非 MustProxy 驱动开放；MustProxy 驱动不需要 */
+const DOWN_PROXY_URL_FIELD = {
+  name: "down_proxy_url",
+  type: "string",
+  default: "",
+  required: false,
+  help: "自定义下载代理地址（支持 $path 占位符；留空则用本服务代理）",
+}
+
+const DISABLE_PROXY_SIGN_FIELD = {
+  name: "disable_proxy_sign",
+  type: "bool",
+  default: "false",
+  required: false,
+  help: "Disable sign for Download proxy URL",
+}
+
+const COMMON_FIELDS = [
+  ...BASE_FIELDS,
+  ...buildProxyFields(false, false),
+  ...(DOWN_PROXY_URL_FIELD
+    ? [DOWN_PROXY_URL_FIELD, DISABLE_PROXY_SIGN_FIELD]
+    : []),
+  SEED_POLICY_FIELD,
 ]
 
 const driverConfigs: Record<string, any> = {
@@ -652,7 +701,14 @@ const driverConfigs: Record<string, any> = {
   Onedrive: {
     name: "Onedrive",
     default_mount_path: "/onedrive",
-    common: COMMON_FIELDS.slice(0, 3),
+    // 对齐 Go drivers/onedrive/meta.go：无 MustProxy/PreferProxy，
+    // webdav_policy 默认 302_redirect（OneDrive 默认走直链）。
+    common: [
+      ...BASE_FIELDS.slice(0, 3),
+      ...buildProxyFields(false, false),
+      DOWN_PROXY_URL_FIELD,
+      DISABLE_PROXY_SIGN_FIELD,
+    ],
     additional: [
       {
         name: "root_folder_path",
@@ -746,7 +802,13 @@ const driverConfigs: Record<string, any> = {
   OnedriveAPP: {
     name: "OnedriveAPP",
     default_mount_path: "/onedrive_app",
-    common: COMMON_FIELDS.slice(0, 3),
+    // 同 Onedrive：默认 302_redirect
+    common: [
+      ...BASE_FIELDS.slice(0, 3),
+      ...buildProxyFields(false, false),
+      DOWN_PROXY_URL_FIELD,
+      DISABLE_PROXY_SIGN_FIELD,
+    ],
     additional: [
       {
         name: "root_folder_path",
@@ -939,7 +1001,13 @@ const driverConfigs: Record<string, any> = {
   "123Pan": {
     name: "123Pan",
     default_mount_path: "/123",
-    common: COMMON_FIELDS,
+    // 对齐 Go drivers/123/meta.go：OnlyProxy + PreferProxy
+    common: [
+      ...BASE_FIELDS,
+      ...buildProxyFields(true, false),
+      DISABLE_PROXY_SIGN_FIELD,
+      SEED_POLICY_FIELD,
+    ],
     additional: [
       {
         name: "username",
@@ -1016,7 +1084,13 @@ const driverConfigs: Record<string, any> = {
   BaiduNetdisk: {
     name: "BaiduNetdisk",
     default_mount_path: "/baidu",
-    common: COMMON_FIELDS,
+    // 对齐 Go drivers/baidu_netdisk/meta.go：OnlyProxy + PreferProxy
+    common: [
+      ...BASE_FIELDS,
+      ...buildProxyFields(true, false),
+      DISABLE_PROXY_SIGN_FIELD,
+      SEED_POLICY_FIELD,
+    ],
     additional: [
       {
         name: "refresh_token",
@@ -1145,7 +1219,13 @@ const driverConfigs: Record<string, any> = {
   "115Open": {
     name: "115Open",
     default_mount_path: "/115",
-    common: COMMON_FIELDS,
+    // 对齐 Go drivers/115_open/meta.go：OnlyProxy（无 302 选项）
+    common: [
+      ...BASE_FIELDS,
+      ...buildProxyFields(true, false),
+      DISABLE_PROXY_SIGN_FIELD,
+      SEED_POLICY_FIELD,
+    ],
     additional: [
       {
         name: "access_token",
@@ -1504,7 +1584,13 @@ const driverConfigs: Record<string, any> = {
   "189Cloud": {
     name: "189Cloud",
     default_mount_path: "/189",
-    common: COMMON_FIELDS,
+    // 对齐 Go drivers/189/meta.go：OnlyProxy
+    common: [
+      ...BASE_FIELDS,
+      ...buildProxyFields(true, false),
+      DISABLE_PROXY_SIGN_FIELD,
+      SEED_POLICY_FIELD,
+    ],
     additional: [
       {
         name: "username",
@@ -1665,7 +1751,15 @@ const driverConfigs: Record<string, any> = {
   WebDav: {
     name: "WebDav",
     default_mount_path: "/webdav",
-    common: COMMON_FIELDS,
+    // 对齐 Go drivers/webdav/meta.go 的 PreferProxy: true：
+    // web_proxy 默认 true、webdav_policy 默认 native_proxy。
+    common: [
+      ...BASE_FIELDS,
+      ...buildProxyFields(false, true),
+      DOWN_PROXY_URL_FIELD,
+      DISABLE_PROXY_SIGN_FIELD,
+      SEED_POLICY_FIELD,
+    ],
     additional: [
       {
         name: "vendor",
@@ -2085,7 +2179,13 @@ const driverConfigs: Record<string, any> = {
   WeiYun: {
     name: "WeiYun",
     default_mount_path: "/weiyun",
-    common: COMMON_FIELDS,
+    // 对齐 Go drivers/weiyun/meta.go：OnlyProxy
+    common: [
+      ...BASE_FIELDS,
+      ...buildProxyFields(true, false),
+      DISABLE_PROXY_SIGN_FIELD,
+      SEED_POLICY_FIELD,
+    ],
     additional: [
       {
         name: "root_folder_id",
@@ -2136,7 +2236,13 @@ const driverConfigs: Record<string, any> = {
   SFTP: {
     name: "SFTP",
     default_mount_path: "/sftp",
-    common: COMMON_FIELDS,
+    // 对齐 Go drivers/sftp/meta.go：OnlyProxy + NoLinkURL（无直链可 302）
+    common: [
+      ...BASE_FIELDS,
+      ...buildProxyFields(true, false),
+      DISABLE_PROXY_SIGN_FIELD,
+      SEED_POLICY_FIELD,
+    ],
     additional: [
       {
         name: "address",
@@ -2199,7 +2305,13 @@ const driverConfigs: Record<string, any> = {
   FTP: {
     name: "FTP",
     default_mount_path: "/ftp",
-    common: COMMON_FIELDS,
+    // 对齐 Go drivers/ftp/meta.go：OnlyProxy + NoLinkURL
+    common: [
+      ...BASE_FIELDS,
+      ...buildProxyFields(true, false),
+      DISABLE_PROXY_SIGN_FIELD,
+      SEED_POLICY_FIELD,
+    ],
     additional: [
       {
         name: "address",
@@ -2477,7 +2589,13 @@ const driverConfigs: Record<string, any> = {
   Terabox: {
     name: "Terabox",
     default_mount_path: "/terabox",
-    common: COMMON_FIELDS,
+    // 对齐 Go drivers/terabox/meta.go：OnlyProxy
+    common: [
+      ...BASE_FIELDS,
+      ...buildProxyFields(true, false),
+      DISABLE_PROXY_SIGN_FIELD,
+      SEED_POLICY_FIELD,
+    ],
     additional: [
       {
         name: "cookie",
@@ -2827,7 +2945,13 @@ const driverConfigs: Record<string, any> = {
   Mega_nz: {
     name: "Mega_nz",
     default_mount_path: "/mega",
-    common: COMMON_FIELDS,
+    // 对齐 Go drivers/mega/meta.go：OnlyProxy + NoLinkURL
+    common: [
+      ...BASE_FIELDS,
+      ...buildProxyFields(true, false),
+      DISABLE_PROXY_SIGN_FIELD,
+      SEED_POLICY_FIELD,
+    ],
     additional: [
       {
         name: "email",
@@ -2949,7 +3073,13 @@ const driverConfigs: Record<string, any> = {
   "123PanShare": {
     name: "123PanShare",
     default_mount_path: "/123_share",
-    common: COMMON_FIELDS,
+    // 对齐 Go drivers/123_share/meta.go：OnlyProxy + PreferProxy
+    common: [
+      ...BASE_FIELDS,
+      ...buildProxyFields(true, false),
+      DISABLE_PROXY_SIGN_FIELD,
+      SEED_POLICY_FIELD,
+    ],
     additional: [
       {
         name: "sharekey",
@@ -3152,7 +3282,13 @@ const driverConfigs: Record<string, any> = {
   SMB: {
     name: "SMB",
     default_mount_path: "/smb",
-    common: COMMON_FIELDS,
+    // 对齐 Go drivers/smb/meta.go：OnlyProxy + NoLinkURL
+    common: [
+      ...BASE_FIELDS,
+      ...buildProxyFields(true, false),
+      DISABLE_PROXY_SIGN_FIELD,
+      SEED_POLICY_FIELD,
+    ],
     additional: [
       {
         name: "address",
@@ -3219,7 +3355,13 @@ const driverConfigs: Record<string, any> = {
   Crypt: {
     name: "Crypt",
     default_mount_path: "/crypt",
-    common: COMMON_FIELDS,
+    // 对齐 Go drivers/crypt/meta.go：OnlyProxy + NoLinkURL
+    common: [
+      ...BASE_FIELDS,
+      ...buildProxyFields(true, false),
+      DISABLE_PROXY_SIGN_FIELD,
+      SEED_POLICY_FIELD,
+    ],
     additional: [
       {
         name: "remote_path",
@@ -3290,7 +3432,13 @@ const driverConfigs: Record<string, any> = {
   Virtual: {
     name: "Virtual",
     default_mount_path: "/virtual",
-    common: COMMON_FIELDS,
+    // 对齐 Go drivers/virtual/meta.go：OnlyProxy + NoLinkURL
+    common: [
+      ...BASE_FIELDS,
+      ...buildProxyFields(true, false),
+      DISABLE_PROXY_SIGN_FIELD,
+      SEED_POLICY_FIELD,
+    ],
     additional: [
       {
         name: "num_file",
@@ -3427,7 +3575,13 @@ const driverConfigs: Record<string, any> = {
   Strm: {
     name: "Strm",
     default_mount_path: "/strm",
-    common: COMMON_FIELDS,
+    // 对齐 Go drivers/strm/meta.go：OnlyProxy + NoLinkURL
+    common: [
+      ...BASE_FIELDS,
+      ...buildProxyFields(true, false),
+      DISABLE_PROXY_SIGN_FIELD,
+      SEED_POLICY_FIELD,
+    ],
     additional: [
       {
         name: "paths",
@@ -3857,7 +4011,13 @@ const driverConfigs: Record<string, any> = {
   ProtonDrive: {
     name: "ProtonDrive",
     default_mount_path: "/proton",
-    common: COMMON_FIELDS,
+    // 对齐 Go drivers/proton_drive/meta.go：OnlyProxy + NoLinkURL
+    common: [
+      ...BASE_FIELDS,
+      ...buildProxyFields(true, false),
+      DISABLE_PROXY_SIGN_FIELD,
+      SEED_POLICY_FIELD,
+    ],
     additional: [
       {
         name: "email",
