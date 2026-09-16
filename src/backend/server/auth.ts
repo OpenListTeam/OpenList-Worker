@@ -327,12 +327,26 @@ export async function getOrInitUsers(envCtx: any) {
         pwd_update_at: new Date().toISOString(),
       }
       await setUserPassword(admin, envPass)
+      // 自愈：数据库中完全没有用户时补回 admin/guest 占位用户。
+      //
+      // 注意：这里构建出的库在「尚无密码、也无其它实体」时会被 saveDb 的写前守卫
+      // 判定为空壳。只有在当前库可信（曾成功读取过真实配置）时才允许强制落盘，
+      // 否则宁可拒绝写入，也不要让「读取失败后的空库」被误当成已完成初始化。
       db.users = [admin, guest]
     } else {
       // 未初始化：仅创建 guest，admin 由 Web 安装向导（POST /api/public/init/setup）创建
       db.users = [guest]
     }
-    await saveDb(db, envCtx)
+    // 只有配置了 ADMIN_PASS（或已存在真实管理员）时，这份库才不是空壳，
+    // 才应该落盘。未配置时应等待 init/setup 完成初始化，而不是抢先写入一个
+    // 未初始化的占位库（会被 saveDb 的写前守卫拦截）。
+    const persisted = await saveDb(db, envCtx)
+    if (!persisted) {
+      console.warn(
+        "[Auth] getOrInitUsers: skipped persisting an uninitialized placeholder DB " +
+          "(expected until POST /api/public/init/setup completes).",
+      )
+    }
   } else {
     const adminUser = db.users.find((u: any) => u.role === 2)
     // FIX(F-11): the old logic silently reset any non-64-hex password (e.g. a
