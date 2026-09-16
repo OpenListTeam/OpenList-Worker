@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 import { setupRouter } from "./server/router"
 import { rawRouter } from "./server/raw"
-import { assetsRouter } from "./server/assets"
+import { assetsRouter, injectCdnIntoHtml } from "./server/assets"
 import { webdavRouter } from "./server/webdav"
 import { s3Router } from "./server/s3"
 import { setEnvCtx } from "./internal/model/db"
@@ -132,21 +132,51 @@ app.all("*", async (c) => {
       // 会被 Cloudflare 边缘/浏览器长期缓存，导致旧 HTML 引用旧 hash 的 JS/CSS。
       // 只对 HTML 入口 no-cache（JS/CSS 带 hash 可安全长期缓存）。
       if (url.pathname === "/" || url.pathname === "/index.html") {
+        // HTML 入口：注入 ASSET_URLS（若配置），使前端直连 CDN 加载静态资源，
+        // 避免每个 JS/CSS/图片请求都经 Worker 302 中转。
+        let html = await res.text()
+        try {
+          html = await injectCdnIntoHtml(html, env)
+        } catch {
+          // 注入失败不影响 HTML 正常返回
+        }
         const headers = new Headers(res.headers)
         headers.set("Cache-Control", "no-cache, must-revalidate")
-        return new Response(res.body, { status: res.status, headers })
+        headers.set("Content-Type", "text/html; charset=utf-8")
+        return new Response(html, { status: res.status, headers })
       }
       return res
     }
     // SPA fallback: return index.html for non-asset routes (e.g. /login, /manage)
     // 注意：ASSETS.fetch 对 /index.html 也可能返回 307，直接 fetch "/" 获取实际 HTML
     const rootReq = new Request(`${url.origin}/`, c.req.raw)
-    return env.ASSETS.fetch(rootReq)
+    const rootRes = await env.ASSETS.fetch(rootReq)
+    let html = await rootRes.text()
+    try {
+      html = await injectCdnIntoHtml(html, env)
+    } catch {
+      // 注入失败不影响 SPA 兜底
+    }
+    return new Response(html, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        // HTML 入口必须 no-cache，否则新版本部署后旧 HTML 仍引用旧 hash 的 JS/CSS
+        "Cache-Control": "no-cache, must-revalidate",
+      },
+    })
   }
   // EdgeOne 等 ASSETS 缺席的环境：直接返回构建期内联的 SPA 壳，
   // 避免前端路由（/add、/@manage/* 等）落到 404 文本导致整站不可达
   if (spaFallbackHtml && (c.req.method === "GET" || c.req.method === "HEAD")) {
-    return c.body(spaFallbackHtml, 200, {
+    // 注入 ASSET_URLS（若配置）；不修改模块级 spaFallbackHtml，避免并发污染
+    let html = spaFallbackHtml
+    try {
+      html = await injectCdnIntoHtml(html, env)
+    } catch {
+      // 注入失败时返回原始 SPA 壳
+    }
+    return c.body(html, 200, {
       "Content-Type": "text/html; charset=utf-8",
       // HTML 入口必须 no-cache，否则新版本部署后旧 HTML 仍引用旧 hash 的 JS/CSS
       "Cache-Control": "no-cache, must-revalidate",

@@ -79,7 +79,8 @@
     // "MAX_UPPART": "16777216",
     //
     // 前端静态资源 CDN 地址，支持 $version 占位符
-    // "ASSET_URLS": "https://example.com/dist",
+    // 配置后注入 index.html 的 window.OPENLIST_CONFIG.cdn，浏览器直连 CDN 加载资源
+    // "ASSET_URLS": "https://cdn.jsdelivr.net/npm/@openlist-frontend/openlist-frontend@$version/dist",
     //
     // 允许作为种子数据来源的主机白名单，逗号/空格分隔
     // "ALLOW_SEED": "",
