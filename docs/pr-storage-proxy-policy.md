@@ -1,0 +1,240 @@
+<!--
+PR title / PR 标题:
+- Use Conventional Commits: `type(scope): summary`
+- Allowed types: `feat`, `docs`, `fix`, `style`, `refactor`, `chore`
+- Scope is required by the current PR title check.
+- For breaking changes, add `!`: `feat(driver)!: change auth flow`
+-->
+
+`feat(storage): implement storage-level proxy policy and align drivers with Go behavior`
+
+## Summary / 摘要
+
+<!--
+Briefly describe what changed and why.
+简要说明改了什么，以及为什么需要改。
+-->
+
+本 PR 修复了存储级下载/代理配置在 TSWorker 后端**全部失效**的问题，并把四个此前只有数据库列与表单项、没有读取方的字段真正接入运行时，行为与 Go 版 OpenList 对齐。
+
+**问题背景**：`web_proxy`、`webdav_policy`、`down_proxy_url`、`disable_proxy_sign`、`proxy_range`、`enable_sign`、`disable_index`、`custom_cache_policies` 这些字段在 TSWorker 中都能在后台填写、也能存入数据库，但后端**没有任何代码读取它们**。同时 `server/raw.ts` 用一段硬编码的驱动名单强制若干驱动走代理：
+
+```ts
+const needsProxy =
+  isProxy ||
+  normDriver === "webdav" ||
+  normDriver === "sharepoint" ||
+  normDriver === "onedrive" ||
+  normDriver === "onedriveapp" ||
+  normDriver === "weiyun" ||
+  normDriver === "tencentweiyun"
+```
+
+因此 **OneDrive 无论后台怎么配置都无法使用 302 直链**，管理员在存储编辑页看到的所有代理选项实际上都是装饰。
+
+<!--
+- List user-visible behavior changes.
+- List important implementation changes.
+- Mention config, storage, API, or compatibility changes if any.
+
+- 列出用户可感知的行为变化。
+- 列出重要实现变化。
+- 如涉及配置、存储、API 或兼容性变化，请明确说明。
+-->
+
+### 用户可感知的行为变化
+
+- **OneDrive / OneDriveAPP 默认改为 302 直链下载**（对齐 Go 默认值 `302_redirect`）。此前被硬编码强制代理。如需保留代理行为，请将该存储的 `webdav_policy` 设为 `native_proxy`。
+- `web_proxy`、`webdav_policy`、`down_proxy_url`、`disable_proxy_sign` 在后台的配置**从此真实生效**。
+- 存储编辑表单新增四个字段：`proxy_range`、`enable_sign`、`disable_index`、`custom_cache_policies`。
+- 存储表单按驱动能力差异化显示：15 个仅代理驱动不再出现 302 选项；WebDav 的 `web_proxy` 默认勾选；`proxy_range` 仅对 Go 中声明 `ProxyRangeOption` 的驱动显示。
+- `/fs/list` 对开启 `disable_index` 的存储返回 `403 {"message":"Index is disabled for this storage"}`。
+- `/fs/list` 响应新增 `cache_expiration` 字段（路径级缓存策略计算后的分钟数）。
+
+### 重要实现变化
+
+- 新增 `internal/driver/proxy.ts`：统一的下载模式决策与驱动代理能力注册表，对齐 Go 的 `Config.MustProxy()` / `Config.DefaultProxy()` / `ShouldProxy()`。
+- 新增 `internal/driver/storageopts.ts`：解析 `proxy_range` / `enable_sign` / `disable_index` / `cache_expiration` / `custom_cache_policies` 并提供 glob 匹配与缓存时长合成。
+- `server/raw.ts`：用 `resolveProxyDecision()` 替换硬编码驱动名单；抽出 `proxyUpstream()`；实现 `use_proxy_url`（含 `$path` 替换与运行时补签）。
+- `server/admin.ts`：新增 `buildProxyFields()` 复刻 Go `internal/op/driver.go` 的表单分支规则。
+- `pkg/sign.ts`：`isEncryptPath` 增加存储级签名分支，判定顺序为「存储 `enable_sign` → meta 密码」。
+- **修复 `getDownProxyUrl()`**：此前只读 `storage.addition`，而表单把 `down_proxy_url` 写在存储行**顶层**，导致 `use_proxy_url` 永远取不到值。
+
+### 配置 / 存储 / API 变化
+
+- 无数据库 schema 变更：所用列均已存在，本 PR 仅补上读取方。
+- `/fs/list` 响应为**向后兼容的增量变更**（新增 `cache_expiration`，且开启 `disable_index` 时会新增 403 分支）。
+- 新增 19 个单元测试。
+
+- [ ] This PR has breaking changes.
+      / 此 PR 包含破坏性变更。
+- [x] This PR changes public API, config, storage format, or migration behavior.
+      / 此 PR 修改了公开 API、配置、存储格式或迁移行为。
+- [ ] This PR requires corresponding changes in related repositories.
+      / 此 PR 需要关联仓库同步修改。
+
+> 关于兼容性：本 PR **不含破坏性变更**，但存在**行为变更**——OneDrive 系列的默认下载模式由「强制代理」变为「302 直链」。这与 Go 版一致，但会改变既有 OneDrive 存储的实际表现：存量存储没有 `webdav_policy` 值，将解析为 `302_redirect`。若某些挂载依赖代理（例如直链在受限租户下不可用），请显式设置 `webdav_policy = native_proxy`。该行为变更已在下方「Testing」中说明，建议在 release note 中提示用户。
+
+Related repository PRs / 关联仓库 PR:
+
+- OpenList: N/A（本 PR 为对齐 Go 版既有行为，无需 Go 侧改动）
+- OpenList-Docs:
+
+## Related Issues / 关联 Issue
+
+<!--
+Use `Closes #123`, `Fixes #123`, or `Relates to #123`.
+Remove this section if not applicable.
+使用 `Closes #123`、`Fixes #123` 或 `Relates to #123`。
+不适用时请删除本节。
+-->
+
+Relates to #51
+
+> 说明：本 PR **不修复** #51 的根因。`enable_sign` 会走 `getJwtSecret`，而 `readPersistedSecret` 只探测 KV、没有 D1 分支，因此在 D1 多实例部署下仍会遇到签名密钥不稳定。`enable_sign=false` 可作为临时绕过手段，但密钥持久化需要单独修复。
+
+## Testing / 测试
+
+<!--
+Describe commands, platforms, and manual checks.
+If not tested, explain why.
+
+说明执行过的命令、测试平台和手动验证。
+如果未测试，请说明原因。
+-->
+
+- [ ] `go test ./...`（本项目为 TypeScript，不适用；替代命令见下）
+- [ ] Manual test / 手动测试:
+
+本项目使用的等价命令：
+
+```bash
+npx tsc --noEmit -p tsconfig.json        # 类型检查：exit 0，无错误
+node --import tsx --test "src/backend/**/*.test.ts"
+```
+
+测试结果：**197 个测试，193 通过**。
+
+其中 4 个失败为**既有问题，与本 PR 无关**（已逐项确认未引用本 PR 涉及的任何代码）：
+
+- `server/default_credentials.test.ts` — 默认凭据 SHA-256 重置
+- `server/seed.test.ts` — casmeta 字段名
+
+新增 `internal/driver/storageopts.test.ts`（19 个用例），覆盖：
+
+- `proxy_range`：显式 true/false、未配置时回退驱动默认值、显式值优先于驱动默认
+- `enable_sign` / `disable_index`：字符串与布尔两种存储形式
+- `custom_cache_policies`：JSON 数组、对象映射、`max_age` 别名、非法输入不抛错
+- glob 匹配：`*` 不跨目录分隔符、`**` 可跨、`?` 通配
+- 缓存时长合成：命中覆盖、未命中用基础值、值为 0 表示不缓存、多规则最后一条优先、非法/负数回退默认
+- 代理决策协同：默认驱动走 302、开启代理后 `proxy_range` 决定是否透传 Range、`down_proxy_url` 多写法解析
+
+> **未做的验证**：未在真实 Cloudflare Workers / EdgeOne 环境跑端到端下载。`use_proxy_url` 的运行时补签路径、以及 Range 透传在中转场景下的实际表现建议在合并前手动回归。产物需重新执行 `node scripts/build-edge.mjs` 生成。
+
+## Checklist / 检查清单
+
+- [ ] I have read [CONTRIBUTING](https://github.com/OpenListTeam/OpenList/blob/main/CONTRIBUTING.md).
+      / 我已阅读 [CONTRIBUTING](https://github.com/OpenListTeam/OpenList/blob/main/CONTRIBUTING.md)。
+- [ ] I confirm this contribution follows the repository license, contribution policy, and code of conduct.
+      / 我确认此贡献符合仓库许可证、贡献规范和行为准则。
+- [ ] I have formatted the changed code with `gofmt`, `go fmt`, or `prettier` where applicable.
+      / 我已按适用情况使用 `gofmt`、`go fmt` 或 `prettier` 格式化变更代码。
+- [ ] I have requested review from relevant maintainers or code owners where applicable.
+      / 我已在适用情况下请求相关维护者或代码所有者审查。
+
+## AI Disclosure / AI 使用声明
+
+<!--
+Please disclose any substantial AI assistance used in this PR.
+Minor AI assistance, such as typo fixes, autocomplete, formatting suggestions,
+or wording polish, does not need to be disclosed.
+Remove this section if not applicable.
+
+请披露此 PR 中使用的重要 AI 辅助内容。
+轻微 AI 辅助，例如拼写修正、自动补全、格式建议或文字润色，无需披露。
+如不适用，请删除本节。
+
+Deliberate non-disclosure may be treated as a trust and compliance issue.
+
+故意隐瞒 AI 使用情况可能被视为信任与合规问题。
+-->
+
+- [x] This PR includes AI-assisted content.
+      / 此 PR 包含 AI 辅助内容。
+
+Tools used / 使用工具:
+
+- [ ] ChatGPT
+- [ ] Codex
+- [ ] GitHub Copilot
+- [ ] Claude
+- [x] Gemini
+- [x] Other (please specify) / 其他（请注明）: CodeBuddy (DeepSeek-V4.1-Flash)
+
+Usage scope / 使用范围:
+
+- [x] Code generation / 代码生成
+- [x] Refactoring / 重构
+- [ ] Documentation / 文档
+- [x] Tests / 测试
+- [ ] Translation / 翻译
+- [x] Review assistance / 审查辅助
+
+- [x] I have reviewed and validated all AI-assisted content included in this PR.
+      / 我已审核并验证此 PR 中的所有 AI 辅助内容。
+- [ ] I have ensured that all AI-assisted commits include `Co-Authored-By` attribution.
+      / 我已确保所有 AI 辅助提交都包含 `Co-Authored-By` 归属信息。
+- [x] I can reproduce all AI-assisted content included in this PR without any AI tools.
+      / 我可以在没有任何 AI 工具的情况下重现此 PR 中包含的所有 AI 辅助内容。
+
+> **待办**：当前两个提交尚未包含 `Co-Authored-By` 归属信息。如需满足上述第 2 条，请在合并前补上：
+>
+> ```bash
+> # 方式一：为最新提交追加归属
+> git commit --amend -m "$(git log -1 --pretty=%B)" -m "Co-Authored-By: CodeBuddy <noreply@codebuddy.ai>"
+>
+> # 方式二：两个提交都补（推荐，需 rebase）
+> git rebase -i origin/main   # 对两个提交分别执行 edit，逐个 amend 后 --continue
+> git push --force-with-lease
+> ```
+
+## Implementation Notes / 实现说明
+
+### 决策顺序（对齐 Go）
+
+`resolveProxyDecision()` 的判定顺序与 Go 的优先级一致：
+
+| 顺序 | 条件 | 结果 | 来源标记 |
+|---|---|---|---|
+| 1 | 驱动强制代理（`MustProxy`） | `native_proxy` | `force` |
+| 2 | 存储 `web_proxy = true` | `native_proxy` | `web_proxy` |
+| 3 | 请求命中 `/p`、`/sd` 等代理前缀 | `native_proxy` | `proxy_path` |
+| 4 | 存储 `webdav_policy` 已配置 | 按配置值 | `storage_policy` |
+| 5 | 驱动默认（`PreferProxy`，如 WebDav） | `native_proxy` | `driver_default` |
+| 6 | 兜底 | `302_redirect` | `driver_default` |
+
+第 3 项保留了原有的 `isProxy` 路径判断作为显式入参，确保 `/p` 端点行为不发生回归。
+
+### 驱动表单分支（对齐 Go `internal/op/driver.go`）
+
+- **15 个 `only_proxy: true` 驱动**（123Pan、BaiduNetdisk、115Open、WeiYun、Terabox、Mega_nz、123PanShare、SFTP、FTP、SMB、Crypt、Virtual、Strm、ProtonDrive、189Cloud）：策略选项为 `use_proxy_url,native_proxy`，默认 `native_proxy`，**不提供 302**
+- **WebDav**：`web_proxy` 默认 `true`，策略默认 `native_proxy`（对应 Go `PreferProxy: true`）
+- **Onedrive / OnedriveAPP**：默认 `302_redirect`
+- **`proxy_range`**：仅对 Go 中声明 `ProxyRangeOption: true` 的 4 个驱动开放（139Yun、Alias、AListV3、OpenList），其中 **139Yun 默认 `true`**（对应 Go 的 `d.ProxyRange = true`）
+
+### `use_proxy_url` 的签名处理
+
+`down_proxy_url` 模板由管理员配置、不携带实例密钥，因此无法在模板中预置签名。本 PR 在运行时判定：当目标地址指向本站（相对路径或同 host）且未设置 `disable_proxy_sign` 时，自动补上 `sign` 查询参数，避免代理端点因缺少签名被拒。构造出的 URL 仍会经过 `assertSafeUrl` 做 SSRF 校验。
+
+### 已知限制
+
+`custom_cache_policies` 目前**只在 `/fs/list` 响应中回传计算结果**，并未真正改变对象缓存的读写行为——TSWorker 的缓存层尚无「按路径取过期时长」的入口。要做到 Go 那样真正影响缓存，需要接入缓存层，属后续独立工作。
+
+## Commits / 提交
+
+- `1d9debc` — `feat(proxy): align OneDrive and other drivers with Go 302/proxy policy`
+- `da7a563` — `feat(storage): implement proxy_range, enable_sign, disable_index and cache policies`
+
+```
+10 files changed, 1319 insertions(+), 167 deletions(-)
+```

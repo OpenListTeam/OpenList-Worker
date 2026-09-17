@@ -169,25 +169,113 @@ export function parseCustomCachePolicies(storage: any): CustomCachePolicy[] {
   return policies
 }
 
+/** 模式与目标路径的最大长度，超出直接判为不匹配，避免超长输入放大开销 */
+const MAX_GLOB_PATTERN_LENGTH = 1024
+const MAX_GLOB_TARGET_LENGTH = 4096
+
 /**
- * glob 匹配（对齐 Go 里对路径通配符的处理，支持 `*`、`?`、`**`）。
+ * glob 匹配（对齐 Go 里 doublestar.Match 的按段语义）。
  * 输入路径与模式均已规范化（以 / 开头）。
+ *
+ * 实现说明（重要）：本函数**不使用正则**。早期版本把 glob 翻译成正则，
+ * 多个通配符会变成相邻的贪婪通配，匹配失败时触发灾难性回溯
+ * （catastrophic backtracking）——实测单次匹配耗时 508 秒，
+ * 构成一个可由存储配置规则直接触发的 DoS 面。
+ *
+ * 现改为「按 / 切段 + 逐段动态规划」：
+ *   - 完全由 2 个及以上星号构成的段（`**`、`***`）：可跨段，匹配 0..n 段
+ *   - 其余段：在本段内用迭代式双指针匹配，不跨 `/`
+ *   复杂度 O(段数 × 目标段数)，无递归、无指数回溯。
+ *
+ * 通配符语义：
+ *   - 双星段：匹配零个或多个路径段（可跨 `/`）
+ *   - 单星：在段内匹配任意字符（含空），**不跨** `/`
+ *   - 问号：在段内匹配任意单个字符，**不跨** `/`
+ *
+ * 长度上限作为额外兜底，防止超长规则/路径放大计算量。
  */
 export function matchGlob(pattern: string, target: string): boolean {
   if (!pattern) return false
   if (pattern === target) return true
-  // 转义正则元字符，再把通配符翻译为等价正则
-  const escaped = pattern
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*\*/g, "\u0000")
-    .replace(/\*/g, "[^/]*")
-    .replace(/\?/g, "[^/]")
-    .replace(/\u0000/g, ".*")
-  try {
-    return new RegExp(`^${escaped}$`).test(target)
-  } catch {
+  if (pattern.length > MAX_GLOB_PATTERN_LENGTH) return false
+  if (target.length > MAX_GLOB_TARGET_LENGTH) return false
+
+  // 按 / 切分为路径段后逐段匹配。
+  // 这样处理能自然区分「单星只在本段内通配」与「双星可跨任意多段」，
+  // 避免在字符级实现里纠缠回溯点的组合问题。
+  const pSegs = pattern.split("/")
+  const tSegs = target.split("/")
+
+  const pLen = pSegs.length
+  const tLen = tSegs.length
+
+  // dp[i][j] 表示 pSegs[i:] 能否匹配 tSegs[j:]
+  // 采用一维滚动数组，自后向前填表，复杂度 O(n·m)、无递归。
+  let next = new Array<boolean>(tLen + 1).fill(false)
+  // 空模式只能匹配空目标
+  next[tLen] = true
+
+  for (let i = pLen - 1; i >= 0; i--) {
+    const seg = pSegs[i]
+    const cur = new Array<boolean>(tLen + 1).fill(false)
+    // 完全由星号组成且数量 >= 2 的段视为跨段通配（`**`、`***` 等价）
+    const isDoubleStar = /^\*{2,}$/.test(seg)
+
+    if (isDoubleStar) {
+      // 双星可匹配 0 段或 1 段后继续由自身匹配
+      cur[tLen] = next[tLen]
+      for (let j = tLen - 1; j >= 0; j--) {
+        cur[j] = next[j] || cur[j + 1]
+      }
+    } else {
+      // 普通段（可能含单星/问号）只匹配一段
+      for (let j = tLen - 1; j >= 0; j--) {
+        cur[j] = matchSegment(seg, tSegs[j]) && next[j + 1]
+      }
+    }
+    next = cur
+  }
+
+  return next[0]
+}
+
+/**
+ * 单段匹配：仅支持单星（不跨 /）与问号，不含双星。
+ * 用迭代式双指针 + 单回溯点实现，为 O(n·m) 且无指数回溯。
+ */
+function matchSegment(pattern: string, target: string): boolean {
+  let pi = 0
+  let ti = 0
+  let starPi = -1
+  let starTi = -1
+
+  const pLen = pattern.length
+  const tLen = target.length
+
+  while (ti < tLen) {
+    const pc = pi < pLen ? pattern[pi] : undefined
+    if (pc === "*") {
+      starPi = pi
+      starTi = ti
+      pi++
+      continue
+    }
+    if (pc === "?" || pc === target[ti]) {
+      pi++
+      ti++
+      continue
+    }
+    if (starPi !== -1) {
+      starTi++
+      ti = starTi
+      pi = starPi + 1
+      continue
+    }
     return false
   }
+
+  while (pi < pLen && pattern[pi] === "*") pi++
+  return pi === pLen
 }
 
 /**

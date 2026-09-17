@@ -11,6 +11,10 @@ import { search } from "../internal/op/search"
 import { checkAdminAuth } from "../pkg/utils"
 import { safeErrorMessage } from "../pkg/errs"
 import { validateHide } from "../pkg/meta"
+import {
+  PROXY_RANGE_DRIVERS,
+  proxyRangeDefaultFor,
+} from "../internal/driver/proxy"
 
 export const adminRouter = new Hono()
 
@@ -593,17 +597,8 @@ function buildProxyRangeField(defaultTrue: boolean) {
 }
 
 /** 支持 proxy_range 的驱动（对齐 Go ProxyRangeOption: true 的驱动集合） */
-const PROXY_RANGE_DRIVERS = new Set([
-  "openlist",
-  "139yun",
-  "alistv3",
-  "alias",
-])
-
-/** 139Yun 的 proxy_range 默认值为 true，其余为 false（对齐 Go） */
-function proxyRangeDefaultFor(driverKey: string): boolean {
-  return driverKey.toLowerCase().replace(/[^a-z0-9]/g, "") === "139yun"
-}
+// PROXY_RANGE_DRIVERS 与 proxyRangeDefaultFor 统一从 internal/driver/proxy
+// 导入，避免与下载决策侧的驱动清单各自维护、失去同步。
 
 const WEB_PROXY_FIELD = {
   name: "web_proxy",

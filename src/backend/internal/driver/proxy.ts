@@ -37,14 +37,65 @@ export interface ProxyDecision {
  * 驱动代理能力。
  * 未在此表登记的驱动视为「无强制代理、无默认代理」，行为与此前一致（默认 302）。
  */
-const DRIVER_PROXY_CAPABILITY: Record<string, { preferProxy?: boolean }> = {
+/**
+ * ============================================================================
+ * 驱动代理能力 ↔ Go drivers/&lt;name&gt;/meta.go 的对应关系
+ * ============================================================================
+ *
+ * 维护本文件时请对照 Go 侧 `driver.Config` 的以下字段：
+ *
+ * | Go config 字段        | 语义                         | 本文件对应               |
+ * |----------------------|------------------------------|--------------------------|
+ * | `OnlyProxy: true`    | 无可用直链，必须代理          | DRIVER_FORCE_PROXY       |
+ * | `NoLinkURL: true`    | Link() 不返回可公开 URL      | DRIVER_FORCE_PROXY       |
+ * | `PreferProxy: true`  | 优先代理，但直链可用          | preferProxy: true        |
+ * | `ProxyRangeOption`   | 支持 proxy_range 开关        | admin.ts 的 PROXY_RANGE_DRIVERS |
+ *
+ * 注意：`OnlyProxy`/`NoLinkURL` 的**权威来源是各驱动的 meta.go**，
+ * 下表是同步后的快照。若 Go 侧增删驱动，请同步更新此处，
+ * 并保持与 admin.ts 中 `only_proxy: true` 的驱动集合一致。
+ *
+ * --- OnlyProxy / NoLinkURL（强制 native_proxy，表单不提供 302 选项）---
+ *   123pan        drivers/123/meta.go
+ *   baidunetdisk  drivers/baidu_netdisk/meta.go
+ *   115open       drivers/115_open/meta.go
+ *   sftp          drivers/sftp/meta.go
+ *   ftp           drivers/ftp/meta.go
+ *   smb           drivers/smb/meta.go
+ *   crypt         drivers/crypt/meta.go
+ *   virtual       drivers/virtual/meta.go
+ *   strm          drivers/strm/meta.go
+ *   meganz        drivers/mega/meta.go
+ *   protondrive   drivers/proton_drive/meta.go
+ *   189cloud      drivers/189/meta.go
+ *   weiyun        drivers/weiyun/meta.go（见下方 DRIVER_PROXY_CAPABILITY）
+ *
+ * --- PreferProxy（默认 native_proxy）---
+ *   webdav        drivers/webdav/meta.go
+ *
+ * --- ProxyRangeOption（表单显示 proxy_range）---
+ *   139yun        drivers/139/meta.go（实例默认 ProxyRange = true）
+ *   alias         drivers/alias/meta.go
+ *   alistv3       drivers/alist_v3/meta.go
+ *   openlist      drivers/openlist/meta.go
+ *
+ * 未登记的驱动一律视为「不强制代理、不默认代理」→ 默认 302_redirect。
+ */
+
+const DRIVER_PROXY_CAPABILITY: Record<
+  string,
+  { preferProxy?: boolean; forceProxy?: boolean }
+> = {
+  // drivers/webdav/meta.go: PreferProxy = true
   webdav: { preferProxy: true },
 }
 
 /**
- * 在驱动声明中显式要求强制代理的驱动（等价 Go 的 OnlyProxy / NoLinkURL）。
- * 与 admin.ts 中 config.only_proxy=true / no_link_url=true 的驱动保持一致：
- * 这些驱动拿不到可公开消费的直链，只能由本站代理转发。
+ * 强制代理驱动的运行时集合（等价 Go 的 OnlyProxy / NoLinkURL）。
+ *
+ * 运行时集合而非静态常量，是因为另有驱动模块通过
+ * registerDriverProxyCapability() 自声明能力；
+ * 初始值对应上方映射表中「OnlyProxy / NoLinkURL」一节。
  */
 const DRIVER_FORCE_PROXY = new Set<string>([
   "123pan",
@@ -59,10 +110,24 @@ const DRIVER_FORCE_PROXY = new Set<string>([
   "meganz",
   "protondrive",
   "189cloud",
-  "mediatrack",
-  "chunk",
-  "local",
+  "weiyun",
 ])
+
+/**
+ * 允许 `proxy_range` 的驱动（等价 Go 的 Config.ProxyRangeOption）。
+ * 供 admin.ts 决定是否展示 proxy_range 表单项。
+ */
+export const PROXY_RANGE_DRIVERS = new Set([
+  "139yun",
+  "alias",
+  "alistv3",
+  "openlist",
+])
+
+/** 139Yun 的 proxy_range 默认值为 true（对齐 Go drivers/139 的 d.ProxyRange = true） */
+export function proxyRangeDefaultFor(driver: string): boolean {
+  return normalizeDriverName(driver) === "139yun"
+}
 
 /**
  * 运行时注册驱动能力（供驱动模块自声明，避免在此处硬编码驱动清单）。
