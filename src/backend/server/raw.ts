@@ -23,6 +23,11 @@ import {
   shouldRetryWithoutRange,
   contentTypeForPath,
   sanitizeContentDisposition,
+  decideProxyPayloadAction,
+  exceedsProxyPayloadLimit,
+  getProxyPayloadLimit,
+  getProxyOverflowPolicy,
+  isAuthBoundDownload,
 } from "./proxy_request"
 
 let fsPromises: any = null
@@ -105,6 +110,31 @@ async function safeProxyFetch(
   throw new Error("Proxy download blocked: too many redirects")
 }
 
+/**
+ * 平台上限导致的 413 文案。
+ *
+ * 说明「为什么代理不了」与「有哪些替代路径」，避免用户只看到 EdgeOne 自带的
+ * CLOUD_FUNCTION_PAYLOAD_TOO_LARGE 错误页（那里没有任何可操作信息）。
+ */
+function payloadLimitMessage(
+  c: any,
+  label: string,
+  size: number,
+  authBound: boolean,
+): string {
+  const limit = getProxyPayloadLimit(c)
+  const mib = (bytes: number) => Math.floor(bytes / 1024 / 1024)
+  return (
+    `文件过大，当前部署平台无法代理下载（${size} 字节 > 上限 ${limit} 字节 ≈ ${mib(limit)} MiB）。` +
+    `EdgeOne 云函数对单次请求/响应 body 有硬上限（CLOUD_FUNCTION_PAYLOAD_TOO_LARGE / HTTP 413），` +
+    (authBound
+      ? `${label} 无法提供可直连的下载链接（或直链必须携带私有鉴权头），只能经服务端转发，因此无法绕过该上限。`
+      : `且 RAW_PROXY_OVERFLOW=error 已禁止降级为直链。`) +
+    `建议：改用返回公开直链的存储、或在自托管环境（Docker / Node）部署；` +
+    `确需放开限制可设置 RAW_PROXY_MAX_BYTES=0。`
+  )
+}
+
 // 原生代理：拉取上游直链并回传字节流（含 Range、缓存头、CORS）。
 // 抽成独立函数是因为「webdav_policy=use_proxy_url 但未配置 down_proxy_url」
 // 与「驱动强制代理」两种情况都需要走同一套实现。
@@ -114,7 +144,57 @@ async function proxyUpstream(
   reqPath: string,
   trustedHosts?: ReadonlySet<string> | string[],
   proxyRange = false,
+  driver = "",
 ) {
+  // ---- 平台载荷上限保护 ----
+  // native_proxy 会把整份文件当作云函数响应体回传，超过平台上限时请求根本到不了
+  // 本函数（平台直接返回 413 错误页），因此在这里提前决策：能直连就降级 302，
+  // 不能直连则返回可读的 413。详见 server/proxy_request.ts 顶部说明。
+  const authBound = isAuthBoundDownload(driver, fileItem.raw_url_headers)
+  const payloadAction = decideProxyPayloadAction({
+    size: Number(fileItem.size) || 0,
+    // proxy_range 关闭时不透传 Range，上游返回的是完整文件
+    range: proxyRange ? c.req.header("Range") : undefined,
+    payloadLimit: getProxyPayloadLimit(c),
+    overflowPolicy: getProxyOverflowPolicy(c),
+    authBound,
+  })
+
+  if (payloadAction === "redirect") {
+    try {
+      assertSafeUrl(fileItem.raw_url, "Redirect download", trustedHosts)
+    } catch (ssrfErr: any) {
+      return c.text(ssrfErr.message || "SSRF blocked", 403)
+    }
+    console.warn(
+      `[rawRouter] Falling back to 302 direct link for '${reqPath}': ${fileItem.size} bytes exceeds ` +
+        `the ${getProxyPayloadLimit(c)}-byte payload limit of this runtime — native proxy would hit ` +
+        `CLOUD_FUNCTION_PAYLOAD_TOO_LARGE`,
+    )
+    return c.redirect(fileItem.raw_url, 302)
+  }
+
+  if (payloadAction === "too-large") {
+    console.warn(
+      `[rawRouter] Refusing to proxy '${reqPath}': ${fileItem.size} bytes exceeds the ` +
+        `${getProxyPayloadLimit(c)}-byte payload limit of this runtime and no direct link can be ` +
+        `handed to the browser (driver=${driver}, authBound=${authBound})`,
+    )
+    return c.json(
+      {
+        code: 413,
+        message: payloadLimitMessage(
+          c,
+          driver || "该存储",
+          Number(fileItem.size) || 0,
+          authBound,
+        ),
+        data: null,
+      },
+      413,
+    )
+  }
+
   // 构造上游请求头（含 proxy_range 的 Range 透传决策）
   const headers: Record<string, string> = buildUpstreamHeaders({
     rawUrlHeaders: fileItem.raw_url_headers,
@@ -394,6 +474,7 @@ rawRouter.get("/*", async (c) => {
                 reqPath,
                 trustedHosts,
                 getProxyRange(resolved.storage),
+                resolved.storage.driver,
               )
             }
 
@@ -404,6 +485,7 @@ rawRouter.get("/*", async (c) => {
                 reqPath,
                 trustedHosts,
                 getProxyRange(resolved.storage),
+                resolved.storage.driver,
               )
             }
 
@@ -421,6 +503,34 @@ rawRouter.get("/*", async (c) => {
             fileItem &&
             !fileItem.is_dir
           ) {
+            // 服务端回传字节流（此分支没有 raw_url，无法降级为直链）
+            // → 同样受平台响应体上限约束，超限时直接给出可读的 413。
+            const streamSize = Number(fileItem.size) || 0
+            if (
+              exceedsProxyPayloadLimit(
+                streamSize,
+                c.req.header("Range"),
+                getProxyPayloadLimit(c),
+              )
+            ) {
+              console.warn(
+                `[rawRouter] Refusing to stream '${reqPath}': ${streamSize} bytes exceeds the ` +
+                  `${getProxyPayloadLimit(c)}-byte payload limit of this runtime.`,
+              )
+              return c.json(
+                {
+                  code: 413,
+                  message: payloadLimitMessage(
+                    c,
+                    resolved.storage.driver,
+                    streamSize,
+                    true,
+                  ),
+                  data: null,
+                },
+                413,
+              )
+            }
             c.header("Access-Control-Allow-Origin", "*")
             const size = fileItem.size || 0
             const rangeHeader = c.req.header("Range")
@@ -476,6 +586,29 @@ rawRouter.get("/*", async (c) => {
     const stat = await fsPromises.stat(resolved.physical)
     if (stat.isDirectory()) {
       return c.text("Cannot download directory", 400)
+    }
+
+    // 本地文件直读同样受平台响应体上限约束（EdgeOne / Vercel 等 Serverless）
+    if (
+      exceedsProxyPayloadLimit(
+        Number(stat.size) || 0,
+        c.req.header("Range"),
+        getProxyPayloadLimit(c),
+      )
+    ) {
+      return c.json(
+        {
+          code: 413,
+          message: payloadLimitMessage(
+            c,
+            "local",
+            Number(stat.size) || 0,
+            true,
+          ),
+          data: null,
+        },
+        413,
+      )
     }
 
     c.header("Access-Control-Allow-Origin", "*")

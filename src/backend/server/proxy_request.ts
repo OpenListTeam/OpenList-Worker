@@ -6,6 +6,9 @@
  * 覆盖「Range 透传 + 签名 + 上游不支持 Range」的交互边界。
  */
 
+import { parseRangeHeader } from "../internal/stream/stream"
+import { driverMustProxy } from "../internal/driver/proxy"
+
 export const PROXY_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
@@ -104,4 +107,154 @@ export function contentTypeForPath(reqPath: string): string {
  */
 export function sanitizeContentDisposition(value: string): string {
   return value.replace(/[\r\n\u0000-\u001f]+/g, "")
+}
+
+// ---------------------------------------------------------------------------
+// 平台载荷上限保护（Serverless / 云函数）
+// ---------------------------------------------------------------------------
+//
+// EdgeOne Makers 的 Cloud Functions 对「函数的请求/响应 body」有 6 MiB 硬上限，
+// 超限时平台在网关层直接返回 413 + CLOUD_FUNCTION_PAYLOAD_TOO_LARGE
+// （Powered by Tencent EdgeOne Makers 的错误页）——请求根本到不了本服务：
+// 应用侧的 CORS 头、Range 处理、错误提示一律不会执行。
+//
+// 而 native_proxy 会把整份文件当作云函数响应体回传，于是任何 >6 MiB 的代理
+// 下载在 EdgeOne 上必然失败（OneDrive 此前被硬编码强制代理，正是 issue 中
+// 「EO + OneDrive 下载报 413」的根因，见 resolveProxyDecision() 的修复）。
+// 因此在发起原生代理前先做一次上限判断：
+//   - 未超限（或平台不限制）        → 正常代理
+//   - 超限 + raw_url 可被浏览器直连 → 降级 302 直链（下载仍然可用）
+//   - 超限 + 无法降级为直链         → 返回可读的 413，而不是平台错误页
+//
+// 环境变量：
+//   RAW_PROXY_MAX_BYTES  平台单次请求/响应上限（字节）。缺省时在 EdgeOne 运行时
+//                        自动取 6 MiB；其他平台视为不限制；显式设为 0 关闭限制
+//                        （自托管场景可据此恢复「永远代理」）。
+//   RAW_PROXY_OVERFLOW   超限策略：redirect（默认，安全时降级 302 直链）
+//                        | error（直接 413，避免暴露直链）。
+
+/** EdgeOne 云函数对单次请求/响应 body 的硬上限 */
+export const DEFAULT_EDGEONE_PAYLOAD_LIMIT = 6 * 1024 * 1024
+
+export type ProxyOverflowPolicy = "redirect" | "error"
+
+/** 原生代理前的上限判断结果 */
+export type ProxyPayloadAction = "proxy" | "redirect" | "too-large"
+
+const readEnvValue = (c: any, key: string): string => {
+  const env = c?.env || {}
+  const fromEnv = env[key]
+  if (fromEnv !== undefined && fromEnv !== null) return String(fromEnv)
+  if (typeof process !== "undefined" && (process as any).env) {
+    const value = (process as any).env[key]
+    if (value !== undefined && value !== null) return String(value)
+  }
+  return ""
+}
+
+/** 当前运行时是否 EdgeOne（Node 云函数或边缘函数） */
+function isEdgeOneRuntime(c: any): boolean {
+  const g: any = typeof globalThis !== "undefined" ? globalThis : {}
+  const env = c?.env || {}
+  return Boolean(
+    env.EDGEONE ||
+    env.EO_REGION ||
+    g.EDGEONE ||
+    typeof g.EdgeOne !== "undefined",
+  )
+}
+
+/** 平台单次请求/响应 body 上限（字节）；0 表示不限制 */
+export function getProxyPayloadLimit(c: any): number {
+  const raw = readEnvValue(c, "RAW_PROXY_MAX_BYTES").trim()
+  if (raw !== "") {
+    const parsed = parseInt(raw, 10)
+    if (Number.isFinite(parsed) && parsed >= 0) return parsed
+  }
+  return isEdgeOneRuntime(c) ? DEFAULT_EDGEONE_PAYLOAD_LIMIT : 0
+}
+
+export function getProxyOverflowPolicy(c: any): ProxyOverflowPolicy {
+  return readEnvValue(c, "RAW_PROXY_OVERFLOW").trim().toLowerCase() === "error"
+    ? "error"
+    : "redirect"
+}
+
+/**
+ * 本次代理是否会让响应体超过平台上限。
+ *
+ * Range 只回传一个分片时按分片大小判断（视频拖动进度、断点续传不受影响）；
+ * 大小未知时一律放行，交给平台兜底。
+ */
+export function exceedsProxyPayloadLimit(
+  size: number,
+  range: string | null | undefined,
+  limit: number,
+): boolean {
+  if (!Number.isFinite(limit) || limit <= 0) return false
+  if (!Number.isFinite(size) || size <= 0) return false
+  if (range) {
+    try {
+      return parseRangeHeader(range, size).chunksize > limit
+    } catch {
+      return false
+    }
+  }
+  return size > limit
+}
+
+const PRIVATE_HEADER_NAMES = new Set([
+  "authorization",
+  "cookie",
+  "x-auth-token",
+  "x-auth",
+  "x-api-key",
+])
+
+/** raw_url 是否要求私有请求头（浏览器直连会 401/403） */
+export function rawUrlNeedsPrivateHeaders(
+  headers?: Record<string, string> | null,
+): boolean {
+  if (!headers) return false
+  return Object.keys(headers).some((k) =>
+    PRIVATE_HEADER_NAMES.has(k.trim().toLowerCase()),
+  )
+}
+
+/**
+ * 该下载是否必须由服务端转发字节流、无法降级为 302 直链。
+ *
+ * 两类情况：
+ *   1. 驱动本身没有可公开的直链（Go 的 OnlyProxy / NoLinkURL，即 driverMustProxy）；
+ *   2. 直链必须携带私有请求头（Authorization / Cookie，如 WebDAV、微云）。
+ */
+export function isAuthBoundDownload(
+  driver: string,
+  rawUrlHeaders?: Record<string, string> | null,
+): boolean {
+  return driverMustProxy(driver) || rawUrlNeedsPrivateHeaders(rawUrlHeaders)
+}
+
+/**
+ * 原生代理前的上限决策。
+ *
+ * @param size           文件总大小（0 表示未知）
+ * @param range          实际会透传给上游的 Range（proxy_range 关闭时应传 undefined，
+ *                       因为此时上游返回的是完整文件，分片大小无法作为依据）
+ * @param authBound      无法降级为直链时为 true
+ */
+export function decideProxyPayloadAction(input: {
+  size: number
+  range?: string | null
+  payloadLimit: number
+  overflowPolicy?: ProxyOverflowPolicy
+  authBound: boolean
+}): ProxyPayloadAction {
+  if (!exceedsProxyPayloadLimit(input.size, input.range, input.payloadLimit)) {
+    return "proxy"
+  }
+  // 超过平台上限：无法降级为直链时必须返回可读错误，否则平台会直接吐 413 错误页
+  const policy = input.overflowPolicy || "redirect"
+  if (!input.authBound && policy === "redirect") return "redirect"
+  return "too-large"
 }

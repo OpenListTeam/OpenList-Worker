@@ -5,10 +5,18 @@ import {
   shouldRetryWithoutRange,
   contentTypeForPath,
   sanitizeContentDisposition,
+  decideProxyPayloadAction,
+  exceedsProxyPayloadLimit,
+  getProxyOverflowPolicy,
+  getProxyPayloadLimit,
+  isAuthBoundDownload,
+  rawUrlNeedsPrivateHeaders,
+  DEFAULT_EDGEONE_PAYLOAD_LIMIT,
   PROXY_USER_AGENT,
   type UpstreamResponseLike,
 } from "./proxy_request"
 import { getProxyRange } from "../internal/driver/storageopts"
+import { resolveProxyDecision } from "../internal/driver/proxy"
 
 /** 构造上游响应的最小替身 */
 function upstream(
@@ -17,7 +25,10 @@ function upstream(
 ): UpstreamResponseLike {
   const lower: Record<string, string> = {}
   for (const [k, v] of Object.entries(headers)) lower[k.toLowerCase()] = v
-  return { status, headers: { get: (n: string) => lower[n.toLowerCase()] ?? null } }
+  return {
+    status,
+    headers: { get: (n: string) => lower[n.toLowerCase()] ?? null },
+  }
 }
 
 // ---- Range 透传决策（proxy_range）----
@@ -58,9 +69,18 @@ test("Range 透传不改变签名：签名绑定 URL，与请求头无关", () =
     proxyRange: false,
   })
   // 请求头中不包含任何签名相关内容，签名只存在于 URL 上
-  assert.deepEqual(Object.keys(withRange).filter((k) => /sign/i.test(k)), [])
-  assert.deepEqual(Object.keys(withoutRange).filter((k) => /sign/i.test(k)), [])
-  assert.equal(signedUrl, "https://cdn.example.com/f.mp4?sign=1700000000.abcdef")
+  assert.deepEqual(
+    Object.keys(withRange).filter((k) => /sign/i.test(k)),
+    [],
+  )
+  assert.deepEqual(
+    Object.keys(withoutRange).filter((k) => /sign/i.test(k)),
+    [],
+  )
+  assert.equal(
+    signedUrl,
+    "https://cdn.example.com/f.mp4?sign=1700000000.abcdef",
+  )
 })
 
 test("412 兜底重试时丢失 Range，但签名 URL 可复用（只需换请求头）", () => {
@@ -170,13 +190,12 @@ test("Content-Type 按扩展名回退", () => {
 
 test("Content-Disposition 清洗 CR/LF 与控制字符（防响应头注入）", () => {
   assert.equal(
-    sanitizeContentDisposition('attachment; filename="a.txt"\r\nSet-Cookie: x=1'),
+    sanitizeContentDisposition(
+      'attachment; filename="a.txt"\r\nSet-Cookie: x=1',
+    ),
     'attachment; filename="a.txt"Set-Cookie: x=1',
   )
-  assert.equal(
-    sanitizeContentDisposition("inline\u0000\u001fbin"),
-    "inlinebin",
-  )
+  assert.equal(sanitizeContentDisposition("inline\u0000\u001fbin"), "inlinebin")
 })
 
 // ---- proxy_range 与存储配置的端到端串联 ----
@@ -204,4 +223,200 @@ test("存储 proxy_range 配置决定是否透传 Range（串联验证）", () =
     proxyRange: getProxyRange({ __driverProxyRangeDefault: true }),
   })
   assert.equal(d3["Range"], "bytes=0-10")
+})
+
+// ---------------------------------------------------------------------------
+// 平台载荷上限保护
+//
+// EdgeOne 云函数对函数请求/响应 body 有 6 MiB 硬上限，超限时平台在网关层直接
+// 返回 413 + CLOUD_FUNCTION_PAYLOAD_TOO_LARGE。native_proxy 会把整份文件当作
+// 响应体回传，所以超过上限的代理下载必须降级为 302 直链（或给出可读的 413）。
+// ---------------------------------------------------------------------------
+
+const MiB = 1024 * 1024
+const EDGE_LIMIT = DEFAULT_EDGEONE_PAYLOAD_LIMIT
+
+test("getProxyPayloadLimit: EdgeOne 运行时默认 6 MiB，其它平台不限制", () => {
+  assert.equal(EDGE_LIMIT, 6 * MiB)
+  assert.equal(
+    getProxyPayloadLimit({ env: { EO_REGION: "ap-shanghai" } }),
+    EDGE_LIMIT,
+  )
+  assert.equal(getProxyPayloadLimit({ env: { EDGEONE: "1" } }), EDGE_LIMIT)
+  assert.equal(getProxyPayloadLimit({ env: {} }), 0)
+})
+
+test("getProxyPayloadLimit: RAW_PROXY_MAX_BYTES 覆盖 / 0 关闭 / 非法值回退", () => {
+  assert.equal(
+    getProxyPayloadLimit({ env: { RAW_PROXY_MAX_BYTES: "1048576" } }),
+    1048576,
+  )
+  // 0 = 关闭限制（自托管恢复「永远代理」）
+  assert.equal(
+    getProxyPayloadLimit({ env: { EO_REGION: "x", RAW_PROXY_MAX_BYTES: "0" } }),
+    0,
+  )
+  assert.equal(
+    getProxyPayloadLimit({
+      env: { EO_REGION: "x", RAW_PROXY_MAX_BYTES: "abc" },
+    }),
+    EDGE_LIMIT,
+  )
+})
+
+test("getProxyOverflowPolicy: 默认 redirect，=error 时为 error", () => {
+  assert.equal(getProxyOverflowPolicy({ env: {} }), "redirect")
+  assert.equal(
+    getProxyOverflowPolicy({ env: { RAW_PROXY_OVERFLOW: "redirect" } }),
+    "redirect",
+  )
+  assert.equal(
+    getProxyOverflowPolicy({ env: { RAW_PROXY_OVERFLOW: "ERROR" } }),
+    "error",
+  )
+})
+
+test("exceedsProxyPayloadLimit: 边界值（等于上限不算超限）", () => {
+  assert.equal(
+    exceedsProxyPayloadLimit(EDGE_LIMIT, undefined, EDGE_LIMIT),
+    false,
+  )
+  assert.equal(
+    exceedsProxyPayloadLimit(EDGE_LIMIT + 1, undefined, EDGE_LIMIT),
+    true,
+  )
+  // 平台不限制时永不超限
+  assert.equal(exceedsProxyPayloadLimit(9 * 1024 * MiB, undefined, 0), false)
+})
+
+test("exceedsProxyPayloadLimit: Range 分片按分片大小判断", () => {
+  // 500 MiB 的文件只取 1 MiB 分片 → 不超限，视频拖动进度不受影响
+  assert.equal(
+    exceedsProxyPayloadLimit(500 * MiB, "bytes=0-1048575", EDGE_LIMIT),
+    false,
+  )
+  // 分片本身超过上限 → 超限
+  assert.equal(
+    exceedsProxyPayloadLimit(500 * MiB, `bytes=0-${20 * MiB}`, EDGE_LIMIT),
+    true,
+  )
+})
+
+test("exceedsProxyPayloadLimit: 大小未知（0）不拦截，交给平台兜底", () => {
+  assert.equal(exceedsProxyPayloadLimit(0, undefined, EDGE_LIMIT), false)
+})
+
+test("decideProxyPayloadAction: 未超限时照常原生代理", () => {
+  assert.equal(
+    decideProxyPayloadAction({
+      size: 2 * MiB,
+      payloadLimit: EDGE_LIMIT,
+      authBound: false,
+    }),
+    "proxy",
+  )
+})
+
+test("decideProxyPayloadAction: 超限且可直连 → 降级 302（修复 EdgeOne 下载 413）", () => {
+  assert.equal(
+    decideProxyPayloadAction({
+      size: 200 * MiB,
+      payloadLimit: EDGE_LIMIT,
+      authBound: false,
+    }),
+    "redirect",
+  )
+})
+
+test("decideProxyPayloadAction: 超限但必须带鉴权头 → too-large（返回可读 413）", () => {
+  assert.equal(
+    decideProxyPayloadAction({
+      size: 200 * MiB,
+      payloadLimit: EDGE_LIMIT,
+      authBound: true,
+    }),
+    "too-large",
+  )
+})
+
+test("decideProxyPayloadAction: RAW_PROXY_OVERFLOW=error 时超限即拒绝，不暴露直链", () => {
+  assert.equal(
+    decideProxyPayloadAction({
+      size: 200 * MiB,
+      payloadLimit: EDGE_LIMIT,
+      authBound: false,
+      overflowPolicy: "error",
+    }),
+    "too-large",
+  )
+})
+
+test("decideProxyPayloadAction: proxy_range 关闭时 Range 不能掩盖超限", () => {
+  // proxy_range 关闭 → 上游返回完整文件，调用方必须传 range=undefined
+  assert.equal(
+    decideProxyPayloadAction({
+      size: 500 * MiB,
+      range: undefined,
+      payloadLimit: EDGE_LIMIT,
+      authBound: false,
+    }),
+    "redirect",
+  )
+})
+
+test("isAuthBoundDownload: 强制代理驱动与私有头判定", () => {
+  // Go OnlyProxy / NoLinkURL → 没有可公开的直链
+  assert.equal(isAuthBoundDownload("baidunetdisk", undefined), true)
+  assert.equal(isAuthBoundDownload("WeiYun", undefined), true)
+  // 预授权直链（OneDrive 的 @microsoft.graph.downloadUrl 无需私有头）
+  assert.equal(isAuthBoundDownload("Onedrive", undefined), false)
+  assert.equal(
+    isAuthBoundDownload("webdav", { Authorization: "Basic xxx" }),
+    true,
+  )
+  // 只有 UA / Referer 不算私有头（如 115open 的 UA、S3 的 Referer）
+  assert.equal(
+    isAuthBoundDownload("s3", {
+      "User-Agent": "openlist",
+      Referer: "https://x",
+    }),
+    false,
+  )
+  assert.equal(rawUrlNeedsPrivateHeaders({ cookie: "sid=1" }), true)
+  assert.equal(rawUrlNeedsPrivateHeaders(null), false)
+})
+
+test("串联：web_proxy=true 的 OneDrive 大文件在 EdgeOne 上降级为 302", () => {
+  // 决策层要求原生代理（存储开启了 web_proxy）
+  const decision = resolveProxyDecision(
+    { driver: "Onedrive", web_proxy: true },
+    "onedrive",
+    false,
+  )
+  assert.equal(decision.needsProxy, true)
+  assert.equal(decision.source, "web_proxy")
+
+  // 上限层把超限的代理降级为直链，避免平台 413
+  const action = decideProxyPayloadAction({
+    size: 200 * MiB,
+    payloadLimit: EDGE_LIMIT,
+    overflowPolicy: "redirect",
+    authBound: isAuthBoundDownload("onedrive", undefined),
+  })
+  assert.equal(action, "redirect")
+})
+
+test("串联：WebDAV（带 Authorization）大文件在 EdgeOne 上拒绝代理而非平台报错", () => {
+  const decision = resolveProxyDecision({ driver: "WebDav" }, "webdav", false)
+  assert.equal(decision.needsProxy, true)
+
+  const action = decideProxyPayloadAction({
+    size: 200 * MiB,
+    payloadLimit: EDGE_LIMIT,
+    overflowPolicy: "redirect",
+    authBound: isAuthBoundDownload("webdav", {
+      Authorization: "Basic dXNlcjpwYXNz",
+    }),
+  })
+  assert.equal(action, "too-large")
 })
