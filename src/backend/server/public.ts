@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import {
   ensureEncryptionSecret,
   getDb,
+  getDbLoadError,
   getStoreStatus,
   isDbTrusted,
   isEncryptionReady,
@@ -386,6 +387,17 @@ publicRouter.get("/plugins", async (c) => {
   })
 })
 
+// 是否配置了 ADMIN_PASS（跳过安装向导、自动初始化 admin）。
+//
+// 注意 env 与 process.env 都要看：Cloudflare Workers 走 env，本地/容器走
+// process.env；两者优先级与 auth.ts 的 getOrInitUsers 保持一致。
+function adminPassConfigured(env: any): boolean {
+  const fromEnv = env?.ADMIN_PASS
+  const fromProc =
+    typeof process !== "undefined" ? (process as any).env?.ADMIN_PASS : ""
+  return String(fromEnv || fromProc || "").trim() !== ""
+}
+
 // 系统是否已初始化：存在已设置密码的管理员账号即为已初始化。
 //
 // 「可持久化存储可用」是「已初始化」的前提，而不是并列的另一个检查：
@@ -396,6 +408,7 @@ publicRouter.get("/plugins", async (c) => {
 //
 // 本接口已在 index.ts 的诊断豁免名单中，不会被存储配置错误中间件拦截，
 // 否则它在最需要报告问题的场景下反而拿不到任何信息。
+
 publicRouter.get("/init_status", async (c) => {
   const storageReady = await isPersistentStorageAvailable(c.env)
 
@@ -403,6 +416,26 @@ publicRouter.get("/init_status", async (c) => {
   // 据此得出的 initialized=true 是假象。
   let initialized = false
   if (storageReady) {
+    // ADMIN_PASS 自动初始化：安装页只轮询本接口，从不调用登录接口。
+    // 若只把 getOrInitUsers() 挂在登录路径上，配置了 ADMIN_PASS 的新部署会
+    // 永远停在「未初始化 → 跳 /@init → 永远不初始化」的死循环里。
+    //
+    // 仅当运维显式配置了 ADMIN_PASS 时才触发（那是「请自动初始化」的明确
+    // 意图）：未配置时不调用，避免每次轮询都尝试写入一份未初始化的占位库。
+    // getOrInitUsers 本身是幂等的：已初始化（admin 密码已是合法哈希）时
+    // 不做任何写入。
+    if (adminPassConfigured(c.env)) {
+      try {
+        const { getOrInitUsers } = await import("./auth")
+        await getOrInitUsers(c.env)
+      } catch (err: any) {
+        console.warn(
+          "[DB] init_status: ADMIN_PASS auto-initialization failed: " +
+            (err?.message || err),
+        )
+      }
+    }
+
     const db = await getDb(c.env)
     const admin = (db.users || []).find((u: any) => u.role === 2)
     initialized = Boolean(admin && String(admin.password || "").trim() !== "")
@@ -441,11 +474,21 @@ publicRouter.post("/init/setup", async (c) => {
 
   const db = await getDb(c.env)
   if (!db.users) db.users = []
-  // 安全护栏：若读取持久化存储失败（当前 db 只是不可信空壳），绝不能继续初始化，
-  // 否则会把空库写回存储、覆盖真实配置（即「数据库被清空」的根因）。
-  if (!isDbTrusted()) {
+  // 安全护栏：只在「读取持久化后端**失败**」时拒绝初始化。
+  //
+  // loadDb() 对两种「db 不可信」给出了不同信号，必须分别对待：
+  //   1. getDbLoadError() !== null —— 读取抛错（binding 未注入、后端不可达、
+  //      鉴权失败等）。此时内存里只是兜底空壳，继续初始化会把空库写回存储、
+  //      覆盖真实配置（即「数据库被清空」的根因）→ 必须拒绝。
+  //   2. getDbLoadError() === null 且 !isDbTrusted() —— 读取**成功但后端为空**，
+  //      即全新部署 / 换到新库后的首次初始化。这正是 setup 存在的意义。
+  //      若也一并拒绝，就会出现「读不到 → 不许初始化 → 永远读不到」的死锁，
+  //      让全新空存储永远无法安装（issue #62 现象 3）。
+  const loadError = getDbLoadError()
+  if (loadError) {
     console.error(
-      "[DB] init/setup rejected: database could not be loaded from the persistence backend",
+      "[DB] init/setup rejected: database could not be loaded from the persistence backend: " +
+        loadError,
     )
     return c.json(
       {

@@ -268,19 +268,32 @@ export async function getKvBinding(envCtx?: any): Promise<{
   // drivers are resolved by getStorageBackend() instead. The old wording
   // ("memory-only mode (data will not persist)") was therefore misleading, and
   // sent users with a working D1 backend chasing a non-existent problem.
-  // Report the truth: no KV-style binding was found, and say where to look.
+  //
+  // Only deployments that are *supposed* to use a KV/Blob backend get a message.
+  // When DB_DRIVER names a non-KV driver (d1 / mysql / do), a KV miss is
+  // irrelevant by construction — and this function is also reached by the audit
+  // log / logout blacklist / login-failure counters, so warning on every such
+  // write made "no KV binding" look like the cause of unrelated failures.
   const configuredDriver = String(env?.DB_DRIVER || "")
     .trim()
     .toLowerCase()
-  if (configuredDriver && configuredDriver !== "auto") {
-    console.warn(
-      `[DB] getKvBinding: no KV-style binding found; DB_DRIVER="${configuredDriver}" ` +
-        `is served by getStorageBackend() instead. This is expected.`,
-    )
-  } else {
-    console.warn(
-      "[DB] getKvBinding: no KV/Blob binding found in auto detection.",
-    )
+  const expectsKvStyleBackend =
+    !configuredDriver ||
+    configuredDriver === "auto" ||
+    configuredDriver === "kv" ||
+    configuredDriver === "cfkv" ||
+    configuredDriver === "blob"
+  if (expectsKvStyleBackend) {
+    if (configuredDriver && configuredDriver !== "auto") {
+      console.warn(
+        `[DB] getKvBinding: no KV-style binding found; DB_DRIVER="${configuredDriver}" ` +
+          `is served by getStorageBackend() instead. This is expected.`,
+      )
+    } else {
+      console.warn(
+        "[DB] getKvBinding: no KV/Blob binding found in auto detection.",
+      )
+    }
   }
   return { binding: null, platform: "none", mode: "none" }
 }

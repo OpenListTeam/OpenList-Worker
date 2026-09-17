@@ -219,6 +219,26 @@ const DRIVER_MAP: Record<string, Driver> = {
 }
 
 /**
+ * 显式 DB_DRIVER=kv 不可用时的针对性提示。
+ *
+ * "kv" 是唯一一个「同名驱动在不同运行时要求完全不同」的驱动，只说
+ * "driver is not available" 会让用户困惑于「我明明绑了 KV」：
+ *  - Cloudflare Workers：需要名字恰好为 KV 的 kv_namespaces 绑定；
+ *  - EdgeOne Node 云函数：KV 不会注入 Node（注入的 KV 是 RESP 客户端，
+ *    接口形态校验不通过），只能经 Edge Function 代理：请求 origin 可达
+ *    且 JWT_SECRET（>=16 字符，与 Edge Function 侧一致）。
+ */
+const KV_UNAVAILABLE_HINT =
+  "The \"kv\" driver requires one of the following:\n" +
+  "  - Cloudflare Workers: a KV namespace binding named exactly \"KV\" " +
+  "(wrangler.jsonc: \"kv_namespaces\": [{ \"binding\": \"KV\" }]);\n" +
+  "  - EdgeOne Node Functions: KV is NOT injected into Node functions, so the " +
+  "Edge Function KV proxy must be reachable (known request origin / EO_KV_URLS) " +
+  "and JWT_SECRET (>=16 chars, identical on the Edge Function side) must be set.\n" +
+  "If neither applies, use DB_DRIVER=auto, DB_DRIVER=blob (EdgeOne) or " +
+  "DB_DRIVER=d1 (Cloudflare).\n"
+
+/**
  * 解析驱动。
  *
  * 语义约定：
@@ -261,6 +281,7 @@ async function resolveDriver(name: StorageDriver, env?: any): Promise<Driver> {
         `driver.\n` +
         `Check the binding/credentials for "${name}", or set DB_DRIVER=auto ` +
         `to let the platform pick an available backend.\n` +
+        (name === "kv" ? KV_UNAVAILABLE_HINT : "") +
         `Environment: ${isServerlessRuntime(env) ? "serverless/worker" : "local/container"}`,
     )
   }
