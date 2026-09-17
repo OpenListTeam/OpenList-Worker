@@ -165,7 +165,7 @@ async function autoDetectDriver(env?: any): Promise<Driver> {
 
   if (isServerlessRuntime(env)) {
     // 禁止在 serverless 环境静默使用内存存储
-    throw new Error(NO_STORAGE_MESSAGE)
+    throw storeError("NO_STORAGE", NO_STORAGE_MESSAGE)
   }
 
   console.warn(
@@ -219,24 +219,107 @@ const DRIVER_MAP: Record<string, Driver> = {
 }
 
 /**
- * 显式 DB_DRIVER=kv 不可用时的针对性提示。
+ * 存储配置类错误的机器可读分类。
  *
- * "kv" 是唯一一个「同名驱动在不同运行时要求完全不同」的驱动，只说
- * "driver is not available" 会让用户困惑于「我明明绑了 KV」：
- *  - Cloudflare Workers：需要名字恰好为 KV 的 kv_namespaces 绑定；
- *  - EdgeOne Node 云函数：KV 不会注入 Node（注入的 KV 是 RESP 客户端，
- *    接口形态校验不通过），只能经 Edge Function 代理：请求 origin 可达
- *    且 JWT_SECRET（>=16 字符，与 Edge Function 侧一致）。
+ * 供 /public/env_check 与 /public/init_status 把「为什么不能用」透给前端：
+ * 只给一句 "Storage driver is not configured correctly." 用户无法区分
+ * 「组合写错」「绑定没配」「密钥缺失」「后端读不到」。
  */
-const KV_UNAVAILABLE_HINT =
-  "The \"kv\" driver requires one of the following:\n" +
-  "  - Cloudflare Workers: a KV namespace binding named exactly \"KV\" " +
-  "(wrangler.jsonc: \"kv_namespaces\": [{ \"binding\": \"KV\" }]);\n" +
-  "  - EdgeOne Node Functions: KV is NOT injected into Node functions, so the " +
-  "Edge Function KV proxy must be reachable (known request origin / EO_KV_URLS) " +
-  "and JWT_SECRET (>=16 chars, identical on the Edge Function side) must be set.\n" +
-  "If neither applies, use DB_DRIVER=auto, DB_DRIVER=blob (EdgeOne) or " +
-  "DB_DRIVER=d1 (Cloudflare).\n"
+export type StoreConfigErrorCode =
+  | "INVALID_COMBINATION"
+  | "DRIVER_UNAVAILABLE"
+  | "UNKNOWN_DRIVER"
+  | "NO_STORAGE"
+  | "PROXY_CONFIG"
+  | "HEALTH_ERROR"
+  | "DRIVER_ERROR"
+
+/** 构造带分类码的错误，供 getStoreStatus 折叠成 configErrorCode。 */
+function storeError(code: StoreConfigErrorCode, message: string): Error {
+  const err = new Error(message) as Error & { storeCode?: StoreConfigErrorCode }
+  err.storeCode = code
+  return err
+}
+
+/** 读取错误上的分类码（未标注时按 DRIVER_ERROR 处理）。 */
+function errorCodeOf(err: any): StoreConfigErrorCode {
+  return (err?.storeCode as StoreConfigErrorCode) || "DRIVER_ERROR"
+}
+
+/** 存储配置文档（与 server 层的 DOC_DRIVER 指向同一页） */
+const STORAGE_DOC = "https://doc.oplist.org/ecosystem/official_worker/guide"
+
+/**
+ * 显式指定驱动不可用时的针对性提示。
+ *
+ * 只报「driver is not available」会让用户困惑于「我明明绑了」：每种驱动
+ * 需要的前置条件差异很大（KV 还区分 CF 原生绑定与 EdgeOne 代理），因此
+ * 逐驱动写清「需要什么」与替代方案。
+ */
+const DRIVER_UNAVAILABLE_HINTS: Record<string, string> = {
+  kv:
+    "The \"kv\" driver requires one of the following:\n" +
+    "  - Cloudflare Workers: a KV namespace binding named exactly \"KV\" " +
+    "(wrangler.jsonc: \"kv_namespaces\": [{ \"binding\": \"KV\" }]);\n" +
+    "  - EdgeOne Node Functions: KV is NOT injected into Node functions, so the " +
+    "Edge Function KV proxy must be reachable (known request origin / EO_KV_URLS) " +
+    "and JWT_SECRET (>=16 chars, identical on the Edge Function side) must be set.\n" +
+    "If neither applies, use DB_DRIVER=auto, DB_DRIVER=blob (EdgeOne) or " +
+    "DB_DRIVER=d1 (Cloudflare).\n",
+  d1:
+    "The \"d1\" driver requires a Cloudflare D1 binding named \"DB\" " +
+    "(wrangler.jsonc: \"d1_databases\": [{ \"binding\": \"DB\", ... }]).\n" +
+    "EdgeOne has no D1 — use DB_DRIVER=blob there instead.\n",
+  cfkv:
+    "The \"cfkv\" driver requires Cloudflare API credentials: CF_ACCOUNT " +
+    "(or CLOUDFLARE_ACCOUNT_ID), CF_KV_UUID (or CLOUDFLARE_KV_NAMESPACE_ID) " +
+    "and CF_API_KEY (or CLOUDFLARE_API_TOKEN) with KV read/write permission.\n",
+  do:
+    "The \"do\" driver requires a Durable Objects namespace binding named \"DO\" " +
+    "(wrangler.jsonc: \"durable_objects\": { \"bindings\": [{ \"name\": \"DO\", " +
+    "\"class_name\": \"...\" }] } plus a matching migration).\n",
+  mysql:
+    "The \"mysql\" driver requires a Node runtime plus connection info " +
+    "(MYSQL_URLS, or MYSQL_HOST/MYSQL_PORT/MYSQL_USER/MYSQL_PASS/MYSQL_NAME). " +
+    "Cloudflare Workers cannot open raw TCP connections to MySQL.\n",
+  blob:
+    "The \"blob\" driver requires either the EdgeOne Blob SDK (only present " +
+    "inside the EdgeOne Makers runtime) or an ESA_BLOB binding on Alibaba ESA.\n",
+}
+
+/**
+ * 驱动 × 格式组合校验。
+ *
+ * 历史上非法组合（如 DB_FORMAT=sql + DB_DRIVER=kv）要到真正读写时才在
+ * sqlFormat 内抛 "Driver kv does not support SQL queries"：此时 env_check
+ * 仍报 ready，用户看到「环境一切正常」却在初始化时 500。
+ * 这里在解析阶段就拒绝，并列出该驱动支持的格式。
+ */
+function validateDriverFormat(driver: Driver, format: FormatAdapter): void {
+  // get/put/delete/list 在接口上是必选，但运行时仍可能缺失（第三方/降级实现），
+  // 因此这里按能力探测而非依赖类型声明。
+  const d = driver as any
+  const supportsKv = Boolean(d.get && d.put && d.delete && d.list)
+  const supportsSql = Boolean(driver.query && driver.execute && driver.batch)
+  const ok = format.name === "sql" ? supportsSql : supportsKv
+  if (ok) return
+
+  const supported = [supportsKv ? "map | key" : null, supportsSql ? "sql" : null]
+    .filter(Boolean)
+    .join(" | ")
+  throw storeError(
+    "INVALID_COMBINATION",
+    `Invalid storage combination: DB_FORMAT="${format.name}" cannot be used with ` +
+      `DB_DRIVER="${driver.name}".\n` +
+      `Driver "${driver.name}" supports: ${supported || "no format"}.\n` +
+      (format.name === "sql"
+        ? "The \"sql\" format needs a relational driver (SQL query support): " +
+          "d1 | do | mysql.\n"
+        : `The "${format.name}" format needs a key-value driver ` +
+          "(get/put/delete/list): kv | cfkv | blob | d1 | do | mysql.\n") +
+      `Fix DB_FORMAT or DB_DRIVER. See ${STORAGE_DOC}`,
+  )
+}
 
 /**
  * 解析驱动。
@@ -253,7 +336,8 @@ async function resolveDriver(name: StorageDriver, env?: any): Promise<Driver> {
 
   const driver = DRIVER_MAP[name]
   if (!driver) {
-    throw new Error(
+    throw storeError(
+      "UNKNOWN_DRIVER",
       `Unknown DB_DRIVER "${name}". Valid values: auto, ${Object.keys(
         DRIVER_MAP,
       ).join(", ")}`,
@@ -271,17 +355,18 @@ async function resolveDriver(name: StorageDriver, env?: any): Promise<Driver> {
   // 内存驱动在 worker 环境永不接受：数据会随实例销毁而消失，
   // 但接口仍返回成功，属于最危险的一类「静默数据丢失」。
   if (driver === memoryDriver && isServerlessRuntime(env)) {
-    throw new Error(NO_STORAGE_MESSAGE)
+    throw storeError("NO_STORAGE", NO_STORAGE_MESSAGE)
   }
 
   if (!available) {
-    throw new Error(
+    throw storeError(
+      "DRIVER_UNAVAILABLE",
       `DB_DRIVER is set to "${name}", but that driver is not available in ` +
         `this runtime. No fallback is performed for an explicitly configured ` +
         `driver.\n` +
         `Check the binding/credentials for "${name}", or set DB_DRIVER=auto ` +
         `to let the platform pick an available backend.\n` +
-        (name === "kv" ? KV_UNAVAILABLE_HINT : "") +
+        (DRIVER_UNAVAILABLE_HINTS[name] || "") +
         `Environment: ${isServerlessRuntime(env) ? "serverless/worker" : "local/container"}`,
     )
   }
@@ -360,6 +445,10 @@ export async function getStorageBackend(
   const driver = await resolveDriver(driverName, env)
   const format = resolveFormat(formatName)
 
+  // 非法「驱动 × 格式」组合立即拒绝：否则要到真正读写时才报错，
+  // 而 env_check 会显示 ready，用户看到「环境正常」却在初始化时 500。
+  validateDriverFormat(driver, format)
+
   // 初始化驱动（建表等，幂等）
   if (driver.init) {
     try {
@@ -402,6 +491,7 @@ export async function getStoreStatus(env?: any): Promise<any> {
   let driver: any = null
   let format: any = null
   let configError: string | null = null
+  let configErrorCode: StoreConfigErrorCode | null = null
 
   try {
     const resolved = await getStorageBackend(env)
@@ -409,7 +499,7 @@ export async function getStoreStatus(env?: any): Promise<any> {
     format = resolved.format
   } catch (err: any) {
     // 无可用存储（如 serverless 环境未配置）时不应让状态接口崩溃，
-    // 而是返回可读的配置错误。
+    // 而是返回可读的配置错误（含机器可读的分类码，供前端展示具体原因）。
     const msg = String(err?.message || err)
     return {
       driver: "none",
@@ -418,6 +508,7 @@ export async function getStoreStatus(env?: any): Promise<any> {
       configError: msg.includes("No storage backend is available")
         ? NO_STORAGE_MESSAGE
         : msg,
+      configErrorCode: errorCodeOf(err),
     }
   }
 
@@ -436,6 +527,7 @@ export async function getStoreStatus(env?: any): Promise<any> {
       configError = null
     }
     if (configError) {
+      configErrorCode = "PROXY_CONFIG"
       console.error("[DB] KV proxy configuration error:\n" + configError)
     }
   }
@@ -444,7 +536,7 @@ export async function getStoreStatus(env?: any): Promise<any> {
     driver: driver.name,
     format: format.name,
     ...(health || {}),
-    ...(configError ? { configError, available: false } : {}),
+    ...(configError ? { configError, configErrorCode, available: false } : {}),
   }
 }
 
@@ -472,6 +564,7 @@ async function getStorageStatusSafe(env?: any): Promise<any> {
       format: "none",
       available: false,
       configError: String(err?.message || err),
+      configErrorCode: errorCodeOf(err),
     }
   }
 }
@@ -493,16 +586,25 @@ function isPersistentStatus(status: any): boolean {
 }
 
 /**
- * 仅返回存储配置错误（无错误时为 null）。
+ * 存储配置错误的「原因 + 分类码」。
  *
- * 供全局中间件在每个 API 请求上做快速拦截。判定复用 getStoreStatus，
- * 因此与 isPersistentStorageAvailable() / /public/env_check 结论一致。
+ * 供全局中间件（503 拦截）与诊断接口（/public/env_check、/public/init_status）
+ * 共用同一判定，避免两处规则漂移。
+ *
+ * @param opts.silent 不打印日志。诊断接口会被前端轮询（安装向导每秒一次），
+ *        由调用方决定是否需要日志，避免刷屏。
  *
  * 不额外做缓存：getStorageBackend 内部已按 env 指纹缓存驱动解析，
  * 而 checkProxyConfig 是纯同步读取 env，开销可忽略。
  */
-export async function getStoreConfigError(env?: any): Promise<string | null> {
-  if (!env || typeof env !== "object") return null
+export async function getStoreConfigErrorDetail(
+  env?: any,
+  opts: { silent?: boolean } = {},
+): Promise<{ code: StoreConfigErrorCode | null; message: string | null }> {
+  const log = (label: string, msg: string) => {
+    if (!opts.silent) console.error(label + msg)
+  }
+  if (!env || typeof env !== "object") return { code: null, message: null }
 
   // 缺代理密钥时优先给出「补密钥」这种可操作提示，而不是笼统的驱动错误。
   // checkProxyConfig 是纯同步读取，开销可忽略。
@@ -516,15 +618,15 @@ export async function getStoreConfigError(env?: any): Promise<string | null> {
   if (isKvRequested) {
     const kvIssue = checkProxyConfig(env)
     if (kvIssue) {
-      console.error("[DB] KV proxy configuration error:\n" + kvIssue)
-      return kvIssue
+      log("[DB] KV proxy configuration error:\n", kvIssue)
+      return { code: "PROXY_CONFIG", message: kvIssue }
     }
   }
 
   const status = await getStorageStatusSafe(env)
 
   // 配置齐全且健康：无错误
-  if (isPersistentStatus(status)) return null
+  if (isPersistentStatus(status)) return { code: null, message: null }
 
   // 选中了 kv 但代理不可用：区分「缺密钥」与「密钥不匹配」。
   // 后者表现为 HTTP 401 —— 代理已部署，只是 JWT_SECRET 与 Edge Function
@@ -532,8 +634,8 @@ export async function getStoreConfigError(env?: any): Promise<string | null> {
   if (!isKvRequested && String(status?.driver ?? "") === "kv") {
     const kvIssue = checkProxyConfig(env)
     if (kvIssue) {
-      console.error("[DB] KV proxy configuration error:\n" + kvIssue)
-      return kvIssue
+      log("[DB] KV proxy configuration error:\n", kvIssue)
+      return { code: "PROXY_CONFIG", message: kvIssue }
     }
     if (status?.mode === "proxy" && status?.error?.includes("401")) {
       const hint =
@@ -541,30 +643,33 @@ export async function getStoreConfigError(env?: any): Promise<string | null> {
         "by this deployment does not match the one configured on the Edge " +
         "Functions serving the proxy. Make sure both use the same JWT_SECRET.\n" +
         "Alternatively set EO_KV_URLS to the correct deployment origin."
-      console.error("[DB] KV proxy authentication failed:\n" + hint)
-      return hint
+      log("[DB] KV proxy authentication failed:\n", hint)
+      return { code: "PROXY_CONFIG", message: hint }
     }
   }
 
-  // 已有明确原因（缺密钥 / 驱动解析失败 / 健康检查失败）
+  // 已有明确原因（缺密钥 / 驱动解析失败 / 组合非法 / 健康检查失败）
   const reason: string | null = status?.configError
     ? String(status.configError)
     : null
   if (reason) {
-    console.error("[DB] Storage configuration error:\n" + reason)
-    return reason
+    log("[DB] Storage configuration error:\n", reason)
+    return {
+      code: (status?.configErrorCode as StoreConfigErrorCode) || "DRIVER_ERROR",
+      message: reason,
+    }
   }
 
   // 内存兜底：serverless 下写入会静默丢失，需要可操作提示
   if (String(status?.driver ?? "none") === "memory") {
-    console.error("[DB] Storage configuration error:\n" + NO_STORAGE_MESSAGE)
-    return NO_STORAGE_MESSAGE
+    log("[DB] Storage configuration error:\n", NO_STORAGE_MESSAGE)
+    return { code: "NO_STORAGE", message: NO_STORAGE_MESSAGE }
   }
 
   const healthError = status?.error ? String(status.error) : null
   if (healthError) {
-    console.error("[DB] Storage unhealthy:\n" + healthError)
-    return healthError
+    log("[DB] Storage unhealthy:\n", healthError)
+    return { code: "HEALTH_ERROR", message: healthError }
   }
 
   // 走到这里说明 isPersistentStatus 判为「不可用」但没有任何具体原因字段
@@ -577,6 +682,22 @@ export async function getStoreConfigError(env?: any): Promise<string | null> {
       ? NO_STORAGE_MESSAGE
       : `Storage driver "${driverName}" is not available in this runtime. ` +
         `Check its configuration and bindings, or set DB_DRIVER=auto.`
-  console.error("[DB] Storage unavailable:\n" + fallback)
-  return fallback
+  log("[DB] Storage unavailable:\n", fallback)
+  return {
+    code: driverName === "none" || driverName === "" ? "NO_STORAGE" : "DRIVER_ERROR",
+    message: fallback,
+  }
+}
+
+/**
+ * 仅返回存储配置错误（无错误时为 null）。
+ *
+ * 供全局中间件在每个 API 请求上做快速拦截。判定复用 getStoreStatus，
+ * 因此与 isPersistentStorageAvailable() / /public/env_check 结论一致。
+ */
+export async function getStoreConfigError(
+  env?: any,
+  opts: { silent?: boolean } = {},
+): Promise<string | null> {
+  return (await getStoreConfigErrorDetail(env, opts)).message
 }

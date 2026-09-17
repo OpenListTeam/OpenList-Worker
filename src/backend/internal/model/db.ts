@@ -1056,8 +1056,12 @@ const loadDb = async (envCtx?: any) => {
   // 此时必须回退到请求级 globalEnvCtx，否则 readDriver 读不到 DB_DRIVER、
   // getD1 读不到 DB binding，会错误回退到 json 后端读到旧的 KV 数据。
   const activeEnv = envCtx || globalEnvCtx
-  const backend = await getStoreBackend(activeEnv)
+  let backend: Awaited<ReturnType<typeof getStoreBackend>> | null = null
   try {
+    // 驱动解析（含「驱动 × 格式」组合校验）也在 try 内：配置类错误必须与
+    // 读取错误走同一条降级路径，否则它会以「未捕获异常」的形式抛出，
+    // 让 /init/setup 只给前端一个没有原因的裸 500。
+    backend = await getStoreBackend(activeEnv)
     const persisted = await backend.load(activeEnv)
     if (persisted) {
       await unsealDb(persisted, await getEncryptionKey(activeEnv))
@@ -1077,7 +1081,7 @@ const loadDb = async (envCtx?: any) => {
     // 短暂不可见，此时不能把默认库当成事实，更不能让它写回存储。
     if (dbTrusted && memoryDb) {
       console.warn(
-        `[DB] Backend ${backend.name} returned empty while a trusted snapshot exists; ` +
+        `[DB] Backend ${backend?.name ?? "storage"} returned empty while a trusted snapshot exists; ` +
           `keeping the in-memory snapshot to avoid overwriting real config.`,
       )
       ensureDefaultSettings(memoryDb)
@@ -1092,7 +1096,7 @@ const loadDb = async (envCtx?: any) => {
   } catch (err: any) {
     // 读取失败绝不能静默回退到默认库并落盘——这正是「数据库被清空」的根因。
     console.error(
-      `[DB] Error reading config from ${backend.name}:`,
+      `[DB] Error reading config from ${backend?.name ?? "storage"}:`,
       err?.message || err,
     )
     dbLastLoadError = String(err?.message || err)

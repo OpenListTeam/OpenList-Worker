@@ -9,6 +9,7 @@ import {
   saveDb,
 } from "../internal/model/db"
 import {
+  getStoreConfigErrorDetail,
   isPersistentStorageAvailable,
   isServerlessRuntime,
   readDriver,
@@ -24,28 +25,60 @@ const DOC_STORAGE = `${DOC_BASE}/ecosystem/official_worker/guide_env`
 const DOC_DRIVER = `${DOC_BASE}/ecosystem/official_worker/guide`
 
 /**
- * 对错误文本做脱敏，供免鉴权接口使用。
+ * 对单行文本做脱敏（供免鉴权接口使用）。
  *
  * 目标：保留「问题类别」的可操作性，同时抹掉可能泄漏实现细节的部分：
- *   - 只取第一行（去掉多行堆栈）
  *   - 抹除形如 `scheme://user:pass@host` 的连接串凭据
+ *   - 抹除常见的 key=value 形式的令牌
  *   - 截断长度，避免回显大段内部信息
  */
-function redact(raw: any): string {
-  if (raw === null || raw === undefined) return "unknown error"
-  let s = String(raw)
-  // 仅保留首行
-  s = s.split("\n")[0].trim()
-  // 抹除连接串中的凭据（如 mysql://user:pass@host）
-  s = s.replace(/(\w+:\/\/)[^/@\s]+@/g, "$1***@")
-  // 抹除常见的 key=value 形式的令牌
-  s = s.replace(
+function scrub(s: string): string {
+  let out = String(s).trim()
+  out = out.replace(/(\w+:\/\/)[^/@\s]+@/g, "$1***@")
+  out = out.replace(
     /\b(token|secret|password|passwd|pwd|api[_-]?key)\s*[=:]\s*\S+/gi,
     "$1=***",
   )
-  // 截断
   const MAX = 160
-  return s.length > MAX ? s.slice(0, MAX) + "…" : s
+  return out.length > MAX ? out.slice(0, MAX) + "…" : out
+}
+
+/**
+ * 对错误文本做脱敏，供免鉴权接口使用。
+ *
+ * 默认只保留首行（去掉多行堆栈）；`maxLines` 用于我们自己的、多行且
+ * 可操作的配置类错误（如「组合非法 + 该驱动支持哪些格式 + 怎么改」）。
+ */
+function redact(raw: any, maxLines = 1): string {
+  if (raw === null || raw === undefined) return "unknown error"
+  const lines = String(raw)
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, Math.max(1, maxLines))
+    .map(scrub)
+  return lines.length ? lines.join(" ") : "unknown error"
+}
+
+/**
+ * 配置类错误的展示行数上限。
+ *
+ * 这些码对应的是**我们自己**写的多行提示（组合非法 / 驱动不可用 / 无存储 /
+ * 代理未配置），后续行才是「怎么改」，必须展示出来；
+ * 而运行期错误（HEALTH_ERROR 等）可能含内部主机名，只取首行。
+ */
+const MULTILINE_ERROR_CODES = new Set([
+  "INVALID_COMBINATION",
+  "DRIVER_UNAVAILABLE",
+  "UNKNOWN_DRIVER",
+  "NO_STORAGE",
+  "PROXY_CONFIG",
+  "DRIVER_ERROR",
+])
+
+/** 取出用于展示的最大行数 */
+function reasonLines(code?: string | null): number {
+  return code && MULTILINE_ERROR_CODES.has(code) ? 3 : 1
 }
 
 /**
@@ -100,6 +133,11 @@ publicRouter.get("/env_check", async (c) => {
     message: string
     docUrl: string
   }[] = []
+  /** 配置错误的分类码 + 原文（脱敏后展示，code 供前端分支处理） */
+  let storageDetail: { code: string | null; message: string | null } = {
+    code: null,
+    message: null,
+  }
 
   if (isMemory) {
     issues.push({
@@ -120,14 +158,25 @@ publicRouter.get("/env_check", async (c) => {
   }
 
   if (hasConfigError) {
+    // 只报告「有错误」而不说清原因，会让用户拿着绿灯清单去初始化、然后收到
+    // 一个 500。这里把后端给出的原因（脱敏、限行）直接透给前端：
+    //   - 非法组合（sql + kv 等）：我们自己的多行提示，前 3 行都很有用；
+    //   - 其它配置错误（绑定缺失、密钥缺失、连接失败）：仅首行，避免回显内部细节。
+    const detail = await getStoreConfigErrorDetail(env, { silent: true })
+    const isInvalidCombination = detail.code === "INVALID_COMBINATION"
+    storageDetail = { code: detail.code, message: detail.message }
+    const reason = redact(
+      detail.message || storage?.configError,
+      reasonLines(detail.code),
+    )
     issues.push({
-      code: "STORAGE_CONFIG_ERROR",
+      code: isInvalidCombination
+        ? "STORAGE_INVALID_COMBINATION"
+        : "STORAGE_CONFIG_ERROR",
       level: "error",
-      // 该接口免鉴权，因此不返回原始错误文本（可能含内部 DSN、主机名或堆栈）。
-      // 驱动未探测到时 backend 会给出 NO_STORAGE_MESSAGE 这种面向终端的长文
-      // 配置指引，逐条展示到界面上是一屏难以消化的文字，故此处统一收敛为
-      // 一句摘要，细节由 docUrl 指向的文档承接。
-      message: "Storage driver is not configured correctly.",
+      message: isInvalidCombination
+        ? `Unsupported storage combination: ${reason}`
+        : `Storage driver is not configured correctly: ${reason}`,
       docUrl: DOC_DRIVER,
     })
   }
@@ -180,6 +229,17 @@ publicRouter.get("/env_check", async (c) => {
         platform: storage?.platform ?? null,
         /** 是否处于内存兜底模式（重启即失，serverless 下不可接受） */
         memory: isMemory,
+        /**
+         * 配置错误的机器可读分类（无错误时为 null）：
+         * INVALID_COMBINATION / DRIVER_UNAVAILABLE / NO_STORAGE /
+         * PROXY_CONFIG / UNKNOWN_DRIVER / HEALTH_ERROR / DRIVER_ERROR
+         */
+        error_code: storageDetail.code,
+        /** 配置错误的原因（已脱敏，可直接展示给用户） */
+        error_message:
+          storageDetail.message !== null
+            ? redact(storageDetail.message, reasonLines(storageDetail.code))
+            : null,
       },
       jwt: {
         ready: jwtReady,
@@ -445,10 +505,30 @@ publicRouter.get("/init_status", async (c) => {
   // 前端据此轮询等待，避免 KV 最终一致性导致的「刚初始化完登录失败」。
   const ready = initialized ? await isEncryptionReady(c.env) : false
 
+  // ── 把「为什么不能初始化」透给前端 ──
+  //
+  // 安装向导只能看到本接口，因此这里必须给出可展示的原因，否则用户只会拿到
+  // 一个 500 或一句「未初始化」，无从判断是绑定缺失、组合写错还是密钥缺失。
+  // 两类原因都返回（已脱敏、限长）：
+  //   storage_error  存储配置不可用（驱动/绑定/组合问题）
+  //   db_load_error  上一次从持久化后端读取失败的原因（运行期故障）
+  let storageError: string | null = null
+  if (!storageReady) {
+    const detail = await getStoreConfigErrorDetail(c.env, { silent: true })
+    storageError = redact(detail.message, reasonLines(detail.code))
+  }
+  const dbLoadError = getDbLoadError()
+
   return c.json({
     code: 200,
     message: "success",
-    data: { initialized, ready, db_trusted: isDbTrusted() },
+    data: {
+      initialized,
+      ready,
+      db_trusted: isDbTrusted(),
+      storage_error: storageError,
+      db_load_error: dbLoadError ? redact(dbLoadError, 1) : null,
+    },
   })
 })
 
@@ -490,12 +570,19 @@ publicRouter.post("/init/setup", async (c) => {
       "[DB] init/setup rejected: database could not be loaded from the persistence backend: " +
         loadError,
     )
+    // 对外文案保持不变（兼容既有前端/客户端），但把「具体原因 + 分类码」放进
+    // data，让安装向导能直接展示，而不是只给用户一个通用 500。
+    const detail = await getStoreConfigErrorDetail(c.env, { silent: true })
+    const code = detail.code || "STORAGE_READ_FAILED"
     return c.json(
       {
         code: 500,
         message:
           "database is not readable; refusing to initialize to avoid overwriting existing config",
-        data: null,
+        data: {
+          code,
+          reason: redact(loadError, reasonLines(code)),
+        },
       },
       500,
     )
