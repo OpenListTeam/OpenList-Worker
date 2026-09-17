@@ -50,6 +50,7 @@ const needsProxy =
 - 存储表单按驱动能力差异化显示：15 个仅代理驱动不再出现 302 选项；WebDav 的 `web_proxy` 默认勾选；`proxy_range` 仅对 Go 中声明 `ProxyRangeOption` 的驱动显示。
 - `/fs/list` 对开启 `disable_index` 的存储返回 `403 {"message":"Index is disabled for this storage"}`。
 - `/fs/list` 响应新增 `cache_expiration` 字段（路径级缓存策略计算后的分钟数）。
+- **代理下载超过平台载荷上限时不再返回平台错误页**：EdgeOne 云函数对单次请求/响应 body 的上限为 6 MiB，原生代理超限时改为「降级 302 直链」或返回可读的 413（详见下方「平台载荷上限保护」）。
 
 ### 重要实现变化
 
@@ -113,12 +114,19 @@ npx tsc --noEmit -p tsconfig.json        # 类型检查：exit 0，无错误
 node --import tsx --test "src/backend/**/*.test.ts"
 ```
 
-测试结果：**197 个测试，193 通过**。
+测试结果：**237 个测试，234 通过**。
 
-其中 4 个失败为**既有问题，与本 PR 无关**（已逐项确认未引用本 PR 涉及的任何代码）：
+其中 3 个失败为**既有问题，与本 PR 无关**（已逐项确认未引用本 PR 涉及的任何代码）：
 
-- `server/default_credentials.test.ts` — 默认凭据 SHA-256 重置
+- `server/default_credentials.test.ts` — 默认凭据 SHA-256 重置（2 例）
 - `server/seed.test.ts` — casmeta 字段名
+
+新增 `server/proxy_request.test.ts` 的平台载荷上限用例（14 个，该文件累计 29 个），覆盖：
+
+- 上限解析：EdgeOne 运行时默认 6 MiB、`RAW_PROXY_MAX_BYTES` 覆盖与置 0 关闭、非法值回退默认
+- 超限判定：等于上限不算超限、Range 分片按分片大小、大小未知不拦截
+- 决策：未超限照常代理、超限可直连时降级 302、超限不可降级时返回 413、`RAW_PROXY_OVERFLOW=error` 时拒绝降级
+- 串联 `resolveProxyDecision()`：`web_proxy=true` 的 OneDrive 大文件降级 302；带 `Authorization` 的 WebDAV 大文件返回可读 413
 
 新增 `internal/driver/storageopts.test.ts`（19 个用例），覆盖：
 
@@ -187,7 +195,7 @@ Usage scope / 使用范围:
 - [x] I can reproduce all AI-assisted content included in this PR without any AI tools.
       / 我可以在没有任何 AI 工具的情况下重现此 PR 中包含的所有 AI 辅助内容。
 
-> **待办**：当前两个提交尚未包含 `Co-Authored-By` 归属信息。如需满足上述第 2 条，请在合并前补上：
+> **待办**：最早的三个提交尚未包含 `Co-Authored-By` 归属信息（`49091b7` 已包含）。如需满足上述第 2 条，请在合并前补上：
 >
 > ```bash
 > # 方式一：为最新提交追加归属
@@ -226,6 +234,29 @@ Usage scope / 使用范围:
 
 `down_proxy_url` 模板由管理员配置、不携带实例密钥，因此无法在模板中预置签名。本 PR 在运行时判定：当目标地址指向本站（相对路径或同 host）且未设置 `disable_proxy_sign` 时，自动补上 `sign` 查询参数，避免代理端点因缺少签名被拒。构造出的 URL 仍会经过 `assertSafeUrl` 做 SSRF 校验。
 
+### 平台载荷上限保护（EdgeOne 云函数 6 MiB）
+
+`native_proxy` 会把整份文件当作云函数响应体回传，而 EdgeOne Makers 的 Cloud Functions 对「函数的请求/响应 body」有 **6 MiB** 硬上限，超限时平台在**网关层**直接返回 `413 CLOUD_FUNCTION_PAYLOAD_TOO_LARGE`（Powered by Tencent EdgeOne Makers 的错误页）。请求根本到不了本服务，应用侧的 CORS 头、Range 处理、错误提示一律不会执行。
+
+这也是 issue 中「EdgeOne + OneDrive 下载报 413」的直接原因：OneDrive 此前被硬编码强制代理；上一提交只把**默认值**改成 302，任何**仍走代理**的路径（`web_proxy`、`/p`、`webdav_policy=native_proxy`、`PreferProxy`/`MustProxy` 驱动）都依旧会把整份文件塞进云函数响应体。
+
+`server/proxy_request.ts` 新增上限决策 `decideProxyPayloadAction()`，在 `proxyUpstream()` 与两处服务端字节流分支（`driver.createReadStream`、本地文件回退）之前执行：
+
+| 情形 | 结果 |
+|---|---|
+| 未超限 / 平台不限制（非 EdgeOne 且未设置 `RAW_PROXY_MAX_BYTES`） | 正常原生代理 |
+| 超限 + `raw_url` 可被浏览器直连（预授权直链） | 降级 302 直链，下载仍然可用 |
+| 超限 + 无法降级（`driverMustProxy`，或直链需要 `Authorization`/`Cookie`） | 返回可读的 413，而不是平台错误页 |
+
+Range 只回传一个分片时按**分片大小**判断，视频拖动进度与断点续传不受影响；`proxy_range` 关闭时上游返回完整文件，因此按完整大小判断。
+
+新增环境变量：
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `RAW_PROXY_MAX_BYTES` | EdgeOne 运行时 6 MiB；其他平台不限制 | 平台单次请求/响应上限（字节），设为 `0` 关闭限制（自托管恢复「永远代理」） |
+| `RAW_PROXY_OVERFLOW` | `redirect` | 超限策略：`redirect` 安全时降级 302 直链；`error` 直接 413，避免暴露直链 |
+
 ### 已知限制
 
 `custom_cache_policies` 目前**只在 `/fs/list` 响应中回传计算结果**，并未真正改变对象缓存的读写行为——TSWorker 的缓存层尚无「按路径取过期时长」的入口。要做到 Go 那样真正影响缓存，需要接入缓存层，属后续独立工作。
@@ -234,7 +265,9 @@ Usage scope / 使用范围:
 
 - `1d9debc` — `feat(proxy): align OneDrive and other drivers with Go 302/proxy policy`
 - `da7a563` — `feat(storage): implement proxy_range, enable_sign, disable_index and cache policies`
+- `2e10dc7` — `fix(proxy): remove glob catastrophic backtracking and cover Range+sign interactions`
+- `49091b7` — `fix(proxy): fall back to 302 when the platform payload limit blocks native proxy`
 
 ```
-10 files changed, 1319 insertions(+), 167 deletions(-)
+13 files changed, 2600 insertions(+), 167 deletions(-)
 ```
