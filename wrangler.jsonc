@@ -62,10 +62,10 @@
     // ── 安全鉴权（推荐以 Secret 类型配置，见 .dev.vars.example）──────────
     //
     // JWT 签名密钥（>=16 字符，兼作字段加密与定时任务鉴权）
-    // "JWT_SECRET": "",
+    "JWT_SECRET": "5e769c99-f2f3-4ec8-a50c-539815ba5613",
     //
     // 跳过安装向导，自动以该密码初始化 admin
-    // "ADMIN_PASS": "",
+    "ADMIN_PASS": "",
     //
     // CORS 白名单（逗号分隔，不设则仅同源）
     // "ALLOW_URLS": "https://yourdomain.com",
