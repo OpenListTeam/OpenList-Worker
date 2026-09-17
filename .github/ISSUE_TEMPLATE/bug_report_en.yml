@@ -1,0 +1,127 @@
+name: "Bug Report"
+description: Bug Report / Issue (OpenList-Worker)
+title: "[BUG] Please modify the title to describe the issue you are facing"
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to report an issue — it helps make OpenList-Worker better.
+        Before submitting, please check the [discussions](https://github.com/OpenListTeam/OpenList-Worker/discussions) for an existing report to avoid duplicates.
+
+  - type: checkboxes
+    attributes:
+      label: Please confirm the following
+      description: Please tick each box — they help us help you faster.
+      options:
+        - label: I confirm my description is clear and polite, that I have provided the necessary diagnostic information, and that this is reproducible on the latest version.
+        - label: I confirm I have checked the relevant documentation and existing issues / discussions, and this report is not a duplicate.
+        - label: I confirm this is an issue with the Worker project, not caused by network or user error, and not an issue specific to the Go version.
+        - label: I confirm I have read the open-source license / disclaimers / usage policy, and understand that I bear all risks of use.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version (required)
+      description: Do not write `latest`; please provide the exact version number.
+      placeholder: v4.0.0
+    validations:
+      required: false
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform (required)
+      description: Which platform is OpenList-Worker deployed on?
+      options:
+        - Cloudflare Workers
+        - EdgeOne Makers
+        - Alibaba Cloud ESA
+        - Vercel
+        - Serverless / Node container
+        - Local development
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: db_format
+    attributes:
+      label: DB_FORMAT (required)
+      description: The data storage format.
+      options:
+        - map (single JSON blob)
+        - key (per-key)
+        - sql (relational)
+        - Not set / unknown
+    validations:
+      required: true
+
+  - type: dropdown
+    id: db_driver
+    attributes:
+      label: DB_DRIVER (required)
+      description: The database driver.
+      options:
+        - auto
+        - blob
+        - kv
+        - cfkv
+        - d1
+        - do
+        - mysql
+        - Not set / unknown
+    validations:
+      required: true
+
+  - type: input
+    id: storage_driver
+    attributes:
+      label: Storage Driver (required)
+      description: The name of the storage driver you are using.
+      placeholder: OneDrive
+    validations:
+      required: true
+
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Bug Description (required)
+      description: |
+        Please describe:
+        - Steps to reproduce: what you did and what happened; the expected result and behavior
+        - Error information: error messages / logs / response content; related code snippets (if available)
+        (You may mask sensitive fields, and do not paste secrets)
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error Information (required)
+      description: |
+        Please paste the relevant error output; avoid screenshots if possible:
+        - Frontend errors: press `F12` in your browser, then check the `Console` and the failed request responses under `Network`.
+        - Backend errors: check the function logs on your deployment platform — Cloudflare under the Workers dashboard Logs; EdgeOne / ESA / Vercel under their function log pages.
+        (You may mask sensitive fields, but please don't just write "it errored")
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant Configuration (required)
+      description: |
+        Please provide the relevant variables and storage configuration screenshots:
+         - Variables: the relevant snippets of `wrangler.jsonc` / `edgeone.json` / `serverless.yml`.
+         - Driver configuration: the configuration exported from settings (with secrets removed), or briefly describe your driver configuration.
+        (You may mask sensitive fields, but do not paste secrets)
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Link (optional)
+      description: |
+        If you have a link or repo that can reproduce this, please share it here.

@@ -3,6 +3,7 @@ import {
   ensureEncryptionSecret,
   getDb,
   getStoreStatus,
+  isDbTrusted,
   isEncryptionReady,
   saveDb,
 } from "../internal/model/db"
@@ -414,7 +415,7 @@ publicRouter.get("/init_status", async (c) => {
   return c.json({
     code: 200,
     message: "success",
-    data: { initialized, ready },
+    data: { initialized, ready, db_trusted: isDbTrusted() },
   })
 })
 
@@ -440,6 +441,23 @@ publicRouter.post("/init/setup", async (c) => {
 
   const db = await getDb(c.env)
   if (!db.users) db.users = []
+  // 安全护栏：若读取持久化存储失败（当前 db 只是不可信空壳），绝不能继续初始化，
+  // 否则会把空库写回存储、覆盖真实配置（即「数据库被清空」的根因）。
+  if (!isDbTrusted()) {
+    console.error(
+      "[DB] init/setup rejected: database could not be loaded from the persistence backend",
+    )
+    return c.json(
+      {
+        code: 500,
+        message:
+          "database is not readable; refusing to initialize to avoid overwriting existing config",
+        data: null,
+      },
+      500,
+    )
+  }
+
   const existing = db.users.find((u: any) => u.role === 2)
 
   if (existing && String(existing.password || "").trim() !== "") {
@@ -494,6 +512,8 @@ publicRouter.post("/init/setup", async (c) => {
     }
   }
 
-  await saveDb(db, c.env)
+  // 初始化是唯一允许「在一次成功读取（确认存储为空）之后写入空壳」的场景，
+  // 因此显式 force；此时 db 已包含新建的管理员用户，本身也不再是空壳。
+  await saveDb(db, c.env, { force: true })
   return c.json({ code: 200, message: "success", data: null })
 })
