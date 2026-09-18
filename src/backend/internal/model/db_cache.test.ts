@@ -23,7 +23,6 @@ import { test } from "node:test"
 
 // 动态导入以避免测试文件顶层就初始化 store 后端探测。
 const mod = await import("./db")
-const storeMod = await import("./store/backend")
 
 const {
   getDb,
@@ -179,5 +178,33 @@ test("getDb: TTL 过期后允许重新加载（缓存不是永久固化）", asy
   assert.equal(stats.load, 2, "TTL 过期后应重新 load，以获取其他实例的写入")
 })
 
-// 确保 storeMod 被引用，避免某些打包器把动态导入摇树掉。
-void storeMod
+test("getDb: __resetDbCacheForTest 同时复位写前守卫状态", async () => {
+  __resetDbCacheForTest()
+  const { backend } = createCountingBackend(SAMPLE)
+  __setStoreBackendLoaderForTest(async () => backend)
+
+  const env = { DB_DRIVER: "counting" }
+  setEnvCtx(env)
+
+  await getDb()
+  assert.equal(mod.isDbTrusted(), true, "成功加载后应标记为内存库可信")
+
+  // 写回一个空壳 → 必被守卫拦截，并留下 dbWriteBlocked 标记。
+  const blocked = await saveDb({
+    settings: [],
+    users: [],
+    storages: [],
+    shares: [],
+    metas: [],
+    plugins: [],
+  })
+  assert.equal(blocked, false, "空壳写入必须被拒绝")
+  assert.equal(mod.isDbWriteBlocked(), true, "守卫应记录本次拦截")
+
+  // 关键断言：reset 之后这些模块级状态必须回到初始态，否则用例结果会取决于
+  // 执行顺序（db_write_guard.test.ts 直接断言 isDbTrusted / isDbWriteBlocked）。
+  __resetDbCacheForTest()
+  assert.equal(mod.isDbTrusted(), false, "reset 后应回到「不可信」")
+  assert.equal(mod.isDbWriteBlocked(), false, "reset 后应清除拦截标记")
+  assert.equal(mod.getDbLoadError(), null, "reset 后不应残留读取错误")
+})
