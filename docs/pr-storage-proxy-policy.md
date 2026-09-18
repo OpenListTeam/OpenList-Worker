@@ -114,19 +114,20 @@ npx tsc --noEmit -p tsconfig.json        # 类型检查：exit 0，无错误
 node --import tsx --test "src/backend/**/*.test.ts"
 ```
 
-测试结果：**237 个测试，234 通过**。
+测试结果：**241 个测试，238 通过**。
 
 其中 3 个失败为**既有问题，与本 PR 无关**（已逐项确认未引用本 PR 涉及的任何代码）：
 
 - `server/default_credentials.test.ts` — 默认凭据 SHA-256 重置（2 例）
 - `server/seed.test.ts` — casmeta 字段名
 
-新增 `server/proxy_request.test.ts` 的平台载荷上限用例（14 个，该文件累计 29 个），覆盖：
+新增 `server/proxy_request.test.ts` 的平台载荷上限用例（18 个，该文件累计 33 个），覆盖：
 
 - 上限解析：EdgeOne 运行时默认 6 MiB、`RAW_PROXY_MAX_BYTES` 覆盖与置 0 关闭、非法值回退默认
 - 超限判定：等于上限不算超限、Range 分片按分片大小、大小未知不拦截
 - 决策：未超限照常代理、超限可直连时降级 302、超限不可降级时返回 413、`RAW_PROXY_OVERFLOW=error` 时拒绝降级
 - 串联 `resolveProxyDecision()`：`web_proxy=true` 的 OneDrive 大文件降级 302；带 `Authorization` 的 WebDAV 大文件返回可读 413
+- **Range + 签名 + 上限的交互**（响应评审意见）：`upstreamBodySize()` 解析 Content-Length / Content-Range；412 兜底重试后上游回整份文件时按实际大小降级 302（签名 URL 无需重算）；正常 206 分片不被误伤；必须带鉴权头时返回可读 413
 
 新增 `internal/driver/storageopts.test.ts`（19 个用例），覆盖：
 
@@ -190,21 +191,12 @@ Usage scope / 使用范围:
 
 - [x] I have reviewed and validated all AI-assisted content included in this PR.
       / 我已审核并验证此 PR 中的所有 AI 辅助内容。
-- [ ] I have ensured that all AI-assisted commits include `Co-Authored-By` attribution.
+- [x] I have ensured that all AI-assisted commits include `Co-Authored-By` attribution.
       / 我已确保所有 AI 辅助提交都包含 `Co-Authored-By` 归属信息。
 - [x] I can reproduce all AI-assisted content included in this PR without any AI tools.
       / 我可以在没有任何 AI 工具的情况下重现此 PR 中包含的所有 AI 辅助内容。
 
-> **待办**：最早的三个提交尚未包含 `Co-Authored-By` 归属信息（`49091b7` 已包含）。如需满足上述第 2 条，请在合并前补上：
->
-> ```bash
-> # 方式一：为最新提交追加归属
-> git commit --amend -m "$(git log -1 --pretty=%B)" -m "Co-Authored-By: CodeBuddy <noreply@codebuddy.ai>"
->
-> # 方式二：两个提交都补（推荐，需 rebase）
-> git rebase -i origin/main   # 对两个提交分别执行 edit，逐个 amend 后 --continue
-> git push --force-with-lease
-> ```
+> **已处理（响应评审 P0）**：本分支的全部提交都已在提交信息中带上 `Co-Authored-By: CodeBuddy <noreply@codebuddy.ai>`。此前缺少该 trailer 的三个提交通过 `git cherry-pick` + `git commit --amend --trailer` 重放补上（文件树与重写前完全一致，`git diff` 为空），因此分支历史被重写并 `--force-with-lease` 更新，提交哈希已变化（见下方「Commits / 提交」）。
 
 ## Implementation Notes / 实现说明
 
@@ -250,6 +242,8 @@ Usage scope / 使用范围:
 
 Range 只回传一个分片时按**分片大小**判断，视频拖动进度与断点续传不受影响；`proxy_range` 关闭时上游返回完整文件，因此按完整大小判断。
 
+**二次校验（响应评审意见）**：前置判断用的是「客户端请求的分片大小」，但 `shouldRetryWithoutRange()` 会删掉 Range 重试、上游也可能忽略 Range 直接回 200——这两种情况下游回传的是**整份文件**，仅靠前置判断会漏放。因此 `proxyUpstream()` 在上游响应到达后再用 `upstreamBodySize()`（Content-Length，缺省回退 Content-Range 分段长度）复核一次实际大小，超限则取消上游 body 并降级 302 / 返回可读 413；206 分片与签名 URL 均不受影响（签名绑定 URL，重试无需重算）。
+
 新增环境变量：
 
 | 变量 | 默认 | 说明 |
@@ -263,11 +257,21 @@ Range 只回传一个分片时按**分片大小**判断，视频拖动进度与�
 
 ## Commits / 提交
 
-- `1d9debc` — `feat(proxy): align OneDrive and other drivers with Go 302/proxy policy`
-- `da7a563` — `feat(storage): implement proxy_range, enable_sign, disable_index and cache policies`
-- `2e10dc7` — `fix(proxy): remove glob catastrophic backtracking and cover Range+sign interactions`
-- `49091b7` — `fix(proxy): fall back to 302 when the platform payload limit blocks native proxy`
+- `8c0a88d` — `feat(proxy): align OneDrive and other drivers with Go 302/proxy policy`
+- `7a9bcfc` — `feat(storage): implement proxy_range, enable_sign, disable_index and cache policies`
+- `954ebff` — `fix(proxy): remove glob catastrophic backtracking and cover Range+sign interactions`
+- `e5cbb9d` — `fix(proxy): fall back to 302 when the platform payload limit blocks native proxy`
+- `cc896eb` — `docs(pr): document the platform payload-limit guard for the storage proxy policy PR`
+- `cb4051f` — `fix(proxy): bound the upstream body size after a Range retry`
 
-```
-13 files changed, 2600 insertions(+), 167 deletions(-)
-```
+（本条 docs 提交负责同步上述列表与测试数据。分支共 13 个文件变动、约 1900 行新增，完整 diff 规模以 GitHub PR 页面为准。）
+
+## 评审意见处理
+
+| 评审项 | 处理 |
+|---|---|
+| P0 提交缺少 `Co-Authored-By` 归属 | 已重写分支历史为全部 6 个提交补上 trailer（见上方「AI 使用声明」） |
+| P1 `matchGlob()` 递归无深度限制可能 DoS | **已在 `954ebff` 修复**：`matchGlob()` 不再使用正则（旧实现把 glob 翻成正则，多个通配符产生相邻贪婪量词，实测单次匹配 508 秒 CPU），现为「按段切分 + 动态规划」，无递归、无指数回溯，并有模式/目标长度上限；已有 200 段 `**` 与恶意回溯模式的耗时回归测试。评审建议的 `MAX_GLOB_DEPTH = 10` 会误伤合法模式（如连续 200 个 `**/`），不是合适的修法 |
+| P1 Range + 签名交互测试覆盖不足 | 已在 `954ebff` 抽出 `server/proxy_request.ts` 并补 17 个测试（Range 透传不改签名、412/200 兜底后无需重签、206 不重试等）；本次 `cb4051f` 进一步补上「兜底重试后上游回整份文件」的二次大小校验与 4 个用例 |
+| P2 驱动能力映射缺少文档注释 | **已在 `954ebff` 补上**：`internal/driver/proxy.ts` 顶部有驱动 ↔ Go `drivers/*/meta.go` 的完整映射表 |
+| P2 未在真实环境端到端验证 | 仍需手动回归（见上方「未做的验证」） |
