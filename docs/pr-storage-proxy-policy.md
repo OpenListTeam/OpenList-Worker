@@ -114,12 +114,15 @@ npx tsc --noEmit -p tsconfig.json        # 类型检查：exit 0，无错误
 node --import tsx --test "src/backend/**/*.test.ts"
 ```
 
-测试结果：**253 个测试，250 通过**。
+测试结果（已合并 `origin/main`，即 main 上的 `9b9c243`）：**276 个测试，271 通过**。
 
-其中 3 个失败为**既有问题，与本 PR 无关**（已逐项确认未引用本 PR 涉及的任何代码）：
+其中 5 个失败为**既有问题，与本 PR 无关**——在**纯净的 `origin/main` 上跑同一套命令得到完全相同的 5 个失败**（基线为 200 个测试 / 195 通过 / 5 失败）：
 
-- `server/default_credentials.test.ts` — 默认凭据 SHA-256 重置（2 例）
-- `server/seed.test.ts` — casmeta 字段名
+- `server/default_credentials.test.ts` — 默认凭据 / ADMIN_PASS 初始化与重置
+  （`Initialization: a fresh deployment stays uninitialized without ADMIN_PASS`、
+  `Initialization: an empty admin password stays empty (uninitialized), not a random one`、
+  `Security(F-11): ADMIN_PASS still forces an explicit reset (to salted double-SHA256)`）
+- `server/seed.test.ts` — `CAS codec matches casmeta base64 JSON field names`
 
 新增 `server/proxy_request.test.ts` 的平台载荷上限用例（21 个，该文件累计 36 个），覆盖：
 
@@ -268,9 +271,16 @@ Range 只回传一个分片时按**分片大小**判断，视频拖动进度与�
 - `cb4051f` — `fix(proxy): bound the upstream body size after a Range retry`
 - `47d70d3` — `fix(proxy): detect EdgeOne runtimes by the SCF and Blob markers`
 - `23a957e` — `refactor(proxy)!: align driver proxy capabilities with Go meta.go`
-- （上一次 docs 提交）— `docs(pr): record the Go alignment pass`
+- `2e913e6` — `docs(pr): record the Go alignment pass`
 - `8454f76` — `feat(proxy): honour proxy_types, text_types and proxy_ignore_headers`
-- （本条 docs 提交）— `docs(pr): document extension proxying and the /p gate`
+- `38ed5de` — `docs(pr): document extension proxying and the /p gate`
+- `6d38353` — `Merge remote-tracking branch 'origin/main' into feat/storage-proxy-policy`
+  （解决 `internal/model/db.ts` 的 `unsealDb` 并行解密与 `server/raw.ts` 的下载路径
+  mount name 剥离两处冲突，均取 main 的实现 + 保留本 PR 的 `/p` 端点判定）
+- `c2fad5a` — `chore(edgeone): refresh cloud-functions artifact`
+  （分支上的 `cloud-functions/[[default]].js` 早于本 PR 的改动，曾不含 payload 上限保护
+  与 `/p` 准入等代码；此处按仓库既有约定重建）
+- （本条 docs 提交）— `docs(pr): sync the commit list and the test baseline after the main merge`
 
 （哈希随本 PR 的最新提交更新；完整 diff 规模以 GitHub PR 页面为准。）
 
