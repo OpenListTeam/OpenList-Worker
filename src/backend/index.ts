@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 import { setupRouter } from "./server/router"
 import { rawRouter } from "./server/raw"
-import { assetsRouter, getIndexHtmlWithCdn } from "./server/assets"
+import { assetsRouter, getIndexHtmlWithCdn, isCdnConfigured } from "./server/assets"
 import { webdavRouter } from "./server/webdav"
 import { s3Router } from "./server/s3"
 import { setEnvCtx } from "./internal/model/db"
@@ -132,17 +132,24 @@ app.all("*", async (c) => {
       // 会被 Cloudflare 边缘/浏览器长期缓存，导致旧 HTML 引用旧 hash 的 JS/CSS。
       // 只对 HTML 入口 no-cache（JS/CSS 带 hash 可安全长期缓存）。
       if (url.pathname === "/" || url.pathname === "/index.html") {
+        const headers = new Headers(res.headers)
+        headers.set("Cache-Control", "no-cache, must-revalidate")
+        headers.set("Content-Type", "text/html; charset=utf-8")
+        // 未配置 ASSET_URLS 时零开销直通：不改写 HTML，流式透传响应体
+        if (!isCdnConfigured(env)) {
+          return new Response(res.body, { status: res.status, headers })
+        }
         // HTML 入口：若配置 ASSET_URLS，则改从 CDN 拉取 index.html 并注入 cdn
         // （HTML 与哈希资产同源一致）；CDN 不可达时回退本地 HTML 且不注入。
+        // body 会被读成字符串，必须清掉编码/长度头，否则浏览器按「已编码」解析明文。
+        headers.delete("content-encoding")
+        headers.delete("content-length")
         let html = await res.text()
         try {
           html = await getIndexHtmlWithCdn(env, html)
         } catch {
           // 注入失败不影响 HTML 正常返回
         }
-        const headers = new Headers(res.headers)
-        headers.set("Cache-Control", "no-cache, must-revalidate")
-        headers.set("Content-Type", "text/html; charset=utf-8")
         return new Response(html, { status: res.status, headers })
       }
       return res

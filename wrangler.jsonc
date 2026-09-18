@@ -30,9 +30,16 @@
   "workers_dev": false,
   "preview_urls": false,
 
+  // ⚠️ run_worker_first 只放行 HTML 入口，不能改成 true（全量放行）：
+  //   默认「资源优先」时 / 与 /index.html 由静态层直接返回，Worker 根本不会执行，
+  //   ASSET_URLS 的 CDN 注入（fetch CDN index.html → 注入 window.OPENLIST_CONFIG.cdn）
+  //   永远不生效，前端仍从源站加载全部静态资源。
+  //   仅放行 HTML 入口后，带 hash 的 JS/CSS/图片仍由静态层直出、零 Worker 调用，
+  //   只有页面导航请求才多付一次 Worker 调用。
   "assets": {
     "directory": "./dist",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
+    "run_worker_first": ["/", "/index.html"]
   },
 
   // ===========================================================================

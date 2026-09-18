@@ -90,6 +90,67 @@ test("集成[ASSETS 路径]: 未配置 ASSET_URLS 时 / 原样返回（cdn: unde
   assert.match(html, /cdn: undefined/)
 })
 
+test("集成[零开销直通]: 未配置 ASSET_URLS 时 HTML 入口流式透传（不缓冲 body）", async () => {
+  // 未配置 CDN 时不应把 HTML 读成字符串再重建：那会让每次页面导航都白付一次
+  // 缓冲与解析。这里断言 body 流被原样透传（同一对象），证明没有走 text()。
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(INDEX_HTML))
+      controller.close()
+    },
+  })
+  const env = {
+    ASSETS: {
+      fetch: () =>
+        new Response(stream, {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        }),
+    },
+  }
+  const res = await withFetch(
+    () => app.request("/", { headers }, env as any),
+    async () => {
+      throw new Error("不应发起网络请求")
+    },
+  )
+  assert.equal(res.status, 200)
+  assert.equal(res.body, stream, "必须透传静态层的 body 流")
+  assert.equal(res.headers.get("cache-control"), "no-cache, must-revalidate")
+  assert.equal(res.headers.get("content-type"), "text/html; charset=utf-8")
+  assert.match(await res.text(), /cdn: undefined/)
+})
+
+test("集成[编码头]: 注入 cdn 时清掉 content-encoding/content-length", async () => {
+  // HTML 被读成字符串后重新构造响应，若保留 content-encoding: gzip，
+  // 浏览器会把明文按 gzip 解析而报错；content-length 同理必须重算。
+  const env = {
+    ASSETS: {
+      fetch: () =>
+        new Response(INDEX_HTML, {
+          status: 200,
+          headers: {
+            "content-type": "text/html; charset=utf-8",
+            "content-encoding": "gzip",
+            "content-length": String(INDEX_HTML.length),
+          },
+        }),
+    },
+    ASSET_URLS: "https://cdn-i4.example.com/dist",
+  }
+  const res = await withFetch(
+    () => app.request("/", { headers }, env as any),
+    async (url: string) => okCdn(url),
+  )
+  assert.equal(res.status, 200)
+  assert.equal(res.headers.get("content-encoding"), null)
+  assert.equal(res.headers.get("content-length"), null)
+  assert.match(
+    await res.text(),
+    /cdn: 'https:\/\/cdn-i4\.example\.com\/dist'/,
+  )
+})
+
 test("集成[降级]: CDN 不可达时回退本地 HTML 且不注入 cdn（不白屏）", async () => {
   const env = { ASSETS: makeFakeAssets(), ASSET_URLS: "https://cdn-down.example.com/dist" }
   const res = await withFetch(

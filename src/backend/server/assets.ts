@@ -56,6 +56,16 @@ const CDN_HTML_TTL_MS = 5 * 60_000
 const cdnHtmlCache = new Map<string, { html: string; ts: number }>()
 
 /**
+ * 是否配置了前端资源 CDN。
+ *
+ * 供 HTML 入口做零开销直通判断：未配置 CDN 时无需读取/改写 HTML，
+ * 直接把静态层的响应流式透传，避免每个页面导航都白付一次 body 缓冲与解析。
+ */
+export function isCdnConfigured(env: any): boolean {
+  return Boolean(env?.ASSET_URLS || process.env?.ASSET_URLS)
+}
+
+/**
  * 从 index.html 中解析构建期戳的前端版本（fetch-frontend.mjs 注入的 meta 标签）。
  * 版本与 dist 同源产生，是 $version 最可靠的来源；无法解析时返回空串。
  */
