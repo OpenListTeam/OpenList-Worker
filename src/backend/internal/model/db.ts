@@ -1312,7 +1312,30 @@ function readEnvEncryptionKey(env: any): string | null {
   const raw =
     env?.JWT_SECRET ||
     (typeof process !== "undefined" ? process.env?.JWT_SECRET : "")
-  return typeof raw === "string" && raw.length >= 16 ? raw : null
+  // 只要求「非空」：长度是运维建议（推荐 32+），不是硬门槛。
+  // 强制长度会带来一个很坏的副作用 —— 用户明明配了 JWT_SECRET，却因为
+  // 不足 16/32 字符被判为「未配置」，于是自动生成逻辑又生成一把新密钥，
+  // 造成「环境变量密钥」与「持久化密钥」并存、加解密分裂。
+  return typeof raw === "string" && raw.trim().length > 0 ? raw : null
+}
+
+/**
+ * JWT_SECRET 的推荐长度（仅用于文案与告警，**不做强制校验**）。
+ *
+ * 为什么是 32：`openssl rand -hex 32` 输出 64 个 hex 字符，但 32 字符已是
+ * 足够强的 HS256 密钥；这里取 32 作为「推荐值」的下界。
+ */
+export const RECOMMENDED_JWT_SECRET_LENGTH = 32
+
+/**
+ * 判断某个密钥是否短于推荐长度（用于**提示**，不用于拒绝）。
+ */
+export function isJwtSecretShort(secret: string | null | undefined): boolean {
+  return (
+    typeof secret === "string" &&
+    secret.length > 0 &&
+    secret.length < RECOMMENDED_JWT_SECRET_LENGTH
+  )
 }
 
 /** 进程内缓存：避免每次 load/save 都读存储 */
@@ -1355,7 +1378,7 @@ async function getEncryptionKey(envCtx?: any): Promise<string | null> {
   // 回退到持久化密钥（仅读取）
   try {
     const persisted = await readPersistedSecret(env, ENCRYPTION_SECRET_KV_KEY)
-    if (persisted && persisted.length >= 16) {
+    if (persisted && persisted.trim().length > 0) {
       cachedEncryptionKey = persisted
       cachedFromEnv = false
       return persisted
@@ -1397,7 +1420,7 @@ export async function isEncryptionReady(envCtx?: any): Promise<boolean> {
   // 直查持久化（不走缓存）
   try {
     const persisted = await readPersistedSecret(env, ENCRYPTION_SECRET_KV_KEY)
-    return Boolean(persisted && persisted.length >= 16)
+    return Boolean(persisted && persisted.trim().length > 0)
   } catch {
     return false
   }
@@ -1464,7 +1487,7 @@ export async function ensureEncryptionSecret(
 
     // 2. 已存在则复用（存在性门控，永不覆盖）
     const existing = await readPersistedSecret(env, ENCRYPTION_SECRET_KV_KEY)
-    if (existing && existing.length >= 16) {
+    if (existing && existing.trim().length > 0) {
       cachedEncryptionKey = existing
       cachedFromEnv = false
       return existing
@@ -1502,7 +1525,7 @@ export async function ensureEncryptionSecret(
       }
       // 读到的值不是我们写的那把（可能被并发 setup 覆盖）：说明存在竞态，
       // 采用「先写入者优先」——复用已存在的密钥，避免用两把钥匙加解密。
-      if (readBack && readBack.length >= 16 && readBack !== generated) {
+      if (readBack && readBack.trim().length > 0 && readBack !== generated) {
         console.warn(
           "[DB] A different encryption key already exists; adopting it to " +
             "keep encrypt/decrypt symmetric.",

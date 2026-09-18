@@ -40,6 +40,30 @@ function resolvedOrNull(value: any): string | null {
 }
 
 /**
+ * 「没有可用存储后端」时的统一建议（单一来源）。
+ *
+ * ## 为什么不再提 `set DB_DRIVER=auto`
+ *
+ * 旧文案是「Bind a storage backend (D1 / KV / Blob) **or set DB_DRIVER=auto**」。
+ * 后半句在**绝大多数真实场景下是循环建议**：用户看到这条 issue 时，`DB_DRIVER`
+ * 往往**本来就是 auto**（CF / EdgeOne 部署的默认形态）。让他「去设置 auto」等于
+ * 让他改一个已经正确的值，改完照旧报错，只会加深「这软件坏了」的印象。
+ *
+ * 准确的表述是：auto **已经把所有候选驱动探测过一遍且都不可用**，因此缺的是
+ * **平台侧的绑定**，不是配置值。这里只说这件事。
+ *
+ * 若驱动解析器给出了更精确的 hint（如 `noStorageHint` 的逐平台文案），调用方
+ * 会优先使用它，本函数只是兜底。
+ */
+function bindBackendSuggestion(): string {
+  return (
+    "No storage binding was detected (auto probes every driver). " +
+    "Bind one and redeploy — Cloudflare: D1 or KV namespace; " +
+    "EdgeOne: Blob; ESA: ESA_BLOB."
+  )
+}
+
+/**
  * 初始化前的环境自检。
  *
  * 该接口**无需鉴权**（初始化页在未登录时就需要它），且**不泄露任何敏感值**：
@@ -66,20 +90,27 @@ publicRouter.get("/env_check", async (c) => {
     configError: String(err?.message || err),
   }))
 
-  // 驱动名可用于判定「真实持久化」与「内存兜底」。
+  // ── 可用性判定：**复用** isPersistentStorageAvailable（单一来源）──
+  //
+  // 以前这里把判定公式（有驱动 && 非内存 && 无配置错误 && 驱动自报可用）
+  // 在本文件里重抄了一遍，与 store/backend.ts 的 isPersistentStatus 逐条等价。
+  // 两处独立维护意味着任何一方新增条件（例如将来加「驱动已废弃」）都会造成
+  // 「503 拦截层」与「安装向导是否放行」判定不一致，且症状极难定位。
+  //
+  // isPersistentStorageAvailable 内部就是 getStoreStatus + isPersistentStatus，
+  // 因此这里复用不会多一次探测（getStorageBackend 内部已按 env 指纹缓存）。
+  const storageAvailable = await isPersistentStorageAvailable(env)
+
+  // 以下中间量仅用于**挑选 issue 文案**（哪个 code / 哪句话），不再参与可用性计算。
   // 内存模式在 serverless 下不可接受（实例短暂、多租户，写入会静默丢失）。
   const resolvedDriver = String(storage?.driver ?? "none")
   const isMemory = resolvedDriver === "memory"
   const hasDriver = resolvedDriver !== "none" && resolvedDriver !== ""
   const hasConfigError = Boolean(storage?.configError)
 
-  // 可用 = 有驱动 && 非内存 && 无配置错误 && 驱动自报可用。
-  // getStoreStatus 在健康检查失败时会带 available:false（例如 KV 代理 401、
-  // 数据库连接失败），此时即便配置齐全也不能视为可用。
+  // 配置齐全但驱动自检失败（如 KV 代理 401、数据库连不上）。
+  // 注意：storageAvailable 为 false 且并无上述三类原因时，就落在这里。
   const driverHealthy = storage?.available !== false
-
-  const storageAvailable =
-    hasDriver && !isMemory && !hasConfigError && driverHealthy
 
   // ── JWT 密钥就绪（真实来源，绕过缓存）──
   const jwtReady = await isEncryptionReady(env).catch(() => false)
@@ -134,9 +165,7 @@ publicRouter.get("/env_check", async (c) => {
       summary: "No storage backend available.",
       message: "No storage backend available.",
       docUrl: DOC_STORAGE,
-      suggestion:
-        storageDetail.suggestion ||
-        "Bind a storage backend (D1 / KV / Blob) or set DB_DRIVER=auto.",
+      suggestion: storageDetail.suggestion || bindBackendSuggestion(),
     })
   } else if (hasConfigError) {
     // 配置错误：界面只给「一行短原因 + 一行怎么改」；完整排查说明留在 message /
@@ -173,8 +202,7 @@ publicRouter.get("/env_check", async (c) => {
         ? "In-memory storage only; data will be lost immediately."
         : "In-memory storage only; data will be lost on restart (fine for local dev).",
       docUrl: DOC_STORAGE,
-      suggestion:
-        "Bind a storage backend (D1 / KV / Blob) or set DB_DRIVER=auto.",
+      suggestion: bindBackendSuggestion(),
     })
   } else if (!hasDriver) {
     issues.push({
@@ -183,8 +211,7 @@ publicRouter.get("/env_check", async (c) => {
       summary: "No storage backend available.",
       message: "No storage backend available.",
       docUrl: DOC_STORAGE,
-      suggestion:
-        "Bind a storage backend (D1 / KV / Blob) or set DB_DRIVER=auto.",
+      suggestion: bindBackendSuggestion(),
     })
   }
 
@@ -199,26 +226,55 @@ publicRouter.get("/env_check", async (c) => {
       summary: unreachable,
       message: unreachable,
       docUrl: DOC_DRIVER,
+      // 注意：这里**不**再建议「set DB_DRIVER=auto」。
+      // 能走到这里说明驱动已成功解析（binding/凭据都齐），只是自检不通
+      // （如 KV 代理 401）。此时改回 auto 没有任何帮助 —— auto 会解析出同一个
+      // 驱动、撞上同一个错误，属于把用户支去绕圈。真正要做的是修凭据/绑定。
       suggestion:
-        "Check the credentials/bindings of the configured driver, or set DB_DRIVER=auto.",
+        `Check the credentials/bindings for "${resolvedDriver}" ` +
+        "(it resolved, but its health check failed).",
     })
   }
 
   if (!jwtReady) {
     issues.push({
       code: "JWT_SECRET_MISSING",
-      level: serverless ? "error" : "warning",
+      // 一律 warning：存储可用时 setup 会自动生成并持久化密钥，缺它不是
+      // 「装不了」，只是「少了一层显式配置的确定性」。不再升级为 error，
+      // 否则会出现「报错说缺密钥 → 但生成密钥只能靠安装 → 安装又被报错拦住」。
+      level: "warning",
+      // 密钥支持**自动生成 + 持久化**（见 ensureEncryptionSecret），所以文案
+      // 不说「必须手动配置」，而是同时给出「也可留空让 setup 自动生成」这条路，
+      // 避免用户以为这是个必填项而无谓地卡在向导里。
       summary: "JWT_SECRET is not set.",
-      message: "JWT_SECRET is not set.",
+      message:
+        "JWT_SECRET is not set. If storage is available, a secret is generated " +
+        "and persisted automatically during setup; setting it explicitly is " +
+        "recommended so that all instances and cold starts share one key.",
       docUrl: DOC_STORAGE,
       suggestion:
-        "Set JWT_SECRET (>=32 chars, `openssl rand -hex 32`) in your deployment variables.",
+        "Set JWT_SECRET (32+ chars recommended, `openssl rand -hex 32`) in your " +
+        "deployment variables — or leave it empty and let setup generate one " +
+        "(requires working storage).",
     })
   }
 
-  // ── 综合就绪：数据库可用 + 密钥就绪 ──
-  // 内存模式（本地开发）允许初始化，但会带 warning。
-  const ready = storageAvailable && jwtReady
+  // ── 综合就绪：只取决于「存储可用」──
+  //
+  // 这里曾写成 `storageAvailable && jwtReady`，会造成**自死锁**：
+  //   1. 未配置 JWT_SECRET 时 jwtReady=false → ready=false；
+  //   2. 前端 `canProceed()` 依赖 ready，于是初始化向导卡在第 1 步；
+  //   3. 而密钥的自动生成 `ensureEncryptionSecret()` 恰恰只在**提交初始化
+  //      （/public/init）时**才会执行（见下方 init 路由）。
+  //   4. 结果：向导永远进不到能触发自动生成的那一步 → 「自动生成 JWT 未生效」。
+  //
+  // 语义上二者本就该分开：
+  //   - `ready` 表示「存储就绪、可以开始安装」——这是**能否初始化**的前提；
+  //   - `jwtReady` 表示「密钥已就绪」——它可以是安装的**结果**（自动生成），
+  //     而不是安装的前提。
+  // 前端仍会把 jwt.ready=false 作为提示展示（并允许用户选择手动配置），
+  // 但不再因此阻断向导。
+  const ready = storageAvailable
 
   return c.json({
     code: 200,

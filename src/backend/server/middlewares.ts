@@ -1,7 +1,7 @@
 import { Context } from "hono"
 import { verify } from "hono/jwt"
 import { checkAdminAuth, isStaticApiToken } from "../pkg/utils"
-import { getDb } from "../internal/model/db"
+import { getDb, readPersistedSecret, ENCRYPTION_SECRET_KV_KEY } from "../internal/model/db"
 
 // 不再硬编码 JWT 密钥。优先使用环境变量 JWT_SECRET（推荐在生产配置），
 // 否则从 KV 持久化一个随机密钥（首次生成后复用，重启不失效），
@@ -53,10 +53,21 @@ export async function getJwtSecret(c?: Context | any): Promise<string> {
   const env =
     c?.env || (typeof process !== "undefined" ? (process as any).env : {}) || {}
 
+  // ── 长度策略：只要求「非空」，32 字符为**推荐值**（不强制）──
+  //
+  // 这里曾有三个互不相同的阈值：env 走 `>=16`、缓存走 `>=32`、持久化走
+  // `>=32`。后果是 **自动生成/持久化的密钥会被读取路径判为无效**：
+  //   setup 写入的密钥若不足 32 字符，第 2 步 `>=32` 判定失败 → 落到第 4 步
+  //   **重新生成**一把新密钥 → 每次冷启动换钥 → 已签发的 token 全部失效、
+  //   多实例间验签互相失败（表现为「登录成功后立刻 401」）。
+  // 也就是说「自动生成」看着写了、实际没生效。现在统一为「非空即有效」，
+  // 与 db.ts:readEnvEncryptionKey 完全一致，保证「写进去的」必定「读得出来」。
+  const useSecret = (s: unknown): string | null =>
+    typeof s === "string" && s.trim().length > 0 ? s : null
+
   // 1. 环境变量显式配置（最优先）
-  // 推荐使用 >=32 字符的密钥；16-31 字符按兼容策略直接接受，不再告警。
-  const envSecret = env.JWT_SECRET
-  if (envSecret && envSecret.length >= 16) {
+  const envSecret = useSecret(env.JWT_SECRET)
+  if (envSecret) {
     return envSecret
   }
 
@@ -65,11 +76,34 @@ export async function getJwtSecret(c?: Context | any): Promise<string> {
   // 修复前此分支只 `return kvSecret` 而不写 cachedJwtSecret，导致
   // getUserFromContext / csrfProtection / checkAdminAuth 等每请求 2-4 次调用
   // 都会各自触发一次 KV 回源（KV 后端下这是最贵的操作之一）。
-  if (cachedJwtSecret && cachedJwtSecret.length >= 32) {
+  if (cachedJwtSecret && useSecret(cachedJwtSecret)) {
     return cachedJwtSecret
   }
-  const kvSecret = await readKvSecret(env)
-  if (kvSecret && kvSecret.length >= 32) {
+
+  // 2a. 复用 setup 自动生成的加密密钥（openlist_encryption_secret）。
+  //
+  // 为什么必须放在这里：`ensureEncryptionSecret()` 在 setup 阶段把自动生成的
+  // 密钥写进 **openlist_encryption_secret**，而本函数历史实现只找
+  // **openlist_jwt_secret** —— 两个槽位名不同。于是「自动生成」的那把密钥
+  // 对 JWT 侧**完全不可见**：本函数会再生成一把存到另一个槽位，
+  // 造成同一部署里两把密钥各自漂移（多实例验签失败、冷启动即换钥）。
+  // 约定 JWT 与字段加密共用同一把密钥（见 db.ts:1276 的注释），因此这里
+  // 显式回退读取加密密钥槽位，保证「生成了一份」就等于「两边都可用」。
+  try {
+    const sharedSecret = useSecret(
+      await readPersistedSecret(env, ENCRYPTION_SECRET_KV_KEY),
+    )
+    if (sharedSecret) {
+      cachedJwtSecret = sharedSecret
+      return sharedSecret
+    }
+  } catch {
+    // 读取失败按「无持久化密钥」处理，继续走下面的独立槽位
+  }
+
+  // 2b. 独立的 JWT 密钥槽位（历史部署可能已在此写入）
+  const kvSecret = useSecret(await readKvSecret(env))
+  if (kvSecret) {
     cachedJwtSecret = kvSecret
     return kvSecret
   }
@@ -100,7 +134,7 @@ export async function getJwtSecret(c?: Context | any): Promise<string> {
         (persisted
           ? "密钥已持久化到 KV，重启后保持有效。"
           : "密钥仅存于内存，重启后所有 token 将失效。") +
-        "\n生产环境部署前，请务必配置 >=32 字符的 JWT_SECRET 环境变量。"
+        "\n生产环境部署前，建议配置 32+ 字符的 JWT_SECRET 环境变量（推荐而非强制）。"
       )
     }
   }
