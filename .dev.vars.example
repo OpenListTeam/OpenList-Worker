@@ -46,6 +46,12 @@ ALLOW_URLS=
 #   2. 响应带 Access-Control-Allow-Origin —— 前端以 crossorigin 加载
 #      module script / stylesheet / 字体，缺少 CORS 头会被浏览器全部拦下
 #   实测：jsdelivr、unpkg 满足；npmmirror 的 registry 与 cdn 两个端点均不满足。
+#
+# 行为变更：旧实现是「把静态资源请求 302 重定向到 CDN」（assetsRouter 的
+# /:folder/:filepath* 路由，实际取不到 filepath，且在静态层优先的平台上根本
+# 不会进 Worker），现已移除，统一改为上面的 HTML 注入方式；未配置 ASSET_URLS
+# 时静态资源一律由源站提供。
+#
 # 例：
 #   https://cdn.jsdelivr.net/npm/@openlist-frontend/openlist-frontend@$version/dist
 #   https://unpkg.com/@openlist-frontend/openlist-frontend@$version/dist

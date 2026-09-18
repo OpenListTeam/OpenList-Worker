@@ -158,30 +158,48 @@ app.all("*", async (c) => {
     // 注意：ASSETS.fetch 对 /index.html 也可能返回 307，直接 fetch "/" 获取实际 HTML
     const rootReq = new Request(`${url.origin}/`, c.req.raw)
     const rootRes = await env.ASSETS.fetch(rootReq)
+    const headers = new Headers(rootRes.headers)
+    headers.set("Content-Type", "text/html; charset=utf-8")
+    // HTML 入口必须 no-cache，否则新版本部署后旧 HTML 仍引用旧 hash 的 JS/CSS
+    headers.set("Cache-Control", "no-cache, must-revalidate")
+    // 只有「已配置 CDN + 2xx + GET/HEAD」才改写 HTML，其余情况一律
+    // 「状态码 + headers + body 流」原样透传：
+    //   - 未配置 ASSET_URLS：零开销直通，不把 body 读成字符串再重建响应
+    //     （否则每次深链刷新都白付一次缓冲，并丢掉流式透传）；
+    //   - 非 2xx（如 /index.html 的 307、兜底子请求的 404）：
+    //     改写会把状态码抹平成一个 200 + HTML 空壳，掩盖真实错误；
+    //   - 非 GET/HEAD：HTML 改写只对页面导航有意义。
+    const rewritable =
+      isCdnConfigured(env) &&
+      rootRes.status >= 200 &&
+      rootRes.status < 300 &&
+      (c.req.method === "GET" || c.req.method === "HEAD")
+    if (!rewritable) {
+      return new Response(rootRes.body, { status: rootRes.status, headers })
+    }
+    // body 会被读成字符串，必须清掉编码/长度头，否则浏览器按「已编码」解析明文
+    headers.delete("content-encoding")
+    headers.delete("content-length")
     let html = await rootRes.text()
     try {
       html = await getIndexHtmlWithCdn(env, html)
     } catch {
       // 注入失败不影响 SPA 兜底
     }
-    return new Response(html, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/html; charset=utf-8",
-        // HTML 入口必须 no-cache，否则新版本部署后旧 HTML 仍引用旧 hash 的 JS/CSS
-        "Cache-Control": "no-cache, must-revalidate",
-      },
-    })
+    return new Response(html, { status: rootRes.status, headers })
   }
   // EdgeOne 等 ASSETS 缺席的环境：直接返回构建期内联的 SPA 壳，
   // 避免前端路由（/add、/@manage/* 等）落到 404 文本导致整站不可达
   if (spaFallbackHtml && (c.req.method === "GET" || c.req.method === "HEAD")) {
-    // 若配置 ASSET_URLS 则从 CDN 拉取并注入；不修改模块级 spaFallbackHtml，避免并发污染
+    // 未配置 ASSET_URLS 时直接返回构建期内联的壳，省掉一次无意义的 async 调用；
+    // 配置了则从 CDN 拉取并注入 —— 不修改模块级 spaFallbackHtml，避免并发污染。
     let html = spaFallbackHtml
-    try {
-      html = await getIndexHtmlWithCdn(env, html)
-    } catch {
-      // 注入失败时返回原始 SPA 壳
+    if (isCdnConfigured(env)) {
+      try {
+        html = await getIndexHtmlWithCdn(env, html)
+      } catch {
+        // 注入失败时返回原始 SPA 壳
+      }
     }
     return c.body(html, 200, {
       "Content-Type": "text/html; charset=utf-8",
