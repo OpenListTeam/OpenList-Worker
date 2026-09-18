@@ -17,6 +17,23 @@ export {
 } from "./store/json"
 export { getStoreStatus } from "./store/backend"
 
+/**
+ * 预览/代理相关的默认设置，对齐 Go internal/bootstrap/data/setting.go：
+ *   - text_types：Go 的默认值为「一大串文本扩展名」，这里取 Go 与 TSWorker 既有
+ *     默认值的**并集**（保留 TS 的 python/typescript/bash/css/log 等别名写法），
+ *     因为 /p 端点会用该列表判断文本类预览（含字幕 lrc/srt/ass/vtt）能否走代理；
+ *   - proxy_types：Go 默认 `m3u8,url` —— 这类文件内部含相对引用，必须经服务端转发；
+ *   - proxy_ignore_headers：Go 默认 `authorization,referer` —— 转发客户端头时忽略它们。
+ */
+const DEFAULT_TEXT_TYPES =
+  "txt,htm,html,xml,java,properties,sql,js,json,c,cpp,python,py,php,go,rst,css,typescript,ts,log,conf,yaml,yml,cmd,bash,sh,vue,ini,md,bat,gitignore,h,hpp,tsx,vtt,srt,ass,rs,lrc,strm"
+const DEFAULT_PROXY_TYPES = "m3u8,url"
+const DEFAULT_PROXY_IGNORE_HEADERS = "authorization,referer"
+
+/** TSWorker 历史上写入 KV 的 text_types 默认值（用于迁移到并集默认值） */
+const LEGACY_TEXT_TYPES =
+  "txt,htm,html,xml,java,properties,sql,js,json,c,cpp,python,py,php,go,rst,css,typescript,ts,log,conf,yaml,yml,cmd,bash,sh,vue,ini"
+
 // Global default configuration payload for Cloudflare Workers
 export const defaultDb = {
   settings: [
@@ -142,8 +159,7 @@ export const defaultDb = {
     // Group 3: PREVIEW (https://doc.oplist.org/configuration/preview)
     {
       key: "text_types",
-      value:
-        "txt,htm,html,xml,java,properties,sql,js,json,c,cpp,python,py,php,go,rst,css,typescript,ts,log,conf,yaml,yml,cmd,bash,sh,vue,ini",
+      value: DEFAULT_TEXT_TYPES,
       type: "text",
       help: "Text File Extensions",
       group: 3,
@@ -175,7 +191,7 @@ export const defaultDb = {
     },
     {
       key: "proxy_types",
-      value: "",
+      value: DEFAULT_PROXY_TYPES,
       type: "text",
       help: "Proxy File Extensions",
       group: 3,
@@ -183,7 +199,7 @@ export const defaultDb = {
     },
     {
       key: "proxy_ignore_headers",
-      value: "",
+      value: DEFAULT_PROXY_IGNORE_HEADERS,
       type: "text",
       help: "Proxy Ignore Headers",
       group: 3,
@@ -362,7 +378,8 @@ export const defaultDb = {
     },
     {
       key: "seed_default_matrix",
-      value: "{\"md5\":{\"whole\":true,\"pieces\":false},\"sha1\":{\"whole\":true,\"pieces\":false},\"sha256\":{\"whole\":true,\"pieces\":false}}",
+      value:
+        '{"md5":{"whole":true,"pieces":false},"sha1":{"whole":true,"pieces":false},"sha256":{"whole":true,"pieces":false}}',
       type: "text",
       help: "Default transfer seed hash matrix",
       group: 4,
@@ -370,7 +387,7 @@ export const defaultDb = {
     },
     {
       key: "seed_format_policies",
-      value: "{\"oss\":\"off\",\"torrent\":\"off\",\"cas\":\"off\"}",
+      value: '{"oss":"off","torrent":"off","cas":"off"}',
       type: "text",
       help: "Automatic transfer seed format policies",
       group: 4,
@@ -911,6 +928,13 @@ const LEGACY_SETTING_MIGRATIONS: Record<string, { from: any[]; to: string }> = {
     from: ["hope_container"],
     to: "max_980px",
   },
+  // 对齐 Go 的 text_types 默认值：补上 md / vtt / srt / ass / lrc / strm 等。
+  // 这些扩展名会被 /p 端点用来判断「文本类预览能否走代理」，
+  // 缺了它们会让字幕、歌词、README 在未开 web_proxy 的存储上被 403。
+  text_types: {
+    from: [LEGACY_TEXT_TYPES],
+    to: DEFAULT_TEXT_TYPES,
+  },
 }
 
 const ensureDefaultSettings = (db: any) => {
@@ -1414,7 +1438,9 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-export async function ensureEncryptionSecret(envCtx?: any): Promise<string | null> {
+export async function ensureEncryptionSecret(
+  envCtx?: any,
+): Promise<string | null> {
   // 进程内单飞：并发 setup 只生成一次
   if (ensureSecretInflight) return ensureSecretInflight
 
@@ -1441,7 +1467,11 @@ export async function ensureEncryptionSecret(envCtx?: any): Promise<string | nul
 
     // 3. 生成并写入
     const generated = generateSecret()
-    const ok = await writePersistedSecret(env, ENCRYPTION_SECRET_KV_KEY, generated)
+    const ok = await writePersistedSecret(
+      env,
+      ENCRYPTION_SECRET_KV_KEY,
+      generated,
+    )
     if (!ok) {
       console.error(
         "[DB] Failed to persist an encryption key. Sensitive fields will be " +
@@ -1521,7 +1551,7 @@ async function unsealValue(value: string, key: string): Promise<string> {
 async function sealDb(data: any, key: string | null): Promise<any> {
   if (!key || !data) return data
   const copy = JSON.parse(JSON.stringify(data))
-  
+
   // 1. 加密存储配置中的 addition 字段（网盘凭据）
   for (const s of copy.storages || []) {
     if (!s || !s.addition) continue
@@ -1531,14 +1561,14 @@ async function sealDb(data: any, key: string | null): Promise<any> {
       s.addition = await sealValue(str, key)
     }
   }
-  
+
   // 2. 加密敏感的系统设置
   for (const st of copy.settings || []) {
     if (st && SENSITIVE_SETTING_KEYS.has(st.key) && st.value) {
       st.value = await sealValue(String(st.value), key)
     }
   }
-  
+
   // 3. 加密用户敏感信息
   for (const u of copy.users || []) {
     // OTP 密钥
@@ -1550,7 +1580,7 @@ async function sealDb(data: any, key: string | null): Promise<any> {
       u.password = await sealValue(String(u.password), key)
     }
   }
-  
+
   return copy
 }
 
@@ -1562,6 +1592,7 @@ async function unsealDb(data: any, key: string | null): Promise<void> {
   // 数十次），是加载变慢的主要贡献之一。这里改为先收集待解密任务再 Promise.all。
   // 注意：只并行「收集阶段是同步」的部分，避免在循环中混入 await 导致伪并行。
   const tasks: Promise<void>[] = []
+
 
   // 1. 解密存储配置
   for (const s of data.storages || []) {
@@ -1738,7 +1769,7 @@ export async function resolvePath(virtualPath: string, envCtx?: any) {
   } catch {
     // 解码失败，使用原始值
   }
-  
+
   // 2. 多重解码检测（防止双重编码绕过）
   let prevPath = ""
   let decodeAttempts = 0
@@ -1753,28 +1784,30 @@ export async function resolvePath(virtualPath: string, envCtx?: any) {
       break
     }
   }
-  
+
   // 3. 规范化路径分隔符和特殊字符
   path = path
-    .replace(/\\/g, "/")              // 反斜杠 -> 正斜杠
-    .replace(/%5c/gi, "/")            // URL 编码的反斜杠
-    .replace(/%2f/gi, "/")            // URL 编码的正斜杠
-    .replace(/\.{3,}/g, "..")         // 多个点规范化为 ..
-    .replace(/\/+/g, "/")             // 多个斜杠合并为一个
-  
+    .replace(/\\/g, "/") // 反斜杠 -> 正斜杠
+    .replace(/%5c/gi, "/") // URL 编码的反斜杠
+    .replace(/%2f/gi, "/") // URL 编码的正斜杠
+    .replace(/\.{3,}/g, "..") // 多个点规范化为 ..
+    .replace(/\/+/g, "/") // 多个斜杠合并为一个
+
   // 4. 检测非法字符
   const illegalChars = ["\0", "\r", "\n", "\t"]
   for (const ch of illegalChars) {
     if (path.includes(ch)) {
-      throw new Error(`invalid path: illegal character detected (0x${ch.charCodeAt(0).toString(16)})`)
+      throw new Error(
+        `invalid path: illegal character detected (0x${ch.charCodeAt(0).toString(16)})`,
+      )
     }
   }
-  
+
   // 5. Windows 绝对路径检测
   if (/^[A-Za-z]:/.test(path)) {
     throw new Error("invalid path: absolute Windows path not allowed")
   }
-  
+
   // 6. UNC 路径检测
   if (path.startsWith("//") || path.startsWith("\\\\")) {
     throw new Error("invalid path: UNC path not allowed")

@@ -33,9 +33,27 @@ import {
 } from "../pkg/sign"
 import { safeErrorMessage } from "../pkg/errs"
 import { search } from "../internal/op/search"
+import {
+  getDisableIndex,
+  resolveCacheExpiration,
+} from "../internal/driver/storageopts"
 import { parseZip, extractZipEntry, ZipArchive } from "../internal/archive/zip"
 import { assertSafeUrl, getTrustedHosts } from "../pkg/http"
 import { seedRouter } from "./seed"
+
+/**
+ * 该路径所属存储是否禁止目录列表（对齐 Go handles.FsList 的 DisableIndex 判断）。
+ * 存储无法解析时返回 false，避免误伤虚拟目录。
+ */
+async function isStorageIndexDisabled(reqPath: string): Promise<boolean> {
+  try {
+    const resolved = await resolvePath(reqPath)
+    if (!resolved?.storage) return false
+    return getDisableIndex(resolved.storage)
+  } catch {
+    return false
+  }
+}
 import {
   clampChunkSize,
   deleteSession,
@@ -310,6 +328,15 @@ fsRouter.post("/list", async (c) => {
       )
     }
 
+    // disable_index（对齐 Go handles.FsList）：该存储禁止目录列表时，
+    // 即使有读权限也不返回内容，避免分享单文件后被逐级浏览整个存储。
+    if (await isStorageIndexDisabled(reqPath)) {
+      return c.json(
+        { code: 403, message: "Index is disabled for this storage", data: null },
+        403,
+      )
+    }
+
     const { content, provider, storage } = await listItems(
       reqPath,
       requestContext,
@@ -408,6 +435,11 @@ fsRouter.post("/list", async (c) => {
     })()
 
     const { content: pagedContent, total } = paginateStorageItems(normalized)
+    // cache_expiration：由 custom_cache_policies 按路径覆盖后得出（分钟）。
+    // 对齐 Go 的路径级缓存策略；前端/上层可据此决定该目录的列表缓存时长。
+    const cacheExpiration = storage
+      ? resolveCacheExpiration(storage, reqPath)
+      : undefined
     return c.json({
       code: 200,
       message: "success",
@@ -421,6 +453,7 @@ fsRouter.post("/list", async (c) => {
         provider,
         direct_upload_tools: directUploadTools,
         page_size: effectivePerPage > 0 ? effectivePerPage : undefined,
+        cache_expiration: cacheExpiration,
       },
     })
   } catch (err: any) {

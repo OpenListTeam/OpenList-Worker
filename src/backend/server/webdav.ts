@@ -12,6 +12,8 @@ import {
 } from "../internal/op/storage"
 import { buildWebDavPropfindResponse } from "../internal/webdav/webdav"
 import { safeErrorMessage } from "../pkg/errs"
+import { getSettings, resolvePath } from "../internal/model/db"
+import { canUseProxyEndpoint, normalizeExtList } from "../internal/driver/proxy"
 
 /**
  * WebDAV 协议服务（挂载于 /dav/*）。
@@ -29,7 +31,7 @@ const getStorageRequestContext = (c: any) => {
     if (!executionCtx || typeof executionCtx.waitUntil !== "function") {
       return undefined
     }
-    return { 
+    return {
       waitUntil: (p: Promise<unknown>) => executionCtx.waitUntil(p),
       env: c.env, // 传递 env 用于请求级 KV 缓存复用
     }
@@ -49,7 +51,9 @@ async function webdavAuth(c: any): Promise<any> {
       const username = decoded.substring(0, idx)
       const password = decoded.substring(idx + 1)
       const { users } = await getOrInitUsers(c.env)
-      const user = users.find((u: any) => u.username === username && !u.disabled)
+      const user = users.find(
+        (u: any) => u.username === username && !u.disabled,
+      )
       if (!user) return null
       // 空密码用户（guest）：Basic Auth 下若未提供密码则允许（与 AList 一致）
       if (!user.password) {
@@ -110,7 +114,10 @@ webdavRouter.all("/*", async (c) => {
     switch (method) {
       case "OPTIONS": {
         c.header("DAV", "1, 2")
-        c.header("Allow", "OPTIONS, PROPFIND, GET, HEAD, PUT, MKCOL, DELETE, MOVE, COPY")
+        c.header(
+          "Allow",
+          "OPTIONS, PROPFIND, GET, HEAD, PUT, MKCOL, DELETE, MOVE, COPY",
+        )
         c.header("MS-Author-Via", "DAV")
         return c.body(null, 200)
       }
@@ -125,7 +132,12 @@ webdavRouter.all("/*", async (c) => {
           isFolder: !!it.is_dir,
           modified: it.modified || new Date().toISOString(),
         }))
-        const href = davPath === "/" ? "/" : davPath.endsWith("/") ? davPath : davPath + "/"
+        const href =
+          davPath === "/"
+            ? "/"
+            : davPath.endsWith("/")
+              ? davPath
+              : davPath + "/"
         const xml = buildWebDavPropfindResponse(href, items)
         return c.body(xml, depth === "0" ? 207 : 207, {
           "Content-Type": "application/xml; charset=utf-8",
@@ -138,9 +150,37 @@ webdavRouter.all("/*", async (c) => {
         const { item, rawUrl } = await getItem(davPath, ctx)
         if (!item) return c.text("Not found", 404)
         if (item.is_dir) return c.text("Is a directory", 400)
-        // 重定向到 rawRouter（/api/p/*）实际下载；rawRouter 已处理所有驱动的
-        // 下载协议（proxy/redirect/stream + Range + SSRF 防护）
-        return c.redirect(rawUrl || `/api/p${davPath.startsWith("/") ? "" : "/"}${davPath}`, 302)
+        // 重定向到 rawRouter 实际下载；rawRouter 已处理所有驱动的下载协议
+        // （proxy/redirect/stream + Range + SSRF 防护）。
+        //
+        // 走 /p 还是 /d 取决于存储的代理策略：/p 是受限的公开代理端点
+        // （对齐 Go handles.canProxy()，未开启代理的存储会 403），而 WebDAV 协议
+        // 拉流必须能拿到字节——不能拿直链的存储（如 WebDav 自身）才需要 /p。
+        // 因此这里按同一个判据选择端点，避免 WebDAV 客户端读到 403。
+        let prefix = "/api/p"
+        try {
+          const resolved: any = await resolvePath(davPath)
+          const storage = resolved?.storage
+          if (storage) {
+            const settings: Record<string, any> = await getSettings().catch(
+              () => ({}) as Record<string, any>,
+            )
+            const allowProxy = canUseProxyEndpoint({
+              storage,
+              driver: storage.driver,
+              filename: davPath,
+              proxyTypes: normalizeExtList(settings.proxy_types),
+              textTypes: normalizeExtList(settings.text_types),
+            })
+            if (!allowProxy) prefix = "/api/d"
+          }
+        } catch {
+          // 解析失败时保持默认 /p，交由 rawRouter 给出最终结论
+        }
+        return c.redirect(
+          rawUrl || `${prefix}${davPath.startsWith("/") ? "" : "/"}${davPath}`,
+          302,
+        )
       }
 
       case "PUT": {
@@ -168,7 +208,9 @@ webdavRouter.all("/*", async (c) => {
         const destRaw = c.req.header("Destination") || ""
         let dest = destRaw
         try {
-          dest = decodeURIComponent(new URL(destRaw, c.req.url).pathname).replace(/^\/dav/, "")
+          dest = decodeURIComponent(
+            new URL(destRaw, c.req.url).pathname,
+          ).replace(/^\/dav/, "")
         } catch {}
         const src = splitPath(davPath)
         const dst = splitPath(dest)
@@ -181,7 +223,9 @@ webdavRouter.all("/*", async (c) => {
         const destRaw = c.req.header("Destination") || ""
         let dest = destRaw
         try {
-          dest = decodeURIComponent(new URL(destRaw, c.req.url).pathname).replace(/^\/dav/, "")
+          dest = decodeURIComponent(
+            new URL(destRaw, c.req.url).pathname,
+          ).replace(/^\/dav/, "")
         } catch {}
         const src = splitPath(davPath)
         const dst = splitPath(dest)
