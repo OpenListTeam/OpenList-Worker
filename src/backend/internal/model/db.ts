@@ -821,6 +821,81 @@ let memoryDb: any = null
 let globalEnvCtx: any = null
 
 /**
+ * 数据可信度状态（防止「读失败 → 回退空库 → 落盘覆盖」）。
+ *
+ * - `dbTrusted`: 当前 memoryDb 是否来自一次成功的持久化读取（或已成功写入）。
+ *   为 false 时表示 memoryDb 只是空壳兜底/默认值，绝不能写回存储。
+ * - `dbLastLoadError`: 最近一次读取失败的原因，用于给出可诊断的拦截日志。
+ * - `dbWriteBlocked`: 是否曾拦截过「疑似空数据写回」，供诊断与回归测试使用。
+ */
+let dbTrusted = false
+let dbWriteBlocked = false
+let dbLastLoadError: string | null = null
+
+/** 当前内存库是否可信（可安全写回持久化存储）。 */
+export function isDbTrusted(): boolean {
+  return dbTrusted
+}
+
+/** 最近一次读取持久化存储失败的错误信息（无错误时为 null）。 */
+export function getDbLoadError(): string | null {
+  return dbLastLoadError
+}
+
+/**
+ * 是否曾经拦截过一次「疑似空数据写回」。
+ * 供诊断接口/日志使用，说明写前守卫已生效。
+ */
+export function isDbWriteBlocked(): boolean {
+  return dbWriteBlocked
+}
+
+/**
+ * 判断一份数据是否为「疑似空库/空壳」。
+ *
+ * 判定顺序：
+ *  1) 有任何存储/分享/元数据/插件 → 不是空壳；
+ *  2) 有任一「已设置密码」的用户 → 不是空壳（说明已初始化）；
+ *     注意 defaultDb 自带的 admin/guest 占位用户密码为空，不算数；
+ *  3) 所有设置都等于默认值 → 是空壳。
+ *
+ * 空壳判定用于 saveDb 的写前守卫：读取失败后得到的默认库不会被写回。
+ */
+export function isDbShell(data: any): boolean {
+  if (!data || typeof data !== "object") return true
+
+  const countStorages = Array.isArray(data.storages) ? data.storages.length : 0
+  const countShares = Array.isArray(data.shares) ? data.shares.length : 0
+  const countMetas = Array.isArray(data.metas) ? data.metas.length : 0
+  const countPlugins = Array.isArray(data.plugins) ? data.plugins.length : 0
+
+  if (countStorages + countShares + countMetas + countPlugins > 0) {
+    return false
+  }
+
+  // 注意：不能以「是否存在用户」判断是否为真实库。
+  // defaultDb 自带 admin/guest 两个占位用户（密码为空），所以空壳里也有用户。
+  // 只有当存在「设置了密码的用户」时，才说明这是一份被初始化过的真实库。
+  const users = Array.isArray(data.users) ? data.users : []
+  const hasInitializedUser = users.some(
+    (u: any) => String(u?.password || "").trim() !== "",
+  )
+  if (hasInitializedUser) {
+    return false
+  }
+
+  // 没有任何实体时，只有当设置也全部停留在默认值时，才视作空壳。
+  const settings = Array.isArray(data.settings) ? data.settings : []
+  const defaults = Array.isArray(defaultDb.settings) ? defaultDb.settings : []
+  const defaultMap = new Map(defaults.map((s: any) => [String(s.key), s.value]))
+  return settings.every(
+    (s: any) =>
+      defaultMap.has(String(s.key)) &&
+      defaultMap.get(String(s.key)) === s.value,
+  )
+}
+
+/**
  * 在请求处理开始时注入当前环境的持久化后端上下文。
  * CF Workers 每个实例的模块级 globalEnvCtx 初始为 null，且请求会被负载均衡到
  * 不同实例——若不设置，getDb()/saveDb() 会退回内存模式，导致配置
@@ -917,10 +992,12 @@ const ensureDefaultSettings = (db: any) => {
     }
   }
 
-  if (modified || newSettings.length !== db.settings.length) {
-    db.settings = newSettings
-    saveDb(db).catch(() => {})
-  }
+  // 仅做内存补齐：绝不在这里隐式落盘。
+  //
+  // 历史缺陷：此处曾调用 saveDb(db)，导致「读取失败 → 回退默认库 → 立刻把空壳
+  // 写回存储」，从而覆盖真实配置并让系统反复回到未初始化状态。
+  // 缺失的默认项会在下一次显式写入时随之持久化。
+  db.settings = newSettings
 }
 
 const ensureDefaultStorages = (db: any) => {
@@ -993,6 +1070,72 @@ const DB_CACHE_TTL_MS = 1000
 const dbCache = new WeakMap<object, { ts: number; db: any }>()
 const dbInflight = new WeakMap<object, Promise<any>>()
 
+/**
+ * 存储后端解析入口。默认直接委托给 store/backend 的 getStoreBackend；
+ * 测试可通过 __setStoreBackendLoaderForTest() 注入桩后端，用于统计
+ * load/save 次数，锁定 getDb() 的缓存行为（见 db_cache.test.ts）。
+ */
+let storeBackendLoader: (env: any) => Promise<any> = (env) =>
+  getStoreBackend(env)
+
+/** 仅供测试：重置模块级缓存与内存快照，保证用例相互隔离。 */
+export const __resetDbCacheForTest = () => {
+  // WeakMap 无法整体清空，但缓存键只有「当前 globalEnvCtx」与传入的 env，
+  // 逐个 delete 即可；同时清空最近一次的缓存键记录。
+  if (globalEnvCtx && typeof globalEnvCtx === "object") {
+    dbCache.delete(globalEnvCtx)
+    dbInflight.delete(globalEnvCtx)
+  }
+  if (noArgCacheKey) {
+    dbCache.delete(noArgCacheKey)
+    dbInflight.delete(noArgCacheKey)
+  }
+  noArgCacheKey = null
+  globalEnvCtx = null
+  memoryDb = null
+  storeBackendLoader = (env: any) => getStoreBackend(env)
+}
+
+/** 仅供测试：注入统计型存储后端。 */
+export const __setStoreBackendLoaderForTest = (
+  loader: (env: any) => Promise<any>,
+) => {
+  storeBackendLoader = loader
+}
+
+/**
+ * 无参 getDb() 的兜底缓存键。
+ *
+ * 为什么需要它（这是一次线上性能事故的修复核心）：
+ *
+ * `dbCache` / `dbInflight` 都以调用方传入的 `envCtx` 对象作为键。但仓库里有
+ * 大量内部调用是 **无参** 的（storage.ts 的驱动回调、getSettings/getUsers 等
+ * 五个 getter），它们拿不到 request 级 env。此前 getDb() 对无参调用的处理是：
+ *
+ *     if (!envCtx) return loadDb(envCtx)   // ❌ 直接落盘，两个缓存全部绕过
+ *
+ * 于是「一次无参 getDb()」= 「一次完整的冷加载」：后端全量读 + JSON.parse +
+ * 逐字段 AES 解密 + 5 次 ensureDefault*。而一次 WebDAV PROPFIND 或一次页面加载
+ * 会触发数十次无参 getDb()，于是 KV 被读数十次、D1 被查数十 × N 张表，
+ * 两种后端同时变慢（现象上「cf+kv 和 d1 都慢」）。
+ *
+ * 修复：无参调用回退到 `globalEnvCtx`（由 setEnvCtx / 传参调用写入的请求级
+ * 环境），并以它为键复用同一套缓存。这样同一请求（同一 isolate）内的重复调用
+ * 命中缓存，不再重复落盘与解密。
+ *
+ * 说明：这里仅保留「最近一次」的请求级 env 引用（noArgCacheKey），用于在
+ * saveDb 等场景同步刷新缓存；该引用会随下一次请求被覆盖，不会跨请求无限增长。
+ */
+let noArgCacheKey: object | null = null
+
+/** 解析无参 getDb() 应使用的缓存键（优先请求级 globalEnvCtx）。 */
+const resolveNoArgKey = (): object | null => {
+  const ctx = globalEnvCtx
+  if (!ctx || typeof ctx !== "object") return null
+  noArgCacheKey = ctx
+  return noArgCacheKey
+}
+
 const loadDb = async (envCtx?: any) => {
   if (envCtx) {
     globalEnvCtx = envCtx
@@ -1003,7 +1146,7 @@ const loadDb = async (envCtx?: any) => {
   // 此时必须回退到请求级 globalEnvCtx，否则 readDriver 读不到 DB_DRIVER、
   // getD1 读不到 DB binding，会错误回退到 json 后端读到旧的 KV 数据。
   const activeEnv = envCtx || globalEnvCtx
-  const backend = await getStoreBackend(activeEnv)
+  const backend = await storeBackendLoader(activeEnv)
   try {
     const persisted = await backend.load(activeEnv)
     if (persisted) {
@@ -1014,13 +1157,41 @@ const loadDb = async (envCtx?: any) => {
       ensureDefaultShares(memoryDb)
       ensureDefaultPlugins(memoryDb)
       ensureDefaultMetas(memoryDb)
+      // 读取成功：内存库与持久化存储一致，允许后续写回。
+      dbTrusted = true
+      dbLastLoadError = null
       return memoryDb
     }
-  } catch (err) {
-    console.error(`[DB] Error reading config from ${backend.name}:`, err)
+    // 后端读取成功但没有数据：可能是全新部署（首次初始化）。
+    // 但若历史上曾成功读到过数据，则「读到空」极可能是最终一致性/后端切换导致的
+    // 短暂不可见，此时不能把默认库当成事实，更不能让它写回存储。
+    if (dbTrusted && memoryDb) {
+      console.warn(
+        `[DB] Backend ${backend.name} returned empty while a trusted snapshot exists; ` +
+          `keeping the in-memory snapshot to avoid overwriting real config.`,
+      )
+      ensureDefaultSettings(memoryDb)
+      ensureDefaultStorages(memoryDb)
+      ensureDefaultShares(memoryDb)
+      ensureDefaultPlugins(memoryDb)
+      ensureDefaultMetas(memoryDb)
+      return memoryDb
+    }
+    dbTrusted = false
+    dbLastLoadError = null
+  } catch (err: any) {
+    // 读取失败绝不能静默回退到默认库并落盘——这正是「数据库被清空」的根因。
+    console.error(
+      `[DB] Error reading config from ${backend.name}:`,
+      err?.message || err,
+    )
+    dbLastLoadError = String(err?.message || err)
+    dbTrusted = false
   }
 
-  if (memoryDb) {
+  // 只有在此前已经成功读取过（同一 isolate 内的可信快照）时，才允许继续使用内存库。
+  // 若从未成功读取过，则返回的只是「不可信空壳」，saveDb 会在落盘前将其拦截。
+  if (memoryDb && dbTrusted) {
     ensureDefaultSettings(memoryDb)
     ensureDefaultStorages(memoryDb)
     ensureDefaultShares(memoryDb)
@@ -1030,6 +1201,7 @@ const loadDb = async (envCtx?: any) => {
   }
 
   // Priority 2: In-Memory DB（模块级，进程内共享；重启即失，仅用于本地调试）
+  // 注意：此分支明确标记为「不可信」，禁止写回持久化存储。
   memoryDb = JSON.parse(JSON.stringify(defaultDb))
   ensureDefaultStorages(memoryDb)
   ensureDefaultShares(memoryDb)
@@ -1042,26 +1214,35 @@ export const getDb = async (envCtx?: any) => {
   if (envCtx) {
     globalEnvCtx = envCtx
   }
-  // envCtx is the cache key — without it there is nothing safe to scope to.
-  if (!envCtx) return loadDb(envCtx)
+
+  // 缓存键解析（性能关键）：
+  //   有参调用 → 直接用 envCtx；
+  //   无参调用 → 回退到请求级 globalEnvCtx，复用同一套缓存。
+  //
+  // 历史缺陷：无参时曾直接 `return loadDb(envCtx)`，绕过下面两个缓存，
+  // 导致每次无参 getDb() 都触发一次完整的后端读取 + 解密，KV 与 D1 同时被
+  // 放大数十倍而变慢。只有当连 globalEnvCtx 都没有（进程刚启动、纯内存调试）
+  // 时才无法缓存，此时退化为直读——不影响数据正确性，仅是性能兜底。
+  const cacheKey = envCtx || resolveNoArgKey()
+  if (!cacheKey) return loadDb(envCtx)
 
   // 1) Concurrent de-duplication: concurrent callers share a single KV read.
-  const pending = dbInflight.get(envCtx)
+  const pending = dbInflight.get(cacheKey)
   if (pending) return pending
 
   // 2) Short-TTL memoization: sequential calls in one request reuse the result.
-  const hit = dbCache.get(envCtx)
+  const hit = dbCache.get(cacheKey)
   if (hit && Date.now() - hit.ts < DB_CACHE_TTL_MS) return hit.db
 
   const promise = loadDb(envCtx)
     .then((db) => {
-      dbCache.set(envCtx, { ts: Date.now(), db })
+      dbCache.set(cacheKey, { ts: Date.now(), db })
       return db
     })
     .finally(() => {
-      dbInflight.delete(envCtx)
+      dbInflight.delete(cacheKey)
     })
-  dbInflight.set(envCtx, promise)
+  dbInflight.set(cacheKey, promise)
   return promise
 }
 
@@ -1406,6 +1587,13 @@ async function sealDb(data: any, key: string | null): Promise<any> {
 async function unsealDb(data: any, key: string | null): Promise<void> {
   if (!key || !data) return
 
+  // 并行解密：原先三类字段（storage/setting/user）各自串行 await，字段数一多
+  // 就是「N 次 await 叠加」，且该函数在一次请求内会被调用多次（历史缺陷下更是
+  // 数十次），是加载变慢的主要贡献之一。这里改为先收集待解密任务再 Promise.all。
+  // 注意：只并行「收集阶段是同步」的部分，避免在循环中混入 await 导致伪并行。
+  const tasks: Promise<void>[] = []
+
+
   // 1. 解密存储配置
   for (const s of data.storages || []) {
     if (
@@ -1413,7 +1601,13 @@ async function unsealDb(data: any, key: string | null): Promise<void> {
       typeof s.addition === "string" &&
       s.addition.startsWith(ENCRYPTION_PREFIX)
     ) {
-      s.addition = await unsealValue(s.addition, key)
+      const target = s
+      const cipher = target.addition
+      tasks.push(
+        unsealValue(cipher, key).then((plain) => {
+          target.addition = plain
+        }),
+      )
     }
   }
 
@@ -1425,42 +1619,102 @@ async function unsealDb(data: any, key: string | null): Promise<void> {
       typeof st.value === "string" &&
       st.value.startsWith(ENCRYPTION_PREFIX)
     ) {
-      st.value = await unsealValue(st.value, key)
+      const target = st
+      const cipher = target.value
+      tasks.push(
+        unsealValue(cipher, key).then((plain) => {
+          target.value = plain
+        }),
+      )
     }
   }
 
-  // 3. 解密用户信息
+  // 3. 解密用户信息（OTP 密钥 / 密码）
   for (const u of data.users || []) {
+    if (!u) continue
     // OTP 密钥
     if (
-      u &&
       typeof u.otp_secret === "string" &&
       u.otp_secret.startsWith(ENCRYPTION_PREFIX)
     ) {
-      u.otp_secret = await unsealValue(u.otp_secret, key)
+      const target = u
+      const cipher = target.otp_secret
+      tasks.push(
+        unsealValue(cipher, key).then((plain) => {
+          target.otp_secret = plain
+        }),
+      )
     }
     // 密码解密
     if (
-      u &&
       typeof u.password === "string" &&
       u.password.startsWith(ENCRYPTION_PREFIX)
     ) {
-      u.password = await unsealValue(u.password, key)
+      const target = u
+      const cipher = target.password
+      tasks.push(
+        unsealValue(cipher, key).then((plain) => {
+          target.password = plain
+        }),
+      )
     }
   }
+
+  if (tasks.length > 0) await Promise.all(tasks)
 }
 
-export const saveDb = async (data: any, envCtx?: any): Promise<boolean> => {
+export const saveDb = async (
+  data: any,
+  envCtx?: any,
+  options?: { force?: boolean },
+): Promise<boolean> => {
   if (envCtx) {
     globalEnvCtx = envCtx
   }
-  memoryDb = data
-  // Refresh the request cache so any getDb() later in this request observes
-  // the write rather than a pre-write snapshot.
-  if (envCtx) dbCache.set(envCtx, { ts: Date.now(), db: data })
 
   const activeEnv = envCtx || globalEnvCtx
-  const backend = await getStoreBackend(activeEnv)
+
+  // ============ 写前守卫：永远不得以「空数据」覆盖持久化配置 ============
+  //
+  // 历史缺陷链路：读取失败被吞掉 → 回退到默认（空）库 → 后续任意写操作把它
+  // 落盘，真实配置被空壳覆盖，系统随后被判为「未初始化」，用户看到的就是
+  // 「数据库被清空」。
+  //
+  // 核心不变量（务必长期保持）：
+  //   **默认拒绝写入空壳。** 空壳 = 没有任何存储/分享/元数据/插件，没有设置
+  //   密码的用户，且所有设置都还是默认值。无论当前是否「可信」，只要 payload
+  //   是空壳，就必须显式 force 才允许落盘。
+  //
+  // 这样即使某条调用链在读取失败后拿到默认库，也无法把它写回存储。
+  // 唯一的例外是调用方明确知情（首次初始化、管理员主动重置）并传入 force。
+  const shell = isDbShell(data)
+  if (shell && !options?.force) {
+    dbWriteBlocked = true
+    const reason = dbLastLoadError
+      ? `last load failed: ${dbLastLoadError}`
+      : dbTrusted
+        ? "payload is an empty/shell database"
+        : "database was never successfully loaded from the persistence backend"
+    console.error(
+      `[DB] saveDb BLOCKED: refusing to persist an empty/shell database (${reason}). ` +
+        `This guard prevents an empty payload from wiping real config. ` +
+        `Pass saveDb(db, env, { force: true }) to override intentionally.`,
+    )
+    return false
+  }
+
+  memoryDb = data
+  dbWriteBlocked = false
+  // Refresh the request cache so any getDb() later in this request observes
+  // the write rather than a pre-write snapshot.
+  // 无参调用会以 globalEnvCtx 为键命中缓存，因此这里也同步刷新该键，
+  // 否则「写后读」在无参路径上可能读到 TTL 内的旧快照。
+  const cacheKey = envCtx || resolveNoArgKey()
+  if (cacheKey) dbCache.set(cacheKey, { ts: Date.now(), db: data })
+
+  // `activeEnv` 已在本函数开头解析（写前守卫也依赖它），这里只需通过可注入的
+  // storeBackendLoader 取后端，便于测试统计 load/save 次数。
+  const backend = await storeBackendLoader(activeEnv)
   const configured = backend.isConfigured
     ? await backend.isConfigured(activeEnv)
     : true
@@ -1496,6 +1750,11 @@ export const saveDb = async (data: any, envCtx?: any): Promise<boolean> => {
   console.log(
     `[DB] Successfully persisted ${data.storages?.length || 0} storages to ${backend.name}`,
   )
+
+  // 写入成功 = 存储中的内容与内存库一致，因此内存库现在可视为可信；
+  // 这样同一 isolate 后续的写入不会被守卫误拦。
+  dbTrusted = true
+  dbLastLoadError = null
   return true
 }
 

@@ -390,15 +390,11 @@ rawRouter.get("/*", async (c) => {
   const isProxyEndpoint =
     c.req.path.startsWith("/p") || c.req.path.startsWith("/api/p")
 
-  const rawPath = c.req.path
-    .replace(/^\/api\/raw/, "")
-    .replace(/^\/api\/d/, "")
-    .replace(/^\/api\/sd/, "")
-    .replace(/^\/api\/p/, "")
-    .replace(/^\/raw/, "")
-    .replace(/^\/d/, "")
-    .replace(/^\/sd/, "")
-    .replace(/^\/p/, "")
+  // Strip the route prefix once, preserving mount names such as /pikpak_webdav.
+  const rawPath = c.req.path.replace(
+    /^\/(?:api\/)?(?:raw|sd|d|p)(?=\/|$)/,
+    "",
+  )
 
   const reqPath0 = decodeURIComponent(rawPath)
 

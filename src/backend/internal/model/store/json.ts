@@ -71,6 +71,29 @@ function installRespSafetyNet() {
 // db.ts 的 setEnvCtx 同步写入）。
 let jsonEnvCtx: any = null
 
+/**
+ * Result cache for getKvBinding().
+ *
+ * Why this exists:
+ *   - getKvBinding() re-probes env.KV / globalThis.KV, attempts Blob SDK
+ *     initialisation and emits console.log on every call;
+ *   - readPersistedSecret / writePersistedSecret / logAudit all call it, so a
+ *     single request may hit it 3-5 times.
+ * Binding resolution depends only on the identity of the env object (one env
+ * per request), so memoising per env via a WeakMap is both safe and enough to
+ * remove the repeated probing and log noise.
+ * Only resolved results are cached (not thrown errors); the key is the env
+ * object, so entries are released automatically with the env itself.
+ */
+const kvBindingCache = new WeakMap<
+  object,
+  {
+    binding: any
+    platform: string
+    mode: "binding" | "blob" | "api" | "proxy" | "none"
+  }
+>()
+
 export function setJsonEnvCtx(env: any) {
   if (env) jsonEnvCtx = env
 }
@@ -157,6 +180,12 @@ export async function getKvBinding(envCtx?: any): Promise<{
     envCtx || jsonEnvCtx || (typeof process !== "undefined" ? process.env : {})
   const g = typeof globalThis !== "undefined" ? (globalThis as any) : {}
 
+  // 结果缓存：同一 env 对象只解析一次绑定（详见 kvBindingCache 注释）。
+  if (env && typeof env === "object") {
+    const cached = kvBindingCache.get(env)
+    if (cached) return cached
+  }
+
   /**
    * 原生 KV binding 探测。
    *
@@ -189,12 +218,13 @@ export async function getKvBinding(envCtx?: any): Promise<{
     }
     const safeOrigin = sanitizeProxyOrigin(origin, env)
     if (safeOrigin) {
-      console.log("[DB] getKvBinding: using EdgeOne KV via Edge Function proxy")
-      return {
+      const proxyResult = {
         binding: createProxyBinding(safeOrigin, env),
         platform: "EdgeOne KV (via Edge Function proxy)",
-        mode: "proxy",
+        mode: "proxy" as const,
       }
+      if (env && typeof env === "object") kvBindingCache.set(env, proxyResult)
+      return proxyResult
     }
     console.warn(
       "[DB] getKvBinding: KV proxy requested but no origin available " +
@@ -208,12 +238,13 @@ export async function getKvBinding(envCtx?: any): Promise<{
     if (blobStore) {
       // Blob SDK only initializes inside the EdgeOne Makers runtime
       installRespSafetyNet()
-      console.log("[DB] getKvBinding: using EdgeOne Blob storage")
-      return {
+      const blobResult = {
         binding: blobStore,
         platform: "EdgeOne Blob (@edgeone/pages-blob, strong consistency)",
-        mode: "blob",
+        mode: "blob" as const,
       }
+      if (env && typeof env === "object") kvBindingCache.set(env, blobResult)
+      return blobResult
     }
   } catch (err: any) {
     console.error(
@@ -231,8 +262,13 @@ export async function getKvBinding(envCtx?: any): Promise<{
     const platformName = isEdgeOne
       ? "EdgeOne KV (KV)"
       : "Cloudflare / EdgeOne KV (KV)"
-    console.log(`[DB] getKvBinding: found KV binding: ${platformName}`)
-    return { binding: nativeKv, platform: platformName, mode: "binding" }
+    const bindingResult = {
+      binding: nativeKv,
+      platform: platformName,
+      mode: "binding" as const,
+    }
+    if (env && typeof env === "object") kvBindingCache.set(env, bindingResult)
+    return bindingResult
   }
 
   // 3. Cloudflare REST API 模式（显式 DB_DRIVER=cfkv 或凭据齐全时自动启用）
@@ -248,8 +284,7 @@ export async function getKvBinding(envCtx?: any): Promise<{
       (typeof process !== "undefined" ? process.env.CF_API_KEY : "")
 
     if (cfAccountId && cfNamespaceId && cfApiToken) {
-      console.log("[DB] getKvBinding: using Cloudflare KV REST API")
-      return {
+      const apiResult = {
         binding: {
           type: "cf_rest",
           accountId: cfAccountId,
@@ -257,15 +292,34 @@ export async function getKvBinding(envCtx?: any): Promise<{
           token: cfApiToken,
         },
         platform: "Cloudflare KV (REST API)",
-        mode: "api",
+        mode: "api" as const,
       }
+      if (env && typeof env === "object") kvBindingCache.set(env, apiResult)
+      return apiResult
     }
   }
 
-  console.warn(
-    "[DB] getKvBinding: no KV storage found, using memory-only mode (data will not persist)",
-  )
-  return { binding: null, platform: "Memory", mode: "none" }
+  // NOTE: this detector only probes KV-flavoured backends (native KV binding,
+  // EdgeOne Blob, Cloudflare KV REST, EdgeOne KV proxy). It intentionally does
+  // NOT cover D1 / MySQL / DO — but that does NOT mean data is lost: those
+  // drivers are resolved by getStorageBackend() instead. The old wording
+  // ("memory-only mode (data will not persist)") was therefore misleading, and
+  // sent users with a working D1 backend chasing a non-existent problem.
+  // Report the truth: no KV-style binding was found, and say where to look.
+  const configuredDriver = String(env?.DB_DRIVER || "")
+    .trim()
+    .toLowerCase()
+  if (configuredDriver && configuredDriver !== "auto") {
+    console.warn(
+      `[DB] getKvBinding: no KV-style binding found; DB_DRIVER="${configuredDriver}" ` +
+        `is served by getStorageBackend() instead. This is expected.`,
+    )
+  } else {
+    console.warn(
+      "[DB] getKvBinding: no KV/Blob binding found in auto detection.",
+    )
+  }
+  return { binding: null, platform: "none", mode: "none" }
 }
 
 async function readFromKv(
@@ -427,6 +481,31 @@ export async function getKvStatus(envCtx?: any) {
 //   4. 判定依据是「键是否存在」，而不是「读取是否成功」。
 //
 // 键名与数据库中的实体隔离，避免被通用 list(prefix) 误扫。
+//
+// 历史实现只走 getKvBinding（仅探测 原生 KV / EdgeOne Blob / CF KV REST /
+// proxy），**没有 D1/MySQL 分支**。于是当用户按推荐配置 DB_DRIVER=d1 时，
+// 业务数据能正常落到 D1，密钥却读不到也写不进去（并打印误导性的
+// "memory-only mode" 日志），最终每次冷启动都生成新的随机 JWT_SECRET，
+// 导致多实例间签发/验签密钥不一致 —— 表现为下载、播放报
+// "sign verify failed"（401）。
+//
+// 现在统一走 getStorageBackend()（与业务数据同一条驱动解析路径），
+// 因此 D1/MySQL/DO/KV/Blob 等所有驱动都能持久化密钥。
+
+/**
+ * 解析用于密钥读写的驱动。
+ *
+ * 复用业务数据的驱动解析（getStorageBackend），保证「业务数据存哪、
+ * 密钥就存哪」，不会出现两者不一致。
+ *
+ * 无可用驱动（如 serverless 环境未配置任何存储）时 getStorageBackend
+ * 会抛出可读错误，由调用方捕获并按「无持久化」处理。
+ */
+async function resolveSecretDriver(env: any) {
+  const { getStorageBackend } = await import("./backend")
+  const { driver } = await getStorageBackend(env)
+  return driver
+}
 
 /** 从持久化后端读取密钥，不存在或失败返回 null */
 export async function readPersistedSecret(
@@ -434,23 +513,13 @@ export async function readPersistedSecret(
   key: string,
 ): Promise<string | null> {
   try {
-    const kvInfo = await getKvBinding(env)
-    if (kvInfo.mode === "none" || !kvInfo.binding) return null
-    const { binding, mode } = kvInfo
-
-    let val: any = null
-    if (mode === "blob") {
-      val = await binding.get(key)
-    } else {
-      try {
-        val = await binding.get(key, "text")
-      } catch {
-        val = await binding.get(key)
-      }
-    }
-    if (val && typeof val.text === "function") val = await val.text()
+    const driver = await resolveSecretDriver(env)
+    const val = await driver.get(key, env)
     if (val === null || val === undefined) return null
-    const str = String(val).trim()
+    // 部分绑定的 get() 可能返回 Response 形态，兼容 text() 取值。
+    const resolved: any =
+      typeof (val as any)?.text === "function" ? await (val as any).text() : val
+    const str = String(resolved).trim()
     return str || null
   } catch (e) {
     console.warn(`[Secret] read "${key}" failed:`, e)
@@ -470,27 +539,13 @@ export async function writePersistedSecret(
   secret: string,
 ): Promise<boolean> {
   try {
-    const kvInfo = await getKvBinding(env)
-    if (kvInfo.mode === "none" || !kvInfo.binding) {
-      console.warn(
-        `[Secret] cannot persist "${key}": no storage backend available`,
-      )
-      return false
-    }
-    const { binding, mode } = kvInfo
-
-    if (mode === "blob") {
-      if (typeof binding.set === "function") await binding.set(key, secret)
-      else if (typeof binding.put === "function") await binding.put(key, secret)
-      else return false
-    } else {
-      if (typeof binding.put === "function") await binding.put(key, secret)
-      else if (typeof binding.set === "function") await binding.set(key, secret)
-      else return false
-    }
+    const driver = await resolveSecretDriver(env)
+    await driver.put(key, secret, env)
     return true
   } catch (e) {
-    console.warn(`[Secret] write "${key}" failed:`, e)
+    console.warn(
+      `[Secret] cannot persist "${key}": ${(e as any)?.message || e}`,
+    )
     return false
   }
 }
