@@ -2,18 +2,26 @@ import { Hono } from "hono"
 import {
   ensureEncryptionSecret,
   getDb,
+  getDbLoadError,
   getStoreStatus,
   isDbTrusted,
   isEncryptionReady,
   saveDb,
 } from "../internal/model/db"
 import {
+  getStoreConfigErrorDetail,
   isPersistentStorageAvailable,
   isServerlessRuntime,
   readDriver,
   readFormat,
 } from "../internal/model/store/backend"
 import { setUserPassword } from "../pkg/password"
+// 脱敏 / 截断 / 摘要 / 建议组装：与全局 503 拦截（index.ts）共用同一套规则
+import {
+  reasonLines,
+  redact,
+  storageErrorSummary,
+} from "./storage-error"
 
 export const publicRouter = new Hono()
 
@@ -23,28 +31,36 @@ const DOC_STORAGE = `${DOC_BASE}/ecosystem/official_worker/guide_env`
 const DOC_DRIVER = `${DOC_BASE}/ecosystem/official_worker/guide`
 
 /**
- * 对错误文本做脱敏，供免鉴权接口使用。
- *
- * 目标：保留「问题类别」的可操作性，同时抹掉可能泄漏实现细节的部分：
- *   - 只取第一行（去掉多行堆栈）
- *   - 抹除形如 `scheme://user:pass@host` 的连接串凭据
- *   - 截断长度，避免回显大段内部信息
+ * 解析值归一：解析失败时内部会用 "none"/空串占位，界面上显示「do → none」
+ * 只会造成困惑，因此统一归一为 null（前端只显示配置值）。
  */
-function redact(raw: any): string {
-  if (raw === null || raw === undefined) return "unknown error"
-  let s = String(raw)
-  // 仅保留首行
-  s = s.split("\n")[0].trim()
-  // 抹除连接串中的凭据（如 mysql://user:pass@host）
-  s = s.replace(/(\w+:\/\/)[^/@\s]+@/g, "$1***@")
-  // 抹除常见的 key=value 形式的令牌
-  s = s.replace(
-    /\b(token|secret|password|passwd|pwd|api[_-]?key)\s*[=:]\s*\S+/gi,
-    "$1=***",
+function resolvedOrNull(value: any): string | null {
+  const s = String(value ?? "").trim()
+  return s && s !== "none" ? s : null
+}
+
+/**
+ * 「没有可用存储后端」时的统一建议（单一来源）。
+ *
+ * ## 为什么不再提 `set DB_DRIVER=auto`
+ *
+ * 旧文案是「Bind a storage backend (D1 / KV / Blob) **or set DB_DRIVER=auto**」。
+ * 后半句在**绝大多数真实场景下是循环建议**：用户看到这条 issue 时，`DB_DRIVER`
+ * 往往**本来就是 auto**（CF / EdgeOne 部署的默认形态）。让他「去设置 auto」等于
+ * 让他改一个已经正确的值，改完照旧报错，只会加深「这软件坏了」的印象。
+ *
+ * 准确的表述是：auto **已经把所有候选驱动探测过一遍且都不可用**，因此缺的是
+ * **平台侧的绑定**，不是配置值。这里只说这件事。
+ *
+ * 若驱动解析器给出了更精确的 hint（如 `noStorageHint` 的逐平台文案），调用方
+ * 会优先使用它，本函数只是兜底。
+ */
+function bindBackendSuggestion(): string {
+  return (
+    "No storage binding was detected (auto probes every driver). " +
+    "Bind one and redeploy — Cloudflare: D1 or KV namespace; " +
+    "EdgeOne: Blob; ESA: ESA_BLOB."
   )
-  // 截断
-  const MAX = 160
-  return s.length > MAX ? s.slice(0, MAX) + "…" : s
 }
 
 /**
@@ -74,20 +90,27 @@ publicRouter.get("/env_check", async (c) => {
     configError: String(err?.message || err),
   }))
 
-  // 驱动名可用于判定「真实持久化」与「内存兜底」。
+  // ── 可用性判定：**复用** isPersistentStorageAvailable（单一来源）──
+  //
+  // 以前这里把判定公式（有驱动 && 非内存 && 无配置错误 && 驱动自报可用）
+  // 在本文件里重抄了一遍，与 store/backend.ts 的 isPersistentStatus 逐条等价。
+  // 两处独立维护意味着任何一方新增条件（例如将来加「驱动已废弃」）都会造成
+  // 「503 拦截层」与「安装向导是否放行」判定不一致，且症状极难定位。
+  //
+  // isPersistentStorageAvailable 内部就是 getStoreStatus + isPersistentStatus，
+  // 因此这里复用不会多一次探测（getStorageBackend 内部已按 env 指纹缓存）。
+  const storageAvailable = await isPersistentStorageAvailable(env)
+
+  // 以下中间量仅用于**挑选 issue 文案**（哪个 code / 哪句话），不再参与可用性计算。
   // 内存模式在 serverless 下不可接受（实例短暂、多租户，写入会静默丢失）。
   const resolvedDriver = String(storage?.driver ?? "none")
   const isMemory = resolvedDriver === "memory"
   const hasDriver = resolvedDriver !== "none" && resolvedDriver !== ""
   const hasConfigError = Boolean(storage?.configError)
 
-  // 可用 = 有驱动 && 非内存 && 无配置错误 && 驱动自报可用。
-  // getStoreStatus 在健康检查失败时会带 available:false（例如 KV 代理 401、
-  // 数据库连接失败），此时即便配置齐全也不能视为可用。
+  // 配置齐全但驱动自检失败（如 KV 代理 401、数据库连不上）。
+  // 注意：storageAvailable 为 false 且并无上述三类原因时，就落在这里。
   const driverHealthy = storage?.available !== false
-
-  const storageAvailable =
-    hasDriver && !isMemory && !hasConfigError && driverHealthy
 
   // ── JWT 密钥就绪（真实来源，绕过缓存）──
   const jwtReady = await isEncryptionReady(env).catch(() => false)
@@ -96,65 +119,162 @@ publicRouter.get("/env_check", async (c) => {
   const issues: {
     code: string
     level: "error" | "warning"
+    /**
+     * 给界面的一行短原因（**应为完整的一句话**）。
+     *
+     * 界面只展示这一行 + suggestion，开发者排查用的长篇说明放在 message 里，
+     * 避免出现「半句话 + 省略号」这种读不懂的提示。
+     */
+    summary: string
+    /** 完整说明（多行、已脱敏）：只给日志/工具用，界面不展示 */
     message: string
     docUrl: string
+    /** 一句话修复建议（「改什么」） */
+    suggestion?: string | null
   }[] = []
+  /** 配置错误的分类码 + 短摘要 + 完整说明 + 修复建议（均脱敏） */
+  let storageDetail: {
+    code: string | null
+    summary: string | null
+    message: string | null
+    suggestion: string | null
+  } = {
+    code: null,
+    summary: null,
+    message: null,
+    suggestion: null,
+  }
 
-  if (isMemory) {
+  if (hasConfigError) {
+    const detail = await getStoreConfigErrorDetail(env, { silent: true })
+    storageDetail = {
+      code: detail.code,
+      summary: storageErrorSummary(detail.message),
+      message: detail.message,
+      suggestion: detail.suggestion,
+    }
+  }
+
+  if (hasConfigError && storageDetail.code === "NO_STORAGE") {
+    // 一个可选后端都没有：这类错误本身就是「没有可用的存储」，用一条通用提示
+    // 说清即可，不必再叠一条内容相同的配置错误（两条 issue 说同一件事只会让
+    // 用户以为出了两个问题）。
+    issues.push({
+      code: "STORAGE_UNAVAILABLE",
+      level: "error",
+      summary: "No storage backend available.",
+      message: "No storage backend available.",
+      docUrl: DOC_STORAGE,
+      suggestion: storageDetail.suggestion || bindBackendSuggestion(),
+    })
+  } else if (hasConfigError) {
+    // 配置错误：界面只给「一行短原因 + 一行怎么改」；完整排查说明留在 message /
+    // storage.error_message 里，由日志与工具消费。
+    const isInvalidCombination = storageDetail.code === "INVALID_COMBINATION"
+    const reason = redact(
+      storageDetail.message || storage?.configError,
+      reasonLines(storageDetail.code),
+    )
+    issues.push({
+      code: isInvalidCombination
+        ? "STORAGE_INVALID_COMBINATION"
+        : "STORAGE_CONFIG_ERROR",
+      level: "error",
+      summary:
+        storageDetail.summary ||
+        (isInvalidCombination
+          ? "Unsupported storage combination."
+          : "Storage driver is not configured correctly."),
+      message: isInvalidCombination
+        ? `Unsupported storage combination: ${reason}`
+        : `Storage driver is not configured correctly: ${reason}`,
+      docUrl: DOC_DRIVER,
+      suggestion: storageDetail.suggestion,
+    })
+  } else if (isMemory) {
     issues.push({
       code: "STORAGE_MEMORY_ONLY",
       level: serverless ? "error" : "warning",
+      summary: serverless
+        ? "In-memory storage only; data will be lost immediately."
+        : "In-memory storage only; data will be lost on restart (fine for local dev).",
       message: serverless
         ? "In-memory storage only; data will be lost immediately."
         : "In-memory storage only; data will be lost on restart (fine for local dev).",
       docUrl: DOC_STORAGE,
+      suggestion: bindBackendSuggestion(),
     })
   } else if (!hasDriver) {
     issues.push({
       code: "STORAGE_UNAVAILABLE",
       level: "error",
+      summary: "No storage backend available.",
       message: "No storage backend available.",
       docUrl: DOC_STORAGE,
-    })
-  }
-
-  if (hasConfigError) {
-    issues.push({
-      code: "STORAGE_CONFIG_ERROR",
-      level: "error",
-      // 该接口免鉴权，因此不返回原始错误文本（可能含内部 DSN、主机名或堆栈）。
-      // 驱动未探测到时 backend 会给出 NO_STORAGE_MESSAGE 这种面向终端的长文
-      // 配置指引，逐条展示到界面上是一屏难以消化的文字，故此处统一收敛为
-      // 一句摘要，细节由 docUrl 指向的文档承接。
-      message: "Storage driver is not configured correctly.",
-      docUrl: DOC_DRIVER,
+      suggestion: bindBackendSuggestion(),
     })
   }
 
   // 配置齐全但驱动自检失败（如 KV 代理 401、数据库连不上）
   if (hasDriver && !isMemory && !hasConfigError && !driverHealthy) {
+    const unreachable =
+      `Storage driver "${resolvedDriver}" is configured but not reachable` +
+      `${storage.error ? ": " + redact(storage.error) : ""}.`
     issues.push({
       code: "STORAGE_UNHEALTHY",
       level: "error",
-      message:
-        `Storage driver "${resolvedDriver}" is configured but not reachable` +
-        `${storage.error ? ": " + redact(storage.error) : ""}.`,
+      summary: unreachable,
+      message: unreachable,
       docUrl: DOC_DRIVER,
+      // 注意：这里**不**再建议「set DB_DRIVER=auto」。
+      // 能走到这里说明驱动已成功解析（binding/凭据都齐），只是自检不通
+      // （如 KV 代理 401）。此时改回 auto 没有任何帮助 —— auto 会解析出同一个
+      // 驱动、撞上同一个错误，属于把用户支去绕圈。真正要做的是修凭据/绑定。
+      suggestion:
+        `Check the credentials/bindings for "${resolvedDriver}" ` +
+        "(it resolved, but its health check failed).",
     })
   }
 
   if (!jwtReady) {
     issues.push({
       code: "JWT_SECRET_MISSING",
-      level: serverless ? "error" : "warning",
-      message: "JWT_SECRET is not set.",
+      // 一律 warning：存储可用时 setup 会自动生成并持久化密钥，缺它不是
+      // 「装不了」，只是「少了一层显式配置的确定性」。不再升级为 error，
+      // 否则会出现「报错说缺密钥 → 但生成密钥只能靠安装 → 安装又被报错拦住」。
+      level: "warning",
+      // 密钥支持**自动生成 + 持久化**（见 ensureEncryptionSecret），所以文案
+      // 不说「必须手动配置」，而是同时给出「也可留空让 setup 自动生成」这条路，
+      // 避免用户以为这是个必填项而无谓地卡在向导里。
+      summary: "JWT_SECRET is not set.",
+      message:
+        "JWT_SECRET is not set. If storage is available, a secret is generated " +
+        "and persisted automatically during setup; setting it explicitly is " +
+        "recommended so that all instances and cold starts share one key.",
       docUrl: DOC_STORAGE,
+      suggestion:
+        "Set JWT_SECRET (32+ chars recommended, `openssl rand -hex 32`) in your " +
+        "deployment variables — or leave it empty and let setup generate one " +
+        "(requires working storage).",
     })
   }
 
-  // ── 综合就绪：数据库可用 + 密钥就绪 ──
-  // 内存模式（本地开发）允许初始化，但会带 warning。
-  const ready = storageAvailable && jwtReady
+  // ── 综合就绪：只取决于「存储可用」──
+  //
+  // 这里曾写成 `storageAvailable && jwtReady`，会造成**自死锁**：
+  //   1. 未配置 JWT_SECRET 时 jwtReady=false → ready=false；
+  //   2. 前端 `canProceed()` 依赖 ready，于是初始化向导卡在第 1 步；
+  //   3. 而密钥的自动生成 `ensureEncryptionSecret()` 恰恰只在**提交初始化
+  //      （/public/init）时**才会执行（见下方 init 路由）。
+  //   4. 结果：向导永远进不到能触发自动生成的那一步 → 「自动生成 JWT 未生效」。
+  //
+  // 语义上二者本就该分开：
+  //   - `ready` 表示「存储就绪、可以开始安装」——这是**能否初始化**的前提；
+  //   - `jwtReady` 表示「密钥已就绪」——它可以是安装的**结果**（自动生成），
+  //     而不是安装的前提。
+  // 前端仍会把 jwt.ready=false 作为提示展示（并允许用户选择手动配置），
+  // 但不再因此阻断向导。
+  const ready = storageAvailable
 
   return c.json({
     code: 200,
@@ -168,9 +288,10 @@ publicRouter.get("/env_check", async (c) => {
         // 配置值（用户显式设置，或默认值）
         db_format: formatCfg,
         db_driver: driverCfg,
-        // 实际解析值（auto 探测后的结果）
-        resolved_driver: storage?.driver ?? null,
-        resolved_format: storage?.format ?? null,
+        // 实际解析值（auto 探测后的结果）；解析失败时后端内部是 "none"，
+        // 对界面没有意义且会显示成「do → none」，这里统一归一为 null。
+        resolved_driver: resolvedOrNull(storage?.driver),
+        resolved_format: resolvedOrNull(storage?.format),
       },
       storage: {
         available: storageAvailable,
@@ -179,6 +300,25 @@ publicRouter.get("/env_check", async (c) => {
         platform: storage?.platform ?? null,
         /** 是否处于内存兜底模式（重启即失，serverless 下不可接受） */
         memory: isMemory,
+        /**
+         * 配置错误的机器可读分类（无错误时为 null）：
+         * INVALID_COMBINATION / DRIVER_UNAVAILABLE / NO_STORAGE /
+         * PROXY_CONFIG / UNKNOWN_DRIVER / HEALTH_ERROR / DRIVER_ERROR
+         */
+        error_code: storageDetail.code,
+        /** 一行短原因（界面展示这个） */
+        summary: storageDetail.summary,
+        /**
+         * 完整原因（已脱敏、按分类限行）。
+         *
+         * 只给日志与工具用：界面展示它会出现「半句话 + 省略号」。
+         */
+        error_message:
+          storageDetail.message !== null
+            ? redact(storageDetail.message, reasonLines(storageDetail.code))
+            : null,
+        /** 一句话修复建议（「改什么」），无错误时为 null */
+        suggestion: storageDetail.suggestion,
       },
       jwt: {
         ready: jwtReady,
@@ -386,6 +526,17 @@ publicRouter.get("/plugins", async (c) => {
   })
 })
 
+// 是否配置了 ADMIN_PASS（跳过安装向导、自动初始化 admin）。
+//
+// 注意 env 与 process.env 都要看：Cloudflare Workers 走 env，本地/容器走
+// process.env；两者优先级与 auth.ts 的 getOrInitUsers 保持一致。
+function adminPassConfigured(env: any): boolean {
+  const fromEnv = env?.ADMIN_PASS
+  const fromProc =
+    typeof process !== "undefined" ? (process as any).env?.ADMIN_PASS : ""
+  return String(fromEnv || fromProc || "").trim() !== ""
+}
+
 // 系统是否已初始化：存在已设置密码的管理员账号即为已初始化。
 //
 // 「可持久化存储可用」是「已初始化」的前提，而不是并列的另一个检查：
@@ -396,6 +547,7 @@ publicRouter.get("/plugins", async (c) => {
 //
 // 本接口已在 index.ts 的诊断豁免名单中，不会被存储配置错误中间件拦截，
 // 否则它在最需要报告问题的场景下反而拿不到任何信息。
+
 publicRouter.get("/init_status", async (c) => {
   const storageReady = await isPersistentStorageAvailable(c.env)
 
@@ -403,6 +555,26 @@ publicRouter.get("/init_status", async (c) => {
   // 据此得出的 initialized=true 是假象。
   let initialized = false
   if (storageReady) {
+    // ADMIN_PASS 自动初始化：安装页只轮询本接口，从不调用登录接口。
+    // 若只把 getOrInitUsers() 挂在登录路径上，配置了 ADMIN_PASS 的新部署会
+    // 永远停在「未初始化 → 跳 /@init → 永远不初始化」的死循环里。
+    //
+    // 仅当运维显式配置了 ADMIN_PASS 时才触发（那是「请自动初始化」的明确
+    // 意图）：未配置时不调用，避免每次轮询都尝试写入一份未初始化的占位库。
+    // getOrInitUsers 本身是幂等的：已初始化（admin 密码已是合法哈希）时
+    // 不做任何写入。
+    if (adminPassConfigured(c.env)) {
+      try {
+        const { getOrInitUsers } = await import("./auth")
+        await getOrInitUsers(c.env)
+      } catch (err: any) {
+        console.warn(
+          "[DB] init_status: ADMIN_PASS auto-initialization failed: " +
+            (err?.message || err),
+        )
+      }
+    }
+
     const db = await getDb(c.env)
     const admin = (db.users || []).find((u: any) => u.role === 2)
     initialized = Boolean(admin && String(admin.password || "").trim() !== "")
@@ -412,10 +584,34 @@ publicRouter.get("/init_status", async (c) => {
   // 前端据此轮询等待，避免 KV 最终一致性导致的「刚初始化完登录失败」。
   const ready = initialized ? await isEncryptionReady(c.env) : false
 
+  // ── 把「为什么不能初始化」透给前端 ──
+  //
+  // 安装向导只能看到本接口，因此这里必须给出可展示的原因，否则用户只会拿到
+  // 一个 500 或一句「未初始化」，无从判断是绑定缺失、组合写错还是密钥缺失。
+  // 两类原因都返回（已脱敏）：
+  //   storage_error      一行短原因（界面直接展示，故取首行摘要）
+  //   storage_suggestion 一句话修复建议（「改什么」）
+  //   db_load_error      上一次从持久化后端读取失败的原因（运行期故障）
+  let storageError: string | null = null
+  let storageSuggestion: string | null = null
+  if (!storageReady) {
+    const detail = await getStoreConfigErrorDetail(c.env, { silent: true })
+    storageError = storageErrorSummary(detail.message)
+    storageSuggestion = detail.suggestion
+  }
+  const dbLoadError = getDbLoadError()
+
   return c.json({
     code: 200,
     message: "success",
-    data: { initialized, ready, db_trusted: isDbTrusted() },
+    data: {
+      initialized,
+      ready,
+      db_trusted: isDbTrusted(),
+      storage_error: storageError,
+      storage_suggestion: storageSuggestion,
+      db_load_error: dbLoadError ? redact(dbLoadError, 1) : null,
+    },
   })
 })
 
@@ -441,18 +637,40 @@ publicRouter.post("/init/setup", async (c) => {
 
   const db = await getDb(c.env)
   if (!db.users) db.users = []
-  // 安全护栏：若读取持久化存储失败（当前 db 只是不可信空壳），绝不能继续初始化，
-  // 否则会把空库写回存储、覆盖真实配置（即「数据库被清空」的根因）。
-  if (!isDbTrusted()) {
+  // 安全护栏：只在「读取持久化后端**失败**」时拒绝初始化。
+  //
+  // loadDb() 对两种「db 不可信」给出了不同信号，必须分别对待：
+  //   1. getDbLoadError() !== null —— 读取抛错（binding 未注入、后端不可达、
+  //      鉴权失败等）。此时内存里只是兜底空壳，继续初始化会把空库写回存储、
+  //      覆盖真实配置（即「数据库被清空」的根因）→ 必须拒绝。
+  //   2. getDbLoadError() === null 且 !isDbTrusted() —— 读取**成功但后端为空**，
+  //      即全新部署 / 换到新库后的首次初始化。这正是 setup 存在的意义。
+  //      若也一并拒绝，就会出现「读不到 → 不许初始化 → 永远读不到」的死锁，
+  //      让全新空存储永远无法安装（issue #62 现象 3）。
+  const loadError = getDbLoadError()
+  if (loadError) {
     console.error(
-      "[DB] init/setup rejected: database could not be loaded from the persistence backend",
+      "[DB] init/setup rejected: database could not be loaded from the persistence backend: " +
+        loadError,
     )
+    // 对外文案保持不变（兼容既有前端/客户端），但把「具体原因 + 分类码」放进
+    // data，让安装向导能直接展示，而不是只给用户一个通用 500。
+    const detail = await getStoreConfigErrorDetail(c.env, { silent: true })
+    const code = detail.code || "STORAGE_READ_FAILED"
     return c.json(
       {
         code: 500,
         message:
           "database is not readable; refusing to initialize to avoid overwriting existing config",
-        data: null,
+        data: {
+          code,
+          // 界面展示 summary（完整一句）；reason 保留给工具/日志阅读
+          summary: storageErrorSummary(loadError),
+          reason: redact(loadError, reasonLines(code)),
+          // 一句话修复建议：有配置原因时优先用它（如「改成 DB_DRIVER=d1」），
+          // 否则向导只能展示一段原因，用户仍不知道下一步做什么。
+          suggestion: detail.suggestion,
+        },
       },
       500,
     )

@@ -336,12 +336,26 @@ export async function getKvBinding(envCtx?: any): Promise<{
   // drivers are resolved by getStorageBackend() instead. The old wording
   // ("memory-only mode (data will not persist)") was therefore misleading, and
   // sent users with a working D1 backend chasing a non-existent problem.
-  // Report the truth: no KV-style binding was found, and say where to look.
+  //
+  // Only deployments that are *supposed* to use a KV/Blob backend get a message.
+  // When DB_DRIVER names a non-KV driver (d1 / mysql / do), a KV miss is
+  // irrelevant by construction — and this function is also reached by the audit
+  // log / logout blacklist / login-failure counters, so warning on every such
+  // write made "no KV binding" look like the cause of unrelated failures.
   const configuredDriver = String(env?.DB_DRIVER || "")
     .trim()
     .toLowerCase()
-  // 每个进程只提示一次（详见 kvNoneWarnedOnce 注释）。
-  if (!kvNoneWarnedOnce) {
+  // 两重条件缺一不可：
+  //   - expectsKvStyleBackend：只有「本该用 KV/Blob」的部署，缺绑定才是异常；
+  //     显式配 d1/mysql/do 时 KV 缺失是设计使然，不该告警（否则误导用户）。
+  //   - !kvNoneWarnedOnce：每个进程只提示一次，避免日志刷屏。
+  const expectsKvStyleBackend =
+    !configuredDriver ||
+    configuredDriver === "auto" ||
+    configuredDriver === "kv" ||
+    configuredDriver === "cfkv" ||
+    configuredDriver === "blob"
+  if (expectsKvStyleBackend && !kvNoneWarnedOnce) {
     kvNoneWarnedOnce = true
     if (configuredDriver && configuredDriver !== "auto") {
       console.warn(

@@ -5,7 +5,8 @@ import { assetsRouter } from "./server/assets"
 import { webdavRouter } from "./server/webdav"
 import { s3Router } from "./server/s3"
 import { setEnvCtx } from "./internal/model/db"
-import { getStoreConfigError } from "./internal/model/store/backend"
+import { getStoreConfigErrorDetail } from "./internal/model/store/backend"
+import { storageErrorSummary, uiStorageError } from "./server/storage-error"
 
 const app = new Hono()
 
@@ -48,6 +49,27 @@ function isDiagnosticPath(pathname: string): boolean {
   return DIAGNOSTIC_PATHS.includes(pathname)
 }
 
+/**
+ * KV 代理传输端点（EdgeOne Edge Function 侧由 functions/kv-* 提供）。
+ *
+ * 这些路径是「驱动探测/读写」的传输层，不是业务请求，本 Worker 也不提供它们
+ * （只有 EdgeOne Edge Function / CF Pages Functions 才有）。必须两种情况都避开：
+ *
+ *   1. **不走存储配置拦截**：kv 驱动的可用性判定就是向 `{origin}/kv-list` 发一次
+ *      探测，而拦截逻辑会解析驱动 —— 若这些请求落进拦截，就会「探测请求 → 解析
+ *      驱动 → 再探测自身」无限自调用（本地 `wrangler dev` 表现为满屏
+ *      `GET /kv-list 503`，且耗时随嵌套层数不断增长）。
+ *   2. **不能落进 SPA 兜底**：兜底会返回 index.html（HTTP 200），探测会把
+ *      「拿到 HTML」误判成「KV 可用」，之后读写全部拿到 HTML 而报错。
+ *
+ * 因此这里显式回 410：既明确说明本部署不提供该端点，也让探测得到干净的失败。
+ */
+const KV_PROXY_PATHS = ["/kv-list", "/kv-get", "/kv-put", "/kv-delete"]
+
+function isKvProxyPath(pathname: string): boolean {
+  return KV_PROXY_PATHS.includes(pathname)
+}
+
 app.use("*", async (c, next) => {
   // 关键：每个请求注入 KV binding 上下文（CF Workers 多实例/冷启动时
   // 模块级 globalEnvCtx 为 null，会导致 getDb()/saveDb() 退回内存模式，
@@ -74,15 +96,31 @@ app.use("*", async (c, next) => {
   const { pathname } = new URL(c.req.url)
   const exempt =
     isStaticOrShell(pathname, c.req.header("accept") || "", c.req.method) ||
-    isDiagnosticPath(pathname)
+    isDiagnosticPath(pathname) ||
+    // KV 代理传输端点：解析驱动会再探测自身，必须绕开（见 isKvProxyPath）
+    isKvProxyPath(pathname)
   if (!exempt) {
-    const configError = await getStoreConfigError(env)
-    if (configError) {
+    // 用 Detail 版本：除完整原因外还带分类码与一句话修复建议，前端据此
+    // 展示「哪里错了 + 该改成什么」。只给一段长文本时，用户（和日志读者）
+    // 能看到的只是「驱动不可用」，不知道该把 DB_DRIVER 改成什么。
+    const detail = await getStoreConfigErrorDetail(env)
+    if (detail.message) {
+      const ui = uiStorageError(detail)
       return c.json(
         {
           code: 503,
-          message: configError,
-          data: { error: "STORAGE_CONFIG_ERROR", configError },
+          // message 保持完整原因（兼容既有客户端与日志排查）
+          message: detail.message,
+          data: {
+            error: "STORAGE_CONFIG_ERROR",
+            code: detail.code,
+            configError: detail.message,
+            // 界面展示 summary（完整一句短原因）+ suggestion（怎么改）；
+            // reason 是截断后的完整说明，留给工具与日志阅读。
+            summary: storageErrorSummary(detail.message),
+            reason: ui.reason,
+            suggestion: ui.suggestion,
+          },
         },
         503,
       )
@@ -94,6 +132,26 @@ app.use("*", async (c, next) => {
 
 // 在 Serverless 环境中，所有逻辑都是无状态的且由请求触发。
 // 这里不应该初始化任何常驻的后台任务 (如 Cron 或 线程池)。
+
+// KV 代理传输端点：本部署不提供（只有 EdgeOne Edge Function / CF Pages
+// Functions 的 functions/kv-* 提供）。显式回 410，避免这些请求落进 SPA 兜底
+// 被当成「HTTP 200」而让 kv 驱动误判为可用（详见 isKvProxyPath 注释）。
+for (const path of KV_PROXY_PATHS) {
+  app.all(path, (c) =>
+    c.json(
+      {
+        code: 410,
+        message:
+          `KV proxy endpoint "${path}" is not served by this deployment. ` +
+          `It only exists on EdgeOne Edge Functions (functions/kv-*) or ` +
+          `Cloudflare Pages Functions. See /api/public/env_check for the ` +
+          `storage backend actually in use.`,
+        data: null,
+      },
+      410,
+    ),
+  )
+}
 
 // 挂载 API 到 /api
 const api = new Hono()

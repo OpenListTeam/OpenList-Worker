@@ -18,7 +18,7 @@
         "description": "Storage format: `map` (whole JSON), `key` (per-key), `sql` (relational, Go-compatible). Defaults to `map`."
       },
       "DB_DRIVER": {
-        "description": "Storage driver: `auto` (default), `blob`, `cfkv`, `kv`, `d1`, `do`, `mysql`. Leave as `auto` unless you need to force one."
+        "description": "Storage driver: `auto` (default), `blob`, `cfkv`, `kv`, `d1`, `do`, `mysql`. Leave as `auto` unless you need to force one. An explicitly configured driver is never replaced automatically: if it is unavailable, the app reports a configuration error (including which driver auto-detection would have picked) instead of writing to another backend. Invalid driver/format pairs are reported the same way."
       }
     }
   },

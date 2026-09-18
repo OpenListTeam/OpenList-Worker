@@ -160,7 +160,7 @@ pnpm run deploy:worker
 - `sql`: Relational database table format, fully compatible with Go backend, suitable for D1/MySQL
 
 **DB_DRIVER** (Database Driver)
-- `auto` (default): Auto-detect available drivers (priority: blob → cfkv → kv → d1)
+- `auto` (default): Auto-detect available drivers (priority: mysql → d1 → kv → cfkv → blob → do)
 - `blob`: Tencent EdgeOne Blob / Alibaba ESA Blob
 - `cfkv`: Cloudflare KV REST API (requires `CF_ACCOUNT`, `CF_KV_UUID`, `CF_API_KEY`)
 - `kv`: Cloudflare KV binding (binding name is fixed to `KV`)
@@ -189,6 +189,14 @@ CF_ACCOUNT=your_account_id
 CF_KV_UUID=your_namespace_id
 CF_API_KEY=your_api_token
 ```
+
+> An explicitly configured driver is **never replaced automatically**. If it is
+> unavailable the request is rejected with an actionable reason (including which
+> driver auto-detection would have picked); `/api/public/env_check` and
+> `/api/public/init_status` report the same reason plus a one-line fix. This
+> prevents "I thought it was KV, but writes went to another backend".
+> Invalid driver/format pairs (e.g. `DB_FORMAT=sql` + `DB_DRIVER=kv`) are
+> reported the same way — the app never rewrites your configuration.
 
 **Backward Compatibility:**
 - `DB_DRIVER=json` auto-converts to `DB_FORMAT=map` + auto-detect driver

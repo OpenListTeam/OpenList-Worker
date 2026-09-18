@@ -171,28 +171,39 @@ pnpm run deploy:worker
 **推荐配置组合：**
 ```bash
 # Cloudflare Workers + D1（推荐）
-DB_FORMAT=sql
-DB_DRIVER=d1
+DB_FORMAT=sql        # 也可用 map / key
+DB_DRIVER=d1         # 需在 wrangler.jsonc 的 d1_databases 里绑定名为 DB
 
 # EdgeOne + Blob（推荐，零配置）
-DB_FORMAT=map
+DB_FORMAT=map        # 或 key
 DB_DRIVER=blob
 
-# EdgeOne / Cloudflare KV（自动适配环境）
-DB_FORMAT=map
-DB_DRIVER=kv
+# Cloudflare Workers + KV（必须先绑定 KV，见下方【方案 A】）
+DB_FORMAT=map        # 或 key
+DB_DRIVER=kv         # 需打开 wrangler.jsonc 的 kv_namespaces，绑定名必须恰好是 KV；
+                     # 未绑定却显式写 kv 会直接报错（不做回退）
 
-# Cloudflare KV（高频读写，需绑定）
-DB_FORMAT=key
+# EdgeOne Node 云函数 + KV（还需额外部署 Edge Function 代理）
+DB_FORMAT=map        # 或 key
 DB_DRIVER=kv
+EO_KV_URLS=https://<你的部署域名>   # 代理地址（也可由请求 origin 自动注入）
+JWT_SECRET=<32 字符以上>           # 代理鉴权，需与 Edge Function 侧一致
 
-# 远程访问 Cloudflare KV
+# 远程访问 Cloudflare KV（HTTP API，无需 binding）
 DB_FORMAT=key
 DB_DRIVER=cfkv
 CF_ACCOUNT=your_account_id
 CF_KV_UUID=your_namespace_id
 CF_API_KEY=your_api_token
 ```
+
+> 不确定用哪个就保持 `DB_DRIVER=auto`（默认，自动探测）。
+> 显式指定驱动时**不做回退**：该驱动不可用会直接拒绝请求并给出可操作原因（含
+> 「自动探测会选哪个驱动」，照抄即可），`/api/public/env_check` 与
+> `/api/public/init_status` 也会显示同样的原因和一行修复建议，
+> 避免「以为在用 KV、实际写进了别的后端」。
+> 非法「驱动 × 格式」组合（如 `DB_FORMAT=sql` + `DB_DRIVER=kv`）同样只报错，
+> 不会自动改驱动或格式。
 
 **向后兼容：**
 - `DB_DRIVER=json` 自动转换为 `DB_FORMAT=map` + 自动检测驱动
