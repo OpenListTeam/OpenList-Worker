@@ -36,12 +36,19 @@ ALLOW_URLS=
 # 使 HTML 与哈希资产同源一致（避免本地 HTML 引用 CDN 上不存在的哈希导致批量 404）；
 # CDN 不可达或返回非 HTML 时自动回退源站加载，不影响站点可用性。
 # 支持 $version 占位符，替换为本构建的前端版本号（构建期写入，解析失败回退 latest）。
-# 例：
-#   https://cdn.jsdelivr.net/npm/@openlist-frontend/openlist-frontend@$version/dist
-#   https://registry.npmmirror.com/@openlist-frontend/openlist-frontend/4.2.6/files/dist
 # 注意：Cloudflare 默认「资源优先」，/ 与 /index.html 会被静态层直接返回而绕过
 # Worker，注入不会生效；本仓库 wrangler.jsonc 已用 assets.run_worker_first 放行
 # 这两个 HTML 入口（带 hash 的 JS/CSS 仍由静态层直出，不经 Worker）。
+#
+# ⚠️ 该地址由浏览器直接加载 JS/CSS，必须同时满足两个条件，否则页面白屏：
+#   1. 能返回 index.html —— 部分 npm 镜像会拦截 .html（npmmirror 的
+#      registry.npmmirror.com/.../files/ 返回 451 {"error":"blocked"}）
+#   2. 响应带 Access-Control-Allow-Origin —— 前端以 crossorigin 加载
+#      module script / stylesheet / 字体，缺少 CORS 头会被浏览器全部拦下
+#   实测：jsdelivr、unpkg 满足；npmmirror 的 registry 与 cdn 两个端点均不满足。
+# 例：
+#   https://cdn.jsdelivr.net/npm/@openlist-frontend/openlist-frontend@$version/dist
+#   https://unpkg.com/@openlist-frontend/openlist-frontend@$version/dist
 ASSET_URLS=
 
 # MySQL 连接串（DB_DRIVER=mysql 时必填），如 mysql://user:pass@host:3306/db

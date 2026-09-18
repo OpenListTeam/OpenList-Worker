@@ -45,9 +45,18 @@ assetsRouter.get("/favicon.ico", redirectToLogo)
  * 降级策略：CDN 不可达 / 返回非 HTML 时，返回本地 HTML 且【不注入】cdn ——
  * 资源回退到源站加载，站点依然可用（宁可 CDN 不生效，不可白屏）。
  *
+ * ⚠️ 对 ASSET_URLS 的两个硬性要求（浏览器侧直接加载，缺一即白屏）：
+ *   1. 必须能返回 index.html：部分 npm 镜像会拦截 .html（npmmirror 的
+ *      registry.npmmirror.com/.../files/ 对 .html 返回 451 {"error":"blocked"}，
+ *      该端点只放行 js/css）。
+ *   2. 必须带 Access-Control-Allow-Origin：前端产物以 crossorigin 加载
+ *      module script / modulepreload / stylesheet / 字体，缺少 CORS 头会被
+ *      浏览器整批拦下（npmmirror 的 registry 与 cdn 两个端点都不发该头）。
+ *   实测可用：jsdelivr、unpkg。npmmirror 不可用。
+ *
  * 示例：
  *   ASSET_URLS = https://cdn.jsdelivr.net/npm/@openlist-frontend/openlist-frontend@$version/dist
- *   ASSET_URLS = https://registry.npmmirror.com/@openlist-frontend/openlist-frontend/4.2.6/files/dist
+ *   ASSET_URLS = https://unpkg.com/@openlist-frontend/openlist-frontend@$version/dist
  */
 
 /** CDN index.html 的模块级缓存：每个 isolate 每 TTL 最多一次外呼。

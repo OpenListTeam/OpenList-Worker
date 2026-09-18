@@ -88,7 +88,10 @@
     // 前端静态资源 CDN 地址，需包含完整 dist（含 index.html），支持 $version 占位符
     // Worker 从 CDN 拉取 index.html 并注入 cdn（HTML 与哈希资产同源一致），
     // CDN 不可达时自动回退源站加载
+    // ⚠️ 该地址由浏览器直接加载 JS/CSS，必须能返回 index.html 且带
+    //    Access-Control-Allow-Origin（实测 jsdelivr / unpkg 可用，npmmirror 不可用）
     // "ASSET_URLS": "https://cdn.jsdelivr.net/npm/@openlist-frontend/openlist-frontend@$version/dist",
+    // "ASSET_URLS": "https://unpkg.com/@openlist-frontend/openlist-frontend@$version/dist",
     //
     // 允许作为种子数据来源的主机白名单，逗号/空格分隔
     // "ALLOW_SEED": "",
