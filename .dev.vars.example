@@ -39,6 +39,11 @@ ALLOW_URLS=
 #       等价 Go Release 版行为）
 #   B. 否则改用 CDN 自己的 index.html，保证 HTML 与哈希资产同源一致
 #   A、B 都不可用 → 不注入，资源回退源站加载（不会白屏）
+#   A 要求 CDN 上的产物与本次部署的 dist 是同一份构建（哈希逐字节相同）。默认
+#   `pnpm run build` 会从 npm 拉取【已发布】的前端 dist（scripts/fetch-frontend.mjs），
+#   与 CDN 内容天然同源，故 A 会命中 —— npmmirror 这类禁止访问 .html 的 CDN 只能
+#   靠 A 工作；若用 FRONTEND_BUILD_FROM_SOURCE=1 从 main 现构建，哈希与 CDN 不一致，
+#   A 必然落空（只能退化到 B，而 B 对 npmmirror 不可用）。
 # 支持 $version 占位符，替换为本构建的前端版本号（构建期写入，解析失败回退 latest）。
 # 注意：Cloudflare 默认「资源优先」，/ 与 /index.html 会被静态层直接返回而绕过
 # Worker，注入不会生效；本仓库 wrangler.jsonc 已用 assets.run_worker_first 放行
