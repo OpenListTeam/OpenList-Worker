@@ -236,6 +236,34 @@ export function isAuthBoundDownload(
 }
 
 /**
+ * 从上游响应头解析本次实际会回传的字节数。
+ *
+ * 用途：`shouldRetryWithoutRange()` 会删掉 Range 重新请求，上游忽略 Range 时也会
+ * 直接回 200 + 完整文件——此时回传的是**整份文件**而不是客户端请求的分片。
+ * 仅按「分片大小」通过前置上限检查是不够的，必须用上游给出的实际长度复核，
+ * 否则小分片请求会把整份文件塞进云函数响应体（EdgeOne 6 MiB → 413）。
+ *
+ * 取值优先级：Content-Length → Content-Range 的分段长度 → 0（未知）。
+ */
+export function upstreamBodySize(
+  headers: { get(name: string): string | null } | null | undefined,
+): number {
+  if (!headers) return 0
+  const contentLength = parseInt(headers.get("content-length") || "", 10)
+  if (Number.isFinite(contentLength) && contentLength > 0) return contentLength
+  const contentRange = headers.get("content-range") || ""
+  const match = /bytes\s+(\d+)-(\d+)\/(\d+|\*)/i.exec(contentRange)
+  if (match) {
+    const start = parseInt(match[1], 10)
+    const end = parseInt(match[2], 10)
+    if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+      return end - start + 1
+    }
+  }
+  return 0
+}
+
+/**
  * 原生代理前的上限决策。
  *
  * @param size           文件总大小（0 表示未知）

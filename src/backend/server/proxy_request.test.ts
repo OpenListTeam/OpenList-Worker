@@ -11,6 +11,7 @@ import {
   getProxyPayloadLimit,
   isAuthBoundDownload,
   rawUrlNeedsPrivateHeaders,
+  upstreamBodySize,
   DEFAULT_EDGEONE_PAYLOAD_LIMIT,
   PROXY_USER_AGENT,
   type UpstreamResponseLike,
@@ -110,6 +111,111 @@ test("带签名 + Range 命中上游不支持 Range 的 200 分支时也走兜�
   // 驱动自带的 Authorization 头在兜底后必须保留
   delete headers["Range"]
   assert.equal(headers["Authorization"], "Bearer token-from-driver")
+})
+
+// ---------------------------------------------------------------------------
+// 二次校验：Range 协商后上游实际回传的大小
+//
+// 前置上限检查是按「客户端请求的分片」估算的，但 Range 兜底重试（删掉 Range 重试）
+// 与「上游忽略 Range 直接回 200」都会让上游回传整份文件；这条路径必须按上游给出
+// 的实际长度复核，否则小分片请求会把整份文件塞进云函数响应体（EdgeOne 6 MiB）。
+// ---------------------------------------------------------------------------
+
+test("upstreamBodySize: Content-Length 优先，Content-Range 兜底", () => {
+  assert.equal(
+    upstreamBodySize(upstream(200, { "content-length": "12345" }).headers),
+    12345,
+  )
+  // 只有 Content-Range 时取分段长度（206 分片）
+  assert.equal(
+    upstreamBodySize(
+      upstream(206, { "content-range": "bytes 0-1048575/524288000" }).headers,
+    ),
+    1048576,
+  )
+  // 无任何长度信息 → 0（未知，交给调用方决定是否放行）
+  assert.equal(upstreamBodySize(upstream(200, {}).headers), 0)
+  assert.equal(upstreamBodySize(null), 0)
+  assert.equal(
+    upstreamBodySize(upstream(200, { "content-length": "abc" }).headers),
+    0,
+  )
+})
+
+test("Range + 签名 + 上限交互：412 重试后按完整文件大小判定（无需重签）", () => {
+  const signedUrl = "https://cdn.example.com/f.mp4?sign=1700000000.abcdef"
+  const headers = buildUpstreamHeaders({
+    rangeHeader: "bytes=0-1048575", // 只想取 1 MiB
+    proxyRange: true,
+  })
+  assert.equal(headers["Range"], "bytes=0-1048575")
+
+  // 前置检查：按 1 MiB 分片估算 → 通过
+  assert.equal(
+    decideProxyPayloadAction({
+      size: 500 * MiB,
+      range: headers["Range"],
+      payloadLimit: EDGE_LIMIT,
+      authBound: false,
+    }),
+    "proxy",
+  )
+
+  // 上游 412 → 去掉 Range 重试；签名在 URL 上，重试无需重新计算
+  assert.equal(shouldRetryWithoutRange(headers, upstream(412)), true)
+  delete headers["Range"]
+  assert.equal(shouldRetryWithoutRange(headers, upstream(412)), false)
+  assert.equal(
+    signedUrl,
+    "https://cdn.example.com/f.mp4?sign=1700000000.abcdef",
+  )
+
+  // 重试后上游回了整份文件 → 二次校验按实际大小判定为超限，降级 302
+  const retried = upstream(200, { "content-length": String(500 * MiB) })
+  const actual = upstreamBodySize(retried.headers)
+  assert.equal(actual, 500 * MiB)
+  assert.equal(
+    decideProxyPayloadAction({
+      size: actual,
+      payloadLimit: EDGE_LIMIT,
+      overflowPolicy: "redirect",
+      authBound: false,
+    }),
+    "redirect",
+  )
+})
+
+test("Range + 上限交互：正常的 206 分片不会被二次校验误伤", () => {
+  const partial = upstream(206, {
+    "content-length": String(1 * MiB),
+    "content-range": `bytes 0-${1 * MiB - 1}/${500 * MiB}`,
+  })
+  const actual = upstreamBodySize(partial.headers)
+  assert.equal(actual, 1 * MiB)
+  assert.equal(
+    decideProxyPayloadAction({
+      size: actual,
+      payloadLimit: EDGE_LIMIT,
+      authBound: false,
+    }),
+    "proxy",
+  )
+})
+
+test("Range + 上限交互：整份文件超限且必须带鉴权头时返回可读 413", () => {
+  const retried = upstream(200, { "content-length": String(500 * MiB) })
+  const actual = upstreamBodySize(retried.headers)
+  assert.equal(
+    decideProxyPayloadAction({
+      size: actual,
+      payloadLimit: EDGE_LIMIT,
+      overflowPolicy: "redirect",
+      authBound: isAuthBoundDownload("webdav", {
+        Authorization: "Basic dXNlcjpwYXNz",
+      }),
+    }),
+    "too-large",
+  )
 })
 
 // ---- shouldRetryWithoutRange 边界 ----

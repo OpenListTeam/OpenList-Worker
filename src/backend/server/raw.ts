@@ -28,6 +28,7 @@ import {
   getProxyPayloadLimit,
   getProxyOverflowPolicy,
   isAuthBoundDownload,
+  upstreamBodySize,
 } from "./proxy_request"
 
 let fsPromises: any = null
@@ -218,6 +219,52 @@ async function proxyUpstream(
     )
     delete headers["Range"]
     upstreamRes = await safeProxyFetch(fileItem.raw_url, headers, trustedHosts)
+  }
+
+  // ---- 二次校验：按上游实际回传的大小再判一次 ----
+  // 前面的检查按「客户端请求的分片」估算，但 Range 兜底重试（删掉 Range 重试）
+  // 或上游忽略 Range 直接回 200 时，回传的是整份文件，可能远超该估算值。
+  // 这里用上游的 Content-Length / Content-Range 复核，避免小分片请求把整份文件
+  // 塞进云函数响应体（EdgeOne 6 MiB → CLOUD_FUNCTION_PAYLOAD_TOO_LARGE）。
+  const actualBodySize = upstreamBodySize(upstreamRes.headers)
+  const secondCheck = decideProxyPayloadAction({
+    size: actualBodySize,
+    payloadLimit: getProxyPayloadLimit(c),
+    overflowPolicy: getProxyOverflowPolicy(c),
+    authBound,
+  })
+  if (secondCheck !== "proxy") {
+    // 只拿到了响应头，先把上游 body 取消，避免继续下载整份文件
+    try {
+      await upstreamRes.body?.cancel()
+    } catch {}
+    console.warn(
+      `[rawRouter] Upstream body is ${actualBodySize} bytes after Range negotiation ` +
+        `(status=${upstreamRes.status}) for '${reqPath}', which exceeds the ` +
+        `${getProxyPayloadLimit(c)}-byte payload limit of this runtime — ` +
+        `refusing to stream it (decision=${secondCheck}).`,
+    )
+    if (secondCheck === "redirect") {
+      try {
+        assertSafeUrl(fileItem.raw_url, "Redirect download", trustedHosts)
+      } catch (ssrfErr: any) {
+        return c.text(ssrfErr.message || "SSRF blocked", 403)
+      }
+      return c.redirect(fileItem.raw_url, 302)
+    }
+    return c.json(
+      {
+        code: 413,
+        message: payloadLimitMessage(
+          c,
+          driver || "该存储",
+          actualBodySize,
+          authBound,
+        ),
+        data: null,
+      },
+      413,
+    )
   }
 
   // CORS headers
