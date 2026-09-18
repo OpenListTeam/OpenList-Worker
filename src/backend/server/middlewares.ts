@@ -53,17 +53,10 @@ export async function getJwtSecret(c?: Context | any): Promise<string> {
   const env =
     c?.env || (typeof process !== "undefined" ? (process as any).env : {}) || {}
 
-  // 1. 环境变量显式配置（最优先，提高最小长度要求到 32 字符）
+  // 1. 环境变量显式配置（最优先）
+  // 推荐使用 >=32 字符的密钥；16-31 字符按兼容策略直接接受，不再告警。
   const envSecret = env.JWT_SECRET
-  if (envSecret && envSecret.length >= 32) {
-    return envSecret
-  }
-
-  // 兼容性：如果密钥长度在 16-31 之间，发出警告但仍然使用
   if (envSecret && envSecret.length >= 16) {
-    console.warn(
-      "[JWT] JWT_SECRET 长度不足 32 字符，建议使用更长的密钥以提高安全性。"
-    )
     return envSecret
   }
 
