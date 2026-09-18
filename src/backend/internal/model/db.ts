@@ -1046,6 +1046,72 @@ const DB_CACHE_TTL_MS = 1000
 const dbCache = new WeakMap<object, { ts: number; db: any }>()
 const dbInflight = new WeakMap<object, Promise<any>>()
 
+/**
+ * 存储后端解析入口。默认直接委托给 store/backend 的 getStoreBackend；
+ * 测试可通过 __setStoreBackendLoaderForTest() 注入桩后端，用于统计
+ * load/save 次数，锁定 getDb() 的缓存行为（见 db_cache.test.ts）。
+ */
+let storeBackendLoader: (env: any) => Promise<any> = (env) =>
+  getStoreBackend(env)
+
+/** 仅供测试：重置模块级缓存与内存快照，保证用例相互隔离。 */
+export const __resetDbCacheForTest = () => {
+  // WeakMap 无法整体清空，但缓存键只有「当前 globalEnvCtx」与传入的 env，
+  // 逐个 delete 即可；同时清空最近一次的缓存键记录。
+  if (globalEnvCtx && typeof globalEnvCtx === "object") {
+    dbCache.delete(globalEnvCtx)
+    dbInflight.delete(globalEnvCtx)
+  }
+  if (noArgCacheKey) {
+    dbCache.delete(noArgCacheKey)
+    dbInflight.delete(noArgCacheKey)
+  }
+  noArgCacheKey = null
+  globalEnvCtx = null
+  memoryDb = null
+  storeBackendLoader = (env: any) => getStoreBackend(env)
+}
+
+/** 仅供测试：注入统计型存储后端。 */
+export const __setStoreBackendLoaderForTest = (
+  loader: (env: any) => Promise<any>,
+) => {
+  storeBackendLoader = loader
+}
+
+/**
+ * 无参 getDb() 的兜底缓存键。
+ *
+ * 为什么需要它（这是一次线上性能事故的修复核心）：
+ *
+ * `dbCache` / `dbInflight` 都以调用方传入的 `envCtx` 对象作为键。但仓库里有
+ * 大量内部调用是 **无参** 的（storage.ts 的驱动回调、getSettings/getUsers 等
+ * 五个 getter），它们拿不到 request 级 env。此前 getDb() 对无参调用的处理是：
+ *
+ *     if (!envCtx) return loadDb(envCtx)   // ❌ 直接落盘，两个缓存全部绕过
+ *
+ * 于是「一次无参 getDb()」= 「一次完整的冷加载」：后端全量读 + JSON.parse +
+ * 逐字段 AES 解密 + 5 次 ensureDefault*。而一次 WebDAV PROPFIND 或一次页面加载
+ * 会触发数十次无参 getDb()，于是 KV 被读数十次、D1 被查数十 × N 张表，
+ * 两种后端同时变慢（现象上「cf+kv 和 d1 都慢」）。
+ *
+ * 修复：无参调用回退到 `globalEnvCtx`（由 setEnvCtx / 传参调用写入的请求级
+ * 环境），并以它为键复用同一套缓存。这样同一请求（同一 isolate）内的重复调用
+ * 命中缓存，不再重复落盘与解密。
+ *
+ * 说明：这里仅保留「最近一次」的请求级 env 引用（noArgCacheKey），用于在
+ * saveDb 等场景同步刷新缓存；该引用会随下一次请求被覆盖，不会跨请求无限增长。
+ */
+let noArgCacheKey: object | null = null
+
+/** 解析无参 getDb() 应使用的缓存键（优先请求级 globalEnvCtx）。 */
+const resolveNoArgKey = (): object | null => {
+  const ctx = globalEnvCtx
+  if (!ctx || typeof ctx !== "object") return null
+  noArgCacheKey = ctx
+  return noArgCacheKey
+}
+
 const loadDb = async (envCtx?: any) => {
   if (envCtx) {
     globalEnvCtx = envCtx
@@ -1056,7 +1122,7 @@ const loadDb = async (envCtx?: any) => {
   // 此时必须回退到请求级 globalEnvCtx，否则 readDriver 读不到 DB_DRIVER、
   // getD1 读不到 DB binding，会错误回退到 json 后端读到旧的 KV 数据。
   const activeEnv = envCtx || globalEnvCtx
-  const backend = await getStoreBackend(activeEnv)
+  const backend = await storeBackendLoader(activeEnv)
   try {
     const persisted = await backend.load(activeEnv)
     if (persisted) {
@@ -1124,26 +1190,35 @@ export const getDb = async (envCtx?: any) => {
   if (envCtx) {
     globalEnvCtx = envCtx
   }
-  // envCtx is the cache key — without it there is nothing safe to scope to.
-  if (!envCtx) return loadDb(envCtx)
+
+  // 缓存键解析（性能关键）：
+  //   有参调用 → 直接用 envCtx；
+  //   无参调用 → 回退到请求级 globalEnvCtx，复用同一套缓存。
+  //
+  // 历史缺陷：无参时曾直接 `return loadDb(envCtx)`，绕过下面两个缓存，
+  // 导致每次无参 getDb() 都触发一次完整的后端读取 + 解密，KV 与 D1 同时被
+  // 放大数十倍而变慢。只有当连 globalEnvCtx 都没有（进程刚启动、纯内存调试）
+  // 时才无法缓存，此时退化为直读——不影响数据正确性，仅是性能兜底。
+  const cacheKey = envCtx || resolveNoArgKey()
+  if (!cacheKey) return loadDb(envCtx)
 
   // 1) Concurrent de-duplication: concurrent callers share a single KV read.
-  const pending = dbInflight.get(envCtx)
+  const pending = dbInflight.get(cacheKey)
   if (pending) return pending
 
   // 2) Short-TTL memoization: sequential calls in one request reuse the result.
-  const hit = dbCache.get(envCtx)
+  const hit = dbCache.get(cacheKey)
   if (hit && Date.now() - hit.ts < DB_CACHE_TTL_MS) return hit.db
 
   const promise = loadDb(envCtx)
     .then((db) => {
-      dbCache.set(envCtx, { ts: Date.now(), db })
+      dbCache.set(cacheKey, { ts: Date.now(), db })
       return db
     })
     .finally(() => {
-      dbInflight.delete(envCtx)
+      dbInflight.delete(cacheKey)
     })
-  dbInflight.set(envCtx, promise)
+  dbInflight.set(cacheKey, promise)
   return promise
 }
 
@@ -1481,7 +1556,13 @@ async function sealDb(data: any, key: string | null): Promise<any> {
 
 async function unsealDb(data: any, key: string | null): Promise<void> {
   if (!key || !data) return
-  
+
+  // 并行解密：原先三类字段（storage/setting/user）各自串行 await，字段数一多
+  // 就是「N 次 await 叠加」，且该函数在一次请求内会被调用多次（历史缺陷下更是
+  // 数十次），是加载变慢的主要贡献之一。这里改为先收集待解密任务再 Promise.all。
+  // 注意：只并行「收集阶段是同步」的部分，避免在循环中混入 await 导致伪并行。
+  const tasks: Promise<void>[] = []
+
   // 1. 解密存储配置
   for (const s of data.storages || []) {
     if (
@@ -1489,10 +1570,16 @@ async function unsealDb(data: any, key: string | null): Promise<void> {
       typeof s.addition === "string" &&
       s.addition.startsWith(ENCRYPTION_PREFIX)
     ) {
-      s.addition = await unsealValue(s.addition, key)
+      const target = s
+      const cipher = target.addition
+      tasks.push(
+        unsealValue(cipher, key).then((plain) => {
+          target.addition = plain
+        }),
+      )
     }
   }
-  
+
   // 2. 解密系统设置
   for (const st of data.settings || []) {
     if (
@@ -1501,29 +1588,48 @@ async function unsealDb(data: any, key: string | null): Promise<void> {
       typeof st.value === "string" &&
       st.value.startsWith(ENCRYPTION_PREFIX)
     ) {
-      st.value = await unsealValue(st.value, key)
+      const target = st
+      const cipher = target.value
+      tasks.push(
+        unsealValue(cipher, key).then((plain) => {
+          target.value = plain
+        }),
+      )
     }
   }
-  
-  // 3. 解密用户信息
+
+  // 3. 解密用户信息（OTP 密钥 / 密码）
   for (const u of data.users || []) {
+    if (!u) continue
     // OTP 密钥
     if (
-      u &&
       typeof u.otp_secret === "string" &&
       u.otp_secret.startsWith(ENCRYPTION_PREFIX)
     ) {
-      u.otp_secret = await unsealValue(u.otp_secret, key)
+      const target = u
+      const cipher = target.otp_secret
+      tasks.push(
+        unsealValue(cipher, key).then((plain) => {
+          target.otp_secret = plain
+        }),
+      )
     }
     // 密码解密
     if (
-      u &&
       typeof u.password === "string" &&
       u.password.startsWith(ENCRYPTION_PREFIX)
     ) {
-      u.password = await unsealValue(u.password, key)
+      const target = u
+      const cipher = target.password
+      tasks.push(
+        unsealValue(cipher, key).then((plain) => {
+          target.password = plain
+        }),
+      )
     }
   }
+
+  if (tasks.length > 0) await Promise.all(tasks)
 }
 
 export const saveDb = async (
@@ -1570,9 +1676,14 @@ export const saveDb = async (
   dbWriteBlocked = false
   // Refresh the request cache so any getDb() later in this request observes
   // the write rather than a pre-write snapshot.
-  if (envCtx) dbCache.set(envCtx, { ts: Date.now(), db: data })
+  // 无参调用会以 globalEnvCtx 为键命中缓存，因此这里也同步刷新该键，
+  // 否则「写后读」在无参路径上可能读到 TTL 内的旧快照。
+  const cacheKey = envCtx || resolveNoArgKey()
+  if (cacheKey) dbCache.set(cacheKey, { ts: Date.now(), db: data })
 
-  const backend = await getStoreBackend(activeEnv)
+  // `activeEnv` 已在本函数开头解析（写前守卫也依赖它），这里只需通过可注入的
+  // storeBackendLoader 取后端，便于测试统计 load/save 次数。
+  const backend = await storeBackendLoader(activeEnv)
   const configured = backend.isConfigured
     ? await backend.isConfigured(activeEnv)
     : true

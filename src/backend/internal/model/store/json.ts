@@ -71,6 +71,29 @@ function installRespSafetyNet() {
 // db.ts 的 setEnvCtx 同步写入）。
 let jsonEnvCtx: any = null
 
+/**
+ * Result cache for getKvBinding().
+ *
+ * Why this exists:
+ *   - getKvBinding() re-probes env.KV / globalThis.KV, attempts Blob SDK
+ *     initialisation and emits console.log on every call;
+ *   - readPersistedSecret / writePersistedSecret / logAudit all call it, so a
+ *     single request may hit it 3-5 times.
+ * Binding resolution depends only on the identity of the env object (one env
+ * per request), so memoising per env via a WeakMap is both safe and enough to
+ * remove the repeated probing and log noise.
+ * Only resolved results are cached (not thrown errors); the key is the env
+ * object, so entries are released automatically with the env itself.
+ */
+const kvBindingCache = new WeakMap<
+  object,
+  {
+    binding: any
+    platform: string
+    mode: "binding" | "blob" | "api" | "proxy" | "none"
+  }
+>()
+
 export function setJsonEnvCtx(env: any) {
   if (env) jsonEnvCtx = env
 }
@@ -157,6 +180,12 @@ export async function getKvBinding(envCtx?: any): Promise<{
     envCtx || jsonEnvCtx || (typeof process !== "undefined" ? process.env : {})
   const g = typeof globalThis !== "undefined" ? (globalThis as any) : {}
 
+  // 结果缓存：同一 env 对象只解析一次绑定（详见 kvBindingCache 注释）。
+  if (env && typeof env === "object") {
+    const cached = kvBindingCache.get(env)
+    if (cached) return cached
+  }
+
   /**
    * 原生 KV binding 探测。
    *
@@ -189,12 +218,13 @@ export async function getKvBinding(envCtx?: any): Promise<{
     }
     const safeOrigin = sanitizeProxyOrigin(origin, env)
     if (safeOrigin) {
-      console.log("[DB] getKvBinding: using EdgeOne KV via Edge Function proxy")
-      return {
+      const proxyResult = {
         binding: createProxyBinding(safeOrigin, env),
         platform: "EdgeOne KV (via Edge Function proxy)",
-        mode: "proxy",
+        mode: "proxy" as const,
       }
+      if (env && typeof env === "object") kvBindingCache.set(env, proxyResult)
+      return proxyResult
     }
     console.warn(
       "[DB] getKvBinding: KV proxy requested but no origin available " +
@@ -208,12 +238,13 @@ export async function getKvBinding(envCtx?: any): Promise<{
     if (blobStore) {
       // Blob SDK only initializes inside the EdgeOne Makers runtime
       installRespSafetyNet()
-      console.log("[DB] getKvBinding: using EdgeOne Blob storage")
-      return {
+      const blobResult = {
         binding: blobStore,
         platform: "EdgeOne Blob (@edgeone/pages-blob, strong consistency)",
-        mode: "blob",
+        mode: "blob" as const,
       }
+      if (env && typeof env === "object") kvBindingCache.set(env, blobResult)
+      return blobResult
     }
   } catch (err: any) {
     console.error(
@@ -231,8 +262,13 @@ export async function getKvBinding(envCtx?: any): Promise<{
     const platformName = isEdgeOne
       ? "EdgeOne KV (KV)"
       : "Cloudflare / EdgeOne KV (KV)"
-    console.log(`[DB] getKvBinding: found KV binding: ${platformName}`)
-    return { binding: nativeKv, platform: platformName, mode: "binding" }
+    const bindingResult = {
+      binding: nativeKv,
+      platform: platformName,
+      mode: "binding" as const,
+    }
+    if (env && typeof env === "object") kvBindingCache.set(env, bindingResult)
+    return bindingResult
   }
 
   // 3. Cloudflare REST API 模式（显式 DB_DRIVER=cfkv 或凭据齐全时自动启用）
@@ -248,8 +284,7 @@ export async function getKvBinding(envCtx?: any): Promise<{
       (typeof process !== "undefined" ? process.env.CF_API_KEY : "")
 
     if (cfAccountId && cfNamespaceId && cfApiToken) {
-      console.log("[DB] getKvBinding: using Cloudflare KV REST API")
-      return {
+      const apiResult = {
         binding: {
           type: "cf_rest",
           accountId: cfAccountId,
@@ -257,8 +292,10 @@ export async function getKvBinding(envCtx?: any): Promise<{
           token: cfApiToken,
         },
         platform: "Cloudflare KV (REST API)",
-        mode: "api",
+        mode: "api" as const,
       }
+      if (env && typeof env === "object") kvBindingCache.set(env, apiResult)
+      return apiResult
     }
   }
 
