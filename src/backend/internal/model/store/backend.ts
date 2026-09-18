@@ -288,6 +288,43 @@ const DRIVER_UNAVAILABLE_HINTS: Record<string, string> = {
 }
 
 /**
+ * 诊断缓存：显式驱动不可用时，「auto 探测会选中哪个后端」。
+ *
+ * 为什么要缓存：得到这个答案要跑一次真实探测（KV 代理会发 HTTP 探测请求），
+ * 而配置错误期间每个请求都会走到这里。以 env 指纹做键，配置一变即失效；
+ * 冷启动后重新计算。
+ */
+let autoFallbackHintCache: { key: string; hint: string } | null = null
+
+/**
+ * 报告「auto 会选中哪个可用后端」。
+ *
+ * 显式驱动不可用时，用户最需要知道的就是「那我该改成什么」——直接把答案写进
+ * 错误里，抄一下即可，不必自己去猜绑定名或驱动名。
+ *
+ * 注意：这只是**诊断**，不改变「显式指定的驱动不回退」这一语义。
+ * 内存兜底（本地开发）不作为建议，避免把生产部署引导到易失存储上。
+ */
+async function autoFallbackHint(env: any, requested: string): Promise<string> {
+  const key = `${requested}:${isServerlessRuntime(env) ? "sl" : "local"}:${envFingerprint(env)}`
+  if (autoFallbackHintCache?.key === key) return autoFallbackHintCache.hint
+
+  let hint = ""
+  try {
+    const auto = await autoDetectDriver(env)
+    if (auto && auto !== memoryDriver && auto.name !== requested) {
+      hint =
+        `Auto-detection would pick: DB_DRIVER=${auto.name} ` +
+        `(or simply set DB_DRIVER=auto).\n`
+    }
+  } catch {
+    // auto 也探测不到任何后端：保持原有提示（NO_STORAGE_MESSAGE 已在别处给出）
+  }
+  autoFallbackHintCache = { key, hint }
+  return hint
+}
+
+/**
  * 驱动 × 格式组合校验。
  *
  * 历史上非法组合（如 DB_FORMAT=sql + DB_DRIVER=kv）要到真正读写时才在
@@ -367,6 +404,7 @@ async function resolveDriver(name: StorageDriver, env?: any): Promise<Driver> {
         `Check the binding/credentials for "${name}", or set DB_DRIVER=auto ` +
         `to let the platform pick an available backend.\n` +
         (DRIVER_UNAVAILABLE_HINTS[name] || "") +
+        (await autoFallbackHint(env, name)) +
         `Environment: ${isServerlessRuntime(env) ? "serverless/worker" : "local/container"}`,
     )
   }

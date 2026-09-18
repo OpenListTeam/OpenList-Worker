@@ -151,6 +151,24 @@ test("驱动不可用：错误必须写明该驱动需要什么（d1 示例）",
   )
 })
 
+test("驱动不可用：错误里必须给出「auto 会选谁」的可操作答案", async () => {
+  // kv 不可用，但 Blob 可用 → 应直接建议 DB_DRIVER=blob，用户抄一下即可
+  const env: any = {
+    DB_DRIVER: "kv",
+    DB_FORMAT: "map",
+    JWT_SECRET: JWT,
+    ESA_BLOB: fakeBlob(),
+  }
+
+  const status = await getStoreStatus(env)
+  assert.equal(status.configErrorCode, "DRIVER_UNAVAILABLE")
+  assert.match(
+    String(status.configError),
+    /Auto-detection would pick: DB_DRIVER=blob/,
+    "必须告诉用户改成什么（而不是让他自己猜）",
+  )
+})
+
 test("init_status：存储配置错误时必须返回 storage_error，而不是无声的 false", async () => {
   const env: any = {
     DB_DRIVER: "blob",
