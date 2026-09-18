@@ -114,7 +114,7 @@ npx tsc --noEmit -p tsconfig.json        # 类型检查：exit 0，无错误
 node --import tsx --test "src/backend/**/*.test.ts"
 ```
 
-测试结果：**245 个测试，242 通过**。
+测试结果：**253 个测试，250 通过**。
 
 其中 3 个失败为**既有问题，与本 PR 无关**（已逐项确认未引用本 PR 涉及的任何代码）：
 
@@ -268,7 +268,9 @@ Range 只回传一个分片时按**分片大小**判断，视频拖动进度与�
 - `cb4051f` — `fix(proxy): bound the upstream body size after a Range retry`
 - `47d70d3` — `fix(proxy): detect EdgeOne runtimes by the SCF and Blob markers`
 - `23a957e` — `refactor(proxy)!: align driver proxy capabilities with Go meta.go`
-- （本条 docs 提交）— `docs(pr): record the Go alignment pass`
+- （上一次 docs 提交）— `docs(pr): record the Go alignment pass`
+- `8454f76` — `feat(proxy): honour proxy_types, text_types and proxy_ignore_headers`
+- （本条 docs 提交）— `docs(pr): document extension proxying and the /p gate`
 
 （哈希随本 PR 的最新提交更新；完整 diff 规模以 GitHub PR 页面为准。）
 
@@ -298,5 +300,28 @@ Range 只回传一个分片时按**分片大小**判断，视频拖动进度与�
 | 驱动能力的两份真相 | 能力声明只在各驱动 `meta.go`，`op/driver.go` 据此生成表单 | `admin.ts` 的 `buildProxyFields()` 改为按驱动名从 `internal/driver/proxy.ts` 派生（22 处调用点不再传 `only_proxy/prefer` 布尔值），并删除 `registerDriverProxyCapability()` 这类重复登记入口 |
 | `PreferProxy` 的用途 | 只用于**表单默认值**（`op/driver.go`），运行时 `ShouldProxy` 只看 `MustProxy \|\| WebProxy` | `resolveProxyDecision()` 不再在运行时强制 `PreferProxy` 驱动代理，改为「`web_proxy` 未配置时回退到驱动默认值」（`effectiveWebProxy()`），显式 `web_proxy=false` 会被尊重 |
 | `proxy_range` | 透明代理**默认转发客户端头（含 Range）**；`proxy_range` 只是额外启用驱动的 RangeReader 路径（`internal/net/serve.go`、`internal/stream/util.go`） | 默认改为**透传 Range**，`proxy_range=false` 才丢弃；保留 `shouldRetryWithoutRange()` 作为上游拒绝 Range 的兜底 |
-| 未实现的 Go 特性 | `proxy_types` / `text_types` 扩展名代理、`/p` 的 403 限制、`proxy_ignore_headers` | 本 PR 不实现，已在 `internal/driver/proxy.ts` 顶部「与 Go 的已知差异」中记录 |
+| 未实现的 Go 特性 | `proxy_types` / `text_types` 扩展名代理、`/p` 的 403 限制、`proxy_ignore_headers` | **已实现**（见下方「扩展名代理与 /p 准入」），默认值对齐 Go 的 `internal/bootstrap/data/setting.go` |
+
+### 扩展名代理与 /p 准入（对齐 Go 的 proxy_types / text_types / canProxy）
+
+- **`proxy_types`（默认 `m3u8,url`）**：命中的扩展名一律由服务端代理——`.m3u8` / `.url`
+  内部含相对引用，只有经本服务转发才能被正确解析。作用于 `/d`、`/sd` 与 `/p`
+  （即 Go `ShouldProxy` 的第三条）。
+- **`text_types`（默认值取 Go 与 TSWorker 既有默认的并集）**：`/p` 端点用它放行文本类
+  预览（README、歌词 `.lrc`、字幕 `.srt` / `.ass` / `.vtt`、弹幕等），即使存储没有开启
+  `web_proxy`。历史默认值会由 `LEGACY_SETTING_MIGRATIONS` 自动迁移，避免升级后字幕/歌词
+  预览被 403。
+- **`/p` 准入检查（Go `canProxy`）**：命中
+  `MustProxy || web_proxy || webdav_policy=use_proxy_url || proxy_types || text_types`
+  才放行，否则 **403 `proxy not allowed`**。`/d`、`/sd` 不做该限制（Go 里它们走
+  `ShouldProxy`）。WebDAV 协议端点（`/dav/*`）的 GET/HEAD 会按同一判据选择
+  `/api/p` 或 `/api/d`，避免 WebDAV 客户端拿到 403。
+- **`proxy_ignore_headers`（默认 `authorization,referer`）**：作用于本服务转发给上游的
+  **客户端头**（Range、兜底 User-Agent）；驱动自己声明的头不受影响——与 Go 的
+  `ProcessHeader` 一致（先过滤客户端头，再套驱动 override）。注意 TS 只转发这几个必要
+  的头，不会像 Go 那样把客户端全部请求头转发给上游（避免 Cookie/Authorization 泄漏给
+  第三方上游）。
+- **`bunny_storage` 的条件能力**：对齐 Go `drivers/bunny_storage/driver.go` 的 `Config()`
+  ——配置了 `storage_zone_name` 但未绑定 `cdn_base_url` 时视为 `MustProxy`（此时只有
+  Storage API 可读，浏览器直连会 401）；绑定 CDN 后按普通驱动处理。
 | 平台载荷上限守卫（本 PR 新增） | Go 无常驻进程内的大小限制（由 nginx 等外部配置负责） | 属 EdgeOne 等 Serverless 平台的适配层，非照搬 Go；已删掉其中无 Go 对应、也无实际需求的 `RAW_PROXY_OVERFLOW` 开关 |
