@@ -285,6 +285,28 @@ test("显式驱动不可用但有可用后端：必须先降级保站点可用�
   assert.match(String(st.storage_suggestion), /DB_DRIVER=blob/)
 })
 
+test("DB_DRIVER_STRICT：写在 process.env 里同样生效（Node/EdgeOne 路径）", async () => {
+  // aws-lambda 适配器把 c.env 设成 { event, requestContext, context }，
+  // 控制台变量只出现在 process.env —— 开关若只读 env 就会静默失效。
+  const env: any = {
+    DB_DRIVER: "kv",
+    DB_FORMAT: "map",
+    JWT_SECRET: JWT,
+    ESA_BLOB: fakeBlob(),
+  }
+  process.env.DB_DRIVER_STRICT = "true"
+  try {
+    const status = await getStoreStatus(env)
+    assert.equal(
+      status.configErrorCode,
+      "DRIVER_UNAVAILABLE",
+      "process.env 中的 DB_DRIVER_STRICT 必须能关掉降级",
+    )
+  } finally {
+    delete process.env.DB_DRIVER_STRICT
+  }
+})
+
 test("CF 场景：只配 DB_DRIVER/DB_FORMAT/JWT_SECRET 且已绑 D1，kv 写错也能正常用", async () => {
   // 用户实际报的场景：CF 上只设了 DB_DRIVER=kv、DB_FORMAT=map、JWT_SECRET，
   // 但没有 kv_namespaces 绑定（D1 是绑好的）。修前：全部 API 503，

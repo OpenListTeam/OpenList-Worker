@@ -366,7 +366,16 @@ function autoPickHint(driver: Driver | null): string {
  * DB_DRIVER_STRICT=true。
  */
 function isDriverStrict(env: any): boolean {
-  const raw = String(env?.DB_DRIVER_STRICT ?? "")
+  // env 与 process.env 都看：与 hasMysqlConfig()/adminPassConfigured() 的既有
+  // 约定一致 —— Node / EdgeOne 路径下（aws-lambda 适配器把 c.env 设成
+  // { event, requestContext, context }）控制台变量可能只出现在 process.env 里。
+  // 只看 env 会让这个开关在最需要它的部署形态上静默失效。
+  const fromEnv = env?.DB_DRIVER_STRICT
+  const fromProc =
+    typeof process !== "undefined"
+      ? (process as any).env?.DB_DRIVER_STRICT
+      : undefined
+  const raw = String(fromEnv ?? fromProc ?? "")
     .trim()
     .toLowerCase()
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on"
