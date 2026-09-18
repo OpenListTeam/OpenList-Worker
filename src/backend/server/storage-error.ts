@@ -57,6 +57,22 @@ export function reasonLines(code?: string | null): number {
 }
 
 /**
+ * 给界面用的一行短原因。
+ *
+ * 只取首行：我们自己的多行提示都按「首行 = 原因，后续行 = 排查与修复方向」
+ * 排列，所以首行天然是完整的一句 —— 界面不会出现被截断的半句 + 省略号。
+ * 完整说明仍在 message 字段里，供日志与工具使用。
+ */
+export function storageErrorSummary(raw: any): string | null {
+  if (raw === null || raw === undefined) return null
+  const first = String(raw)
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.length > 0)
+  return first ? scrub(first) : null
+}
+
+/**
  * 对错误文本做脱敏，供免鉴权接口使用。
  *
  * 默认只保留首行（去掉多行堆栈）；`maxLines` 用于我们自己的、多行且

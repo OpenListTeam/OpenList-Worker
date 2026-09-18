@@ -145,13 +145,29 @@ test("驱动不可用：错误必须写明该驱动需要什么（d1 示例）",
 
   const status = await getStoreStatus(env)
   assert.equal(status.configErrorCode, "DRIVER_UNAVAILABLE")
+  // 逐驱动的前置条件（需要 d1_databases 绑定）写在完整文案里
   assert.match(String(status.configError), /d1_databases/)
+  assert.match(
+    String(status.configError),
+    /^DB_DRIVER is set to "d1", but that driver is not available in this runtime\.$/m,
+    "首行必须是一句完整的短原因：界面只展示这一行",
+  )
 
   const data = (await (
     await buildApp().request("/api/public/env_check", { method: "GET" }, env)
   ).json()).data
   assert.equal(data.storage.error_code, "DRIVER_UNAVAILABLE")
-  assert.match(String(data.storage.error_message), /d1_databases/)
+  assert.equal(
+    data.storage.summary,
+    `DB_DRIVER is set to "d1", but that driver is not available in this runtime.`,
+    "summary 是给界面的一行短句",
+  )
+  // 接口只透传前 3 行，因此这 3 行必须是「原因 + 不回退 + 怎么做」
+  assert.match(
+    String(data.storage.error_message),
+    /No fallback is performed for an explicitly configured driver/,
+  )
+  assert.match(String(data.storage.error_message), /Check the binding\/credentials/)
   assert.ok(
     data.issues.some((i: any) => i.code === "STORAGE_CONFIG_ERROR"),
     "驱动不可用仍归为配置错误",

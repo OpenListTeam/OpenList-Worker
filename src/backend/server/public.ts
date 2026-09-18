@@ -16,8 +16,12 @@ import {
   readFormat,
 } from "../internal/model/store/backend"
 import { setUserPassword } from "../pkg/password"
-// 脱敏 / 截断 / 建议组装：与全局 503 拦截（index.ts）共用同一套规则
-import { reasonLines, redact, uiStorageError } from "./storage-error"
+// 脱敏 / 截断 / 摘要 / 建议组装：与全局 503 拦截（index.ts）共用同一套规则
+import {
+  reasonLines,
+  redact,
+  storageErrorSummary,
+} from "./storage-error"
 
 export const publicRouter = new Hono()
 
@@ -25,6 +29,15 @@ export const publicRouter = new Hono()
 const DOC_BASE = "https://doc.oplist.org"
 const DOC_STORAGE = `${DOC_BASE}/ecosystem/official_worker/guide_env`
 const DOC_DRIVER = `${DOC_BASE}/ecosystem/official_worker/guide`
+
+/**
+ * 解析值归一：解析失败时内部会用 "none"/空串占位，界面上显示「do → none」
+ * 只会造成困惑，因此统一归一为 null（前端只显示配置值）。
+ */
+function resolvedOrNull(value: any): string | null {
+  const s = String(value ?? "").trim()
+  return s && s !== "none" ? s : null
+}
 
 /**
  * 初始化前的环境自检。
@@ -75,31 +88,87 @@ publicRouter.get("/env_check", async (c) => {
   const issues: {
     code: string
     level: "error" | "warning"
+    /**
+     * 给界面的一行短原因（**应为完整的一句话**）。
+     *
+     * 界面只展示这一行 + suggestion，开发者排查用的长篇说明放在 message 里，
+     * 避免出现「半句话 + 省略号」这种读不懂的提示。
+     */
+    summary: string
+    /** 完整说明（多行、已脱敏）：只给日志/工具用，界面不展示 */
     message: string
     docUrl: string
-    /**
-     * 一句话修复建议（「改什么」）。
-     *
-     * 单独成字段而不是塞进 message：message 会被截断（reasonLines），
-     * 前端也需要把建议放在显眼位置展示；靠解析文案取建议不可靠。
-     */
+    /** 一句话修复建议（「改什么」） */
     suggestion?: string | null
   }[] = []
-  /** 配置错误的分类码 + 原文 + 修复建议（脱敏后展示，code 供前端分支处理） */
+  /** 配置错误的分类码 + 短摘要 + 完整说明 + 修复建议（均脱敏） */
   let storageDetail: {
     code: string | null
+    summary: string | null
     message: string | null
     suggestion: string | null
   } = {
     code: null,
+    summary: null,
     message: null,
     suggestion: null,
   }
 
-  if (isMemory) {
+  if (hasConfigError) {
+    const detail = await getStoreConfigErrorDetail(env, { silent: true })
+    storageDetail = {
+      code: detail.code,
+      summary: storageErrorSummary(detail.message),
+      message: detail.message,
+      suggestion: detail.suggestion,
+    }
+  }
+
+  if (hasConfigError && storageDetail.code === "NO_STORAGE") {
+    // 一个可选后端都没有：这类错误本身就是「没有可用的存储」，用一条通用提示
+    // 说清即可，不必再叠一条内容相同的配置错误（两条 issue 说同一件事只会让
+    // 用户以为出了两个问题）。
+    issues.push({
+      code: "STORAGE_UNAVAILABLE",
+      level: "error",
+      summary: "No storage backend available.",
+      message: "No storage backend available.",
+      docUrl: DOC_STORAGE,
+      suggestion:
+        storageDetail.suggestion ||
+        "Bind a storage backend (D1 / KV / Blob) or set DB_DRIVER=auto.",
+    })
+  } else if (hasConfigError) {
+    // 配置错误：界面只给「一行短原因 + 一行怎么改」；完整排查说明留在 message /
+    // storage.error_message 里，由日志与工具消费。
+    const isInvalidCombination = storageDetail.code === "INVALID_COMBINATION"
+    const reason = redact(
+      storageDetail.message || storage?.configError,
+      reasonLines(storageDetail.code),
+    )
+    issues.push({
+      code: isInvalidCombination
+        ? "STORAGE_INVALID_COMBINATION"
+        : "STORAGE_CONFIG_ERROR",
+      level: "error",
+      summary:
+        storageDetail.summary ||
+        (isInvalidCombination
+          ? "Unsupported storage combination."
+          : "Storage driver is not configured correctly."),
+      message: isInvalidCombination
+        ? `Unsupported storage combination: ${reason}`
+        : `Storage driver is not configured correctly: ${reason}`,
+      docUrl: DOC_DRIVER,
+      suggestion: storageDetail.suggestion,
+    })
+  } else if (isMemory) {
     issues.push({
       code: "STORAGE_MEMORY_ONLY",
       level: serverless ? "error" : "warning",
+      summary: serverless
+        ? "In-memory storage only; data will be lost immediately."
+        : "In-memory storage only; data will be lost on restart (fine for local dev).",
       message: serverless
         ? "In-memory storage only; data will be lost immediately."
         : "In-memory storage only; data will be lost on restart (fine for local dev).",
@@ -111,6 +180,7 @@ publicRouter.get("/env_check", async (c) => {
     issues.push({
       code: "STORAGE_UNAVAILABLE",
       level: "error",
+      summary: "No storage backend available.",
       message: "No storage backend available.",
       docUrl: DOC_STORAGE,
       suggestion:
@@ -118,43 +188,16 @@ publicRouter.get("/env_check", async (c) => {
     })
   }
 
-  if (hasConfigError) {
-    // 只报告「有错误」而不说清原因，会让用户拿着绿灯清单去初始化、然后收到
-    // 一个 500。这里把后端给出的原因（脱敏、限行）直接透给前端：
-    //   - 非法组合（sql + kv 等）：我们自己的多行提示，前 3 行都很有用；
-    //   - 其它配置错误（绑定缺失、密钥缺失、连接失败）：仅首行，避免回显内部细节。
-    const detail = await getStoreConfigErrorDetail(env, { silent: true })
-    const isInvalidCombination = detail.code === "INVALID_COMBINATION"
-    storageDetail = {
-      code: detail.code,
-      message: detail.message,
-      suggestion: detail.suggestion,
-    }
-    const reason = redact(
-      detail.message || storage?.configError,
-      reasonLines(detail.code),
-    )
-    issues.push({
-      code: isInvalidCombination
-        ? "STORAGE_INVALID_COMBINATION"
-        : "STORAGE_CONFIG_ERROR",
-      level: "error",
-      message: isInvalidCombination
-        ? `Unsupported storage combination: ${reason}`
-        : `Storage driver is not configured correctly: ${reason}`,
-      docUrl: DOC_DRIVER,
-      suggestion: detail.suggestion,
-    })
-  }
-
   // 配置齐全但驱动自检失败（如 KV 代理 401、数据库连不上）
   if (hasDriver && !isMemory && !hasConfigError && !driverHealthy) {
+    const unreachable =
+      `Storage driver "${resolvedDriver}" is configured but not reachable` +
+      `${storage.error ? ": " + redact(storage.error) : ""}.`
     issues.push({
       code: "STORAGE_UNHEALTHY",
       level: "error",
-      message:
-        `Storage driver "${resolvedDriver}" is configured but not reachable` +
-        `${storage.error ? ": " + redact(storage.error) : ""}.`,
+      summary: unreachable,
+      message: unreachable,
       docUrl: DOC_DRIVER,
       suggestion:
         "Check the credentials/bindings of the configured driver, or set DB_DRIVER=auto.",
@@ -165,6 +208,7 @@ publicRouter.get("/env_check", async (c) => {
     issues.push({
       code: "JWT_SECRET_MISSING",
       level: serverless ? "error" : "warning",
+      summary: "JWT_SECRET is not set.",
       message: "JWT_SECRET is not set.",
       docUrl: DOC_STORAGE,
       suggestion:
@@ -188,9 +232,10 @@ publicRouter.get("/env_check", async (c) => {
         // 配置值（用户显式设置，或默认值）
         db_format: formatCfg,
         db_driver: driverCfg,
-        // 实际解析值（auto 探测后的结果）
-        resolved_driver: storage?.driver ?? null,
-        resolved_format: storage?.format ?? null,
+        // 实际解析值（auto 探测后的结果）；解析失败时后端内部是 "none"，
+        // 对界面没有意义且会显示成「do → none」，这里统一归一为 null。
+        resolved_driver: resolvedOrNull(storage?.driver),
+        resolved_format: resolvedOrNull(storage?.format),
       },
       storage: {
         available: storageAvailable,
@@ -205,7 +250,13 @@ publicRouter.get("/env_check", async (c) => {
          * PROXY_CONFIG / UNKNOWN_DRIVER / HEALTH_ERROR / DRIVER_ERROR
          */
         error_code: storageDetail.code,
-        /** 配置错误的原因（已脱敏，可直接展示给用户） */
+        /** 一行短原因（界面展示这个） */
+        summary: storageDetail.summary,
+        /**
+         * 完整原因（已脱敏、按分类限行）。
+         *
+         * 只给日志与工具用：界面展示它会出现「半句话 + 省略号」。
+         */
         error_message:
           storageDetail.message !== null
             ? redact(storageDetail.message, reasonLines(storageDetail.code))
@@ -481,18 +532,16 @@ publicRouter.get("/init_status", async (c) => {
   //
   // 安装向导只能看到本接口，因此这里必须给出可展示的原因，否则用户只会拿到
   // 一个 500 或一句「未初始化」，无从判断是绑定缺失、组合写错还是密钥缺失。
-  // 两类原因都返回（已脱敏、限长）：
-  //   storage_error  存储配置不可用（驱动/绑定/组合问题）
-  //   db_load_error  上一次从持久化后端读取失败的原因（运行期故障）
+  // 两类原因都返回（已脱敏）：
+  //   storage_error      一行短原因（界面直接展示，故取首行摘要）
+  //   storage_suggestion 一句话修复建议（「改什么」）
+  //   db_load_error      上一次从持久化后端读取失败的原因（运行期故障）
   let storageError: string | null = null
-  // 一句话修复建议：与 storage_error 成对返回，让向导能把「问题 + 怎么改」
-  // 一起展示，而不是只丢一段原因让用户自己猜。
   let storageSuggestion: string | null = null
   if (!storageReady) {
     const detail = await getStoreConfigErrorDetail(c.env, { silent: true })
-    const ui = uiStorageError(detail)
-    storageError = ui.reason
-    storageSuggestion = ui.suggestion
+    storageError = storageErrorSummary(detail.message)
+    storageSuggestion = detail.suggestion
   }
   const dbLoadError = getDbLoadError()
 
@@ -559,6 +608,8 @@ publicRouter.post("/init/setup", async (c) => {
           "database is not readable; refusing to initialize to avoid overwriting existing config",
         data: {
           code,
+          // 界面展示 summary（完整一句）；reason 保留给工具/日志阅读
+          summary: storageErrorSummary(loadError),
           reason: redact(loadError, reasonLines(code)),
           // 一句话修复建议：有配置原因时优先用它（如「改成 DB_DRIVER=d1」），
           // 否则向导只能展示一段原因，用户仍不知道下一步做什么。

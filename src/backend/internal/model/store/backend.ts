@@ -440,9 +440,10 @@ async function resolveDriver(name: StorageDriver, env?: any): Promise<Driver> {
     const auto = await autoPickDriver(env, name)
     throw storeError(
       "DRIVER_UNAVAILABLE",
-      `DB_DRIVER is set to "${name}", but that driver is not available in ` +
-        `this runtime. No fallback is performed for an explicitly configured ` +
-        `driver.\n` +
+      // 首行必须是完整的一句短原因：界面只展示首行摘要（见 storage-error.ts
+      // 的 storageErrorSummary），混入后续说明会变成被截断的半句话。
+      `DB_DRIVER is set to "${name}", but that driver is not available in this runtime.\n` +
+        `No fallback is performed for an explicitly configured driver.\n` +
         autoPickHint(auto) +
         `Check the binding/credentials for "${name}", or set DB_DRIVER=auto ` +
         `to let the platform pick an available backend.\n` +
