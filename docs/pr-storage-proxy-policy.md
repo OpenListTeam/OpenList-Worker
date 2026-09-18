@@ -47,7 +47,7 @@ const needsProxy =
 - **OneDrive / OneDriveAPP 默认改为 302 直链下载**（对齐 Go 默认值 `302_redirect`）。此前被硬编码强制代理。如需保留代理行为，请将该存储的 `webdav_policy` 设为 `native_proxy`。
 - `web_proxy`、`webdav_policy`、`down_proxy_url`、`disable_proxy_sign` 在后台的配置**从此真实生效**。
 - 存储编辑表单新增四个字段：`proxy_range`、`enable_sign`、`disable_index`、`custom_cache_policies`。
-- 存储表单按驱动能力差异化显示：15 个仅代理驱动不再出现 302 选项；WebDav 的 `web_proxy` 默认勾选；`proxy_range` 仅对 Go 中声明 `ProxyRangeOption` 的驱动显示。
+- 存储表单按驱动能力差异化显示：Go 的 `MustProxy`（`OnlyProxy`/`NoLinkURL`）驱动不再出现 302 选项；`PreferProxy` 驱动的 `web_proxy` 默认勾选；`proxy_range` 仅对 Go 中声明 `ProxyRangeOption` 的驱动显示。
 - `/fs/list` 对开启 `disable_index` 的存储返回 `403 {"message":"Index is disabled for this storage"}`。
 - `/fs/list` 响应新增 `cache_expiration` 字段（路径级缓存策略计算后的分钟数）。
 - **代理下载超过平台载荷上限时不再返回平台错误页**：EdgeOne 云函数对单次请求/响应 body 的上限为 6 MiB，原生代理超限时改为「降级 302 直链」或返回可读的 413（详见下方「平台载荷上限保护」）。
@@ -114,7 +114,7 @@ npx tsc --noEmit -p tsconfig.json        # 类型检查：exit 0，无错误
 node --import tsx --test "src/backend/**/*.test.ts"
 ```
 
-测试结果：**244 个测试，241 通过**。
+测试结果：**245 个测试，242 通过**。
 
 其中 3 个失败为**既有问题，与本 PR 无关**（已逐项确认未引用本 PR 涉及的任何代码）：
 
@@ -126,14 +126,14 @@ node --import tsx --test "src/backend/**/*.test.ts"
 - 上限解析：EdgeOne 运行时默认 6 MiB（含 SCF / Blob 判据）、`RAW_PROXY_MAX_BYTES` 覆盖与置 0 关闭、非法值回退默认
 - 运行时判定：`__requestOrigin` 不构成 EdgeOne 判据（该值在所有平台都会注入，不能用来判平台）
 - 超限判定：等于上限不算超限、Range 分片按分片大小、大小未知不拦截
-- 决策：未超限照常代理、超限可直连时降级 302、超限不可降级时返回 413、`RAW_PROXY_OVERFLOW=error` 时拒绝降级
+- 决策：未超限照常代理、超限且可直连时降级 302、超限且必须带私有鉴权头时返回可读 413
 - 串联 `resolveProxyDecision()`：`web_proxy=true` 的 OneDrive 大文件降级 302；带 `Authorization` 的 WebDAV 大文件返回可读 413
 - **Range + 签名 + 上限的交互**（响应评审意见）：`upstreamBodySize()` 解析 Content-Length / Content-Range；412 兜底重试后上游回整份文件时按实际大小降级 302（签名 URL 无需重算）；正常 206 分片不被误伤；必须带鉴权头时返回可读 413
 - **私有头判定**：`X-Emby-Token` / `X-Amz-Security-Token` / `X-Session-Id` 视为私有头；`User-Agent` / `Referer` / `Origin` / `Content-Type` 不算（与仓库内 33 处 `raw_url_headers` 的实际用法一致）
 
 新增 `internal/driver/storageopts.test.ts`（19 个用例），覆盖：
 
-- `proxy_range`：显式 true/false、未配置时回退驱动默认值、显式值优先于驱动默认
+- `proxy_range`：未配置时默认透传（对齐 Go 的透明代理）、显式 true/false 优先
 - `enable_sign` / `disable_index`：字符串与布尔两种存储形式
 - `custom_cache_policies`：JSON 数组、对象映射、`max_age` 别名、非法输入不抛错
 - glob 匹配：`*` 不跨目录分隔符、`**` 可跨、`?` 通配
@@ -219,10 +219,10 @@ Usage scope / 使用范围:
 
 ### 驱动表单分支（对齐 Go `internal/op/driver.go`）
 
-- **15 个 `only_proxy: true` 驱动**（123Pan、BaiduNetdisk、115Open、WeiYun、Terabox、Mega_nz、123PanShare、SFTP、FTP、SMB、Crypt、Virtual、Strm、ProtonDrive、189Cloud）：策略选项为 `use_proxy_url,native_proxy`，默认 `native_proxy`，**不提供 302**
+- **15 个 `MustProxy`（`OnlyProxy`/`NoLinkURL`）驱动**（WeiYun、SFTP、FTP、SMB、Crypt、Virtual、Strm、Mega_nz、ProtonDrive、Chunk、GoogleDrive、GooglePhoto、QuarkOpen、QuarkUC、ChaoXing）：策略选项为 `use_proxy_url,native_proxy`，默认 `native_proxy`，**不提供 302**。清单由 `internal/driver/proxy.ts` 单点提供，`admin.ts` 不再另抄一份（此前 123Pan / BaiduNetdisk / 115Open / 189Cloud / Terabox / 123PanShare 被误标为 `only_proxy`，而 Go 里它们只有 `PreferProxy` 或没有任何标记）
 - **WebDav**：`web_proxy` 默认 `true`，策略默认 `native_proxy`（对应 Go `PreferProxy: true`）
 - **Onedrive / OnedriveAPP**：默认 `302_redirect`
-- **`proxy_range`**：仅对 Go 中声明 `ProxyRangeOption: true` 的 4 个驱动开放（139Yun、Alias、AListV3、OpenList），其中 **139Yun 默认 `true`**（对应 Go 的 `d.ProxyRange = true`）
+- **`proxy_range`**：仅对 Go 中声明 `ProxyRangeOption: true` 的 4 个驱动开放（139Yun、Alias、AListV3、OpenList）。语义为「是否透传客户端 Range」，**默认 `true`**：Go 的透明代理本就转发客户端请求头（`internal/net/serve.go` 的 `ProcessHeader`），默认关闭会让代理模式下的 seek / 断点续传静默退化；上游拒绝或忽略 Range 时由 `shouldRetryWithoutRange()` 兜底
 
 ### `use_proxy_url` 的签名处理
 
@@ -251,7 +251,6 @@ Range 只回传一个分片时按**分片大小**判断，视频拖动进度与�
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `RAW_PROXY_MAX_BYTES` | EdgeOne 运行时 6 MiB；其他平台不限制 | 平台单次请求/响应上限（字节），设为 `0` 关闭限制（自托管恢复「永远代理」） |
-| `RAW_PROXY_OVERFLOW` | `redirect` | 超限策略：`redirect` 安全时降级 302 直链；`error` 直接 413，避免暴露直链 |
 
 **运行时判定（`isEdgeOneRuntime()`）**：EdgeOne Node 云函数跑在腾讯 SCF 上，平台会注入 `TENCENTCLOUD_SCF_FUNCTIONNAME`（与本仓库 `internal/model/store/backend.ts` 的 `isServerlessRuntime()` 判据一致），因此以该变量 + `EDGEONE_BLOB` / 全局 `EdgeOne` 作为 EdgeOne 特征。**刻意不用 `__requestOrigin`**：它由本仓库 `src/backend/index.ts` 中间件在所有平台上注入，拿它判 EdgeOne 会把 Cloudflare / 自托管一起误判，反而让本可正常代理的大文件被降级成 302。Cloudflare Workers / 阿里云 ESA 不套用 6 MiB；若这些平台也有同类上限，用 `RAW_PROXY_MAX_BYTES` 显式声明即可。
 
@@ -268,8 +267,15 @@ Range 只回传一个分片时按**分片大小**判断，视频拖动进度与�
 - `cc896eb` — `docs(pr): document the platform payload-limit guard for the storage proxy policy PR`
 - `cb4051f` — `fix(proxy): bound the upstream body size after a Range retry`
 - `47d70d3` — `fix(proxy): detect EdgeOne runtimes by the SCF and Blob markers`
+- `23a957e` — `refactor(proxy)!: align driver proxy capabilities with Go meta.go`
+- （本条 docs 提交）— `docs(pr): record the Go alignment pass`
 
-（本条 docs 提交负责同步上述列表与测试数据；完整 diff 规模以 GitHub PR 页面为准。）
+（哈希随本 PR 的最新提交更新；完整 diff 规模以 GitHub PR 页面为准。）
+
+> **破坏性行为变更（第二处）**：`PreferProxy` 驱动的「未配置 `web_proxy`」仍默认代理；但
+> **显式设置 `web_proxy=false` 的 WebDav / 123Pan / BaiduNetdisk 存储会从「代理」变为「302 直链」**
+> （与 Go 一致）。同理，此前被误标为强制代理的 115Open / 189Cloud / Terabox / 123PanShare
+> 现在可以走直链；GoogleDrive / GooglePhoto / QuarkOpen / QuarkUC / ChaoXing 则改为强制代理。
 
 ## 评审意见处理
 
@@ -281,5 +287,16 @@ Range 只回传一个分片时按**分片大小**判断，视频拖动进度与�
 | P2 驱动能力映射缺少文档注释 | **已在 `954ebff` 补上**：`internal/driver/proxy.ts` 顶部有驱动 ↔ Go `drivers/*/meta.go` 的完整映射表 |
 | P2 未在真实环境端到端验证 | 仍需手动回归（见上方「未做的验证」） |
 | **自审追加**：运行时判据写错，守卫在 EdgeOne 上不会生效 | **已在 `47d70d3` 修复**：原先只查 `EDGEONE` / `EO_REGION`，而 EdgeOne Node 云函数的平台特征是 `TENCENTCLOUD_SCF_FUNCTIONNAME`（见 `internal/model/store/backend.ts`），会导致 6 MiB 守卫在目标平台上静默失效；现补上 SCF / `EDGEONE_BLOB` 判据，并明确不采用 `__requestOrigin` |
-| **自审追加**：私有头用精确名单易漏判 | **已在 `47d70d3` 修复**：改为「鉴权语义模式 + 浏览器安全头白名单」；已核对仓库内 33 处 `raw_url_headers`，现有驱动行为不变 |
+| **自审追加**：私有头判定过于复杂 | 先在 `47d70d3` 改成「鉴权语义模式 + 白名单」，随后对比 Go 后**退回精确名单**（`Authorization` / `Cookie`）：仓库内 33 处 `raw_url_headers` 只用这两种鉴权头，驱动若引入新头名应按 Go 的 `meta.go` 登记为 `MustProxy`，而不是在下载层猜头名 |
 | **自审追加**：413 文案把平台写死 | **已在 `47d70d3` 修正**：改为中性表述，并提示限制也可能来自 `RAW_PROXY_MAX_BYTES` |
+
+## 与 Go 版逐项对齐（对比 `OpenList-Backends` 后修正）
+
+| 项 | Go 的事实 | 本 PR 的处理 |
+|---|---|---|
+| 强制代理清单 | `Config.MustProxy() = OnlyProxy \|\| NoLinkURL`，实际为 WeiYun、SFTP、FTP、SMB、Crypt、Virtual、Strm、Mega、ProtonDrive、Chunk、GoogleDrive、GooglePhoto、QuarkOpen、UC、ChaoXing（`local` 不在本 PR 的下载链路内；`bunny_storage` 是运行时条件） | 按此重写 `DRIVER_FORCE_PROXY`；删掉误标的 123Pan / BaiduNetdisk / 115Open / 189Cloud，补上缺失的 GoogleDrive / GooglePhoto / QuarkOpen / QuarkUC / ChaoXing / Chunk |
+| 驱动能力的两份真相 | 能力声明只在各驱动 `meta.go`，`op/driver.go` 据此生成表单 | `admin.ts` 的 `buildProxyFields()` 改为按驱动名从 `internal/driver/proxy.ts` 派生（22 处调用点不再传 `only_proxy/prefer` 布尔值），并删除 `registerDriverProxyCapability()` 这类重复登记入口 |
+| `PreferProxy` 的用途 | 只用于**表单默认值**（`op/driver.go`），运行时 `ShouldProxy` 只看 `MustProxy \|\| WebProxy` | `resolveProxyDecision()` 不再在运行时强制 `PreferProxy` 驱动代理，改为「`web_proxy` 未配置时回退到驱动默认值」（`effectiveWebProxy()`），显式 `web_proxy=false` 会被尊重 |
+| `proxy_range` | 透明代理**默认转发客户端头（含 Range）**；`proxy_range` 只是额外启用驱动的 RangeReader 路径（`internal/net/serve.go`、`internal/stream/util.go`） | 默认改为**透传 Range**，`proxy_range=false` 才丢弃；保留 `shouldRetryWithoutRange()` 作为上游拒绝 Range 的兜底 |
+| 未实现的 Go 特性 | `proxy_types` / `text_types` 扩展名代理、`/p` 的 403 限制、`proxy_ignore_headers` | 本 PR 不实现，已在 `internal/driver/proxy.ts` 顶部「与 Go 的已知差异」中记录 |
+| 平台载荷上限守卫（本 PR 新增） | Go 无常驻进程内的大小限制（由 nginx 等外部配置负责） | 属 EdgeOne 等 Serverless 平台的适配层，非照搬 Go；已删掉其中无 Go 对应、也无实际需求的 `RAW_PROXY_OVERFLOW` 开关 |
