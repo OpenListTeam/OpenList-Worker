@@ -365,3 +365,32 @@ test("secret persistence: degrades gracefully when no backend is available", asy
     false,
   )
 })
+
+test("getKvBinding: 同一 env 只解析一次（含 mode=none），重复调用返回同一缓存对象", async () => {
+  // 回归：此前只有「成功」的绑定会被缓存，`mode=none` 直接 return，于是每次
+  // 调用都会重新探测 env.KV / globalThis.KV、重试 Blob SDK 初始化，并重新打印
+  // 一次告警。登录失败计数、注销黑名单、审计日志读写都在这条路径上
+  // （serverless 日志被同一行刷屏的来源之一）。
+  const { getKvBinding } = await import("./json")
+  const env: any = { DB_DRIVER: "auto" }
+
+  const warns: string[] = []
+  const origWarn = console.warn
+  console.warn = (...args: any[]) => {
+    warns.push(String(args[0]))
+  }
+  try {
+    const first = await getKvBinding(env)
+    const second = await getKvBinding(env)
+    // 关键断言：同一 env 的第二次调用命中缓存（同一对象引用），
+    // 因此既不重复探测，也不重复告警。
+    assert.equal(second, first, "同一 env 应返回同一缓存对象")
+  } finally {
+    console.warn = origWarn
+  }
+
+  assert.ok(
+    warns.filter((w) => w.includes("getKvBinding")).length <= 1,
+    "「未探测到 KV 绑定」的告警每个进程最多打印一次",
+  )
+})

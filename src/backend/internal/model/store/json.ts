@@ -72,27 +72,55 @@ function installRespSafetyNet() {
 let jsonEnvCtx: any = null
 
 /**
- * Result cache for getKvBinding().
+ * getKvBinding() 的结果缓存。
  *
- * Why this exists:
- *   - getKvBinding() re-probes env.KV / globalThis.KV, attempts Blob SDK
- *     initialisation and emits console.log on every call;
- *   - readPersistedSecret / writePersistedSecret / logAudit all call it, so a
- *     single request may hit it 3-5 times.
- * Binding resolution depends only on the identity of the env object (one env
- * per request), so memoising per env via a WeakMap is both safe and enough to
- * remove the repeated probing and log noise.
- * Only resolved results are cached (not thrown errors); the key is the env
- * object, so entries are released automatically with the env itself.
+ * 为什么需要它：
+ *   - getKvBinding() 每次都会重新探测 env.KV / globalThis.KV、尝试初始化
+ *     Blob SDK，并打印 console.warn；
+ *   - 登录失败计数、注销黑名单、审计日志读写都会调用它，单次请求可能命中数次。
+ * 绑定只取决于 env 对象的身份（`1 env = 1 请求`），因此按 env 身份用 WeakMap
+ * 记忆化既安全又足以消除重复探测与日志噪声。
+ *
+ * 缓存语义（重要）：
+ *   - 成功结果（binding / blob / api / proxy）永久缓存：绑定在实例生命周期内
+ *     不会变化；
+ *   - `none`（探测不到任何 KV 风格绑定）只做短 TTL 缓存：既消除同一请求内的
+ *     重复探测与重复告警，又保留「冷启动早期 SDK 尚未就绪、稍后重试即可用」的
+ *     既有语义（见 getBlobStore() 的探测次数上限）。
+ * 键是 env 对象本身，条目随 env 被 GC 回收，不会无限增长。
  */
-const kvBindingCache = new WeakMap<
-  object,
-  {
-    binding: any
-    platform: string
-    mode: "binding" | "blob" | "api" | "proxy" | "none"
+const KV_BINDING_NONE_TTL_MS = 1000
+
+type KvBindingInfo = {
+  binding: any
+  platform: string
+  mode: "binding" | "blob" | "api" | "proxy" | "none"
+}
+
+const kvBindingCache = new WeakMap<object, KvBindingInfo & { ts: number }>()
+
+/** 读取缓存：`none` 结果超过 TTL 视为未命中，允许重新探测。 */
+function readKvBindingCache(env: any): KvBindingInfo | null {
+  if (!env || typeof env !== "object") return null
+  const entry = kvBindingCache.get(env)
+  if (!entry) return null
+  if (entry.mode === "none" && Date.now() - entry.ts >= KV_BINDING_NONE_TTL_MS) {
+    return null
   }
->()
+  return entry
+}
+
+/**
+ * 写入缓存并返回同一对象引用。
+ *
+ * 返回缓存条目本身（而不是另建对象）是为了让调用方在同一 TTL 窗口内拿到
+ * **同一个引用**，行为可被测试直接断言。
+ */
+function writeKvBindingCache(env: any, info: KvBindingInfo): KvBindingInfo {
+  const entry: KvBindingInfo & { ts: number } = { ...info, ts: Date.now() }
+  if (env && typeof env === "object") kvBindingCache.set(env, entry)
+  return entry
+}
 
 export function setJsonEnvCtx(env: any) {
   if (env) jsonEnvCtx = env
@@ -168,6 +196,15 @@ function createProxyBinding(_origin: string, env: any): any {
   }
 }
 
+/**
+ * 「未探测到 KV 风格绑定」的告警是否已打印过。
+ *
+ * 该分支位于登录失败计数 / 注销黑名单 / 审计日志等热路径上，且此前每次调用都会
+ * 打印一次，导致 serverless 日志被同一行刷屏（issue #51 的噪声来源之一）。
+ * 每个进程提示一次即可：这是环境配置结论，不是每请求事件。
+ */
+let kvNoneWarnedOnce = false
+
 export async function getKvBinding(envCtx?: any): Promise<{
   binding: any
   platform: string
@@ -181,10 +218,8 @@ export async function getKvBinding(envCtx?: any): Promise<{
   const g = typeof globalThis !== "undefined" ? (globalThis as any) : {}
 
   // 结果缓存：同一 env 对象只解析一次绑定（详见 kvBindingCache 注释）。
-  if (env && typeof env === "object") {
-    const cached = kvBindingCache.get(env)
-    if (cached) return cached
-  }
+  const cached = readKvBindingCache(env)
+  if (cached) return cached
 
   /**
    * 原生 KV binding 探测。
@@ -223,8 +258,7 @@ export async function getKvBinding(envCtx?: any): Promise<{
         platform: "EdgeOne KV (via Edge Function proxy)",
         mode: "proxy" as const,
       }
-      if (env && typeof env === "object") kvBindingCache.set(env, proxyResult)
-      return proxyResult
+      return writeKvBindingCache(env, proxyResult)
     }
     console.warn(
       "[DB] getKvBinding: KV proxy requested but no origin available " +
@@ -243,8 +277,7 @@ export async function getKvBinding(envCtx?: any): Promise<{
         platform: "EdgeOne Blob (@edgeone/pages-blob, strong consistency)",
         mode: "blob" as const,
       }
-      if (env && typeof env === "object") kvBindingCache.set(env, blobResult)
-      return blobResult
+      return writeKvBindingCache(env, blobResult)
     }
   } catch (err: any) {
     console.error(
@@ -267,8 +300,7 @@ export async function getKvBinding(envCtx?: any): Promise<{
       platform: platformName,
       mode: "binding" as const,
     }
-    if (env && typeof env === "object") kvBindingCache.set(env, bindingResult)
-    return bindingResult
+    return writeKvBindingCache(env, bindingResult)
   }
 
   // 3. Cloudflare REST API 模式（显式 DB_DRIVER=cfkv 或凭据齐全时自动启用）
@@ -294,8 +326,7 @@ export async function getKvBinding(envCtx?: any): Promise<{
         platform: "Cloudflare KV (REST API)",
         mode: "api" as const,
       }
-      if (env && typeof env === "object") kvBindingCache.set(env, apiResult)
-      return apiResult
+      return writeKvBindingCache(env, apiResult)
     }
   }
 
@@ -309,17 +340,26 @@ export async function getKvBinding(envCtx?: any): Promise<{
   const configuredDriver = String(env?.DB_DRIVER || "")
     .trim()
     .toLowerCase()
-  if (configuredDriver && configuredDriver !== "auto") {
-    console.warn(
-      `[DB] getKvBinding: no KV-style binding found; DB_DRIVER="${configuredDriver}" ` +
-        `is served by getStorageBackend() instead. This is expected.`,
-    )
-  } else {
-    console.warn(
-      "[DB] getKvBinding: no KV/Blob binding found in auto detection.",
-    )
+  // 每个进程只提示一次（详见 kvNoneWarnedOnce 注释）。
+  if (!kvNoneWarnedOnce) {
+    kvNoneWarnedOnce = true
+    if (configuredDriver && configuredDriver !== "auto") {
+      console.warn(
+        `[DB] getKvBinding: no KV-style binding found; DB_DRIVER="${configuredDriver}" ` +
+          `is served by getStorageBackend() instead. This is expected.`,
+      )
+    } else {
+      console.warn(
+        "[DB] getKvBinding: no KV/Blob binding found in auto detection.",
+      )
+    }
   }
-  return { binding: null, platform: "none", mode: "none" }
+  // `none` 同样要写缓存：否则每次调用都会重新探测一遍并重新告警。
+  return writeKvBindingCache(env, {
+    binding: null,
+    platform: "none",
+    mode: "none",
+  })
 }
 
 async function readFromKv(

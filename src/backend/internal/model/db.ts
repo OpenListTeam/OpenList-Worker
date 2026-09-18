@@ -1078,22 +1078,27 @@ const dbInflight = new WeakMap<object, Promise<any>>()
 let storeBackendLoader: (env: any) => Promise<any> = (env) =>
   getStoreBackend(env)
 
-/** 仅供测试：重置模块级缓存与内存快照，保证用例相互隔离。 */
+/**
+ * 仅供测试：重置模块级缓存与内存快照，保证用例相互隔离。
+ *
+ * 注意：必须把「写前守卫」的状态（dbTrusted / dbLastLoadError / dbWriteBlocked）
+ * 一并复位。它们同样是模块级状态，且 db_write_guard.test.ts 直接断言其取值；
+ * 只清缓存会让「reset 后回到初始态」的假设不成立，用例结果将取决于执行顺序。
+ */
 export const __resetDbCacheForTest = () => {
-  // WeakMap 无法整体清空，但缓存键只有「当前 globalEnvCtx」与传入的 env，
-  // 逐个 delete 即可；同时清空最近一次的缓存键记录。
+  // WeakMap 无法整体清空，但无参调用的缓存键就是 globalEnvCtx 自身
+  // （见 resolveNoArgKey），逐个 delete 即可。
   if (globalEnvCtx && typeof globalEnvCtx === "object") {
     dbCache.delete(globalEnvCtx)
     dbInflight.delete(globalEnvCtx)
   }
-  if (noArgCacheKey) {
-    dbCache.delete(noArgCacheKey)
-    dbInflight.delete(noArgCacheKey)
-  }
-  noArgCacheKey = null
   globalEnvCtx = null
   memoryDb = null
   storeBackendLoader = (env: any) => getStoreBackend(env)
+  // 写前守卫状态复位（否则跨用例串味）
+  dbTrusted = false
+  dbLastLoadError = null
+  dbWriteBlocked = false
 }
 
 /** 仅供测试：注入统计型存储后端。 */
@@ -1104,7 +1109,7 @@ export const __setStoreBackendLoaderForTest = (
 }
 
 /**
- * 无参 getDb() 的兜底缓存键。
+ * 解析无参 getDb() / saveDb() 应使用的缓存键（即请求级 globalEnvCtx）。
  *
  * 为什么需要它（这是一次线上性能事故的修复核心）：
  *
@@ -1123,17 +1128,12 @@ export const __setStoreBackendLoaderForTest = (
  * 环境），并以它为键复用同一套缓存。这样同一请求（同一 isolate）内的重复调用
  * 命中缓存，不再重复落盘与解密。
  *
- * 说明：这里仅保留「最近一次」的请求级 env 引用（noArgCacheKey），用于在
- * saveDb 等场景同步刷新缓存；该引用会随下一次请求被覆盖，不会跨请求无限增长。
+ * 这是一个**纯函数**（不写入任何模块状态）：无参调用的缓存键始终就是
+ * `globalEnvCtx` 本身，saveDb 刷新缓存时用同一个键，天然对称。
  */
-let noArgCacheKey: object | null = null
-
-/** 解析无参 getDb() 应使用的缓存键（优先请求级 globalEnvCtx）。 */
 const resolveNoArgKey = (): object | null => {
   const ctx = globalEnvCtx
-  if (!ctx || typeof ctx !== "object") return null
-  noArgCacheKey = ctx
-  return noArgCacheKey
+  return ctx && typeof ctx === "object" ? ctx : null
 }
 
 const loadDb = async (envCtx?: any) => {
@@ -1584,14 +1584,29 @@ async function sealDb(data: any, key: string | null): Promise<any> {
   return copy
 }
 
+/**
+ * 解密并发上限。
+ *
+ * 解密是 WebCrypto + PBKDF2（10 万次迭代）的异步重活：串行会让墙钟随字段数
+ * 线性增长，而一次性全部并发又会在字段极多时造成 CPU/内存峰值。16 是兼顾
+ * serverless 延迟与峰值的折中值。
+ */
+const UNSEAL_CONCURRENCY = 16
+
 async function unsealDb(data: any, key: string | null): Promise<void> {
   if (!key || !data) return
 
-  // 并行解密：原先三类字段（storage/setting/user）各自串行 await，字段数一多
-  // 就是「N 次 await 叠加」，且该函数在一次请求内会被调用多次（历史缺陷下更是
-  // 数十次），是加载变慢的主要贡献之一。这里改为先收集待解密任务再 Promise.all。
-  // 注意：只并行「收集阶段是同步」的部分，避免在循环中混入 await 导致伪并行。
-  const tasks: Promise<void>[] = []
+  // 并行解密（带并发上限）：
+  //
+  // 原先三类字段（storage/setting/user）各自串行 await，字段一多就是「N 次
+  // await 叠加」；而 decrypt 走 WebCrypto + PBKDF2（10 万次迭代），是真正的
+  // 异步重活，且该函数在一次请求内会被调用多次（历史缺陷下更是数十次），
+  // 是加载变慢的主要贡献之一。
+  //
+  // 这里先**同步收集 thunk**（不在收集阶段就把解密全部发起），再按
+  // UNSEAL_CONCURRENCY 分批 await：既拿到并行带来的墙钟收益，又避免字段极多
+  // （如数千用户）时一次性并发过多造成 CPU/内存峰值。
+  const tasks: Array<() => Promise<void>> = []
 
 
   // 1. 解密存储配置
@@ -1603,11 +1618,9 @@ async function unsealDb(data: any, key: string | null): Promise<void> {
     ) {
       const target = s
       const cipher = target.addition
-      tasks.push(
-        unsealValue(cipher, key).then((plain) => {
-          target.addition = plain
-        }),
-      )
+      tasks.push(async () => {
+        target.addition = await unsealValue(cipher, key)
+      })
     }
   }
 
@@ -1621,11 +1634,9 @@ async function unsealDb(data: any, key: string | null): Promise<void> {
     ) {
       const target = st
       const cipher = target.value
-      tasks.push(
-        unsealValue(cipher, key).then((plain) => {
-          target.value = plain
-        }),
-      )
+      tasks.push(async () => {
+        target.value = await unsealValue(cipher, key)
+      })
     }
   }
 
@@ -1639,11 +1650,9 @@ async function unsealDb(data: any, key: string | null): Promise<void> {
     ) {
       const target = u
       const cipher = target.otp_secret
-      tasks.push(
-        unsealValue(cipher, key).then((plain) => {
-          target.otp_secret = plain
-        }),
-      )
+      tasks.push(async () => {
+        target.otp_secret = await unsealValue(cipher, key)
+      })
     }
     // 密码解密
     if (
@@ -1652,15 +1661,15 @@ async function unsealDb(data: any, key: string | null): Promise<void> {
     ) {
       const target = u
       const cipher = target.password
-      tasks.push(
-        unsealValue(cipher, key).then((plain) => {
-          target.password = plain
-        }),
-      )
+      tasks.push(async () => {
+        target.password = await unsealValue(cipher, key)
+      })
     }
   }
 
-  if (tasks.length > 0) await Promise.all(tasks)
+  for (let i = 0; i < tasks.length; i += UNSEAL_CONCURRENCY) {
+    await Promise.all(tasks.slice(i, i + UNSEAL_CONCURRENCY).map((run) => run()))
+  }
 }
 
 export const saveDb = async (

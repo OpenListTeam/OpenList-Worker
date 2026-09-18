@@ -4449,8 +4449,12 @@ adminRouter.post("/setting/set_thunderx", async (c) => {
 adminRouter.post("/setting/reset_token", async (c) => {
   const newToken = generateSecureToken(32)
   await updateSettingValue(c.env, { token: newToken })
-  // 对应 Go sign.Instance()：token 变更后清除进程内 JWT secret 缓存，
-  // 强制下次请求重新加载新密钥，使所有旧 token 立即失效。
+  // `token` 设置是链接/下载签名密钥（对应 Go 的 sign.Instance()），
+  // 变更后旧的下载链接签名立即失效——与 Go ResetToken 行为一致。
+  //
+  // 注意：JWT 密钥来自 env.JWT_SECRET / 持久化的 openlist_jwt_secret，与这里的
+  // `token` 设置无关，所以清 JWT 缓存**不会**让已签发的 JWT 失效；这里调用只是
+  // 让进程内缓存与最新的 env/持久化值保持一致。
   const { resetJwtSecretCache } = await import("./middlewares")
   resetJwtSecretCache()
   return c.json({ code: 200, message: "success", data: newToken })

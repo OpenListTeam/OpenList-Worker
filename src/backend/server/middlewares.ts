@@ -4,18 +4,48 @@ import { checkAdminAuth, isStaticApiToken } from "../pkg/utils"
 import { getDb } from "../internal/model/db"
 
 // 不再硬编码 JWT 密钥。优先使用环境变量 JWT_SECRET（推荐在生产配置），
-// 否则从 KV 持久化一个随机密钥（首次生成后复用，重启不失效），
-// 开发环境（无 KV）回退到进程内随机密钥。
+// 否则从持久化后端读取一个随机密钥（首次生成后复用，重启不失效），
+// 开发环境（无持久化）回退到进程内随机密钥。
+//
+// 缓存粒度：**按 env 对象**，而不是单一的进程级变量。
+//
+// 为什么必须分 env：`env` 决定「去哪个后端读密钥」（driver 由 env 解析）。
+// 一个进程若先后服务两套不同配置（多环境/多项目共用实例、本地同时连两套配置、
+// 测试），单一进程级缓存会把先读到的那把密钥发给另一套环境，导致跨环境 token
+// 可以互相验证。Go 版不存在这个问题——它是单进程单部署，密钥在启动时由
+// `conf.Conf.JwtSecret` 一次性确定（server/router.go: common.SecretKey）；
+// TS 版必须按 env 隔离才能保持同样的语义。
 let cachedJwtSecret: string | null = null
+let jwtSecretByEnv = new WeakMap<object, string>()
 const JWT_SECRET_KV_KEY = "openlist_jwt_secret"
 
+/** 记录某个 env 的密钥，并更新进程级 last-known 值（无 env 对象时的兜底）。 */
+function rememberJwtSecret(env: any, secret: string): void {
+  if (env && typeof env === "object") jwtSecretByEnv.set(env, secret)
+  cachedJwtSecret = secret
+}
+
+/** 读取某个 env 的缓存密钥；没有 env 对象时退回进程级 last-known 值。 */
+function readCachedJwtSecret(env: any): string | null {
+  if (env && typeof env === "object") return jwtSecretByEnv.get(env) ?? null
+  return cachedJwtSecret
+}
+
 /**
- * 清除进程内 JWT secret 缓存。
- * 对应 Go 的 sign.Instance()：reset_token 后调用此函数，
- * 强制下次请求从 KV/env 重新加载新密钥，使旧 token 全部失效。
+ * 清除 JWT secret 缓存（全部 env），用于强制下次调用重新解析密钥来源。
+ *
+ * 语义边界（与 Go 对齐，勿夸大）：
+ *   - Go 的 `reset_token` 重置的是**链接签名密钥**，即 DB 里的 `token` 设置
+ *     （internal/sign/sign.go: NewHMACSign(setting.GetStr(conf.Token))），
+ *     并不更换 JWT 密钥（JWT 用 common.SecretKey = conf.Conf.JwtSecret）；
+ *   - TS 的 JWT 密钥来自 env.JWT_SECRET 或持久化的 openlist_jwt_secret，清缓存
+ *     后读到的是**同一把**密钥，因此已签发的 JWT **不会**失效——这与 Go 一致。
+ * 若确实要求所有已签发 JWT 立即失效，必须更换密钥本身，而不是只清缓存。
  */
 export function resetJwtSecretCache(): void {
   cachedJwtSecret = null
+  // WeakMap 无法逐项清空，整体替换即可（旧条目随 env 一起被 GC）。
+  jwtSecretByEnv = new WeakMap<object, string>()
 }
 
 function generateRandomSecret(): string {
@@ -67,17 +97,18 @@ export async function getJwtSecret(c?: Context | any): Promise<string> {
     return envSecret
   }
 
-  // 2. KV 持久化密钥（跨实例/重启稳定）
-  // 性能修复：命中后直接返回缓存，避免每次调用都回源 KV。
-  // 修复前此分支只 `return kvSecret` 而不写 cachedJwtSecret，导致
+  // 2. 持久化密钥（跨实例/重启稳定），按 env 缓存
+  // 性能修复：命中后直接返回缓存，避免每次调用都回源存储。
+  // 修复前此分支只 `return kvSecret` 而不写缓存，导致
   // getUserFromContext / csrfProtection / checkAdminAuth 等每请求 2-4 次调用
-  // 都会各自触发一次 KV 回源（KV 后端下这是最贵的操作之一）。
-  if (cachedJwtSecret && cachedJwtSecret.length >= 32) {
-    return cachedJwtSecret
+  // 都会各自触发一次后端读取（KV/D1 后端下这是最贵的操作之一）。
+  const cached = readCachedJwtSecret(env)
+  if (cached && cached.length >= 32) {
+    return cached
   }
   const kvSecret = await readKvSecret(env)
   if (kvSecret && kvSecret.length >= 32) {
-    cachedJwtSecret = kvSecret
+    rememberJwtSecret(env, kvSecret)
     return kvSecret
   }
 
@@ -88,10 +119,15 @@ export async function getJwtSecret(c?: Context | any): Promise<string> {
     env.CF_PAGES === "1" ||
     env.WORKERS_ENV === "production"
 
-  // 4. 生成随机密钥并尝试持久化到 KV（开发 + 生产兼容）
-  if (!cachedJwtSecret) {
-    cachedJwtSecret = generateRandomSecret()
-    const persisted = await writeKvSecret(env, cachedJwtSecret)
+  // 4. 生成随机密钥并尝试持久化（开发 + 生产兼容）
+  //
+  // 以**当前 env** 的缓存值判断是否需要生成：同一 env 的重复/并发调用只生成
+  // 一次（这里先同步 remember 再 await 持久化，避免并发各生成一把密钥，导致
+  // 同一时刻签发的 token 互相验不过）。
+  if (!readCachedJwtSecret(env)) {
+    const generated = generateRandomSecret()
+    rememberJwtSecret(env, generated)
+    const persisted = await writeKvSecret(env, generated)
     
     if (isProduction) {
       console.error(
@@ -111,7 +147,8 @@ export async function getJwtSecret(c?: Context | any): Promise<string> {
       )
     }
   }
-  return cachedJwtSecret
+  // 走到这里一定已有密钥：步骤 2 命中缓存，或步骤 4 刚生成并 remember。
+  return readCachedJwtSecret(env) as string
 }
 
 // ---- JWT 注销黑名单（尽力而为：进程内 Set + KV 持久化）----
