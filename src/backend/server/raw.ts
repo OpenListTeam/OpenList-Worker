@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import { resolvePath } from "../internal/model/db"
+import { getSettings, resolvePath } from "../internal/model/db"
 import { parseRangeHeader } from "../internal/stream/stream"
 import { flushPendingDriverState, getDriver } from "../internal/op/storage"
 import { resolveShare } from "../internal/op/share"
@@ -16,6 +16,8 @@ import {
   resolveProxyDecision,
   getDownProxyUrl,
   getDisableProxySign,
+  canUseProxyEndpoint,
+  normalizeExtList,
 } from "../internal/driver/proxy"
 import { getProxyRange } from "../internal/driver/storageopts"
 import {
@@ -140,14 +142,28 @@ async function proxyUpstream(
   fileItem: any,
   reqPath: string,
   trustedHosts?: ReadonlySet<string> | string[],
-  proxyRange = false,
-  driver = "",
+  opts: {
+    /** 存储的 proxy_range（是否透传客户端 Range） */
+    proxyRange?: boolean
+    /** 驱动名（用于强制代理判定与日志） */
+    driver?: string
+    /** 存储行（bunny_storage 等条件能力需要） */
+    storage?: any
+    /** 全局设置 proxy_ignore_headers */
+    ignoreHeaders?: unknown
+  } = {},
 ) {
+  const proxyRange = opts.proxyRange ?? false
+  const driver = opts.driver ?? ""
   // ---- 平台载荷上限保护 ----
   // native_proxy 会把整份文件当作云函数响应体回传，超过平台上限时请求根本到不了
   // 本函数（平台直接返回 413 错误页），因此在这里提前决策：能直连就降级 302，
   // 不能直连则返回可读的 413。详见 server/proxy_request.ts 顶部说明。
-  const authBound = isAuthBoundDownload(driver, fileItem.raw_url_headers)
+  const authBound = isAuthBoundDownload(
+    driver,
+    fileItem.raw_url_headers,
+    opts.storage,
+  )
   const payloadAction = decideProxyPayloadAction({
     size: Number(fileItem.size) || 0,
     // proxy_range 关闭时不透传 Range，上游返回的是完整文件
@@ -190,11 +206,12 @@ async function proxyUpstream(
     )
   }
 
-  // 构造上游请求头（含 proxy_range 的 Range 透传决策）
+  // 构造上游请求头（含 proxy_range 的 Range 透传决策 + proxy_ignore_headers）
   const headers: Record<string, string> = buildUpstreamHeaders({
     rawUrlHeaders: fileItem.raw_url_headers,
     rangeHeader: c.req.header("Range"),
     proxyRange,
+    ignoreHeaders: opts.ignoreHeaders,
   })
 
   let upstreamRes: Response
@@ -368,6 +385,11 @@ rawRouter.get("/*", async (c) => {
     c.req.path.startsWith("/sd") ||
     c.req.path.startsWith("/api/sd")
 
+  // /p 是「公开代理端点」：Go 会对它做 canProxy() 检查，不通过直接 403。
+  // /d、/sd 不做该检查（Go 里它们走 ShouldProxy），因此这里单独判定。
+  const isProxyEndpoint =
+    c.req.path.startsWith("/p") || c.req.path.startsWith("/api/p")
+
   const rawPath = c.req.path
     .replace(/^\/api\/raw/, "")
     .replace(/^\/api\/d/, "")
@@ -444,6 +466,41 @@ rawRouter.get("/*", async (c) => {
         .toLowerCase()
         .replace(/[^a-z0-9]/g, "")
 
+      // 全局代理相关设置（对齐 Go：proxy_types / text_types / proxy_ignore_headers）。
+      // 读失败时按空列表处理：proxy_types/text_types 为空只会让扩展名规则不生效，
+      // 不会误拦既有请求。
+      const settings: Record<string, any> = await getSettings().catch(
+        () => ({}) as Record<string, any>,
+      )
+      const proxyTypes = normalizeExtList(settings.proxy_types)
+      const textTypes = normalizeExtList(settings.text_types)
+      const proxyOpts = {
+        proxyRange: getProxyRange(resolved.storage),
+        driver: resolved.storage.driver,
+        storage: resolved.storage,
+        ignoreHeaders: settings.proxy_ignore_headers,
+      }
+
+      // /p 是公开代理端点，对齐 Go handles.Proxy() 的 canProxy() 检查：
+      // 未开启代理、且扩展名也不在 proxy_types / text_types 里 → 403 proxy not allowed。
+      // （Go 只对 /p 与归档 /ap 做此限制，/d、/sd 不做，故这里仅判 /p 端点。）
+      if (
+        isProxyEndpoint &&
+        !canUseProxyEndpoint({
+          storage: resolved.storage,
+          driver: normDriver,
+          filename: reqPath,
+          proxyTypes,
+          textTypes,
+        })
+      ) {
+        console.warn(
+          `[rawRouter] proxy not allowed for '${reqPath}' ` +
+            `(storage=${resolved.storage.id}, driver=${resolved.storage.driver})`,
+        )
+        return c.text("proxy not allowed", 403)
+      }
+
       // Remote cloud drivers: fetch download link via driver.get()
       if (normDriver !== "local") {
         try {
@@ -475,6 +532,7 @@ rawRouter.get("/*", async (c) => {
               resolved.storage,
               normDriver,
               isProxy,
+              { filename: reqPath, proxyTypes },
             )
 
             // use_proxy_url：重定向到管理员配置的下载代理地址（注意与真实的
@@ -508,8 +566,7 @@ rawRouter.get("/*", async (c) => {
                 fileItem,
                 reqPath,
                 trustedHosts,
-                getProxyRange(resolved.storage),
-                resolved.storage.driver,
+                proxyOpts,
               )
             }
 
@@ -519,8 +576,7 @@ rawRouter.get("/*", async (c) => {
                 fileItem,
                 reqPath,
                 trustedHosts,
-                getProxyRange(resolved.storage),
-                resolved.storage.driver,
+                proxyOpts,
               )
             }
 

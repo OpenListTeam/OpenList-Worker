@@ -7,7 +7,7 @@
  */
 
 import { parseRangeHeader } from "../internal/stream/stream"
-import { driverMustProxy } from "../internal/driver/proxy"
+import { driverMustProxyForStorage } from "../internal/driver/proxy"
 
 export const PROXY_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -19,6 +19,14 @@ export interface BuildUpstreamHeadersInput {
   rangeHeader?: string | null
   /** 存储的 proxy_range 开关（对齐 Go model.Proxy.ProxyRange） */
   proxyRange: boolean
+  /**
+   * 全局设置 proxy_ignore_headers（对齐 Go conf.ProxyIgnoreHeaders，默认
+   * authorization,referer）。命中列表的**客户端派生头**不转发给上游
+   * （本模块会转发的客户端头只有 Range 与兜底 User-Agent）；
+   * 驱动自己声明的头（rawUrlHeaders）不受影响——Go 的 ProcessHeader 同样是
+   * 先过滤客户端头、再套用驱动 override。
+   */
+  ignoreHeaders?: unknown
 }
 
 /**
@@ -35,20 +43,32 @@ export interface BuildUpstreamHeadersInput {
 export function buildUpstreamHeaders(
   input: BuildUpstreamHeadersInput,
 ): Record<string, string> {
+  const ignored = normalizeHeaderNameSet(input.ignoreHeaders)
   const headers: Record<string, string> = {
     ...(input.rawUrlHeaders || {}),
   }
 
   // 驱动已显式设置 UA 时不覆盖
-  if (!headers["User-Agent"]) {
+  if (!headers["User-Agent"] && !ignored.has("user-agent")) {
     headers["User-Agent"] = PROXY_USER_AGENT
   }
 
-  if (input.proxyRange && input.rangeHeader) {
+  if (input.proxyRange && input.rangeHeader && !ignored.has("range")) {
     headers["Range"] = input.rangeHeader
   }
 
   return headers
+}
+
+/** 归一化被忽略的请求头名（小写）；Go 默认值是 authorization,referer */
+function normalizeHeaderNameSet(value: unknown): Set<string> {
+  const raw = Array.isArray(value) ? value.join(",") : value
+  return new Set(
+    String(raw ?? "")
+      .split(",")
+      .map((v) => v.trim().toLowerCase())
+      .filter(Boolean),
+  )
 }
 
 export interface UpstreamResponseLike {
@@ -244,8 +264,12 @@ export function rawUrlNeedsPrivateHeaders(
 export function isAuthBoundDownload(
   driver: string,
   rawUrlHeaders?: Record<string, string> | null,
+  storage?: any,
 ): boolean {
-  return driverMustProxy(driver) || rawUrlNeedsPrivateHeaders(rawUrlHeaders)
+  return (
+    driverMustProxyForStorage(storage, driver) ||
+    rawUrlNeedsPrivateHeaders(rawUrlHeaders)
+  )
 }
 
 /**

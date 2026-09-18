@@ -1,9 +1,13 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
+  canUseProxyEndpoint,
   driverMustProxy,
+  driverMustProxyForStorage,
   driverPreferProxy,
   effectiveWebProxy,
+  extensionOf,
+  normalizeExtList,
   resolveProxyDecision,
 } from "./proxy"
 
@@ -111,4 +115,96 @@ test("resolveProxyDecision：MustProxy 优先，显式 web_proxy=false 不被覆
       .mode,
     "use_proxy_url",
   )
+})
+
+// ---------------------------------------------------------------------------
+// proxy_types / proxy_ignore_headers / text_types（对齐 Go ShouldProxy & canProxy）
+// ---------------------------------------------------------------------------
+
+test("extensionOf / normalizeExtList：与 Go utils.Ext 语义一致", () => {
+  assert.equal(extensionOf("/a/b/File.MP4"), "mp4")
+  assert.equal(extensionOf("/a/b/README"), "")
+  // Go 的 path.Ext(".gitignore") 会给出隐藏文件后缀，text_types 默认值里也有 gitignore
+  assert.equal(extensionOf("/a/.gitignore"), "gitignore")
+  assert.equal(extensionOf(""), "")
+
+  assert.deepEqual(normalizeExtList("m3u8, .URL ,,md"), ["m3u8", "url", "md"])
+  assert.deepEqual(normalizeExtList(["a", "b"]), ["a", "b"])
+  assert.deepEqual(normalizeExtList(undefined), [])
+})
+
+test("resolveProxyDecision：proxy_types 命中的扩展名由服务端代理（Go ShouldProxy 第三条）", () => {
+  const hit = resolveProxyDecision({ driver: "Onedrive" }, "onedrive", false, {
+    filename: "/x/live.m3u8",
+    proxyTypes: ["m3u8", "url"],
+  })
+  assert.equal(hit.mode, "native_proxy")
+  assert.equal(hit.source, "proxy_types")
+
+  // 未命中的扩展名仍走 302
+  const miss = resolveProxyDecision({ driver: "Onedrive" }, "onedrive", false, {
+    filename: "/x/movie.mp4",
+    proxyTypes: ["m3u8", "url"],
+  })
+  assert.equal(miss.mode, "302_redirect")
+})
+
+test("driverMustProxyForStorage：bunny_storage 按 CDN 配置条件判定", () => {
+  const withZoneNoCdn = {
+    driver: "BunnyStorage",
+    addition: JSON.stringify({
+      storage_zone_name: "zone1",
+      cdn_base_url: "",
+    }),
+  }
+  const withCdn = {
+    driver: "BunnyStorage",
+    addition: JSON.stringify({
+      storage_zone_name: "zone1",
+      cdn_base_url: "https://cdn.example.com",
+    }),
+  }
+  // 对齐 Go：StorageZoneName != "" && CDNBaseURL == "" → OnlyProxy + PreferProxy
+  assert.equal(driverMustProxyForStorage(withZoneNoCdn), true)
+  assert.equal(driverMustProxyForStorage(withCdn), false)
+  // 其它驱动不受 addition 影响
+  assert.equal(
+    driverMustProxyForStorage({ driver: "Onedrive", addition: "{}" }),
+    false,
+  )
+  // 本地驱动在 Go 里是 OnlyProxy（TS 走本地文件分支，但 /p 判定需要算它允许代理）
+  assert.equal(driverMustProxyForStorage({ driver: "local" }), true)
+})
+
+test("canUseProxyEndpoint：对齐 Go canProxy（/p 端点准入）", () => {
+  const storage = { driver: "Onedrive", addition: "{}" }
+  const gate = (over: any = {}) =>
+    canUseProxyEndpoint({
+      storage,
+      driver: "Onedrive",
+      filename: "/x/movie.mp4",
+      proxyTypes: ["m3u8", "url"],
+      textTypes: ["txt", "md", "srt", "lrc"],
+      ...over,
+    })
+
+  // 未开启代理 + 非文本扩展名 → 不允许（Go 会返回 403 proxy not allowed）
+  assert.equal(gate(), false)
+  // text_types：前端 Readme / 字幕 / 歌词等文本预览必须能走 /p
+  assert.equal(gate({ filename: "/x/readme.md" }), true)
+  assert.equal(gate({ filename: "/x/sub.srt" }), true)
+  assert.equal(gate({ filename: "/x/lyric.lrc" }), true)
+  // proxy_types
+  assert.equal(gate({ filename: "/x/live.m3u8" }), true)
+  // 存储开启了 web_proxy
+  assert.equal(gate({ storage: { driver: "Onedrive", web_proxy: true } }), true)
+  // 驱动 MustProxy
+  assert.equal(gate({ storage: { driver: "WeiYun" }, driver: "WeiYun" }), true)
+  // webdav_policy=use_proxy_url（Go canProxy 显式包含 WebdavProxyURL）
+  assert.equal(
+    gate({ storage: { driver: "Onedrive", webdav_policy: "use_proxy_url" } }),
+    true,
+  )
+  // 无扩展名（如目录式路径）不允许
+  assert.equal(gate({ filename: "/x/noext" }), false)
 })

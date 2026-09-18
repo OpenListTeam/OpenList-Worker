@@ -522,3 +522,29 @@ test("串联：WebDAV（带 Authorization）大文件在 EdgeOne 上拒绝代理
   })
   assert.equal(action, "too-large")
 })
+
+// ---------------------------------------------------------------------------
+// proxy_ignore_headers（对齐 Go conf.ProxyIgnoreHeaders，默认 authorization,referer）
+// ---------------------------------------------------------------------------
+
+test("buildUpstreamHeaders：proxy_ignore_headers 命中时不转发该客户端头", () => {
+  const ignored = buildUpstreamHeaders({
+    rawUrlHeaders: { Referer: "https://driver.example/" },
+    rangeHeader: "bytes=0-10",
+    proxyRange: true,
+    ignoreHeaders: "range,user-agent",
+  })
+  assert.equal(ignored["Range"], undefined)
+  assert.equal(ignored["User-Agent"], undefined)
+  // 驱动自己声明的头不受影响（Go 也是先过滤客户端头、再套用驱动 override）
+  assert.equal(ignored["Referer"], "https://driver.example/")
+
+  // 默认忽略列表（authorization,referer）不影响 Range 与兜底 UA
+  const kept = buildUpstreamHeaders({
+    rangeHeader: "bytes=0-10",
+    proxyRange: true,
+    ignoreHeaders: "authorization,referer",
+  })
+  assert.equal(kept["Range"], "bytes=0-10")
+  assert.equal(typeof kept["User-Agent"], "string")
+})
