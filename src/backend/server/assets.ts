@@ -55,6 +55,10 @@ assetsRouter.get("/favicon.ico", redirectToLogo)
  * 降级：两条路径都不可用时返回本地 HTML 且【不注入】cdn —— 资源回退源站加载，
  * 站点依然可用（宁可 CDN 不生效，不可白屏）。
  *
+ * 另有静态资源缺失兜底：源站没有 /assets|images|streamer|static/ 下的文件时
+ * 302 到 CDN（对齐 Go 版 static.go 的 folders 重定向），而不是把 SPA 壳当成
+ * .js/.css 返回。
+ *
  * 对 ASSET_URLS 的要求：资源由浏览器直接加载，CDN 必须对 .js/.css/字体返回
  * Access-Control-Allow-Origin（前端产物以 crossorigin 加载 module script /
  * stylesheet）。jsdelivr、unpkg 固定返回 *；npmmirror 在请求带 Origin 时回显
@@ -71,6 +75,11 @@ assetsRouter.get("/favicon.ico", redirectToLogo)
 const CDN_HTML_TTL_MS = 5 * 60_000
 const cdnHtmlCache = new Map<string, { html: string; ts: number }>()
 
+/** 读取 ASSET_URLS 原文（env 优先，便于本地/Node 环境回退 process.env）。 */
+function rawAssetUrls(env: any): string {
+  return String(env?.ASSET_URLS || process.env?.ASSET_URLS || "")
+}
+
 /**
  * 是否配置了前端资源 CDN。
  *
@@ -78,7 +87,7 @@ const cdnHtmlCache = new Map<string, { html: string; ts: number }>()
  * 直接把静态层的响应流式透传，避免每个页面导航都白付一次 body 缓冲与解析。
  */
 export function isCdnConfigured(env: any): boolean {
-  return Boolean(env?.ASSET_URLS || process.env?.ASSET_URLS)
+  return Boolean(rawAssetUrls(env))
 }
 
 /**
@@ -103,7 +112,7 @@ export function parseFrontendVersion(html: string): string {
  * 无 $version 或未配置时零存储开销。
  */
 export async function resolveCdnUrl(env: any, html?: string): Promise<string> {
-  const raw = env?.ASSET_URLS || process.env?.ASSET_URLS || ""
+  const raw = rawAssetUrls(env)
   if (!raw) return ""
   if (!raw.includes("$version")) return raw
   let version = ""
@@ -134,6 +143,39 @@ export function injectCdnIntoHtml(html: string, cdn: string): string {
   if (!cdn) return html
   // 用函数替换避免 cdn URL 中可能的 $ 被当作特殊模式
   return html.replace(/cdn:\s*undefined/, () => `cdn: '${cdn}'`)
+}
+
+/**
+ * 静态资源目录。对齐 Go 版 server/static/static.go 的 folders —— 这些目录下的
+ * 请求在源站缺失时会被 302 到 CDN。
+ */
+const CDN_REDIRECT_FOLDERS = ["assets", "images", "streamer", "static"]
+
+/** ASSET_URLS 原文 → 最近为 HTML 解析出的 CDN 地址（含 $version 替换结果）。
+ *  静态资源缺失时的 302 复用它，保证与 HTML 指向同一个版本。 */
+const resolvedCdnCache = new Map<string, string>()
+
+/**
+ * 静态资源在源站缺失时，给出应 302 到的 CDN 地址；不适用时返回空串。
+ *
+ * 对齐 Go 版 static.go：配置 cdn 后把 /assets/、/images/、/streamer/、/static/
+ * 指向 CDN。Cloudflare 的资源优先路由下，资源存在时由静态层直出、Worker 根本
+ * 不会执行，所以这里只在源站确实缺失时才触发 —— 此时若不重定向，SPA 兜底会把
+ * index.html 当作 .js/.css 返回，浏览器按 text/html 解析后报错。
+ */
+export async function cdnAssetRedirect(
+  env: any,
+  pathAndSearch: string,
+): Promise<string> {
+  const raw = rawAssetUrls(env)
+  if (!raw) return ""
+  // 必须是「目录/具体文件」，目录本身（/assets、/assets/）不重定向
+  const m = pathAndSearch.match(/^\/([^/?#]+)\/(.+)/)
+  if (!m || !CDN_REDIRECT_FOLDERS.includes(m[1])) return ""
+  // 优先复用 HTML 那次解析结果；冷启动直接命中资源时退回按 env 解析
+  const cdn = resolvedCdnCache.get(raw) || (await resolveCdnUrl(env))
+  if (!cdn || !/^https?:\/\//i.test(cdn)) return ""
+  return `${cdn}${pathAndSearch}`
 }
 
 /**
@@ -188,6 +230,8 @@ export async function getIndexHtmlWithCdn(
   if (!cdn) return localHtml
   // 仅允许 http(s)，防止 ASSET_URLS 被配置成其它 scheme
   if (!/^https?:\/\//i.test(cdn)) return localHtml
+  // 供静态资源缺失时的 302 复用同一地址（见 cdnAssetRedirect）
+  resolvedCdnCache.set(rawAssetUrls(env), cdn)
   const hit = cdnHtmlCache.get(cdn)
   if (hit && Date.now() - hit.ts < CDN_HTML_TTL_MS) return hit.html
 

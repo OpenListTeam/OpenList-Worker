@@ -118,6 +118,42 @@ test("集成[CDN HTML 路径]: 本地哈希不在 CDN 上时改用 CDN 的 index
   assert.match(html, /window\.__dynamic_base__/)
 })
 
+test("集成[静态资源兜底]: 源站缺失的 /assets/* 302 到 CDN（对齐 Go 版）", async () => {
+  const env = {
+    ASSETS: makeFakeAssets(),
+    ASSET_URLS: "https://cdn-redirect.example.com/dist",
+  }
+  const res = await withFetch(
+    () =>
+      app.request(
+        "/assets/missing-chunk.js",
+        { headers: { accept: "*/*" } },
+        env as any,
+      ),
+    async () => {
+      throw new Error("302 不应外呼 CDN")
+    },
+  )
+  assert.equal(res.status, 302)
+  assert.equal(
+    res.headers.get("location"),
+    "https://cdn-redirect.example.com/dist/assets/missing-chunk.js",
+  )
+})
+
+test("集成[静态资源兜底]: 前端路由不重定向，仍走 SPA 兜底", async () => {
+  const env = {
+    ASSETS: makeFakeAssets(),
+    ASSET_URLS: "https://cdn-redirect2.example.com/dist",
+  }
+  const res = await withFetch(
+    () => app.request("/login", { headers }, env as any),
+    cdnImpl({ asset: true }),
+  )
+  assert.equal(res.status, 200)
+  assert.match(await res.text(), /cdn: 'https:\/\/cdn-redirect2\.example\.com\/dist'/)
+})
+
 test("集成[降级]: 两条路径都不可用（CDN 拦截 .html）时不注入 cdn", async () => {
   const env = {
     ASSETS: makeFakeAssets(),

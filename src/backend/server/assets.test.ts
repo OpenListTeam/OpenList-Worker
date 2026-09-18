@@ -7,6 +7,7 @@ import {
   getIndexHtmlWithCdn,
   parseFrontendVersion,
   extractEntryAsset,
+  cdnAssetRedirect,
 } from "./assets"
 
 const env: any = {}
@@ -158,6 +159,45 @@ test("resolveCdnUrl: 版本不可得时回退 latest", async () => {
     LOCAL_HTML,
   )
   assert.equal(got, "https://cdn.example.com/@pkg@latest/dist")
+})
+
+// ------------------------------------------------------------ cdnAssetRedirect
+
+test("cdnAssetRedirect: 静态资源目录缺失时 302 到 CDN", async () => {
+  // 对齐 Go 版 static.go 的 folders 重定向
+  const env = { ASSET_URLS: "https://cdn.example.com/dist" }
+  assert.equal(
+    await cdnAssetRedirect(env, "/assets/index-abc.js"),
+    "https://cdn.example.com/dist/assets/index-abc.js",
+  )
+  assert.equal(
+    await cdnAssetRedirect(env, "/images/light.webp"),
+    "https://cdn.example.com/dist/images/light.webp",
+  )
+  assert.equal(
+    await cdnAssetRedirect(env, "/static/fonts/a.woff2?v=1"),
+    "https://cdn.example.com/dist/static/fonts/a.woff2?v=1",
+  )
+})
+
+test("cdnAssetRedirect: 非静态目录 / 未配置 CDN 时不重定向", async () => {
+  assert.equal(await cdnAssetRedirect({}, "/assets/index-abc.js"), "")
+  const env = { ASSET_URLS: "https://cdn.example.com/dist" }
+  // 前端路由必须走 SPA 兜底，不能重定向到 CDN
+  assert.equal(await cdnAssetRedirect(env, "/login"), "")
+  assert.equal(await cdnAssetRedirect(env, "/@manage/storage"), "")
+  // 目录本身（无尾随路径）不重定向
+  assert.equal(await cdnAssetRedirect(env, "/assets"), "")
+  assert.equal(await cdnAssetRedirect(env, "/assets/"), "")
+})
+
+test("cdnAssetRedirect: $version 无本地 HTML 时按 env 解析", async () => {
+  await saveDb({ settings: [], users: [], storages: [], shares: [] }, env)
+  const got = await cdnAssetRedirect(
+    { ASSET_URLS: "https://cdn.example.com/@pkg@$version/dist" },
+    "/assets/x.js",
+  )
+  assert.equal(got, "https://cdn.example.com/@pkg@latest/dist/assets/x.js")
 })
 
 // ------------------------------------------------------------- injectCdnIntoHtml

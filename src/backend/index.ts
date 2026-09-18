@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 import { setupRouter } from "./server/router"
 import { rawRouter } from "./server/raw"
-import { assetsRouter, getIndexHtmlWithCdn, isCdnConfigured } from "./server/assets"
+import { assetsRouter, getIndexHtmlWithCdn, isCdnConfigured, cdnAssetRedirect } from "./server/assets"
 import { webdavRouter } from "./server/webdav"
 import { s3Router } from "./server/s3"
 import { setEnvCtx } from "./internal/model/db"
@@ -124,8 +124,8 @@ export function setSpaFallbackHtml(html: string) {
 
 app.all("*", async (c) => {
   const env = c.env as any
+  const url = new URL(c.req.url)
   if (env && env.ASSETS && typeof env.ASSETS.fetch === "function") {
-    const url = new URL(c.req.url)
     const res = await env.ASSETS.fetch(c.req.raw)
     if (res.status >= 200 && res.status < 300) {
       // 修复「部署新版本后生产环境仍是旧界面」：index.html 若不设缓存头，
@@ -139,8 +139,9 @@ app.all("*", async (c) => {
         if (!isCdnConfigured(env)) {
           return new Response(res.body, { status: res.status, headers })
         }
-        // HTML 入口：若配置 ASSET_URLS，则改从 CDN 拉取 index.html 并注入 cdn
-        // （HTML 与哈希资产同源一致）；CDN 不可达时回退本地 HTML 且不注入。
+        // HTML 入口：注入 cdn 让浏览器直连 CDN 取静态资源。优先用本地 HTML
+        // （CDN 上有同一套哈希时，npmmirror 这类不返回 .html 的 CDN 也能用），
+        // 否则改用 CDN 自己的 index.html 保证哈希同源；都不可用则不注入。
         // body 会被读成字符串，必须清掉编码/长度头，否则浏览器按「已编码」解析明文。
         headers.delete("content-encoding")
         headers.delete("content-length")
@@ -154,6 +155,12 @@ app.all("*", async (c) => {
       }
       return res
     }
+    // 静态层未命中：静态资源目录 302 到 CDN（对齐 Go 版 static.go 的 folders 重定向）。
+    // 资源存在时静态层已直接返回、Worker 不会执行，所以走到这里说明源站确实没有
+    // 这个文件 —— 若不重定向，下面的 SPA 兜底会把 index.html 当作 .js/.css 返回，
+    // 浏览器按 text/html 解析后报错。
+    const toCdn = await cdnAssetRedirect(env, url.pathname + url.search)
+    if (toCdn) return c.redirect(toCdn, 302)
     // SPA fallback: return index.html for non-asset routes (e.g. /login, /manage)
     // 注意：ASSETS.fetch 对 /index.html 也可能返回 307，直接 fetch "/" 获取实际 HTML
     const rootReq = new Request(`${url.origin}/`, c.req.raw)
@@ -173,6 +180,10 @@ app.all("*", async (c) => {
       },
     })
   }
+  // EdgeOne 等 ASSETS 缺席的环境：静态层未命中时同样先尝试 302 到 CDN，
+  // 避免把 SPA 壳当作缺失的 .js/.css 返回
+  const toCdnNoAssets = await cdnAssetRedirect(env, url.pathname + url.search)
+  if (toCdnNoAssets) return c.redirect(toCdnNoAssets, 302)
   // EdgeOne 等 ASSETS 缺席的环境：直接返回构建期内联的 SPA 壳，
   // 避免前端路由（/add、/@manage/* 等）落到 404 文本导致整站不可达
   if (spaFallbackHtml && (c.req.method === "GET" || c.req.method === "HEAD")) {
