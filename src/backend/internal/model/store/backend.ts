@@ -234,11 +234,33 @@ export type StoreConfigErrorCode =
   | "HEALTH_ERROR"
   | "DRIVER_ERROR"
 
-/** 构造带分类码的错误，供 getStoreStatus 折叠成 configErrorCode。 */
-function storeError(code: StoreConfigErrorCode, message: string): Error {
-  const err = new Error(message) as Error & { storeCode?: StoreConfigErrorCode }
+/**
+ * 构造带分类码的错误，供 getStoreStatus 折叠成 configErrorCode。
+ *
+ * `hint` 是给用户看的**一句话修复建议**（「改什么」），与 `message`（完整排查
+ * 说明）分开：
+ *   - message 在诊断接口里会被截断（见 server/public.ts 的 reasonLines），
+ *     只透传前 3 行，因此「答案」不能只放在 message 末尾；
+ *   - 前端需要把建议放在显眼位置单独展示，靠解析 message 文案不可靠。
+ */
+function storeError(
+  code: StoreConfigErrorCode,
+  message: string,
+  hint?: string,
+): Error {
+  const err = new Error(message) as Error & {
+    storeCode?: StoreConfigErrorCode
+    storeHint?: string
+  }
   err.storeCode = code
+  if (hint) err.storeHint = hint
   return err
+}
+
+/** 读取错误上的一句话修复建议（没有则返回 null）。 */
+function hintOf(err: any): string | null {
+  const hint = err?.storeHint
+  return typeof hint === "string" && hint.trim() ? hint.trim() : null
 }
 
 /** 读取错误上的分类码（未标注时按 DRIVER_ERROR 处理）。 */
@@ -294,34 +316,92 @@ const DRIVER_UNAVAILABLE_HINTS: Record<string, string> = {
  * 而配置错误期间每个请求都会走到这里。以 env 指纹做键，配置一变即失效；
  * 冷启动后重新计算。
  */
-let autoFallbackHintCache: { key: string; hint: string } | null = null
+let autoFallbackCache: { key: string; driver: Driver | null } | null = null
 
 /**
- * 报告「auto 会选中哪个可用后端」。
+ * 显式驱动不可用时，auto 会选中哪个可用后端（没有则 null）。
  *
- * 显式驱动不可用时，用户最需要知道的就是「那我该改成什么」——直接把答案写进
- * 错误里，抄一下即可，不必自己去猜绑定名或驱动名。
+ * 一次探测供两处使用：
+ *   1. 错误文案「Auto-detection would pick: DB_DRIVER=xxx」——用户最需要知道的
+ *      就是「那我该改成什么」；
+ *   2. 降级决策——默认直接切到该后端，避免整个部署卡在 503 上（见 resolveDriver）。
  *
- * 注意：这只是**诊断**，不改变「显式指定的驱动不回退」这一语义。
- * 内存兜底（本地开发）不作为建议，避免把生产部署引导到易失存储上。
+ * 内存兜底（本地开发）不算可用后端：避免把生产部署引导到易失存储上。
  */
-async function autoFallbackHint(env: any, requested: string): Promise<string> {
+async function autoFallbackDriver(
+  env: any,
+  requested: string,
+): Promise<Driver | null> {
   const key = `${requested}:${isServerlessRuntime(env) ? "sl" : "local"}:${envFingerprint(env)}`
-  if (autoFallbackHintCache?.key === key) return autoFallbackHintCache.hint
+  if (autoFallbackCache?.key === key) return autoFallbackCache.driver
 
-  let hint = ""
+  let driver: Driver | null = null
   try {
     const auto = await autoDetectDriver(env)
-    if (auto && auto !== memoryDriver && auto.name !== requested) {
-      hint =
-        `Auto-detection would pick: DB_DRIVER=${auto.name} ` +
-        `(or simply set DB_DRIVER=auto).\n`
-    }
+    if (auto && auto !== memoryDriver && auto.name !== requested) driver = auto
   } catch {
     // auto 也探测不到任何后端：保持原有提示（NO_STORAGE_MESSAGE 已在别处给出）
   }
-  autoFallbackHintCache = { key, hint }
-  return hint
+  autoFallbackCache = { key, driver }
+  return driver
+}
+
+/** 「auto 会选谁」的一行文案（没有可用后端时为空串）。 */
+function autoPickHint(driver: Driver | null): string {
+  return driver
+    ? `Auto-detection would pick: DB_DRIVER=${driver.name} ` +
+        `(or simply set DB_DRIVER=auto).\n`
+    : ""
+}
+
+/**
+ * 是否禁止「显式驱动不可用时降级到 auto 后端」。
+ *
+ * 默认允许降级：DB_DRIVER 与真实绑定不一致是最常见的配置失误形态（例如 CF 上
+ * 写了 DB_DRIVER=kv 却没绑 KV namespace，而 D1 已绑定）。若硬失败，则**每个**
+ * API 请求都被 503 拦截，前端只会不停重试 —— 表现为「反复报错、整站打不开」，
+ * 用户连能看到原因的提示页都进不去（见 issue #62）。
+ *
+ * 需要严格语义（宁可整站不可用，也绝不把数据写到另一个后端）时设
+ * DB_DRIVER_STRICT=true。
+ */
+function isDriverStrict(env: any): boolean {
+  const raw = String(env?.DB_DRIVER_STRICT ?? "")
+    .trim()
+    .toLowerCase()
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on"
+}
+
+/**
+ * 最近一次「驱动降级」的事实，供诊断接口以 warning 级问题展示。
+ *
+ * 与 env 指纹绑定：配置一变即失效，避免把上一次的降级状态误报给新配置。
+ */
+let driverFallback: {
+  key: string
+  from: string
+  to: string
+  message: string
+  suggestion: string
+} | null = null
+let lastFallbackLog: string | null = null
+
+/**
+ * 当前 env 是否处于「显式驱动不可用、已降级」状态（没有则为 null）。
+ *
+ * 供 /public/env_check 与 /public/init_status 给出 warning：站点可用，但数据
+ * 落在别的后端上，用户必须知情（否则会以为数据写进了自己配置的 KV/D1）。
+ */
+export function getDriverFallback(env?: any): {
+  from: string
+  to: string
+  message: string
+  suggestion: string
+} | null {
+  if (!driverFallback) return null
+  if (driverFallback.key !== envFingerprint(env)) return null
+  const { from, to, message, suggestion } = driverFallback
+  return { from, to, message, suggestion }
 }
 
 /**
@@ -396,19 +476,65 @@ async function resolveDriver(name: StorageDriver, env?: any): Promise<Driver> {
   }
 
   if (!available) {
+    // ── 显式驱动不可用 ──
+    //
+    // 默认**降级**到 auto 能选中的后端，而不是让整个部署卡在 503 上。
+    // 这是最常见的配置失误形态：DB_DRIVER 与真实绑定不一致（CF 上写了
+    // DB_DRIVER=kv 却没绑 KV namespace，而 D1 已绑定；EdgeOne 上写了 kv 但
+    // 没有代理）。硬失败时**每个** API 请求都被拦截，前端只会不停重试，
+    // 表现为「反复报错、整站打不开」，用户连提示页都进不去（issue #62）。
+    //
+    // 降级不是静默替换：会打印醒目告警，并以 warning 级问题 + 一行修复建议
+    // 出现在 /public/env_check、/public/init_status 里，用户必须知情。
+    // 需要严格语义时设 DB_DRIVER_STRICT=true（见 isDriverStrict）。
+    const auto = await autoFallbackDriver(env, name)
+
+    if (auto && !isDriverStrict(env)) {
+      const message =
+        `DB_DRIVER="${name}" is not available in this runtime; falling back to ` +
+        `the auto-detected backend "${auto.name}" so the deployment stays ` +
+        `usable. Data will be written to "${auto.name}", NOT to "${name}".`
+      if (lastFallbackLog !== message) {
+        lastFallbackLog = message
+        console.warn("[DB] " + message)
+      }
+      driverFallback = {
+        key: envFingerprint(env),
+        from: name,
+        to: auto.name,
+        message,
+        suggestion:
+          `Set DB_DRIVER=${auto.name} (or DB_DRIVER=auto), or provide the ` +
+          `binding/credentials required by "${name}".`,
+      }
+      return auto
+    }
+
+    // 严格模式，或 auto 也没有可用后端：保留硬错误（此时确实无处可放数据）。
+    driverFallback = null
     throw storeError(
       "DRIVER_UNAVAILABLE",
       `DB_DRIVER is set to "${name}", but that driver is not available in ` +
-        `this runtime. No fallback is performed for an explicitly configured ` +
-        `driver.\n` +
+        `this runtime. ` +
+        (auto
+          ? `Automatic fallback is disabled by DB_DRIVER_STRICT.\n`
+          : `No fallback is possible: no other storage backend is available here.\n`) +
+        // 「auto 会选谁」必须排进前 3 行：诊断接口只透传前 3 行（见
+        // server/public.ts 的 reasonLines），而这一行才是用户真正要的答案。
+        autoPickHint(auto) +
         `Check the binding/credentials for "${name}", or set DB_DRIVER=auto ` +
         `to let the platform pick an available backend.\n` +
         (DRIVER_UNAVAILABLE_HINTS[name] || "") +
-        (await autoFallbackHint(env, name)) +
         `Environment: ${isServerlessRuntime(env) ? "serverless/worker" : "local/container"}`,
+      auto
+        ? `Set DB_DRIVER=${auto.name} (or DB_DRIVER=auto) in your deployment variables.`
+        : `Set DB_DRIVER=auto in your deployment variables, or provide the ` +
+          `binding/credentials required by "${name}".`,
     )
   }
 
+  // 显式驱动可用：清掉可能残留的降级状态
+  driverFallback = null
   console.log(`[DB] Using explicitly configured driver: ${driver.name}`)
   return driver
 }
@@ -539,14 +665,19 @@ export async function getStoreStatus(env?: any): Promise<any> {
     // 无可用存储（如 serverless 环境未配置）时不应让状态接口崩溃，
     // 而是返回可读的配置错误（含机器可读的分类码，供前端展示具体原因）。
     const msg = String(err?.message || err)
+    const isNoStorage = msg.includes("No storage backend is available")
     return {
       driver: "none",
       format: "none",
       available: false,
-      configError: msg.includes("No storage backend is available")
-        ? NO_STORAGE_MESSAGE
-        : msg,
+      configError: isNoStorage ? NO_STORAGE_MESSAGE : msg,
       configErrorCode: errorCodeOf(err),
+      /** 一句话修复建议（前端在显眼位置单独展示，不依赖解析 message） */
+      configSuggestion:
+        hintOf(err) ||
+        (isNoStorage
+          ? "Bind a storage backend (D1 / KV / Blob) or set DB_DRIVER=auto."
+          : null),
     }
   }
 
@@ -570,11 +701,16 @@ export async function getStoreStatus(env?: any): Promise<any> {
     }
   }
 
+  // 显式驱动不可用、已降级到 auto 后端时的事实：站点可用，但诊断接口必须
+  // 报出来（否则用户会以为数据写进了自己配置的那个后端）。
+  const fallback = getDriverFallback(env)
+
   return {
     driver: driver.name,
     format: format.name,
     ...(health || {}),
     ...(configError ? { configError, configErrorCode, available: false } : {}),
+    ...(fallback ? { fallback } : {}),
   }
 }
 
@@ -624,7 +760,17 @@ function isPersistentStatus(status: any): boolean {
 }
 
 /**
- * 存储配置错误的「原因 + 分类码」。
+ * 同一份配置错误只打印一次（按实例）。
+ *
+ * 配置错误期间**每个** API 请求都会走到这里（全局 503 拦截），逐请求打印会把
+ * 日志刷满、淹没其它信息（用户看到的「反复报错」多半就是它）。文案变化时
+ * （配置改动或换了一种错）会重新打印；错误消失后重置，便于下次复现。
+ * 需要实时状态时用 /api/public/env_check（它豁免拦截且始终返回最新结论）。
+ */
+let lastConfigErrorLog: string | null = null
+
+/**
+ * 存储配置错误的「原因 + 分类码 + 一句话修复建议」。
  *
  * 供全局中间件（503 拦截）与诊断接口（/public/env_check、/public/init_status）
  * 共用同一判定，避免两处规则漂移。
@@ -638,11 +784,21 @@ function isPersistentStatus(status: any): boolean {
 export async function getStoreConfigErrorDetail(
   env?: any,
   opts: { silent?: boolean } = {},
-): Promise<{ code: StoreConfigErrorCode | null; message: string | null }> {
+): Promise<{
+  code: StoreConfigErrorCode | null
+  message: string | null
+  /** 一句话修复建议（「改什么」）；无建议时为 null */
+  suggestion: string | null
+}> {
   const log = (label: string, msg: string) => {
-    if (!opts.silent) console.error(label + msg)
+    if (opts.silent) return
+    const key = label + msg
+    if (lastConfigErrorLog === key) return
+    lastConfigErrorLog = key
+    console.error(label + msg)
   }
-  if (!env || typeof env !== "object") return { code: null, message: null }
+  if (!env || typeof env !== "object")
+    return { code: null, message: null, suggestion: null }
 
   // 缺代理密钥时优先给出「补密钥」这种可操作提示，而不是笼统的驱动错误。
   // checkProxyConfig 是纯同步读取，开销可忽略。
@@ -657,14 +813,22 @@ export async function getStoreConfigErrorDetail(
     const kvIssue = checkProxyConfig(env)
     if (kvIssue) {
       log("[DB] KV proxy configuration error:\n", kvIssue)
-      return { code: "PROXY_CONFIG", message: kvIssue }
+      return {
+        code: "PROXY_CONFIG",
+        message: kvIssue,
+        suggestion:
+          "Set EO_KV_URLS to the correct deployment origin, or use DB_DRIVER=auto.",
+      }
     }
   }
 
   const status = await getStorageStatusSafe(env)
 
-  // 配置齐全且健康：无错误
-  if (isPersistentStatus(status)) return { code: null, message: null }
+  // 配置齐全且健康：无错误（重置去重状态，便于下次复现时仍能看到日志）
+  if (isPersistentStatus(status)) {
+    lastConfigErrorLog = null
+    return { code: null, message: null, suggestion: null }
+  }
 
   // 选中了 kv 但代理不可用：区分「缺密钥」与「密钥不匹配」。
   // 后者表现为 HTTP 401 —— 代理已部署，只是 JWT_SECRET 与 Edge Function
@@ -673,7 +837,12 @@ export async function getStoreConfigErrorDetail(
     const kvIssue = checkProxyConfig(env)
     if (kvIssue) {
       log("[DB] KV proxy configuration error:\n", kvIssue)
-      return { code: "PROXY_CONFIG", message: kvIssue }
+      return {
+        code: "PROXY_CONFIG",
+        message: kvIssue,
+        suggestion:
+          "Set EO_KV_URLS to the correct deployment origin, or use DB_DRIVER=auto.",
+      }
     }
     if (status?.mode === "proxy" && status?.error?.includes("401")) {
       const hint =
@@ -682,7 +851,12 @@ export async function getStoreConfigErrorDetail(
         "Functions serving the proxy. Make sure both use the same JWT_SECRET.\n" +
         "Alternatively set EO_KV_URLS to the correct deployment origin."
       log("[DB] KV proxy authentication failed:\n", hint)
-      return { code: "PROXY_CONFIG", message: hint }
+      return {
+        code: "PROXY_CONFIG",
+        message: hint,
+        suggestion:
+          "Use the same JWT_SECRET (>=16 chars) on the Edge Function and this deployment.",
+      }
     }
   }
 
@@ -695,19 +869,31 @@ export async function getStoreConfigErrorDetail(
     return {
       code: (status?.configErrorCode as StoreConfigErrorCode) || "DRIVER_ERROR",
       message: reason,
+      // 「改什么」由驱动解析层给出（如 DRIVER_UNAVAILABLE 会带上 auto 的探测结论）
+      suggestion: (status?.configSuggestion as string) || null,
     }
   }
 
   // 内存兜底：serverless 下写入会静默丢失，需要可操作提示
   if (String(status?.driver ?? "none") === "memory") {
     log("[DB] Storage configuration error:\n", NO_STORAGE_MESSAGE)
-    return { code: "NO_STORAGE", message: NO_STORAGE_MESSAGE }
+    return {
+      code: "NO_STORAGE",
+      message: NO_STORAGE_MESSAGE,
+      suggestion:
+        "Bind a storage backend (D1 / KV / Blob) or set DB_DRIVER=auto.",
+    }
   }
 
   const healthError = status?.error ? String(status.error) : null
   if (healthError) {
     log("[DB] Storage unhealthy:\n", healthError)
-    return { code: "HEALTH_ERROR", message: healthError }
+    return {
+      code: "HEALTH_ERROR",
+      message: healthError,
+      suggestion:
+        "Check the credentials/bindings of the configured driver, or set DB_DRIVER=auto.",
+    }
   }
 
   // 走到这里说明 isPersistentStatus 判为「不可用」但没有任何具体原因字段
@@ -724,6 +910,10 @@ export async function getStoreConfigErrorDetail(
   return {
     code: driverName === "none" || driverName === "" ? "NO_STORAGE" : "DRIVER_ERROR",
     message: fallback,
+    suggestion:
+      driverName === "none" || driverName === ""
+        ? "Bind a storage backend (D1 / KV / Blob) or set DB_DRIVER=auto."
+        : `Set DB_DRIVER=auto, or provide the binding/credentials required by "${driverName}".`,
   }
 }
 

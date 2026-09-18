@@ -5,7 +5,8 @@ import { assetsRouter } from "./server/assets"
 import { webdavRouter } from "./server/webdav"
 import { s3Router } from "./server/s3"
 import { setEnvCtx } from "./internal/model/db"
-import { getStoreConfigError } from "./internal/model/store/backend"
+import { getStoreConfigErrorDetail } from "./internal/model/store/backend"
+import { uiStorageError } from "./server/public"
 
 const app = new Hono()
 
@@ -76,13 +77,25 @@ app.use("*", async (c, next) => {
     isStaticOrShell(pathname, c.req.header("accept") || "", c.req.method) ||
     isDiagnosticPath(pathname)
   if (!exempt) {
-    const configError = await getStoreConfigError(env)
-    if (configError) {
+    // 用 Detail 版本：除完整原因外还带分类码与一句话修复建议，前端据此
+    // 展示「哪里错了 + 该改成什么」。只给一段长文本时，用户（和日志读者）
+    // 能看到的只是「驱动不可用」，不知道该把 DB_DRIVER 改成什么。
+    const detail = await getStoreConfigErrorDetail(env)
+    if (detail.message) {
+      const ui = uiStorageError(detail)
       return c.json(
         {
           code: 503,
-          message: configError,
-          data: { error: "STORAGE_CONFIG_ERROR", configError },
+          // message 保持完整原因（兼容既有客户端与日志排查）
+          message: detail.message,
+          data: {
+            error: "STORAGE_CONFIG_ERROR",
+            code: detail.code,
+            configError: detail.message,
+            // 截断后的原因 + 建议：前端直接展示这两项即可
+            reason: ui.reason,
+            suggestion: ui.suggestion,
+          },
         },
         503,
       )

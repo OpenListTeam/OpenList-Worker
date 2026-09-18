@@ -57,6 +57,12 @@
     //   do         - Cloudflare Durable Objects（需下方 durable_objects）
     //   mysql      - 外部 MySQL（需 MYSQL_URLS 或 MYSQL_HOST 等，仅 Node 运行时）
     // 说明：mysql 仅在配置了连接信息时才参与 auto 探测，避免无谓的 TCP 建连。
+    //
+    // 显式指定的驱动若在本运行时不可用（最常见：写了 kv 却没绑 KV namespace），
+    // 默认**降级**到 auto 能探测到的可用后端并打印告警 —— 否则每个 API 请求都会
+    // 被 503 拦截，整站打不开、用户连提示页都进不去。降级会以 warning 出现在
+    // /api/public/env_check 与安装向导里，数据会写到那个后端上（不是配置的那个）。
+    // 若必须严格（宁可不可用也不换后端），设 "DB_DRIVER_STRICT": "true"。
     "DB_DRIVER": "auto",
 
     // ── 安全鉴权（推荐以 Secret 类型配置，见 .dev.vars.example）──────────

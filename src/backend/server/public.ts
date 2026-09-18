@@ -9,6 +9,7 @@ import {
   saveDb,
 } from "../internal/model/db"
 import {
+  getDriverFallback,
   getStoreConfigErrorDetail,
   isPersistentStorageAvailable,
   isServerlessRuntime,
@@ -82,6 +83,26 @@ function reasonLines(code?: string | null): number {
 }
 
 /**
+ * 把存储配置错误整理成「前端可直接展示」的形状，供全局 503 拦截复用。
+ *
+ * 统一在这里处理，避免 503 中间件与诊断接口给出两套不同粒度的文案：
+ *   - reason：截断后的原因（控制长度，避免把整段排查说明糊到界面上）
+ *   - suggestion：一句话修复建议（「改什么」，前端置顶展示）
+ */
+export function uiStorageError(detail: {
+  code: string | null
+  message: string | null
+  suggestion: string | null
+}): { reason: string | null; suggestion: string | null } {
+  return {
+    reason: detail.message
+      ? redact(detail.message, reasonLines(detail.code))
+      : null,
+    suggestion: detail.suggestion,
+  }
+}
+
+/**
  * 初始化前的环境自检。
  *
  * 该接口**无需鉴权**（初始化页在未登录时就需要它），且**不泄露任何敏感值**：
@@ -132,11 +153,23 @@ publicRouter.get("/env_check", async (c) => {
     level: "error" | "warning"
     message: string
     docUrl: string
+    /**
+     * 一句话修复建议（「改什么」）。
+     *
+     * 单独成字段而不是塞进 message：message 会被截断（reasonLines），
+     * 前端也需要把建议放在显眼位置展示；靠解析文案取建议不可靠。
+     */
+    suggestion?: string | null
   }[] = []
-  /** 配置错误的分类码 + 原文（脱敏后展示，code 供前端分支处理） */
-  let storageDetail: { code: string | null; message: string | null } = {
+  /** 配置错误的分类码 + 原文 + 修复建议（脱敏后展示，code 供前端分支处理） */
+  let storageDetail: {
+    code: string | null
+    message: string | null
+    suggestion: string | null
+  } = {
     code: null,
     message: null,
+    suggestion: null,
   }
 
   if (isMemory) {
@@ -147,6 +180,8 @@ publicRouter.get("/env_check", async (c) => {
         ? "In-memory storage only; data will be lost immediately."
         : "In-memory storage only; data will be lost on restart (fine for local dev).",
       docUrl: DOC_STORAGE,
+      suggestion:
+        "Bind a storage backend (D1 / KV / Blob) or set DB_DRIVER=auto.",
     })
   } else if (!hasDriver) {
     issues.push({
@@ -154,6 +189,8 @@ publicRouter.get("/env_check", async (c) => {
       level: "error",
       message: "No storage backend available.",
       docUrl: DOC_STORAGE,
+      suggestion:
+        "Bind a storage backend (D1 / KV / Blob) or set DB_DRIVER=auto.",
     })
   }
 
@@ -164,7 +201,11 @@ publicRouter.get("/env_check", async (c) => {
     //   - 其它配置错误（绑定缺失、密钥缺失、连接失败）：仅首行，避免回显内部细节。
     const detail = await getStoreConfigErrorDetail(env, { silent: true })
     const isInvalidCombination = detail.code === "INVALID_COMBINATION"
-    storageDetail = { code: detail.code, message: detail.message }
+    storageDetail = {
+      code: detail.code,
+      message: detail.message,
+      suggestion: detail.suggestion,
+    }
     const reason = redact(
       detail.message || storage?.configError,
       reasonLines(detail.code),
@@ -178,6 +219,7 @@ publicRouter.get("/env_check", async (c) => {
         ? `Unsupported storage combination: ${reason}`
         : `Storage driver is not configured correctly: ${reason}`,
       docUrl: DOC_DRIVER,
+      suggestion: detail.suggestion,
     })
   }
 
@@ -190,6 +232,8 @@ publicRouter.get("/env_check", async (c) => {
         `Storage driver "${resolvedDriver}" is configured but not reachable` +
         `${storage.error ? ": " + redact(storage.error) : ""}.`,
       docUrl: DOC_DRIVER,
+      suggestion:
+        "Check the credentials/bindings of the configured driver, or set DB_DRIVER=auto.",
     })
   }
 
@@ -199,6 +243,21 @@ publicRouter.get("/env_check", async (c) => {
       level: serverless ? "error" : "warning",
       message: "JWT_SECRET is not set.",
       docUrl: DOC_STORAGE,
+      suggestion:
+        "Set JWT_SECRET (>=32 chars, `openssl rand -hex 32`) in your deployment variables.",
+    })
+  }
+
+  // 显式驱动不可用、已降级到其它后端：站点可用（不再是 503 死循环），但数据
+  // 落在别的后端上，必须让用户知情并知道怎么改回来。
+  const fallback = storage?.fallback
+  if (fallback) {
+    issues.push({
+      code: "STORAGE_DRIVER_FALLBACK",
+      level: "warning",
+      message: fallback.message,
+      docUrl: DOC_DRIVER,
+      suggestion: fallback.suggestion,
     })
   }
 
@@ -240,6 +299,16 @@ publicRouter.get("/env_check", async (c) => {
           storageDetail.message !== null
             ? redact(storageDetail.message, reasonLines(storageDetail.code))
             : null,
+        /** 一句话修复建议（「改什么」），无错误时为 null */
+        suggestion: storageDetail.suggestion,
+        /**
+         * 显式驱动不可用、已降级到其它后端时：原始配置的驱动名。
+         *
+         * 站点可用（不再是 503），但数据落在别的后端上，前端必须能看出来。
+         */
+        fallback_from: storage?.fallback?.from ?? null,
+        /** 降级后实际使用的后端（无降级时为 null） */
+        fallback_to: storage?.fallback?.to ?? null,
       },
       jwt: {
         ready: jwtReady,
@@ -513,9 +582,22 @@ publicRouter.get("/init_status", async (c) => {
   //   storage_error  存储配置不可用（驱动/绑定/组合问题）
   //   db_load_error  上一次从持久化后端读取失败的原因（运行期故障）
   let storageError: string | null = null
+  // 一句话修复建议：与 storage_error 成对返回，让向导能把「问题 + 怎么改」
+  // 一起展示，而不是只丢一段原因让用户自己猜。
+  let storageSuggestion: string | null = null
+  // 降级告警：存储可用但数据没落在配置的后端上（见 store/backend.ts 的降级逻辑）
+  let storageWarning: string | null = null
   if (!storageReady) {
     const detail = await getStoreConfigErrorDetail(c.env, { silent: true })
-    storageError = redact(detail.message, reasonLines(detail.code))
+    const ui = uiStorageError(detail)
+    storageError = ui.reason
+    storageSuggestion = ui.suggestion
+  } else {
+    const fallback = getDriverFallback(c.env)
+    if (fallback) {
+      storageWarning = fallback.message
+      storageSuggestion = fallback.suggestion
+    }
   }
   const dbLoadError = getDbLoadError()
 
@@ -527,6 +609,9 @@ publicRouter.get("/init_status", async (c) => {
       ready,
       db_trusted: isDbTrusted(),
       storage_error: storageError,
+      // 站点可用但驱动已降级：向导用它展示 warning（不是 error）
+      storage_warning: storageWarning,
+      storage_suggestion: storageSuggestion,
       db_load_error: dbLoadError ? redact(dbLoadError, 1) : null,
     },
   })
@@ -582,6 +667,9 @@ publicRouter.post("/init/setup", async (c) => {
         data: {
           code,
           reason: redact(loadError, reasonLines(code)),
+          // 一句话修复建议：有配置原因时优先用它（如「改成 DB_DRIVER=d1」），
+          // 否则向导只能展示一段原因，用户仍不知道下一步做什么。
+          suggestion: detail.suggestion,
         },
       },
       500,

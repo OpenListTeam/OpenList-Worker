@@ -18,7 +18,7 @@
         "description": "Storage format: `map` (whole JSON), `key` (per-key), `sql` (relational, Go-compatible). Defaults to `map`."
       },
       "DB_DRIVER": {
-        "description": "Storage driver: `auto` (default), `blob`, `cfkv`, `kv`, `d1`, `do`, `mysql`. Leave as `auto` unless you need to force one."
+        "description": "Storage driver: `auto` (default), `blob`, `cfkv`, `kv`, `d1`, `do`, `mysql`. Leave as `auto` unless you need to force one. If the forced driver has no matching binding in this runtime, the app automatically falls back to the auto-detected backend (a warning is reported in /api/public/env_check); set `DB_DRIVER_STRICT=true` to disable the fallback."
       }
     }
   },
