@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import { Hono } from "hono"
 import { setupRouter } from "./router"
-import { uiStorageError } from "./public"
+import { uiStorageError } from "./storage-error"
 import {
   getStoreConfigErrorDetail,
   getStoreStatus,
@@ -86,6 +86,9 @@ test("无效组合：env_check 必须给出 STORAGE_INVALID_COMBINATION 与具�
   assert.match(String(status.configError), /Invalid storage combination/)
   assert.match(String(status.configError), /DB_FORMAT="sql"/)
   assert.match(String(status.configError), /supports: map \| key/)
+  // 只报错、不自愈：不得偷偷换成别的驱动或格式
+  assert.equal(status.driver, "none", "非法组合不得被自动解析成其它驱动")
+  assert.equal(status.format, "none", "非法组合不得被自动改成别的格式")
 
   const res = await buildApp().request("/api/public/env_check", { method: "GET" }, env)
   const data = (await res.json()).data
@@ -156,14 +159,12 @@ test("驱动不可用：错误必须写明该驱动需要什么（d1 示例）",
 })
 
 test("驱动不可用：错误里必须给出「auto 会选谁」的可操作答案", async () => {
-  // kv 不可用，但 Blob 可用。默认会降级（见下一条测试），这里用
-  // DB_DRIVER_STRICT 关掉降级，专门校验「硬失败时也说得清改成什么」。
+  // kv 不可用，但 Blob 可用：显式配置不回退，但必须说清「改成什么」。
   const env: any = {
     DB_DRIVER: "kv",
     DB_FORMAT: "map",
     JWT_SECRET: JWT,
     ESA_BLOB: fakeBlob(),
-    DB_DRIVER_STRICT: "true",
   }
 
   const status = await getStoreStatus(env)
@@ -176,8 +177,8 @@ test("驱动不可用：错误里必须给出「auto 会选谁」的可操作答
 })
 
 test("驱动不可用：截断展示的文案里也必须保留「改成什么」+ 结构化建议", async () => {
-  // 前端只拿到截断后的 error_message / issue.message（见 public.ts 的
-  // reasonLines：配置类错误只透传前 3 行）。若「Auto-detection would pick」
+  // 前端只拿到截断后的 error_message / issue.message（见 server/storage-error.ts
+  // 的 reasonLines：配置类错误只透传前 3 行）。若「Auto-detection would pick」
   // 被排在 message 末尾，用户看到的仍是一段被砍断的说明 —— 这正是「提示不友好」
   // 的根因，因此这里同时锁定顺序与建议字段。
   const env: any = {
@@ -185,7 +186,6 @@ test("驱动不可用：截断展示的文案里也必须保留「改成什么�
     DB_FORMAT: "map",
     JWT_SECRET: JWT,
     ESA_BLOB: fakeBlob(),
-    DB_DRIVER_STRICT: "true",
   }
 
   const data = (await (
@@ -226,7 +226,6 @@ test("503 拦截层：文案形状为「截断原因 + 单行建议」", async (
     DB_FORMAT: "map",
     JWT_SECRET: JWT,
     ESA_BLOB: fakeBlob(),
-    DB_DRIVER_STRICT: "true",
   }
   const detail = await getStoreConfigErrorDetail(env, { silent: true })
   const ui = uiStorageError(detail)
@@ -235,11 +234,10 @@ test("503 拦截层：文案形状为「截断原因 + 单行建议」", async (
   assert.match(String(ui.suggestion), /DB_DRIVER=blob/)
 })
 
-test("显式驱动不可用但有可用后端：必须先降级保站点可用，而不是整站 503", async () => {
-  // 复现 issue #62 的核心场景：CF 上只配了 DB_DRIVER/DB_FORMAT/JWT_SECRET，
-  // 写了 DB_DRIVER=kv 却没绑 KV namespace（D1/Blob 反而是可用的）。
-  // 修前：每个 API 请求都被 503 拦截，前端反复重试、整站打不开。
-  // 修后：降级到 auto 会选中的后端，站点可用；同时以 warning 暴露事实与建议。
+test("显式配置的驱动不可用：绝不回退（即使 auto 能选到别的后端）", async () => {
+  // 复现 issue #62 核心场景：CF 上写了 DB_DRIVER=kv 却没绑 KV namespace，
+  // 而 Blob 是可用的。按设计：**不回退**（否则数据会落到用户没指定的后端），
+  // 判为配置错误 —— 依赖存储的 API 会被 503 拦截，但必须把「改成什么」讲清楚。
   const env: any = {
     DB_DRIVER: "kv",
     DB_FORMAT: "map",
@@ -247,70 +245,55 @@ test("显式驱动不可用但有可用后端：必须先降级保站点可用�
     ESA_BLOB: fakeBlob(),
   }
 
-  // 1) 不再是配置错误 → 全局 503 拦截不会再触发
-  assert.equal(
-    (await getStoreConfigErrorDetail(env, { silent: true })).message,
-    null,
-    "降级后不得再判定为配置错误（否则仍会 503 死循环）",
+  // 1) 仍然是配置错误：不得被自动切到 Blob
+  const detail = await getStoreConfigErrorDetail(env, { silent: true })
+  assert.equal(detail.code, "DRIVER_UNAVAILABLE")
+  assert.match(
+    String(detail.message),
+    /No fallback is performed for an explicitly configured driver/,
   )
   const status = await getStoreStatus(env)
-  assert.equal(status.driver, "blob", "必须真的切到 auto 会选中的后端")
-  assert.equal(status.fallback?.from, "kv")
-  assert.equal(status.fallback?.to, "blob")
+  assert.equal(status.driver, "none", "不得解析到其它驱动")
+  assert.notEqual(status.driver, "blob", "绝不回退到 auto 会选中的后端")
+  assert.equal(
+    (status as any).fallback,
+    undefined,
+    "不得存在任何「降级/回退」状态字段",
+  )
 
-  // 2) 诊断接口：ready=true（可用），但必须给出 warning 级降级提示 + 建议
+  // 2) 但原因与建议必须可展示：答案排进前 3 行 + 结构化 suggestion
   const data = (await (
     await buildApp().request("/api/public/env_check", { method: "GET" }, env)
   ).json()).data
-  assert.equal(data.ready, true, "站点必须可用")
-  assert.equal(data.storage.available, true)
-  assert.equal(data.storage.error_code, null, "不再有配置错误码")
-  assert.equal(data.storage.fallback_from, "kv")
-  assert.equal(data.storage.fallback_to, "blob")
-
-  const warn = data.issues.find(
-    (i: any) => i.code === "STORAGE_DRIVER_FALLBACK",
+  assert.equal(data.ready, false, "配置不可用时不得报 ready")
+  assert.equal(data.storage.available, false)
+  assert.equal(data.storage.error_code, "DRIVER_UNAVAILABLE")
+  assert.match(String(data.storage.error_message), /Auto-detection would pick: DB_DRIVER=blob/)
+  assert.match(String(data.storage.suggestion), /DB_DRIVER=blob/)
+  assert.equal(
+    data.storage.fallback_to,
+    undefined,
+    "诊断响应里也不该出现回退字段",
   )
-  assert.ok(warn, "必须告知用户发生了降级")
-  assert.equal(warn.level, "warning", "降级不是 error：站点可用")
-  assert.match(String(warn.message), /falling back to the auto-detected backend/)
-  assert.match(String(warn.suggestion), /DB_DRIVER=blob/)
 
-  // 3) 安装向导同样能看到该提示
+  const issue = data.issues.find((i: any) => i.code === "STORAGE_CONFIG_ERROR")
+  assert.ok(issue)
+  assert.equal(issue.level, "error")
+  assert.match(String(issue.suggestion), /DB_DRIVER=blob/)
+
+  // 3) 安装向导（只有 init_status 可用）同样拿得到建议
   const st = (await (
     await buildApp().request("/api/public/init_status", { method: "GET" }, env)
   ).json()).data
-  assert.equal(st.storage_error, null)
-  assert.match(String(st.storage_warning), /falling back/)
+  assert.equal(st.initialized, false)
+  assert.match(String(st.storage_error), /not available in this runtime/)
   assert.match(String(st.storage_suggestion), /DB_DRIVER=blob/)
 })
 
-test("DB_DRIVER_STRICT：写在 process.env 里同样生效（Node/EdgeOne 路径）", async () => {
-  // aws-lambda 适配器把 c.env 设成 { event, requestContext, context }，
-  // 控制台变量只出现在 process.env —— 开关若只读 env 就会静默失效。
-  const env: any = {
-    DB_DRIVER: "kv",
-    DB_FORMAT: "map",
-    JWT_SECRET: JWT,
-    ESA_BLOB: fakeBlob(),
-  }
-  process.env.DB_DRIVER_STRICT = "true"
-  try {
-    const status = await getStoreStatus(env)
-    assert.equal(
-      status.configErrorCode,
-      "DRIVER_UNAVAILABLE",
-      "process.env 中的 DB_DRIVER_STRICT 必须能关掉降级",
-    )
-  } finally {
-    delete process.env.DB_DRIVER_STRICT
-  }
-})
-
-test("CF 场景：只配 DB_DRIVER/DB_FORMAT/JWT_SECRET 且已绑 D1，kv 写错也能正常用", async () => {
-  // 用户实际报的场景：CF 上只设了 DB_DRIVER=kv、DB_FORMAT=map、JWT_SECRET，
-  // 但没有 kv_namespaces 绑定（D1 是绑好的）。修前：全部 API 503，
-  // 前端反复重试、整站打不开、日志不停刷同一条错误。
+test("CF 场景：DB_DRIVER=kv 但只绑了 D1 —— 不回退，但明确告诉用户改成 d1", async () => {
+  // 用户实际报的场景（只配 DB_DRIVER/DB_FORMAT/JWT_SECRET，D1 是绑好的）：
+  // 结论是「报错 + 指路」，不是「偷偷改用 D1」。用户改一个变量即可恢复，
+  // 而数据始终落在他指定的后端上。
   const fakeD1 = {
     prepare: () => ({
       first: async () => ({ "1": 1 }),
@@ -328,30 +311,27 @@ test("CF 场景：只配 DB_DRIVER/DB_FORMAT/JWT_SECRET 且已绑 D1，kv 写错
     DB: fakeD1,
   }
 
-  // 1) 不再判为配置错误 ⇒ 全局 503 拦截不触发，站点可正常打开与初始化
-  assert.equal(
-    (await getStoreConfigErrorDetail(env, { silent: true })).message,
-    null,
-    "配置失误不得再让整站 503",
+  const detail = await getStoreConfigErrorDetail(env, { silent: true })
+  assert.equal(detail.code, "DRIVER_UNAVAILABLE")
+  assert.match(
+    String(detail.suggestion),
+    /Set DB_DRIVER=d1/,
+    "必须直接给出可抄写的答案",
   )
-
-  // 2) 真的落到 D1 上（而不是内存/其它），且事实可被诊断接口看到
-  const status = await getStoreStatus(env)
-  assert.equal(status.driver, "d1")
-  assert.equal(status.fallback?.from, "kv")
-  assert.equal(status.fallback?.to, "d1")
+  assert.match(
+    String(detail.message),
+    /Auto-detection would pick: DB_DRIVER=d1/,
+    "答案要落在被透传的前 3 行里",
+  )
 
   const data = (await (
     await buildApp().request("/api/public/env_check", { method: "GET" }, env)
   ).json()).data
-  assert.equal(data.ready, true, "站点必须可用")
-  assert.equal(data.storage.fallback_to, "d1")
-  const warn = data.issues.find((i: any) => i.code === "STORAGE_DRIVER_FALLBACK")
-  assert.ok(warn, "必须提示已降级")
-  assert.match(String(warn.suggestion), /DB_DRIVER=d1/)
+  assert.equal(data.storage.available, false, "不得回退到 D1")
+  assert.match(String(data.storage.suggestion), /DB_DRIVER=d1/)
   assert.ok(
-    !data.issues.some((i: any) => i.level === "error"),
-    "降级不是错误：不应留下 error 级问题把向导卡住",
+    data.issues.some((i: any) => i.code === "STORAGE_CONFIG_ERROR"),
+    "必须是 error 级问题（这件事需要用户处理，不能被当成警告略过）",
   )
 })
 

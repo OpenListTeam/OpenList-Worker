@@ -9,7 +9,6 @@ import {
   saveDb,
 } from "../internal/model/db"
 import {
-  getDriverFallback,
   getStoreConfigErrorDetail,
   isPersistentStorageAvailable,
   isServerlessRuntime,
@@ -17,6 +16,8 @@ import {
   readFormat,
 } from "../internal/model/store/backend"
 import { setUserPassword } from "../pkg/password"
+// 脱敏 / 截断 / 建议组装：与全局 503 拦截（index.ts）共用同一套规则
+import { reasonLines, redact, uiStorageError } from "./storage-error"
 
 export const publicRouter = new Hono()
 
@@ -24,83 +25,6 @@ export const publicRouter = new Hono()
 const DOC_BASE = "https://doc.oplist.org"
 const DOC_STORAGE = `${DOC_BASE}/ecosystem/official_worker/guide_env`
 const DOC_DRIVER = `${DOC_BASE}/ecosystem/official_worker/guide`
-
-/**
- * 对单行文本做脱敏（供免鉴权接口使用）。
- *
- * 目标：保留「问题类别」的可操作性，同时抹掉可能泄漏实现细节的部分：
- *   - 抹除形如 `scheme://user:pass@host` 的连接串凭据
- *   - 抹除常见的 key=value 形式的令牌
- *   - 截断长度，避免回显大段内部信息
- */
-function scrub(s: string): string {
-  let out = String(s).trim()
-  out = out.replace(/(\w+:\/\/)[^/@\s]+@/g, "$1***@")
-  out = out.replace(
-    /\b(token|secret|password|passwd|pwd|api[_-]?key)\s*[=:]\s*\S+/gi,
-    "$1=***",
-  )
-  const MAX = 160
-  return out.length > MAX ? out.slice(0, MAX) + "…" : out
-}
-
-/**
- * 对错误文本做脱敏，供免鉴权接口使用。
- *
- * 默认只保留首行（去掉多行堆栈）；`maxLines` 用于我们自己的、多行且
- * 可操作的配置类错误（如「组合非法 + 该驱动支持哪些格式 + 怎么改」）。
- */
-function redact(raw: any, maxLines = 1): string {
-  if (raw === null || raw === undefined) return "unknown error"
-  const lines = String(raw)
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .slice(0, Math.max(1, maxLines))
-    .map(scrub)
-  return lines.length ? lines.join(" ") : "unknown error"
-}
-
-/**
- * 配置类错误的展示行数上限。
- *
- * 这些码对应的是**我们自己**写的多行提示（组合非法 / 驱动不可用 / 无存储 /
- * 代理未配置），后续行才是「怎么改」，必须展示出来；
- * 而运行期错误（HEALTH_ERROR 等）可能含内部主机名，只取首行。
- */
-const MULTILINE_ERROR_CODES = new Set([
-  "INVALID_COMBINATION",
-  "DRIVER_UNAVAILABLE",
-  "UNKNOWN_DRIVER",
-  "NO_STORAGE",
-  "PROXY_CONFIG",
-  "DRIVER_ERROR",
-])
-
-/** 取出用于展示的最大行数 */
-function reasonLines(code?: string | null): number {
-  return code && MULTILINE_ERROR_CODES.has(code) ? 3 : 1
-}
-
-/**
- * 把存储配置错误整理成「前端可直接展示」的形状，供全局 503 拦截复用。
- *
- * 统一在这里处理，避免 503 中间件与诊断接口给出两套不同粒度的文案：
- *   - reason：截断后的原因（控制长度，避免把整段排查说明糊到界面上）
- *   - suggestion：一句话修复建议（「改什么」，前端置顶展示）
- */
-export function uiStorageError(detail: {
-  code: string | null
-  message: string | null
-  suggestion: string | null
-}): { reason: string | null; suggestion: string | null } {
-  return {
-    reason: detail.message
-      ? redact(detail.message, reasonLines(detail.code))
-      : null,
-    suggestion: detail.suggestion,
-  }
-}
 
 /**
  * 初始化前的环境自检。
@@ -248,19 +172,6 @@ publicRouter.get("/env_check", async (c) => {
     })
   }
 
-  // 显式驱动不可用、已降级到其它后端：站点可用（不再是 503 死循环），但数据
-  // 落在别的后端上，必须让用户知情并知道怎么改回来。
-  const fallback = storage?.fallback
-  if (fallback) {
-    issues.push({
-      code: "STORAGE_DRIVER_FALLBACK",
-      level: "warning",
-      message: fallback.message,
-      docUrl: DOC_DRIVER,
-      suggestion: fallback.suggestion,
-    })
-  }
-
   // ── 综合就绪：数据库可用 + 密钥就绪 ──
   // 内存模式（本地开发）允许初始化，但会带 warning。
   const ready = storageAvailable && jwtReady
@@ -301,14 +212,6 @@ publicRouter.get("/env_check", async (c) => {
             : null,
         /** 一句话修复建议（「改什么」），无错误时为 null */
         suggestion: storageDetail.suggestion,
-        /**
-         * 显式驱动不可用、已降级到其它后端时：原始配置的驱动名。
-         *
-         * 站点可用（不再是 503），但数据落在别的后端上，前端必须能看出来。
-         */
-        fallback_from: storage?.fallback?.from ?? null,
-        /** 降级后实际使用的后端（无降级时为 null） */
-        fallback_to: storage?.fallback?.to ?? null,
       },
       jwt: {
         ready: jwtReady,
@@ -585,19 +488,11 @@ publicRouter.get("/init_status", async (c) => {
   // 一句话修复建议：与 storage_error 成对返回，让向导能把「问题 + 怎么改」
   // 一起展示，而不是只丢一段原因让用户自己猜。
   let storageSuggestion: string | null = null
-  // 降级告警：存储可用但数据没落在配置的后端上（见 store/backend.ts 的降级逻辑）
-  let storageWarning: string | null = null
   if (!storageReady) {
     const detail = await getStoreConfigErrorDetail(c.env, { silent: true })
     const ui = uiStorageError(detail)
     storageError = ui.reason
     storageSuggestion = ui.suggestion
-  } else {
-    const fallback = getDriverFallback(c.env)
-    if (fallback) {
-      storageWarning = fallback.message
-      storageSuggestion = fallback.suggestion
-    }
   }
   const dbLoadError = getDbLoadError()
 
@@ -609,8 +504,6 @@ publicRouter.get("/init_status", async (c) => {
       ready,
       db_trusted: isDbTrusted(),
       storage_error: storageError,
-      // 站点可用但驱动已降级：向导用它展示 warning（不是 error）
-      storage_warning: storageWarning,
       storage_suggestion: storageSuggestion,
       db_load_error: dbLoadError ? redact(dbLoadError, 1) : null,
     },

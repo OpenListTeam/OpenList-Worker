@@ -316,24 +316,24 @@ const DRIVER_UNAVAILABLE_HINTS: Record<string, string> = {
  * 而配置错误期间每个请求都会走到这里。以 env 指纹做键，配置一变即失效；
  * 冷启动后重新计算。
  */
-let autoFallbackCache: { key: string; driver: Driver | null } | null = null
+let autoPickCache: { key: string; driver: Driver | null } | null = null
 
 /**
  * 显式驱动不可用时，auto 会选中哪个可用后端（没有则 null）。
  *
- * 一次探测供两处使用：
- *   1. 错误文案「Auto-detection would pick: DB_DRIVER=xxx」——用户最需要知道的
- *      就是「那我该改成什么」；
- *   2. 降级决策——默认直接切到该后端，避免整个部署卡在 503 上（见 resolveDriver）。
+ * **只用于提示，绝不改变语义**：显式配置了 DB_DRIVER 就绝不回退 —— 回退会把
+ * 数据写到用户没有指定的后端上，而且「暂时性不可用」（KV 代理 401、网络抖动）
+ * 也会触发切换，恢复后读路径又切回去，造成数据分裂。这里只是把「那你该改成
+ * 什么」算出来，直接写进错误文案与诊断字段，用户抄一下即可。
  *
  * 内存兜底（本地开发）不算可用后端：避免把生产部署引导到易失存储上。
  */
-async function autoFallbackDriver(
+async function autoPickDriver(
   env: any,
   requested: string,
 ): Promise<Driver | null> {
   const key = `${requested}:${isServerlessRuntime(env) ? "sl" : "local"}:${envFingerprint(env)}`
-  if (autoFallbackCache?.key === key) return autoFallbackCache.driver
+  if (autoPickCache?.key === key) return autoPickCache.driver
 
   let driver: Driver | null = null
   try {
@@ -342,7 +342,7 @@ async function autoFallbackDriver(
   } catch {
     // auto 也探测不到任何后端：保持原有提示（NO_STORAGE_MESSAGE 已在别处给出）
   }
-  autoFallbackCache = { key, driver }
+  autoPickCache = { key, driver }
   return driver
 }
 
@@ -352,65 +352,6 @@ function autoPickHint(driver: Driver | null): string {
     ? `Auto-detection would pick: DB_DRIVER=${driver.name} ` +
         `(or simply set DB_DRIVER=auto).\n`
     : ""
-}
-
-/**
- * 是否禁止「显式驱动不可用时降级到 auto 后端」。
- *
- * 默认允许降级：DB_DRIVER 与真实绑定不一致是最常见的配置失误形态（例如 CF 上
- * 写了 DB_DRIVER=kv 却没绑 KV namespace，而 D1 已绑定）。若硬失败，则**每个**
- * API 请求都被 503 拦截，前端只会不停重试 —— 表现为「反复报错、整站打不开」，
- * 用户连能看到原因的提示页都进不去（见 issue #62）。
- *
- * 需要严格语义（宁可整站不可用，也绝不把数据写到另一个后端）时设
- * DB_DRIVER_STRICT=true。
- */
-function isDriverStrict(env: any): boolean {
-  // env 与 process.env 都看：与 hasMysqlConfig()/adminPassConfigured() 的既有
-  // 约定一致 —— Node / EdgeOne 路径下（aws-lambda 适配器把 c.env 设成
-  // { event, requestContext, context }）控制台变量可能只出现在 process.env 里。
-  // 只看 env 会让这个开关在最需要它的部署形态上静默失效。
-  const fromEnv = env?.DB_DRIVER_STRICT
-  const fromProc =
-    typeof process !== "undefined"
-      ? (process as any).env?.DB_DRIVER_STRICT
-      : undefined
-  const raw = String(fromEnv ?? fromProc ?? "")
-    .trim()
-    .toLowerCase()
-  return raw === "1" || raw === "true" || raw === "yes" || raw === "on"
-}
-
-/**
- * 最近一次「驱动降级」的事实，供诊断接口以 warning 级问题展示。
- *
- * 与 env 指纹绑定：配置一变即失效，避免把上一次的降级状态误报给新配置。
- */
-let driverFallback: {
-  key: string
-  from: string
-  to: string
-  message: string
-  suggestion: string
-} | null = null
-let lastFallbackLog: string | null = null
-
-/**
- * 当前 env 是否处于「显式驱动不可用、已降级」状态（没有则为 null）。
- *
- * 供 /public/env_check 与 /public/init_status 给出 warning：站点可用，但数据
- * 落在别的后端上，用户必须知情（否则会以为数据写进了自己配置的 KV/D1）。
- */
-export function getDriverFallback(env?: any): {
-  from: string
-  to: string
-  message: string
-  suggestion: string
-} | null {
-  if (!driverFallback) return null
-  if (driverFallback.key !== envFingerprint(env)) return null
-  const { from, to, message, suggestion } = driverFallback
-  return { from, to, message, suggestion }
 }
 
 /**
@@ -485,51 +426,23 @@ async function resolveDriver(name: StorageDriver, env?: any): Promise<Driver> {
   }
 
   if (!available) {
-    // ── 显式驱动不可用 ──
+    // ── 显式配置的驱动不可用：直接报错，绝不回退 ──
     //
-    // 默认**降级**到 auto 能选中的后端，而不是让整个部署卡在 503 上。
-    // 这是最常见的配置失误形态：DB_DRIVER 与真实绑定不一致（CF 上写了
-    // DB_DRIVER=kv 却没绑 KV namespace，而 D1 已绑定；EdgeOne 上写了 kv 但
-    // 没有代理）。硬失败时**每个** API 请求都被拦截，前端只会不停重试，
-    // 表现为「反复报错、整站打不开」，用户连提示页都进不去（issue #62）。
+    // 回退（哪怕是回退到 auto 会选中的那个后端）都会把数据写到用户没有指定的
+    // 后端上，而且「暂时性不可用」（KV 代理 401、网络抖动）同样会触发切换，
+    // 等它恢复后读路径又切回去，造成数据分裂。因此显式配置一律硬失败。
     //
-    // 降级不是静默替换：会打印醒目告警，并以 warning 级问题 + 一行修复建议
-    // 出现在 /public/env_check、/public/init_status 里，用户必须知情。
-    // 需要严格语义时设 DB_DRIVER_STRICT=true（见 isDriverStrict）。
-    const auto = await autoFallbackDriver(env, name)
-
-    if (auto && !isDriverStrict(env)) {
-      const message =
-        `DB_DRIVER="${name}" is not available in this runtime; falling back to ` +
-        `the auto-detected backend "${auto.name}" so the deployment stays ` +
-        `usable. Data will be written to "${auto.name}", NOT to "${name}".`
-      if (lastFallbackLog !== message) {
-        lastFallbackLog = message
-        console.warn("[DB] " + message)
-      }
-      driverFallback = {
-        key: envFingerprint(env),
-        from: name,
-        to: auto.name,
-        message,
-        suggestion:
-          `Set DB_DRIVER=${auto.name} (or DB_DRIVER=auto), or provide the ` +
-          `binding/credentials required by "${name}".`,
-      }
-      return auto
-    }
-
-    // 严格模式，或 auto 也没有可用后端：保留硬错误（此时确实无处可放数据）。
-    driverFallback = null
+    // 代价：校验期间每个依赖存储的 API 请求都会被 503 拦截（前端会停在初始化
+    // 向导并展示下面的原因），所以文案必须自己说清怎么办 ——
+    //   * 「auto 会选谁」排进前 3 行：诊断接口只透传前 3 行（见
+    //     server/public.ts 的 reasonLines，那里也写了这条约束）；
+    //   * 另外单独给出结构化 suggestion，供前端显眼展示。
+    const auto = await autoPickDriver(env, name)
     throw storeError(
       "DRIVER_UNAVAILABLE",
       `DB_DRIVER is set to "${name}", but that driver is not available in ` +
-        `this runtime. ` +
-        (auto
-          ? `Automatic fallback is disabled by DB_DRIVER_STRICT.\n`
-          : `No fallback is possible: no other storage backend is available here.\n`) +
-        // 「auto 会选谁」必须排进前 3 行：诊断接口只透传前 3 行（见
-        // server/public.ts 的 reasonLines），而这一行才是用户真正要的答案。
+        `this runtime. No fallback is performed for an explicitly configured ` +
+        `driver.\n` +
         autoPickHint(auto) +
         `Check the binding/credentials for "${name}", or set DB_DRIVER=auto ` +
         `to let the platform pick an available backend.\n` +
@@ -542,8 +455,6 @@ async function resolveDriver(name: StorageDriver, env?: any): Promise<Driver> {
     )
   }
 
-  // 显式驱动可用：清掉可能残留的降级状态
-  driverFallback = null
   console.log(`[DB] Using explicitly configured driver: ${driver.name}`)
   return driver
 }
@@ -710,16 +621,11 @@ export async function getStoreStatus(env?: any): Promise<any> {
     }
   }
 
-  // 显式驱动不可用、已降级到 auto 后端时的事实：站点可用，但诊断接口必须
-  // 报出来（否则用户会以为数据写进了自己配置的那个后端）。
-  const fallback = getDriverFallback(env)
-
   return {
     driver: driver.name,
     format: format.name,
     ...(health || {}),
     ...(configError ? { configError, configErrorCode, available: false } : {}),
-    ...(fallback ? { fallback } : {}),
   }
 }
 
@@ -755,7 +661,7 @@ async function getStorageStatusSafe(env?: any): Promise<any> {
 /**
  * 持久化可用性的统一判定（单一来源）。
  *
- * 供 isPersistentStorageAvailable() 与 getStoreConfigError() 共用，
+ * 供 isPersistentStorageAvailable() 与 getStoreConfigErrorDetail() 共用，
  * 避免两处规则漂移导致「自检说不可用、实际请求却放行」。
  */
 function isPersistentStatus(status: any): boolean {
@@ -926,15 +832,7 @@ export async function getStoreConfigErrorDetail(
   }
 }
 
-/**
- * 仅返回存储配置错误（无错误时为 null）。
- *
- * 供全局中间件在每个 API 请求上做快速拦截。判定复用 getStoreStatus，
- * 因此与 isPersistentStorageAvailable() / /public/env_check 结论一致。
- */
-export async function getStoreConfigError(
-  env?: any,
-  opts: { silent?: boolean } = {},
-): Promise<string | null> {
-  return (await getStoreConfigErrorDetail(env, opts)).message
-}
+// 说明：曾有一个只返回 message 的 getStoreConfigError()，在全局 503 拦截改用
+// getStoreConfigErrorDetail()（需要 code/reason/suggestion）后已无调用者，故删除。
+// 若将来确需「只要原因」的场景，用 getStoreConfigErrorDetail().message 即可，
+// 不要重新引入并行实现 —— 两条规则容易漂移。

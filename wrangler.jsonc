@@ -58,11 +58,11 @@
     //   mysql      - 外部 MySQL（需 MYSQL_URLS 或 MYSQL_HOST 等，仅 Node 运行时）
     // 说明：mysql 仅在配置了连接信息时才参与 auto 探测，避免无谓的 TCP 建连。
     //
-    // 显式指定的驱动若在本运行时不可用（最常见：写了 kv 却没绑 KV namespace），
-    // 默认**降级**到 auto 能探测到的可用后端并打印告警 —— 否则每个 API 请求都会
-    // 被 503 拦截，整站打不开、用户连提示页都进不去。降级会以 warning 出现在
-    // /api/public/env_check 与安装向导里，数据会写到那个后端上（不是配置的那个）。
-    // 若必须严格（宁可不可用也不换后端），设 "DB_DRIVER_STRICT": "true"。
+    // 显式配置的驱动**绝不自动回退**：若在本运行时不可用（最常见：写了 kv 却
+    // 没绑 KV namespace），会直接判为配置错误，并在 /api/public/env_check 与
+    // 安装向导里给出原因 + 「改成什么」的一行建议（不会把数据写到别的后端上）。
+    // 非法组合（如 DB_FORMAT=sql + DB_DRIVER=kv）同样只报错，不会自动改配置。
+    // 想让平台自己挑可用后端，就把这里设为 auto。
     "DB_DRIVER": "auto",
 
     // ── 安全鉴权（推荐以 Secret 类型配置，见 .dev.vars.example）──────────

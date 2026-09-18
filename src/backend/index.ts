@@ -6,7 +6,7 @@ import { webdavRouter } from "./server/webdav"
 import { s3Router } from "./server/s3"
 import { setEnvCtx } from "./internal/model/db"
 import { getStoreConfigErrorDetail } from "./internal/model/store/backend"
-import { uiStorageError } from "./server/public"
+import { uiStorageError } from "./server/storage-error"
 
 const app = new Hono()
 

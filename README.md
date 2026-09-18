@@ -198,9 +198,12 @@ CF_API_KEY=your_api_token
 ```
 
 > 不确定用哪个就保持 `DB_DRIVER=auto`（默认，自动探测）。
-> 显式指定驱动时**不做回退**：该驱动不可用会直接拒绝请求并给出可操作原因
-> （`/api/public/env_check`、`/api/public/init_status` 也会显示具体问题），
+> 显式指定驱动时**不做回退**：该驱动不可用会直接拒绝请求并给出可操作原因（含
+> 「自动探测会选哪个驱动」，照抄即可），`/api/public/env_check` 与
+> `/api/public/init_status` 也会显示同样的原因和一行修复建议，
 > 避免「以为在用 KV、实际写进了别的后端」。
+> 非法「驱动 × 格式」组合（如 `DB_FORMAT=sql` + `DB_DRIVER=kv`）同样只报错，
+> 不会自动改驱动或格式。
 
 **向后兼容：**
 - `DB_DRIVER=json` 自动转换为 `DB_FORMAT=map` + 自动检测驱动
