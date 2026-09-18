@@ -114,20 +114,22 @@ npx tsc --noEmit -p tsconfig.json        # 类型检查：exit 0，无错误
 node --import tsx --test "src/backend/**/*.test.ts"
 ```
 
-测试结果：**241 个测试，238 通过**。
+测试结果：**244 个测试，241 通过**。
 
 其中 3 个失败为**既有问题，与本 PR 无关**（已逐项确认未引用本 PR 涉及的任何代码）：
 
 - `server/default_credentials.test.ts` — 默认凭据 SHA-256 重置（2 例）
 - `server/seed.test.ts` — casmeta 字段名
 
-新增 `server/proxy_request.test.ts` 的平台载荷上限用例（18 个，该文件累计 33 个），覆盖：
+新增 `server/proxy_request.test.ts` 的平台载荷上限用例（21 个，该文件累计 36 个），覆盖：
 
-- 上限解析：EdgeOne 运行时默认 6 MiB、`RAW_PROXY_MAX_BYTES` 覆盖与置 0 关闭、非法值回退默认
+- 上限解析：EdgeOne 运行时默认 6 MiB（含 SCF / Blob 判据）、`RAW_PROXY_MAX_BYTES` 覆盖与置 0 关闭、非法值回退默认
+- 运行时判定：`__requestOrigin` 不构成 EdgeOne 判据（该值在所有平台都会注入，不能用来判平台）
 - 超限判定：等于上限不算超限、Range 分片按分片大小、大小未知不拦截
 - 决策：未超限照常代理、超限可直连时降级 302、超限不可降级时返回 413、`RAW_PROXY_OVERFLOW=error` 时拒绝降级
 - 串联 `resolveProxyDecision()`：`web_proxy=true` 的 OneDrive 大文件降级 302；带 `Authorization` 的 WebDAV 大文件返回可读 413
 - **Range + 签名 + 上限的交互**（响应评审意见）：`upstreamBodySize()` 解析 Content-Length / Content-Range；412 兜底重试后上游回整份文件时按实际大小降级 302（签名 URL 无需重算）；正常 206 分片不被误伤；必须带鉴权头时返回可读 413
+- **私有头判定**：`X-Emby-Token` / `X-Amz-Security-Token` / `X-Session-Id` 视为私有头；`User-Agent` / `Referer` / `Origin` / `Content-Type` 不算（与仓库内 33 处 `raw_url_headers` 的实际用法一致）
 
 新增 `internal/driver/storageopts.test.ts`（19 个用例），覆盖：
 
@@ -251,6 +253,8 @@ Range 只回传一个分片时按**分片大小**判断，视频拖动进度与�
 | `RAW_PROXY_MAX_BYTES` | EdgeOne 运行时 6 MiB；其他平台不限制 | 平台单次请求/响应上限（字节），设为 `0` 关闭限制（自托管恢复「永远代理」） |
 | `RAW_PROXY_OVERFLOW` | `redirect` | 超限策略：`redirect` 安全时降级 302 直链；`error` 直接 413，避免暴露直链 |
 
+**运行时判定（`isEdgeOneRuntime()`）**：EdgeOne Node 云函数跑在腾讯 SCF 上，平台会注入 `TENCENTCLOUD_SCF_FUNCTIONNAME`（与本仓库 `internal/model/store/backend.ts` 的 `isServerlessRuntime()` 判据一致），因此以该变量 + `EDGEONE_BLOB` / 全局 `EdgeOne` 作为 EdgeOne 特征。**刻意不用 `__requestOrigin`**：它由本仓库 `src/backend/index.ts` 中间件在所有平台上注入，拿它判 EdgeOne 会把 Cloudflare / 自托管一起误判，反而让本可正常代理的大文件被降级成 302。Cloudflare Workers / 阿里云 ESA 不套用 6 MiB；若这些平台也有同类上限，用 `RAW_PROXY_MAX_BYTES` 显式声明即可。
+
 ### 已知限制
 
 `custom_cache_policies` 目前**只在 `/fs/list` 响应中回传计算结果**，并未真正改变对象缓存的读写行为——TSWorker 的缓存层尚无「按路径取过期时长」的入口。要做到 Go 那样真正影响缓存，需要接入缓存层，属后续独立工作。
@@ -263,8 +267,9 @@ Range 只回传一个分片时按**分片大小**判断，视频拖动进度与�
 - `e5cbb9d` — `fix(proxy): fall back to 302 when the platform payload limit blocks native proxy`
 - `cc896eb` — `docs(pr): document the platform payload-limit guard for the storage proxy policy PR`
 - `cb4051f` — `fix(proxy): bound the upstream body size after a Range retry`
+- `47d70d3` — `fix(proxy): detect EdgeOne runtimes by the SCF and Blob markers`
 
-（本条 docs 提交负责同步上述列表与测试数据。分支共 13 个文件变动、约 1900 行新增，完整 diff 规模以 GitHub PR 页面为准。）
+（本条 docs 提交负责同步上述列表与测试数据；完整 diff 规模以 GitHub PR 页面为准。）
 
 ## 评审意见处理
 
@@ -275,3 +280,6 @@ Range 只回传一个分片时按**分片大小**判断，视频拖动进度与�
 | P1 Range + 签名交互测试覆盖不足 | 已在 `954ebff` 抽出 `server/proxy_request.ts` 并补 17 个测试（Range 透传不改签名、412/200 兜底后无需重签、206 不重试等）；本次 `cb4051f` 进一步补上「兜底重试后上游回整份文件」的二次大小校验与 4 个用例 |
 | P2 驱动能力映射缺少文档注释 | **已在 `954ebff` 补上**：`internal/driver/proxy.ts` 顶部有驱动 ↔ Go `drivers/*/meta.go` 的完整映射表 |
 | P2 未在真实环境端到端验证 | 仍需手动回归（见上方「未做的验证」） |
+| **自审追加**：运行时判据写错，守卫在 EdgeOne 上不会生效 | **已在 `47d70d3` 修复**：原先只查 `EDGEONE` / `EO_REGION`，而 EdgeOne Node 云函数的平台特征是 `TENCENTCLOUD_SCF_FUNCTIONNAME`（见 `internal/model/store/backend.ts`），会导致 6 MiB 守卫在目标平台上静默失效；现补上 SCF / `EDGEONE_BLOB` 判据，并明确不采用 `__requestOrigin` |
+| **自审追加**：私有头用精确名单易漏判 | **已在 `47d70d3` 修复**：改为「鉴权语义模式 + 浏览器安全头白名单」；已核对仓库内 33 处 `raw_url_headers`，现有驱动行为不变 |
+| **自审追加**：413 文案把平台写死 | **已在 `47d70d3` 修正**：改为中性表述，并提示限制也可能来自 `RAW_PROXY_MAX_BYTES` |
