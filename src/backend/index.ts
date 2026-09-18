@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 import { setupRouter } from "./server/router"
 import { rawRouter } from "./server/raw"
-import { assetsRouter, injectCdnIntoHtml } from "./server/assets"
+import { assetsRouter, getIndexHtmlWithCdn } from "./server/assets"
 import { webdavRouter } from "./server/webdav"
 import { s3Router } from "./server/s3"
 import { setEnvCtx } from "./internal/model/db"
@@ -132,11 +132,11 @@ app.all("*", async (c) => {
       // 会被 Cloudflare 边缘/浏览器长期缓存，导致旧 HTML 引用旧 hash 的 JS/CSS。
       // 只对 HTML 入口 no-cache（JS/CSS 带 hash 可安全长期缓存）。
       if (url.pathname === "/" || url.pathname === "/index.html") {
-        // HTML 入口：注入 ASSET_URLS（若配置），使前端直连 CDN 加载静态资源，
-        // 避免每个 JS/CSS/图片请求都经 Worker 302 中转。
+        // HTML 入口：若配置 ASSET_URLS，则改从 CDN 拉取 index.html 并注入 cdn
+        // （HTML 与哈希资产同源一致）；CDN 不可达时回退本地 HTML 且不注入。
         let html = await res.text()
         try {
-          html = await injectCdnIntoHtml(html, env)
+          html = await getIndexHtmlWithCdn(env, html)
         } catch {
           // 注入失败不影响 HTML 正常返回
         }
@@ -153,7 +153,7 @@ app.all("*", async (c) => {
     const rootRes = await env.ASSETS.fetch(rootReq)
     let html = await rootRes.text()
     try {
-      html = await injectCdnIntoHtml(html, env)
+      html = await getIndexHtmlWithCdn(env, html)
     } catch {
       // 注入失败不影响 SPA 兜底
     }
@@ -169,10 +169,10 @@ app.all("*", async (c) => {
   // EdgeOne 等 ASSETS 缺席的环境：直接返回构建期内联的 SPA 壳，
   // 避免前端路由（/add、/@manage/* 等）落到 404 文本导致整站不可达
   if (spaFallbackHtml && (c.req.method === "GET" || c.req.method === "HEAD")) {
-    // 注入 ASSET_URLS（若配置）；不修改模块级 spaFallbackHtml，避免并发污染
+    // 若配置 ASSET_URLS 则从 CDN 拉取并注入；不修改模块级 spaFallbackHtml，避免并发污染
     let html = spaFallbackHtml
     try {
-      html = await injectCdnIntoHtml(html, env)
+      html = await getIndexHtmlWithCdn(env, html)
     } catch {
       // 注入失败时返回原始 SPA 壳
     }

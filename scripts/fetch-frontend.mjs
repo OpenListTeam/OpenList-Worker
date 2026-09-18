@@ -78,7 +78,41 @@ function replaceDist(src) {
   console.log(`  Copying frontend dist: ${src} -> ${DEST}`)
   fs.rmSync(DEST, { recursive: true, force: true })
   fs.cpSync(src, DEST, { recursive: true })
+  stampFrontendVersion(src)
   console.log(`✓ Frontend dist ready (${DEST})`)
+}
+
+/**
+ * 构建期戳：把前端版本号写入 dist/index.html 的 <meta name="frontend-version">。
+ *
+ * 运行时 ASSET_URLS 的 $version 占位符优先从这里取值——版本与本次构建的 dist
+ * 同源产生，保证 CDN 地址指向的版本与实际部署的前端一致（否则哈希资产会 404）。
+ * 前端仓库不存在（如仅提供预构建 dist）时跳过，运行时回退 latest。
+ */
+function stampFrontendVersion(src) {
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(path.resolve(src, ".."), "package.json"), "utf-8"),
+    )
+    // 只信任官方前端包的版本号：FRONTEND_DIST 可能指向任意目录，
+    // 误读（例如 worker 自身 package.json 的 4.2.3）会戳出错误的 CDN 版本。
+    if (!/openlist-frontend/i.test(pkg?.name || "")) return
+    const version = pkg?.version
+    if (!version) return
+    const idx = path.join(DEST, "index.html")
+    let html = fs.readFileSync(idx, "utf-8")
+    if (/name=["']frontend-version["']/.test(html)) return
+    html = html.replace(
+      /<head([^>]*)>/i,
+      `<head$1>\n    <meta name="frontend-version" content="${version}">`,
+    )
+    fs.writeFileSync(idx, html)
+    console.log(`  Stamped frontend-version ${version} into dist/index.html`)
+  } catch (err) {
+    console.warn(
+      `  [fetch-frontend] stamp frontend-version skipped: ${err?.message || err}`,
+    )
+  }
 }
 
 /**

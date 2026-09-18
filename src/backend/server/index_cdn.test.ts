@@ -2,9 +2,11 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import app, { setSpaFallbackHtml } from "../index"
 
+/** 本地构建的 index.html（含构建期版本戳） */
 const INDEX_HTML = `<!doctype html>
 <html>
   <head>
+    <meta name="frontend-version" content="4.2.6">
     <script>
       window.OPENLIST_CONFIG = {
         cdn: undefined,
@@ -14,9 +16,13 @@ const INDEX_HTML = `<!doctype html>
       }
       window.__dynamic_base__ = window.OPENLIST_CONFIG.cdn || ""
     </script>
+    <script type="module" src="/assets/index-LOCAL.js"></script>
   </head>
   <body><div id="root"></div></body>
 </html>`
+
+/** 模拟 CDN 上的 index.html：哈希与本地不同（正是修复前 404 的根源） */
+const CDN_HTML = INDEX_HTML.replace("index-LOCAL.js", "index-CDN.js")
 
 // 模拟 Cloudflare Workers 的 ASSETS 静态资源绑定
 function makeFakeAssets() {
@@ -37,51 +43,113 @@ function makeFakeAssets() {
 
 const headers = { accept: "text/html,application/xhtml+xml" }
 
-test("集成[ASSETS 路径]: 配置 ASSET_URLS 时 / 返回注入 cdn 的 HTML", async () => {
-  const env = { ASSETS: makeFakeAssets(), ASSET_URLS: "https://cdn.example.com/dist" }
-  const res = await app.request("/", { headers }, env as any)
+/** 在指定 fetch 实现下运行 fn（模拟 Worker 对 CDN 的外呼），结束后恢复 */
+async function withFetch(fn: any, impl: any) {
+  const original = globalThis.fetch
+  globalThis.fetch = impl as any
+  try {
+    return await fn()
+  } finally {
+    globalThis.fetch = original
+  }
+}
+
+const okCdn = async (url: string) =>
+  new Response(CDN_HTML, { status: 200, headers: { "content-type": "text/html" } })
+
+test("集成[ASSETS 路径]: 从 CDN 拉取 HTML 并注入 cdn（哈希与 CDN 一致）", async () => {
+  let requested = ""
+  const env = { ASSETS: makeFakeAssets(), ASSET_URLS: "https://cdn-i1.example.com/dist" }
+  const res = await withFetch(
+    () => app.request("/", { headers }, env as any),
+    async (url: string) => {
+      requested = url
+      return okCdn(url)
+    },
+  )
   assert.equal(res.status, 200)
+  assert.equal(requested, "https://cdn-i1.example.com/dist/index.html")
   const html = await res.text()
-  assert.doesNotMatch(html, /cdn: undefined/, "cdn: undefined 必须被替换")
-  assert.match(html, /cdn: 'https:\/\/cdn\.example\.com\/dist'/, "应注入配置的 CDN 地址")
-  assert.match(html, /window\.__dynamic_base__/, "前端启动脚本应保留")
+  // 下发的必须是 CDN 的 HTML（含 CDN 的哈希），而非本地 HTML
+  assert.match(html, /index-CDN\.js/)
+  assert.doesNotMatch(html, /cdn: undefined/)
+  assert.match(html, /cdn: 'https:\/\/cdn-i1\.example\.com\/dist'/)
+  assert.match(html, /window\.__dynamic_base__/)
 })
 
 test("集成[ASSETS 路径]: 未配置 ASSET_URLS 时 / 原样返回（cdn: undefined 保留）", async () => {
   const env = { ASSETS: makeFakeAssets() }
-  const res = await app.request("/", { headers }, env as any)
+  const res = await withFetch(
+    () => app.request("/", { headers }, env as any),
+    async () => {
+      throw new Error("不应发起网络请求")
+    },
+  )
   assert.equal(res.status, 200)
   const html = await res.text()
-  assert.match(html, /cdn: undefined/, "未配置时应保持 cdn: undefined")
+  assert.match(html, /cdn: undefined/)
 })
 
-test("集成[ASSETS 兜底]: SPA 路由 /login 返回注入 cdn 的 HTML", async () => {
-  const env = { ASSETS: makeFakeAssets(), ASSET_URLS: "https://cdn.example.com/dist" }
-  // /login 在 ASSETS 里 404 -> 走 SPA 兜底 fetch "/" -> 注入
-  const res = await app.request("/login", { headers }, env as any)
+test("集成[降级]: CDN 不可达时回退本地 HTML 且不注入 cdn（不白屏）", async () => {
+  const env = { ASSETS: makeFakeAssets(), ASSET_URLS: "https://cdn-down.example.com/dist" }
+  const res = await withFetch(
+    () => app.request("/", { headers }, env as any),
+    async () => {
+      throw new Error("network error")
+    },
+  )
   assert.equal(res.status, 200)
   const html = await res.text()
-  assert.match(html, /cdn: 'https:\/\/cdn\.example\.com\/dist'/)
+  assert.match(html, /cdn: undefined/, "CDN 故障时必须回退源站资源，而非注入失效地址")
 })
 
-test("集成[spaFallbackHtml 路径]: EdgeOne/ESA 无 ASSETS 绑定时注入 cdn", async () => {
+test("集成[ASSETS 兜底]: SPA 路由 /login 同样从 CDN 拉取并注入", async () => {
+  const env = { ASSETS: makeFakeAssets(), ASSET_URLS: "https://cdn-i2.example.com/dist" }
+  // /login 在 ASSETS 里 404 -> 走 SPA 兜底 fetch "/" -> 再走 CDN 拉取
+  const res = await withFetch(
+    () => app.request("/login", { headers }, env as any),
+    async (url: string) => okCdn(url),
+  )
+  assert.equal(res.status, 200)
+  const html = await res.text()
+  assert.match(html, /cdn: 'https:\/\/cdn-i2\.example\.com\/dist'/)
+})
+
+test("集成[spaFallbackHtml 路径]: EdgeOne/ESA 无 ASSETS 绑定时从 CDN 拉取并注入", async () => {
   setSpaFallbackHtml(INDEX_HTML)
-  const env = { ASSET_URLS: "https://cdn.example.com/dist" }
-  const res = await app.request("/manage", { headers }, env as any)
+  const env = { ASSET_URLS: "https://cdn-i3.example.com/dist" }
+  const res = await withFetch(
+    () => app.request("/manage", { headers }, env as any),
+    async (url: string) => okCdn(url),
+  )
   assert.equal(res.status, 200)
   const html = await res.text()
   assert.doesNotMatch(html, /cdn: undefined/)
-  assert.match(html, /cdn: 'https:\/\/cdn\.example\.com\/dist'/)
+  assert.match(html, /cdn: 'https:\/\/cdn-i3\.example\.com\/dist'/)
 })
 
-test("集成: ASSET_URLS 含 $version 时正确解析", async () => {
+test("集成: $version 用构建期版本戳解析（不再落 latest）", async () => {
+  let requested = ""
   const env = {
     ASSETS: makeFakeAssets(),
-    ASSET_URLS: "https://cdn.jsdelivr.net/npm/@openlist-frontend/openlist-frontend@$version/dist",
+    ASSET_URLS:
+      "https://cdn.jsdelivr.net/npm/@openlist-frontend/openlist-frontend@$version/dist",
   }
-  const res = await app.request("/", { headers }, env as any)
+  const res = await withFetch(
+    () => app.request("/", { headers }, env as any),
+    async (url: string) => {
+      requested = url
+      return okCdn(url)
+    },
+  )
   assert.equal(res.status, 200)
+  assert.equal(
+    requested,
+    "https://cdn.jsdelivr.net/npm/@openlist-frontend/openlist-frontend@4.2.6/dist/index.html",
+  )
   const html = await res.text()
-  // version 设置缺失 -> 回退 latest
-  assert.match(html, /cdn: 'https:\/\/cdn\.jsdelivr\.net\/npm\/@openlist-frontend\/openlist-frontend@latest\/dist'/)
+  assert.match(
+    html,
+    /cdn: 'https:\/\/cdn\.jsdelivr\.net\/npm\/@openlist-frontend\/openlist-frontend@4\.2\.6\/dist'/,
+  )
 })

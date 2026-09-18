@@ -31,55 +31,118 @@ assetsRouter.get("/favicon.ico", redirectToLogo)
 /**
  * 前端静态资源 CDN 注入。
  *
- * 当配置了 ASSET_URLS 时，将其注入 index.html 的 window.OPENLIST_CONFIG.cdn，
- * 浏览器据此直连 CDN 加载 JS/CSS/图片等静态资源，无需经 Worker 302 中转。
+ * 当配置了 ASSET_URLS 时，Worker 从 `${ASSET_URLS}/index.html` 拉取前端的
+ * index.html（对齐 Go 版 server/static/static.go 的 initIndex() 行为），
+ * 注入 window.OPENLIST_CONFIG.cdn 后下发；浏览器据此直连 CDN 加载
+ * JS/CSS/图片等静态资源，无需经 Worker 中转。
  *
- * 相比 302 重定向方案（每个资源请求都经 Worker 跳转一次），本方案只在
- * HTML 入口（每页 1 次请求）注入配置，后续几十上百次资源请求由浏览器
- * 直发 CDN，Worker 调用量与存储读取次数降低 1~2 个数量级。
+ * 为什么要「从 CDN 拉 HTML」而不是「下发本地 HTML + 注入 cdn」：
+ * 前端产物是内容哈希文件名（/assets/index-XXXX.js），本地构建的 HTML 只与
+ * 本地构建的资产匹配。若本地 HTML 引用的哈希在 CDN 上不存在（版本偏差、
+ * $version 解析为 latest、或 CDN 版本与部署版本不一致），浏览器会遭到
+ * 全量资产 404（白屏）。从 CDN 拉取 HTML 则 HTML 与资产天然同源一致。
  *
- * 参考原版 OpenList 实现（server/static/static.go 的 cdn 注入）：
- *   "cdn: undefined" -> "cdn: '<resolved-url>'"
+ * 降级策略：CDN 不可达 / 返回非 HTML 时，返回本地 HTML 且【不注入】cdn ——
+ * 资源回退到源站加载，站点依然可用（宁可 CDN 不生效，不可白屏）。
  *
  * 示例：
  *   ASSET_URLS = https://cdn.jsdelivr.net/npm/@openlist-frontend/openlist-frontend@$version/dist
- *   ASSET_URLS = https://registry.npmmirror.com/@openlist-frontend/openlist-frontend/1.0.0/files/dist
+ *   ASSET_URLS = https://registry.npmmirror.com/@openlist-frontend/openlist-frontend/4.2.6/files/dist
  */
 
-/** 从 env 读取 ASSET_URLS；含 $version 时才查 DB 解析版本号，否则零存储开销。 */
-export async function resolveCdnUrl(env: any): Promise<string> {
+/** CDN index.html 的模块级缓存：每个 isolate 每 TTL 最多一次外呼。
+ *  TTL 兜底 @latest 这类会随时间漂移的地址（缓存过久的哈希会与新 latest 不匹配）。 */
+const CDN_HTML_TTL_MS = 5 * 60_000
+const cdnHtmlCache = new Map<string, { html: string; ts: number }>()
+
+/**
+ * 从 index.html 中解析构建期戳的前端版本（fetch-frontend.mjs 注入的 meta 标签）。
+ * 版本与 dist 同源产生，是 $version 最可靠的来源；无法解析时返回空串。
+ */
+export function parseFrontendVersion(html: string): string {
+  const m = html.match(
+    /<meta\s+name=["']frontend-version["']\s+content=["']([^"']+)["']/i,
+  )
+  return m ? m[1] : ""
+}
+
+/**
+ * 解析 ASSET_URLS，替换 $version 占位符。
+ *
+ * $version 解析优先级：
+ *   1. 待下发 HTML 的构建期版本戳（meta frontend-version）—— 与部署的 dist 精确对应
+ *   2. DB version 设置中的 "Frontend: vX.Y.Z"（兼容手工设置）
+ *   3. "latest"
+ *
+ * 无 $version 或未配置时零存储开销。
+ */
+export async function resolveCdnUrl(env: any, html?: string): Promise<string> {
   const raw = env?.ASSET_URLS || process.env?.ASSET_URLS || ""
   if (!raw) return ""
-  // 无 $version 占位符：直接返回，跳过 DB 读取
   if (!raw.includes("$version")) return raw
-  // 解析 $version：尝试从 version 设置提取 frontend 版本，失败回退 "latest"
-  let version = "latest"
-  try {
-    const db = await getDb(env)
-    const item = (db.settings || []).find((s: any) => s.key === "version")
-    if (item?.value) {
-      // 兼容格式 "v4.2.3 (Commit: xxx) - Frontend: v1.0.0 - Build at: xxx"
-      const m = String(item.value).match(/Frontend:\s*([^\s-]+)/)
-      if (m) version = m[1]
+  let version = ""
+  if (html) version = parseFrontendVersion(html)
+  if (!version) {
+    try {
+      const db = await getDb(env)
+      const item = (db.settings || []).find((s: any) => s.key === "version")
+      if (item?.value) {
+        // 兼容格式 "v4.2.3 (Commit: xxx) - Frontend: v1.0.0 - Build at: xxx"
+        const m = String(item.value).match(/Frontend:\s*([^\s-]+)/)
+        if (m) version = m[1]
+      }
+    } catch {
+      // 存储不可用 / 未初始化
     }
-  } catch {
-    // 存储不可用 / 未初始化时回退 "latest"
   }
+  if (!version) version = "latest"
   return raw.replace(/\$version/g, version)
 }
 
 /**
- * 将解析后的 CDN 地址注入 index.html。
- *
- * 替换 window.OPENLIST_CONFIG 中的 `cdn: undefined` 为 `cdn: '<url>'`。
+ * 把已解析的 CDN 地址注入 HTML 的 window.OPENLIST_CONFIG.cdn。
  * 前端 vite-plugin-dynamic-base 读取 window.__dynamic_base__（= cdn），
  * 据此前缀所有静态资源 URL，实现从 CDN 加载。
- *
- * 未配置 ASSET_URLS 时原样返回（无副作用）。
  */
-export async function injectCdnIntoHtml(html: string, env: any): Promise<string> {
-  const cdn = await resolveCdnUrl(env)
+export function injectCdnIntoHtml(html: string, cdn: string): string {
   if (!cdn) return html
   // 用函数替换避免 cdn URL 中可能的 $ 被当作特殊模式
   return html.replace(/cdn:\s*undefined/, () => `cdn: '${cdn}'`)
+}
+
+/**
+ * 获取应下发的 index.html（CDN 优先，源站兜底）。
+ *
+ * 1. 未配置 ASSET_URLS → 本地 HTML 原样返回
+ * 2. 已配置 → 从 `${cdn}/index.html` 拉取（带超时），校验为 HTML 后注入 cdn 返回
+ * 3. 拉取失败 / 非 HTML → 本地 HTML 原样返回（不注入 cdn，资源回退源站）
+ */
+export async function getIndexHtmlWithCdn(
+  env: any,
+  localHtml: string,
+): Promise<string> {
+  const cdn = await resolveCdnUrl(env, localHtml)
+  if (!cdn) return localHtml
+  // 仅允许 http(s)，防止 ASSET_URLS 被配置成其它 scheme
+  if (!/^https?:\/\//i.test(cdn)) return localHtml
+  const hit = cdnHtmlCache.get(cdn)
+  if (hit && Date.now() - hit.ts < CDN_HTML_TTL_MS) return hit.html
+  try {
+    const res = await fetch(`${cdn}/index.html`, {
+      headers: { accept: "text/html" },
+      signal: AbortSignal.timeout(4000),
+    })
+    if (res.ok) {
+      let html = await res.text()
+      // 校验确实是 HTML，而非 CDN 的 JSON 错误页
+      if (/<html/i.test(html)) {
+        html = injectCdnIntoHtml(html, cdn)
+        cdnHtmlCache.set(cdn, { html, ts: Date.now() })
+        return html
+      }
+    }
+  } catch {
+    // CDN 不可达 / 超时：回退源站
+  }
+  return localHtml
 }
