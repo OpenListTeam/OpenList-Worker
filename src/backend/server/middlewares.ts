@@ -68,8 +68,16 @@ export async function getJwtSecret(c?: Context | any): Promise<string> {
   }
 
   // 2. KV 持久化密钥（跨实例/重启稳定）
+  // 性能修复：命中后直接返回缓存，避免每次调用都回源 KV。
+  // 修复前此分支只 `return kvSecret` 而不写 cachedJwtSecret，导致
+  // getUserFromContext / csrfProtection / checkAdminAuth 等每请求 2-4 次调用
+  // 都会各自触发一次 KV 回源（KV 后端下这是最贵的操作之一）。
+  if (cachedJwtSecret && cachedJwtSecret.length >= 32) {
+    return cachedJwtSecret
+  }
   const kvSecret = await readKvSecret(env)
   if (kvSecret && kvSecret.length >= 32) {
+    cachedJwtSecret = kvSecret
     return kvSecret
   }
 
