@@ -141,8 +141,16 @@ export async function resolveCdnUrl(env: any, html?: string): Promise<string> {
  */
 export function injectCdnIntoHtml(html: string, cdn: string): string {
   if (!cdn) return html
-  // 用函数替换避免 cdn URL 中可能的 $ 被当作特殊模式
-  return html.replace(/cdn:\s*undefined/, () => `cdn: '${cdn}'`)
+  // 1) 用函数替换，避免 cdn URL 里的 $ 被 String.replace 当成特殊模式（$&、$1…）；
+  // 2) 注入值是拼进内联脚本的 JS 字符串字面量，必须转义：URL 里若出现 ' 或 \（
+  //    或换行）会提前闭合字符串，让 window.OPENLIST_CONFIG 语法报错、整站白屏。
+  //    注意 Go 版（fmt.Sprintf("cdn: '%s'")）没有处理这一点，这里不与它的缺陷对齐。
+  const value = cdn
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n")
+  return html.replace(/cdn:\s*undefined/, () => `cdn: '${value}'`)
 }
 
 /**

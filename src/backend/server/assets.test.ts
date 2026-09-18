@@ -224,6 +224,19 @@ test("injectCdnIntoHtml: CDN URL 中的 $ 不被当作特殊模式", () => {
   assert.match(out, /cdn: 'https:\/\/cdn\.example\.com\/\$\$x\/dist'/)
 })
 
+test("injectCdnIntoHtml: CDN URL 中的引号 / 反斜杠被转义", () => {
+  // 注入值最终是内联脚本里的 JS 字符串字面量：未转义的 ' 会提前闭合字符串，
+  // window.OPENLIST_CONFIG 语法报错 -> 整站白屏。
+  const cdn = "https://cdn.example.com/a'b\\c/dist"
+  const out = injectCdnIntoHtml(INDEX_HTML, cdn)
+  assert.doesNotMatch(out, /cdn: undefined/)
+  const literal = out.match(/cdn:\s*('(?:[^'\\]|\\.)*')/)?.[1]
+  assert.ok(literal, `注入结果中应存在 cdn 字面量，实际：${out}`)
+  // 只考察字面量本身的语义：按 JS 转义规则还原后必须等于原始 URL
+  const decoded = literal.slice(1, -1).replace(/\\(.)/g, "$1")
+  assert.equal(decoded, cdn, "字面量必须还原成原始 URL")
+})
+
 // ------------------------------------------------------------ getIndexHtmlWithCdn
 
 test("getIndexHtmlWithCdn: 未配置 ASSET_URLS 时返回本地 HTML", async () => {

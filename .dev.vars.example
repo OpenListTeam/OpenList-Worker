@@ -47,6 +47,14 @@ ALLOW_URLS=
 # ⚠️ 资源由浏览器直接加载，CDN 必须对 .js/.css/字体返回 Access-Control-Allow-Origin
 #    （前端产物以 crossorigin 加载 module script / stylesheet）。
 #    jsdelivr、unpkg 固定返回 *；npmmirror 在请求带 Origin 时回显该头，同样可用。
+#
+# ⚠️ 行为变更（迁移说明）：旧实现是 assetsRouter 的 /:folder/:filepath* 路由，把
+#    每个静态资源请求都 302 重定向到 CDN。该路由已移除 —— 它取不到 filepath，
+#    且在静态层优先的平台上根本不会进 Worker；现在统一改为上面的 HTML 注入，
+#    由浏览器直连 CDN。未配置 ASSET_URLS 时静态资源一律由源站提供。
+#    另：/assets、/images、/streamer、/static 下的文件若在源站确实缺失，仍会 302
+#    到 CDN（对齐 Go 版 static.go 的 folders），避免 SPA 兜底把 index.html 当作
+#    .js/.css 返回。
 # 例：
 #   https://registry.npmmirror.com/@openlist-frontend/openlist-frontend/$version/files/dist
 #   https://cdn.jsdelivr.net/npm/@openlist-frontend/openlist-frontend@$version/dist

@@ -301,3 +301,75 @@ test("集成: $version 用构建期版本戳解析（不再落 latest）", async
     /cdn: 'https:\/\/cdn\.jsdelivr\.net\/npm\/@openlist-frontend\/openlist-frontend@4\.2\.6\/dist'/,
   )
 })
+
+test("集成[SPA 兜底]: 未配置 ASSET_URLS 时流式透传 body 与状态码", async () => {
+  // /login 在 ASSETS 里 404 -> 走 SPA 兜底 fetch "/"。
+  // 兜底不应把 body 读成字符串再重建：那会让每次深链刷新都白付一次缓冲，
+  // 并丢掉静态层的流式透传。
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(INDEX_HTML))
+      controller.close()
+    },
+  })
+  const env = {
+    ASSETS: {
+      fetch: (req: Request) =>
+        new URL(req.url).pathname === "/"
+          ? new Response(stream, {
+              status: 200,
+              headers: { "content-type": "text/html; charset=utf-8" },
+            })
+          : new Response("not found", { status: 404 }),
+    },
+  }
+  const res = await withFetch(
+    () => app.request("/login", { headers }, env as any),
+    async () => {
+      throw new Error("不应发起网络请求")
+    },
+  )
+  assert.equal(res.status, 200)
+  assert.equal(res.body, stream, "必须透传静态层的 body 流")
+  assert.equal(res.headers.get("cache-control"), "no-cache, must-revalidate")
+  assert.match(await res.text(), /cdn: undefined/)
+})
+
+test("集成[SPA 兜底]: 非 2xx 保留原状态码，不包装成 200 空壳", async () => {
+  // 兜底子请求（fetch "/"）返回 404 时，若仍构造 status: 200 的响应，会把真实
+  // 错误掩盖成「一个 200 的 HTML 空壳」，让 4xx/5xx 排查失去线索。
+  const env = {
+    ASSETS: {
+      fetch: () =>
+        new Response("not found", {
+          status: 404,
+          headers: { "content-type": "text/plain" },
+        }),
+    },
+  }
+  const res = await withFetch(
+    () => app.request("/login", { headers }, env as any),
+    async () => {
+      throw new Error("未配置 ASSET_URLS，不应发起网络请求")
+    },
+  )
+  assert.equal(res.status, 404)
+})
+
+test("集成[SPA 兜底]: 配置 ASSET_URLS 时非 2xx 也不改写（307 透传）", async () => {
+  const env = {
+    ASSETS: {
+      fetch: () =>
+        new Response(null, { status: 307, headers: { location: "/index.html" } }),
+    },
+    ASSET_URLS: "https://cdn-i5.example.com/dist",
+  }
+  const res = await withFetch(
+    () => app.request("/login", { headers }, env as any),
+    async () => {
+      throw new Error("非 2xx 不应触发 CDN 注入")
+    },
+  )
+  assert.equal(res.status, 307)
+  assert.equal(res.headers.get("location"), "/index.html")
+})
