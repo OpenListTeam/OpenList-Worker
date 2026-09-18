@@ -152,15 +152,35 @@ const readEnvValue = (c: any, key: string): string => {
   return ""
 }
 
-/** 当前运行时是否 EdgeOne（Node 云函数或边缘函数） */
+/**
+ * 当前运行时是否 EdgeOne（Node 云函数 / 边缘函数）。
+ *
+ * 判据对齐 internal/model/store/backend.ts 的 isServerlessRuntime()：
+ *   1. EdgeOne Node 云函数跑在腾讯 SCF 上，平台会注入 `TENCENTCLOUD_SCF_FUNCTIONNAME`
+ *      —— 这是该形态**唯一可靠**的平台特征（旧版只查 EDGEONE/EO_REGION，而这两个
+ *      变量并没有证据表明会被云函数注入，会导致本守卫在 EdgeOne 上永不生效）；
+ *   2. 绑定了 Blob 命名空间或运行在边缘函数时，有 `EDGEONE_BLOB` / 全局 `EdgeOne`。
+ *
+ * 刻意**不**使用 `__requestOrigin`：它由本项目 index.ts 中间件在所有平台上注入
+ * （见 src/backend/index.ts），拿它判 EdgeOne 会把 Cloudflare / 自托管一并误判，
+ * 反而让 CF 上的大文件代理被无故降级为 302。
+ *
+ * 同理，Cloudflare Workers 与阿里云 ESA 不套用 6 MiB：CF 的函数 body 上限远高于此，
+ * 本限制是 EdgeOne 云函数特有的，因此这里只认 EdgeOne 自身的特征。
+ */
 function isEdgeOneRuntime(c: any): boolean {
   const g: any = typeof globalThis !== "undefined" ? globalThis : {}
   const env = c?.env || {}
+  const procEnv: any =
+    typeof process !== "undefined" ? (process as any).env || {} : {}
   return Boolean(
     env.EDGEONE ||
     env.EO_REGION ||
-    g.EDGEONE ||
-    typeof g.EdgeOne !== "undefined",
+    env.EDGEONE_BLOB ||
+    g.EDGEONE_BLOB ||
+    typeof g.EdgeOne !== "undefined" ||
+    env.TENCENTCLOUD_SCF_FUNCTIONNAME ||
+    procEnv.TENCENTCLOUD_SCF_FUNCTIONNAME,
   )
 }
 
@@ -203,22 +223,49 @@ export function exceedsProxyPayloadLimit(
   return size > limit
 }
 
-const PRIVATE_HEADER_NAMES = new Set([
-  "authorization",
-  "cookie",
-  "x-auth-token",
-  "x-auth",
-  "x-api-key",
+/**
+ * 浏览器**自带**或对下载无意义的请求头：出现这些头不构成「必须服务端代理」的理由。
+ * 其余任何带鉴权语义（auth / token / cookie / signature / secret / key / session …）
+ * 的头都视为私有头。
+ */
+const BROWSER_SAFE_HEADER_NAMES = new Set([
+  "user-agent",
+  "referer",
+  "referrer",
+  "origin",
+  "accept",
+  "accept-language",
+  "accept-encoding",
+  "range",
+  "if-range",
+  "content-type",
+  "content-disposition",
+  "content-length",
+  "cache-control",
+  "pragma",
 ])
+
+/**
+ * 鉴权语义头名特征。
+ *
+ * 用模式而非精确名单：仓库内 33 处 `raw_url_headers` 目前只用到
+ * Authorization / Cookie / User-Agent / Referer / Origin（前两者需要代理，
+ * 后三者浏览器可自带），但只要驱动改成 `X-Emby-Token`、`X-Api-Key` 之类的
+ * 名字，精确名单就会漏判并把 401 暴露给浏览器；模式匹配对这类演化更稳。
+ */
+const PRIVATE_HEADER_PATTERN =
+  /(authorization|cookie|auth|token|secret|api[-_]?key|signature|session|credential|password)/i
 
 /** raw_url 是否要求私有请求头（浏览器直连会 401/403） */
 export function rawUrlNeedsPrivateHeaders(
   headers?: Record<string, string> | null,
 ): boolean {
   if (!headers) return false
-  return Object.keys(headers).some((k) =>
-    PRIVATE_HEADER_NAMES.has(k.trim().toLowerCase()),
-  )
+  return Object.keys(headers).some((k) => {
+    const name = k.trim().toLowerCase()
+    if (BROWSER_SAFE_HEADER_NAMES.has(name)) return false
+    return PRIVATE_HEADER_PATTERN.test(name)
+  })
 }
 
 /**

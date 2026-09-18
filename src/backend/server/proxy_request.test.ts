@@ -352,6 +352,29 @@ test("getProxyPayloadLimit: EdgeOne 运行时默认 6 MiB，其它平台不限�
   assert.equal(getProxyPayloadLimit({ env: {} }), 0)
 })
 
+test("getProxyPayloadLimit: 按 EdgeOne Node 云函数（SCF）与 Blob 绑定识别", () => {
+  // EdgeOne Node 云函数跑在腾讯 SCF 上，平台注入该变量（见 store/backend.ts）
+  assert.equal(
+    getProxyPayloadLimit({
+      env: { TENCENTCLOUD_SCF_FUNCTIONNAME: "openlist" },
+    }),
+    EDGE_LIMIT,
+  )
+  // 绑定了 Blob 命名空间同样说明运行在 EdgeOne
+  assert.equal(getProxyPayloadLimit({ env: { EDGEONE_BLOB: {} } }), EDGE_LIMIT)
+})
+
+test("getProxyPayloadLimit: 应用自注入的 __requestOrigin 不构成 EdgeOne 判据", () => {
+  // src/backend/index.ts 的中间件在所有平台都会写入 __requestOrigin；
+  // 用它判 EdgeOne 会把 Cloudflare / 自托管一并误判，导致 CF 大文件代理被无故降级 302
+  assert.equal(
+    getProxyPayloadLimit({
+      env: { __requestOrigin: "https://x.edgeone.cool" },
+    }),
+    0,
+  )
+})
+
 test("getProxyPayloadLimit: RAW_PROXY_MAX_BYTES 覆盖 / 0 关闭 / 非法值回退", () => {
   assert.equal(
     getProxyPayloadLimit({ env: { RAW_PROXY_MAX_BYTES: "1048576" } }),
@@ -490,6 +513,35 @@ test("isAuthBoundDownload: 强制代理驱动与私有头判定", () => {
   )
   assert.equal(rawUrlNeedsPrivateHeaders({ cookie: "sid=1" }), true)
   assert.equal(rawUrlNeedsPrivateHeaders(null), false)
+})
+
+test("rawUrlNeedsPrivateHeaders: 按鉴权语义匹配头名（不依赖精确名单）", () => {
+  // 驱动若改用这类头名，精确名单会漏判并把 401 暴露给浏览器
+  assert.equal(rawUrlNeedsPrivateHeaders({ "X-Emby-Token": "t" }), true)
+  assert.equal(rawUrlNeedsPrivateHeaders({ "x-api-key": "k" }), true)
+  assert.equal(rawUrlNeedsPrivateHeaders({ "X-Amz-Security-Token": "t" }), true)
+  assert.equal(rawUrlNeedsPrivateHeaders({ "X-Session-Id": "s" }), true)
+  // 浏览器自带 / 对下载无意义的头不算私有头
+  assert.equal(rawUrlNeedsPrivateHeaders({ "User-Agent": "ua" }), false)
+  assert.equal(rawUrlNeedsPrivateHeaders({ Referer: "https://x" }), false)
+  assert.equal(rawUrlNeedsPrivateHeaders({ Origin: "https://x" }), false)
+  assert.equal(
+    rawUrlNeedsPrivateHeaders({ "Content-Type": "video/mp4" }),
+    false,
+  )
+  assert.equal(
+    rawUrlNeedsPrivateHeaders({ "Content-Disposition": "attachment" }),
+    false,
+  )
+  // 与仓库内真实驱动一致：alidoc 的 UA+Referer+Origin 可以直连
+  assert.equal(
+    rawUrlNeedsPrivateHeaders({
+      "User-Agent": "ua",
+      Referer: "https://alidocs.dingtalk.com/",
+      Origin: "https://alidocs.dingtalk.com",
+    }),
+    false,
+  )
 })
 
 test("串联：web_proxy=true 的 OneDrive 大文件在 EdgeOne 上降级为 302", () => {

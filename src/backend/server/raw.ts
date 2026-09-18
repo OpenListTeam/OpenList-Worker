@@ -114,8 +114,10 @@ async function safeProxyFetch(
 /**
  * 平台上限导致的 413 文案。
  *
- * 说明「为什么代理不了」与「有哪些替代路径」，避免用户只看到 EdgeOne 自带的
+ * 说明「为什么代理不了」与「有哪些替代路径」，避免用户只看到平台自带的
  * CLOUD_FUNCTION_PAYLOAD_TOO_LARGE 错误页（那里没有任何可操作信息）。
+ * 措辞不写死平台：限制可能来自 EdgeOne 的自动判定，也可能来自管理员配置的
+ * RAW_PROXY_MAX_BYTES（例如 Vercel / 阿里云 ESA 上的同类限制）。
  */
 function payloadLimitMessage(
   c: any,
@@ -127,12 +129,13 @@ function payloadLimitMessage(
   const mib = (bytes: number) => Math.floor(bytes / 1024 / 1024)
   return (
     `文件过大，当前部署平台无法代理下载（${size} 字节 > 上限 ${limit} 字节 ≈ ${mib(limit)} MiB）。` +
-    `EdgeOne 云函数对单次请求/响应 body 有硬上限（CLOUD_FUNCTION_PAYLOAD_TOO_LARGE / HTTP 413），` +
+    `当前运行环境对函数单次请求/响应 body 有硬上限（EdgeOne 云函数为 6 MiB，错误码 ` +
+    `CLOUD_FUNCTION_PAYLOAD_TOO_LARGE / HTTP 413），` +
     (authBound
       ? `${label} 无法提供可直连的下载链接（或直链必须携带私有鉴权头），只能经服务端转发，因此无法绕过该上限。`
       : `且 RAW_PROXY_OVERFLOW=error 已禁止降级为直链。`) +
     `建议：改用返回公开直链的存储、或在自托管环境（Docker / Node）部署；` +
-    `确需放开限制可设置 RAW_PROXY_MAX_BYTES=0。`
+    `确需放开限制可设置 RAW_PROXY_MAX_BYTES=0（或按平台实际上限调整该值）。`
   )
 }
 
