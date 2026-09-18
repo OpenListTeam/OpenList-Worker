@@ -7,7 +7,6 @@ import {
   sanitizeContentDisposition,
   decideProxyPayloadAction,
   exceedsProxyPayloadLimit,
-  getProxyOverflowPolicy,
   getProxyPayloadLimit,
   isAuthBoundDownload,
   rawUrlNeedsPrivateHeaders,
@@ -178,7 +177,6 @@ test("Range + 签名 + 上限交互：412 重试后按完整文件大小判定�
     decideProxyPayloadAction({
       size: actual,
       payloadLimit: EDGE_LIMIT,
-      overflowPolicy: "redirect",
       authBound: false,
     }),
     "redirect",
@@ -209,7 +207,6 @@ test("Range + 上限交互：整份文件超限且必须带鉴权头时返回可
     decideProxyPayloadAction({
       size: actual,
       payloadLimit: EDGE_LIMIT,
-      overflowPolicy: "redirect",
       authBound: isAuthBoundDownload("webdav", {
         Authorization: "Basic dXNlcjpwYXNz",
       }),
@@ -307,28 +304,26 @@ test("Content-Disposition 清洗 CR/LF 与控制字符（防响应头注入）",
 // ---- proxy_range 与存储配置的端到端串联 ----
 
 test("存储 proxy_range 配置决定是否透传 Range（串联验证）", () => {
-  // 未配置 → 默认不透传
-  const storageDefault = {}
+  // 未配置 → 默认透传（Go 的透明代理总是转发客户端头）
   const d1 = buildUpstreamHeaders({
     rangeHeader: "bytes=0-10",
-    proxyRange: getProxyRange(storageDefault),
+    proxyRange: getProxyRange({}),
   })
-  assert.equal(d1["Range"], undefined)
+  assert.equal(d1["Range"], "bytes=0-10")
 
   // 显式开启 → 透传
-  const storageOn = { proxy_range: true }
   const d2 = buildUpstreamHeaders({
     rangeHeader: "bytes=0-10",
-    proxyRange: getProxyRange(storageOn),
+    proxyRange: getProxyRange({ proxy_range: true }),
   })
   assert.equal(d2["Range"], "bytes=0-10")
 
-  // 驱动默认（139Yun）→ 透传
+  // 显式关闭 → 丢弃（用于明确拒绝 Range 的上游）
   const d3 = buildUpstreamHeaders({
     rangeHeader: "bytes=0-10",
-    proxyRange: getProxyRange({ __driverProxyRangeDefault: true }),
+    proxyRange: getProxyRange({ proxy_range: false }),
   })
-  assert.equal(d3["Range"], "bytes=0-10")
+  assert.equal(d3["Range"], undefined)
 })
 
 // ---------------------------------------------------------------------------
@@ -390,18 +385,6 @@ test("getProxyPayloadLimit: RAW_PROXY_MAX_BYTES 覆盖 / 0 关闭 / 非法值回
       env: { EO_REGION: "x", RAW_PROXY_MAX_BYTES: "abc" },
     }),
     EDGE_LIMIT,
-  )
-})
-
-test("getProxyOverflowPolicy: 默认 redirect，=error 时为 error", () => {
-  assert.equal(getProxyOverflowPolicy({ env: {} }), "redirect")
-  assert.equal(
-    getProxyOverflowPolicy({ env: { RAW_PROXY_OVERFLOW: "redirect" } }),
-    "redirect",
-  )
-  assert.equal(
-    getProxyOverflowPolicy({ env: { RAW_PROXY_OVERFLOW: "ERROR" } }),
-    "error",
   )
 })
 
@@ -468,18 +451,6 @@ test("decideProxyPayloadAction: 超限但必须带鉴权头 → too-large（返�
   )
 })
 
-test("decideProxyPayloadAction: RAW_PROXY_OVERFLOW=error 时超限即拒绝，不暴露直链", () => {
-  assert.equal(
-    decideProxyPayloadAction({
-      size: 200 * MiB,
-      payloadLimit: EDGE_LIMIT,
-      authBound: false,
-      overflowPolicy: "error",
-    }),
-    "too-large",
-  )
-})
-
 test("decideProxyPayloadAction: proxy_range 关闭时 Range 不能掩盖超限", () => {
   // proxy_range 关闭 → 上游返回完整文件，调用方必须传 range=undefined
   assert.equal(
@@ -494,11 +465,14 @@ test("decideProxyPayloadAction: proxy_range 关闭时 Range 不能掩盖超限",
 })
 
 test("isAuthBoundDownload: 强制代理驱动与私有头判定", () => {
-  // Go OnlyProxy / NoLinkURL → 没有可公开的直链
-  assert.equal(isAuthBoundDownload("baidunetdisk", undefined), true)
+  // Go MustProxy（OnlyProxy / NoLinkURL）→ 没有可公开的直链
+  assert.equal(isAuthBoundDownload("Googledrive", undefined), true)
   assert.equal(isAuthBoundDownload("WeiYun", undefined), true)
   // 预授权直链（OneDrive 的 @microsoft.graph.downloadUrl 无需私有头）
   assert.equal(isAuthBoundDownload("Onedrive", undefined), false)
+  // Go 里只有 PreferProxy 的驱动不算强制代理，但直链带 Cookie 时仍不可降级
+  assert.equal(isAuthBoundDownload("baidunetdisk", undefined), false)
+  assert.equal(isAuthBoundDownload("baidunetdisk", { Cookie: "ndus=1" }), true)
   assert.equal(
     isAuthBoundDownload("webdav", { Authorization: "Basic xxx" }),
     true,
@@ -512,36 +486,8 @@ test("isAuthBoundDownload: 强制代理驱动与私有头判定", () => {
     false,
   )
   assert.equal(rawUrlNeedsPrivateHeaders({ cookie: "sid=1" }), true)
+  assert.equal(rawUrlNeedsPrivateHeaders({ "X-Emby-Token": "t" }), false)
   assert.equal(rawUrlNeedsPrivateHeaders(null), false)
-})
-
-test("rawUrlNeedsPrivateHeaders: 按鉴权语义匹配头名（不依赖精确名单）", () => {
-  // 驱动若改用这类头名，精确名单会漏判并把 401 暴露给浏览器
-  assert.equal(rawUrlNeedsPrivateHeaders({ "X-Emby-Token": "t" }), true)
-  assert.equal(rawUrlNeedsPrivateHeaders({ "x-api-key": "k" }), true)
-  assert.equal(rawUrlNeedsPrivateHeaders({ "X-Amz-Security-Token": "t" }), true)
-  assert.equal(rawUrlNeedsPrivateHeaders({ "X-Session-Id": "s" }), true)
-  // 浏览器自带 / 对下载无意义的头不算私有头
-  assert.equal(rawUrlNeedsPrivateHeaders({ "User-Agent": "ua" }), false)
-  assert.equal(rawUrlNeedsPrivateHeaders({ Referer: "https://x" }), false)
-  assert.equal(rawUrlNeedsPrivateHeaders({ Origin: "https://x" }), false)
-  assert.equal(
-    rawUrlNeedsPrivateHeaders({ "Content-Type": "video/mp4" }),
-    false,
-  )
-  assert.equal(
-    rawUrlNeedsPrivateHeaders({ "Content-Disposition": "attachment" }),
-    false,
-  )
-  // 与仓库内真实驱动一致：alidoc 的 UA+Referer+Origin 可以直连
-  assert.equal(
-    rawUrlNeedsPrivateHeaders({
-      "User-Agent": "ua",
-      Referer: "https://alidocs.dingtalk.com/",
-      Origin: "https://alidocs.dingtalk.com",
-    }),
-    false,
-  )
 })
 
 test("串联：web_proxy=true 的 OneDrive 大文件在 EdgeOne 上降级为 302", () => {
@@ -558,7 +504,6 @@ test("串联：web_proxy=true 的 OneDrive 大文件在 EdgeOne 上降级为 302
   const action = decideProxyPayloadAction({
     size: 200 * MiB,
     payloadLimit: EDGE_LIMIT,
-    overflowPolicy: "redirect",
     authBound: isAuthBoundDownload("onedrive", undefined),
   })
   assert.equal(action, "redirect")
@@ -571,7 +516,6 @@ test("串联：WebDAV（带 Authorization）大文件在 EdgeOne 上拒绝代理
   const action = decideProxyPayloadAction({
     size: 200 * MiB,
     payloadLimit: EDGE_LIMIT,
-    overflowPolicy: "redirect",
     authBound: isAuthBoundDownload("webdav", {
       Authorization: "Basic dXNlcjpwYXNz",
     }),

@@ -13,7 +13,9 @@ import { safeErrorMessage } from "../pkg/errs"
 import { validateHide } from "../pkg/meta"
 import {
   PROXY_RANGE_DRIVERS,
-  proxyRangeDefaultFor,
+  driverMustProxy,
+  driverPreferProxy,
+  normalizeDriverName,
 } from "../internal/driver/proxy"
 
 export const adminRouter = new Hono()
@@ -308,7 +310,10 @@ adminRouter.post("/storage/create", async (c) => {
       try {
         await saveDb(db, c.env)
       } catch (saveErr: any) {
-        console.error("[admin/storage/create] Failed to update storage status:", saveErr)
+        console.error(
+          "[admin/storage/create] Failed to update storage status:",
+          saveErr,
+        )
         // 状态更新失败不影响主流程，继续返回
       }
       return c.json({
@@ -321,7 +326,10 @@ adminRouter.post("/storage/create", async (c) => {
     try {
       await saveDb(db, c.env)
     } catch (saveErr: any) {
-      console.error("[admin/storage/create] Failed to update storage status after connection:", saveErr)
+      console.error(
+        "[admin/storage/create] Failed to update storage status after connection:",
+        saveErr,
+      )
       // 已经连接成功，状态更新失败不影响用户，继续返回成功
     }
   }
@@ -584,21 +592,19 @@ const DISABLE_INDEX_FIELD = {
 
 /**
  * proxy_range（对齐 Go op/driver.go）：仅对声明了 ProxyRangeOption 的驱动开放。
- * 139Yun 驱动默认 true（对应 Go 中 d.ProxyRange = true）。
+ *
+ * 默认 true：透传客户端 Range 是默认行为（Go 的透明代理本就转发客户端请求头，
+ * 见 internal/net/serve.go 的 ProcessHeader），该字段只在需要显式关闭时使用。
  */
-function buildProxyRangeField(defaultTrue: boolean) {
+function buildProxyRangeField() {
   return {
     name: "proxy_range",
     type: "bool",
-    default: defaultTrue ? "true" : "false",
+    default: "true",
     required: false,
     help: "Need to enable proxy",
   }
 }
-
-/** 支持 proxy_range 的驱动（对齐 Go ProxyRangeOption: true 的驱动集合） */
-// PROXY_RANGE_DRIVERS 与 proxyRangeDefaultFor 统一从 internal/driver/proxy
-// 导入，避免与下载决策侧的驱动清单各自维护、失去同步。
 
 const WEB_PROXY_FIELD = {
   name: "web_proxy",
@@ -616,24 +622,24 @@ const WEBDAV_POLICY_FIELD = {
 }
 
 /**
- * 按 Go internal/op/driver.go 的规则构造代理相关表单项：
- *   - MustProxy()  ：没有 302 选项，策略强制 native_proxy（等价 Go 的默认值）
- *   - DefaultProxy()：默认 native_proxy（PreferProxy 驱动，如 WebDav）
- *   - 其余         ：默认 302_redirect（对齐 Go 默认值）
+ * 按 Go internal/op/driver.go 的规则构造代理相关表单项。
  *
- * 同时按驱动决定是否附加 proxy_range（Go: Config.ProxyRangeOption）。
+ * 驱动能力（MustProxy / PreferProxy / ProxyRangeOption）**全部**由
+ * internal/driver/proxy.ts 派生——那里是驱动能力表的唯一真相（对齐
+ * Go drivers 各驱动的 meta.go）。admin.ts 不再维护第二份 only_proxy/prefer 清单，
+ * 避免两处各自演化后与运行时决策不一致。
+ *
+ *   - MustProxy()   ：无 web_proxy / down_proxy_url，策略仅 use_proxy_url | native_proxy
+ *   - DefaultProxy()：web_proxy 默认 true、策略默认 native_proxy（PreferProxy 驱动）
+ *   - 其余          ：web_proxy 默认 false、策略默认 302_redirect
  */
-function buildProxyFields(
-  onlyProxy: boolean,
-  preferProxy: boolean,
-  driverKey = "",
-) {
-  const normKey = driverKey.toLowerCase().replace(/[^a-z0-9]/g, "")
+function buildProxyFields(driverKey = "") {
+  const normKey = normalizeDriverName(driverKey)
   const rangeFields = PROXY_RANGE_DRIVERS.has(normKey)
-    ? [buildProxyRangeField(proxyRangeDefaultFor(normKey))]
+    ? [buildProxyRangeField()]
     : []
 
-  if (onlyProxy) {
+  if (driverMustProxy(normKey)) {
     return [
       ...rangeFields,
       {
@@ -643,6 +649,8 @@ function buildProxyFields(
       },
     ]
   }
+
+  const preferProxy = driverPreferProxy(normKey)
   return [
     ...rangeFields,
     preferProxy
@@ -685,7 +693,7 @@ const COMMON_FIELDS = [
   CUSTOM_CACHE_POLICIES_FIELD,
   ENABLE_SIGN_FIELD,
   DISABLE_INDEX_FIELD,
-  ...buildProxyFields(false, false),
+  ...buildProxyFields(),
   DOWN_PROXY_URL_FIELD,
   DISABLE_PROXY_SIGN_FIELD,
   SEED_POLICY_FIELD,
@@ -777,7 +785,7 @@ const driverConfigs: Record<string, any> = {
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(false, false, "Onedrive"),
+      ...buildProxyFields("Onedrive"),
       DOWN_PROXY_URL_FIELD,
       DISABLE_PROXY_SIGN_FIELD,
     ],
@@ -880,7 +888,7 @@ const driverConfigs: Record<string, any> = {
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(false, false, "Onedrive"),
+      ...buildProxyFields("OnedriveAPP"),
       DOWN_PROXY_URL_FIELD,
       DISABLE_PROXY_SIGN_FIELD,
     ],
@@ -953,7 +961,15 @@ const driverConfigs: Record<string, any> = {
   GoogleDrive: {
     name: "GoogleDrive",
     default_mount_path: "/google-drive",
-    common: COMMON_FIELDS,
+    common: [
+      ...BASE_FIELDS,
+      CUSTOM_CACHE_POLICIES_FIELD,
+      ENABLE_SIGN_FIELD,
+      DISABLE_INDEX_FIELD,
+      ...buildProxyFields("GoogleDrive"),
+      DISABLE_PROXY_SIGN_FIELD,
+      SEED_POLICY_FIELD,
+    ],
     additional: [
       {
         name: "refresh_token",
@@ -1003,7 +1019,7 @@ const driverConfigs: Record<string, any> = {
       name: "GoogleDrive",
       local_sort: true,
       only_local: false,
-      only_proxy: false,
+      only_proxy: true,
       no_cache: false,
       no_upload: false,
       need_ms: false,
@@ -1076,13 +1092,13 @@ const driverConfigs: Record<string, any> = {
   "123Pan": {
     name: "123Pan",
     default_mount_path: "/123",
-    // 对齐 Go drivers/123/meta.go：OnlyProxy + PreferProxy
+    // 对齐 Go drivers/123/meta.go：只有 PreferProxy（无 OnlyProxy）
     common: [
       ...BASE_FIELDS,
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(true, false),
+      ...buildProxyFields("123Pan"),
       DISABLE_PROXY_SIGN_FIELD,
       SEED_POLICY_FIELD,
     ],
@@ -1152,7 +1168,7 @@ const driverConfigs: Record<string, any> = {
       name: "123Pan",
       local_sort: true,
       only_local: false,
-      only_proxy: true,
+      only_proxy: false,
       no_cache: false,
       no_upload: false,
       need_ms: false,
@@ -1162,13 +1178,13 @@ const driverConfigs: Record<string, any> = {
   BaiduNetdisk: {
     name: "BaiduNetdisk",
     default_mount_path: "/baidu",
-    // 对齐 Go drivers/baidu_netdisk/meta.go：OnlyProxy + PreferProxy
+    // 对齐 Go drivers/baidu_netdisk/meta.go：只有 PreferProxy（无 OnlyProxy）
     common: [
       ...BASE_FIELDS,
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(true, false),
+      ...buildProxyFields("BaiduNetdisk"),
       DISABLE_PROXY_SIGN_FIELD,
       SEED_POLICY_FIELD,
     ],
@@ -1290,7 +1306,7 @@ const driverConfigs: Record<string, any> = {
       name: "BaiduNetdisk",
       local_sort: true,
       only_local: false,
-      only_proxy: true,
+      only_proxy: false,
       no_cache: false,
       no_upload: false,
       need_ms: false,
@@ -1306,7 +1322,7 @@ const driverConfigs: Record<string, any> = {
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(true, false),
+      ...buildProxyFields("115Open"),
       DISABLE_PROXY_SIGN_FIELD,
       SEED_POLICY_FIELD,
     ],
@@ -1365,7 +1381,7 @@ const driverConfigs: Record<string, any> = {
       name: "115Open",
       local_sort: true,
       only_local: false,
-      only_proxy: true,
+      only_proxy: false,
       no_cache: false,
       no_upload: false,
       need_ms: false,
@@ -1674,7 +1690,7 @@ const driverConfigs: Record<string, any> = {
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(true, false),
+      ...buildProxyFields("189Cloud"),
       DISABLE_PROXY_SIGN_FIELD,
       SEED_POLICY_FIELD,
     ],
@@ -1845,7 +1861,7 @@ const driverConfigs: Record<string, any> = {
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(false, true, "WebDav"),
+      ...buildProxyFields("WebDav"),
       DOWN_PROXY_URL_FIELD,
       DISABLE_PROXY_SIGN_FIELD,
       SEED_POLICY_FIELD,
@@ -1907,7 +1923,7 @@ const driverConfigs: Record<string, any> = {
       name: "WebDav",
       local_sort: true,
       only_local: false,
-      only_proxy: true,
+      only_proxy: false,
       no_cache: false,
       no_upload: false,
       need_ms: false,
@@ -2275,7 +2291,7 @@ const driverConfigs: Record<string, any> = {
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(true, false),
+      ...buildProxyFields("WeiYun"),
       DISABLE_PROXY_SIGN_FIELD,
       SEED_POLICY_FIELD,
     ],
@@ -2335,7 +2351,7 @@ const driverConfigs: Record<string, any> = {
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(true, false),
+      ...buildProxyFields("SFTP"),
       DISABLE_PROXY_SIGN_FIELD,
       SEED_POLICY_FIELD,
     ],
@@ -2407,7 +2423,7 @@ const driverConfigs: Record<string, any> = {
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(true, false),
+      ...buildProxyFields("FTP"),
       DISABLE_PROXY_SIGN_FIELD,
       SEED_POLICY_FIELD,
     ],
@@ -2694,7 +2710,7 @@ const driverConfigs: Record<string, any> = {
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(true, false),
+      ...buildProxyFields("Terabox"),
       DISABLE_PROXY_SIGN_FIELD,
       SEED_POLICY_FIELD,
     ],
@@ -2737,7 +2753,7 @@ const driverConfigs: Record<string, any> = {
       name: "Terabox",
       local_sort: true,
       only_local: false,
-      only_proxy: true,
+      only_proxy: false,
       no_cache: false,
       no_upload: false,
       need_ms: false,
@@ -2801,7 +2817,7 @@ const driverConfigs: Record<string, any> = {
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(false, false, "Alias"),
+      ...buildProxyFields("Alias"),
       DOWN_PROXY_URL_FIELD,
       DISABLE_PROXY_SIGN_FIELD,
       SEED_POLICY_FIELD,
@@ -3001,7 +3017,7 @@ const driverConfigs: Record<string, any> = {
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(false, false, "139Yun"),
+      ...buildProxyFields("139Yun"),
       DOWN_PROXY_URL_FIELD,
       DISABLE_PROXY_SIGN_FIELD,
       SEED_POLICY_FIELD,
@@ -3073,7 +3089,7 @@ const driverConfigs: Record<string, any> = {
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(true, false),
+      ...buildProxyFields("Mega_nz"),
       DISABLE_PROXY_SIGN_FIELD,
       SEED_POLICY_FIELD,
     ],
@@ -3204,7 +3220,7 @@ const driverConfigs: Record<string, any> = {
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(true, false),
+      ...buildProxyFields("123PanShare"),
       DISABLE_PROXY_SIGN_FIELD,
       SEED_POLICY_FIELD,
     ],
@@ -3252,7 +3268,7 @@ const driverConfigs: Record<string, any> = {
       name: "123PanShare",
       local_sort: true,
       only_local: false,
-      only_proxy: true,
+      only_proxy: false,
       no_cache: false,
       no_upload: true,
       need_ms: false,
@@ -3416,7 +3432,7 @@ const driverConfigs: Record<string, any> = {
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(true, false),
+      ...buildProxyFields("SMB"),
       DISABLE_PROXY_SIGN_FIELD,
       SEED_POLICY_FIELD,
     ],
@@ -3492,7 +3508,7 @@ const driverConfigs: Record<string, any> = {
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(true, false),
+      ...buildProxyFields("Crypt"),
       DISABLE_PROXY_SIGN_FIELD,
       SEED_POLICY_FIELD,
     ],
@@ -3572,7 +3588,7 @@ const driverConfigs: Record<string, any> = {
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(true, false),
+      ...buildProxyFields("Virtual"),
       DISABLE_PROXY_SIGN_FIELD,
       SEED_POLICY_FIELD,
     ],
@@ -3627,7 +3643,7 @@ const driverConfigs: Record<string, any> = {
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(false, false, "AListV3"),
+      ...buildProxyFields("AListV3"),
       DOWN_PROXY_URL_FIELD,
       DISABLE_PROXY_SIGN_FIELD,
       SEED_POLICY_FIELD,
@@ -3728,7 +3744,7 @@ const driverConfigs: Record<string, any> = {
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(true, false),
+      ...buildProxyFields("Strm"),
       DISABLE_PROXY_SIGN_FIELD,
       SEED_POLICY_FIELD,
     ],
@@ -4167,7 +4183,7 @@ const driverConfigs: Record<string, any> = {
       CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
-      ...buildProxyFields(true, false),
+      ...buildProxyFields("ProtonDrive"),
       DISABLE_PROXY_SIGN_FIELD,
       SEED_POLICY_FIELD,
     ],
@@ -4484,7 +4500,11 @@ adminRouter.post("/meta/create", async (c) => {
     const invalidLine = validateHide(hide)
     if (invalidLine) {
       return c.json(
-        { code: 400, message: `invalid hide regex: ${invalidLine}`, data: null },
+        {
+          code: 400,
+          message: `invalid hide regex: ${invalidLine}`,
+          data: null,
+        },
         400,
       )
     }
@@ -4537,7 +4557,11 @@ adminRouter.post("/meta/update", async (c) => {
     const invalidLine = validateHide(hide)
     if (invalidLine) {
       return c.json(
-        { code: 400, message: `invalid hide regex: ${invalidLine}`, data: null },
+        {
+          code: 400,
+          message: `invalid hide regex: ${invalidLine}`,
+          data: null,
+        },
         400,
       )
     }
@@ -5069,7 +5093,7 @@ adminRouter.post("/message/get", (c) => {
 adminRouter.get("/audit/logs", async (c) => {
   try {
     const { queryAuditLogs } = await import("../internal/model/audit")
-    
+
     const username = c.req.query("username")
     const action = c.req.query("action")
     const method = c.req.query("method")
@@ -5156,5 +5180,3 @@ adminRouter.post("/audit/cleanup", async (c) => {
     )
   }
 })
-
-

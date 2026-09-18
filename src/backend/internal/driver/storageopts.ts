@@ -47,7 +47,8 @@ function asBool(value: any): boolean {
 }
 
 function asInt(value: any): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return Math.trunc(value)
+  if (typeof value === "number" && Number.isFinite(value))
+    return Math.trunc(value)
   if (typeof value === "string" && value.trim() !== "") {
     const n = parseInt(value, 10)
     if (Number.isFinite(n)) return n
@@ -56,21 +57,22 @@ function asInt(value: any): number | null {
 }
 
 /**
- * proxy_range（对齐 Go model.Proxy.ProxyRange）。
+ * proxy_range（对齐 Go 的 Range 处理）。
  *
- * 语义：当下载走服务端代理时，是否把客户端的 Range 头透传给上游。
- *   - true  ：透传 Range，上游返回 206 时原样回传，支持拖进度条/断点续传
- *   - false ：丢弃 Range，由本服务返回完整文件（上游不支持 Range 时使用）
+ * 语义：下载走服务端代理时，是否把客户端的 Range 头透传给上游。
+ *   - true ：透传 Range（**默认**），上游回 206 时原样回传，支持拖进度条/断点续传
+ *   - false：丢弃 Range，由本服务返回完整文件（用于明确拒绝 Range 的上游）
  *
- * 注意 Go 里 139Yun 驱动实例默认 d.ProxyRange = true，这里通过驱动的
- * proxyRangeDefault 能力标志表达，未配置时回退到该默认值。
+ * 为什么默认 true：Go 的透明代理会把客户端请求头原样转发给上游
+ * （internal/net/serve.go 的 ProcessHeader 只按 proxy_ignore_headers 过滤），
+ * 也就是说 **Go 默认就透传 Range**，`proxy_range` 在 Go 里只是额外启用驱动的
+ * RangeReader/多线程路径。TS 若默认 false，会让代理模式下的 seek / 断点续传
+ * 静默退化。上游拒绝或静默忽略 Range 时，由 server/proxy_request.ts 的
+ * shouldRetryWithoutRange() 去掉 Range 重试兜底。
  */
 export function getProxyRange(storage: any): boolean {
-  if (!storage) return false
-  const raw = storage.proxy_range ?? storage.proxyRange
-  if (raw === undefined || raw === null || raw === "") {
-    return storage.__driverProxyRangeDefault === true
-  }
+  const raw = storage?.proxy_range ?? storage?.proxyRange
+  if (raw === undefined || raw === null || raw === "") return true
   return asBool(raw)
 }
 
@@ -288,11 +290,13 @@ function matchSegment(pattern: string, target: string): boolean {
  *   3. 默认 30
  *   4. 命中规则时按规则值返回（minute=0 表示不缓存）
  */
-export function resolveCacheExpiration(
-  storage: any,
-  filePath: string,
-): number {
-  const normalized = "/" + String(filePath || "").split("/").filter(Boolean).join("/")
+export function resolveCacheExpiration(storage: any, filePath: string): number {
+  const normalized =
+    "/" +
+    String(filePath || "")
+      .split("/")
+      .filter(Boolean)
+      .join("/")
   const base = getCacheExpiration(storage)
 
   const policies = parseCustomCachePolicies(storage)
@@ -302,8 +306,12 @@ export function resolveCacheExpiration(
   for (const policy of policies) {
     let pattern = policy.path.trim()
     if (!pattern) continue
-    if (!pattern.startsWith("/") && !pattern.startsWith("*")) pattern = "/" + pattern
-    if (matchGlob(pattern, normalized) || matchGlob(pattern, normalized.slice(1))) {
+    if (!pattern.startsWith("/") && !pattern.startsWith("*"))
+      pattern = "/" + pattern
+    if (
+      matchGlob(pattern, normalized) ||
+      matchGlob(pattern, normalized.slice(1))
+    ) {
       matched = policy
     }
   }

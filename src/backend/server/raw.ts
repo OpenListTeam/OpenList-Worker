@@ -26,7 +26,6 @@ import {
   decideProxyPayloadAction,
   exceedsProxyPayloadLimit,
   getProxyPayloadLimit,
-  getProxyOverflowPolicy,
   isAuthBoundDownload,
   upstreamBodySize,
 } from "./proxy_request"
@@ -119,21 +118,15 @@ async function safeProxyFetch(
  * 措辞不写死平台：限制可能来自 EdgeOne 的自动判定，也可能来自管理员配置的
  * RAW_PROXY_MAX_BYTES（例如 Vercel / 阿里云 ESA 上的同类限制）。
  */
-function payloadLimitMessage(
-  c: any,
-  label: string,
-  size: number,
-  authBound: boolean,
-): string {
+function payloadLimitMessage(c: any, label: string, size: number): string {
   const limit = getProxyPayloadLimit(c)
   const mib = (bytes: number) => Math.floor(bytes / 1024 / 1024)
   return (
     `文件过大，当前部署平台无法代理下载（${size} 字节 > 上限 ${limit} 字节 ≈ ${mib(limit)} MiB）。` +
     `当前运行环境对函数单次请求/响应 body 有硬上限（EdgeOne 云函数为 6 MiB，错误码 ` +
     `CLOUD_FUNCTION_PAYLOAD_TOO_LARGE / HTTP 413），` +
-    (authBound
-      ? `${label} 无法提供可直连的下载链接（或直链必须携带私有鉴权头），只能经服务端转发，因此无法绕过该上限。`
-      : `且 RAW_PROXY_OVERFLOW=error 已禁止降级为直链。`) +
+    `${label} 无法提供可直连的下载链接（或直链必须携带私有鉴权头），只能经服务端转发，` +
+    `因此无法绕过该上限。` +
     `建议：改用返回公开直链的存储、或在自托管环境（Docker / Node）部署；` +
     `确需放开限制可设置 RAW_PROXY_MAX_BYTES=0（或按平台实际上限调整该值）。`
   )
@@ -160,7 +153,6 @@ async function proxyUpstream(
     // proxy_range 关闭时不透传 Range，上游返回的是完整文件
     range: proxyRange ? c.req.header("Range") : undefined,
     payloadLimit: getProxyPayloadLimit(c),
-    overflowPolicy: getProxyOverflowPolicy(c),
     authBound,
   })
 
@@ -191,7 +183,6 @@ async function proxyUpstream(
           c,
           driver || "该存储",
           Number(fileItem.size) || 0,
-          authBound,
         ),
         data: null,
       },
@@ -233,7 +224,6 @@ async function proxyUpstream(
   const secondCheck = decideProxyPayloadAction({
     size: actualBodySize,
     payloadLimit: getProxyPayloadLimit(c),
-    overflowPolicy: getProxyOverflowPolicy(c),
     authBound,
   })
   if (secondCheck !== "proxy") {
@@ -258,12 +248,7 @@ async function proxyUpstream(
     return c.json(
       {
         code: 413,
-        message: payloadLimitMessage(
-          c,
-          driver || "该存储",
-          actualBodySize,
-          authBound,
-        ),
+        message: payloadLimitMessage(c, driver || "该存储", actualBodySize),
         data: null,
       },
       413,
@@ -574,7 +559,6 @@ rawRouter.get("/*", async (c) => {
                     c,
                     resolved.storage.driver,
                     streamSize,
-                    true,
                   ),
                   data: null,
                 },
@@ -649,12 +633,7 @@ rawRouter.get("/*", async (c) => {
       return c.json(
         {
           code: 413,
-          message: payloadLimitMessage(
-            c,
-            "local",
-            Number(stat.size) || 0,
-            true,
-          ),
+          message: payloadLimitMessage(c, "local", Number(stat.size) || 0),
           data: null,
         },
         413,

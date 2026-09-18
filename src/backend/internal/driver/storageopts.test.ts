@@ -19,14 +19,10 @@ test("proxy_range: 显式为 true/false 时以其为准", () => {
   assert.equal(getProxyRange({ proxy_range: "false" }), false)
 })
 
-test("proxy_range: 未配置时回退驱动默认值（对齐 Go 139Yun 的 d.ProxyRange = true）", () => {
-  assert.equal(getProxyRange({}), false)
-  assert.equal(getProxyRange({ __driverProxyRangeDefault: true }), true)
-  // 显式配置优先于驱动默认
-  assert.equal(
-    getProxyRange({ proxy_range: false, __driverProxyRangeDefault: true }),
-    false,
-  )
+test("proxy_range: 未配置时默认透传（对齐 Go 透明代理转发客户端头）", () => {
+  assert.equal(getProxyRange({}), true)
+  // 显式配置优先于默认值
+  assert.equal(getProxyRange({ proxy_range: false }), false)
 })
 
 // ---- enable_sign / disable_index ----
@@ -69,7 +65,9 @@ test("custom_cache_policies: 支持 key-value 映射形式", () => {
     custom_cache_policies: { "/x/*": 5, "/y/*": 10 },
   })
   assert.equal(policies.length, 2)
-  const byPath = Object.fromEntries(policies.map((p) => [p.path, p.cacheExpiration]))
+  const byPath = Object.fromEntries(
+    policies.map((p) => [p.path, p.cacheExpiration]),
+  )
   assert.equal(byPath["/x/*"], 5)
   assert.equal(byPath["/y/*"], 10)
 })
@@ -263,6 +261,9 @@ test("down_proxy_url: 直接字段与 addition 别名均可解析", () => {
     getDownProxyUrl({ addition: '{"down_proxy_url":"https://x/y"}' }),
     "https://x/y",
   )
-  assert.equal(getDownProxyUrl({ addition: '{"proxy_url":"https://z/w"}' }), "https://z/w")
+  assert.equal(
+    getDownProxyUrl({ addition: '{"proxy_url":"https://z/w"}' }),
+    "https://z/w",
+  )
   assert.equal(getDownProxyUrl({}), "")
 })

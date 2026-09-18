@@ -1,5 +1,3 @@
-import { registerDriverProxyCapability } from "../../internal/driver/proxy"
-
 export interface Addition {
   root_folder_path: string
   region: string
@@ -20,14 +18,9 @@ export const config = {
   localSort: true,
   defaultRoot: "/",
   // 对齐 Go drivers/onedrive_app/meta.go：不设 only_proxy / prefer_proxy，
-  // 默认 302 直链。
+  // 默认 302 直链。驱动能力表的唯一真相在 internal/driver/proxy.ts。
   preferProxy: false,
 }
-
-registerDriverProxyCapability(config.name, {
-  preferProxy: false,
-  forceProxy: false,
-})
 
 export const onedriveHostMap: Record<string, { oauth: string; api: string }> = {
   global: {

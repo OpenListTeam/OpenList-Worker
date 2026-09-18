@@ -130,13 +130,9 @@ export function sanitizeContentDisposition(value: string): string {
 //   RAW_PROXY_MAX_BYTES  平台单次请求/响应上限（字节）。缺省时在 EdgeOne 运行时
 //                        自动取 6 MiB；其他平台视为不限制；显式设为 0 关闭限制
 //                        （自托管场景可据此恢复「永远代理」）。
-//   RAW_PROXY_OVERFLOW   超限策略：redirect（默认，安全时降级 302 直链）
-//                        | error（直接 413，避免暴露直链）。
 
 /** EdgeOne 云函数对单次请求/响应 body 的硬上限 */
 export const DEFAULT_EDGEONE_PAYLOAD_LIMIT = 6 * 1024 * 1024
-
-export type ProxyOverflowPolicy = "redirect" | "error"
 
 /** 原生代理前的上限判断结果 */
 export type ProxyPayloadAction = "proxy" | "redirect" | "too-large"
@@ -194,12 +190,6 @@ export function getProxyPayloadLimit(c: any): number {
   return isEdgeOneRuntime(c) ? DEFAULT_EDGEONE_PAYLOAD_LIMIT : 0
 }
 
-export function getProxyOverflowPolicy(c: any): ProxyOverflowPolicy {
-  return readEnvValue(c, "RAW_PROXY_OVERFLOW").trim().toLowerCase() === "error"
-    ? "error"
-    : "redirect"
-}
-
 /**
  * 本次代理是否会让响应体超过平台上限。
  *
@@ -224,48 +214,24 @@ export function exceedsProxyPayloadLimit(
 }
 
 /**
- * 浏览器**自带**或对下载无意义的请求头：出现这些头不构成「必须服务端代理」的理由。
- * 其余任何带鉴权语义（auth / token / cookie / signature / secret / key / session …）
- * 的头都视为私有头。
- */
-const BROWSER_SAFE_HEADER_NAMES = new Set([
-  "user-agent",
-  "referer",
-  "referrer",
-  "origin",
-  "accept",
-  "accept-language",
-  "accept-encoding",
-  "range",
-  "if-range",
-  "content-type",
-  "content-disposition",
-  "content-length",
-  "cache-control",
-  "pragma",
-])
-
-/**
- * 鉴权语义头名特征。
+ * 私有请求头（浏览器无法自带）：只有这些头才让 302 直链失去可行性。
  *
- * 用模式而非精确名单：仓库内 33 处 `raw_url_headers` 目前只用到
- * Authorization / Cookie / User-Agent / Referer / Origin（前两者需要代理，
- * 后三者浏览器可自带），但只要驱动改成 `X-Emby-Token`、`X-Api-Key` 之类的
- * 名字，精确名单就会漏判并把 401 暴露给浏览器；模式匹配对这类演化更稳。
+ * 仓库内 33 处 `raw_url_headers` 实际只用到 Authorization / Cookie /
+ * User-Agent / Referer / Origin，其中只有前两者是浏览器无法提供的鉴权信息
+ * （如 WebDAV、微云、Google Drive、Teldrive）。驱动若引入新的鉴权头，
+ * 应按 Go 的 meta.go 把该驱动登记为 MustProxy（见 internal/driver/proxy.ts），
+ * 而不是在这里堆一个「猜头名」的规则。
  */
-const PRIVATE_HEADER_PATTERN =
-  /(authorization|cookie|auth|token|secret|api[-_]?key|signature|session|credential|password)/i
+const PRIVATE_HEADER_NAMES = new Set(["authorization", "cookie"])
 
 /** raw_url 是否要求私有请求头（浏览器直连会 401/403） */
 export function rawUrlNeedsPrivateHeaders(
   headers?: Record<string, string> | null,
 ): boolean {
   if (!headers) return false
-  return Object.keys(headers).some((k) => {
-    const name = k.trim().toLowerCase()
-    if (BROWSER_SAFE_HEADER_NAMES.has(name)) return false
-    return PRIVATE_HEADER_PATTERN.test(name)
-  })
+  return Object.keys(headers).some((k) =>
+    PRIVATE_HEADER_NAMES.has(k.trim().toLowerCase()),
+  )
 }
 
 /**
@@ -317,19 +283,19 @@ export function upstreamBodySize(
  * @param range          实际会透传给上游的 Range（proxy_range 关闭时应传 undefined，
  *                       因为此时上游返回的是完整文件，分片大小无法作为依据）
  * @param authBound      无法降级为直链时为 true
+ *
+ * 超限时：可直连（authBound=false）→ 降级 302；否则 → too-large（返回可读 413）。
  */
 export function decideProxyPayloadAction(input: {
   size: number
   range?: string | null
   payloadLimit: number
-  overflowPolicy?: ProxyOverflowPolicy
   authBound: boolean
 }): ProxyPayloadAction {
   if (!exceedsProxyPayloadLimit(input.size, input.range, input.payloadLimit)) {
     return "proxy"
   }
-  // 超过平台上限：无法降级为直链时必须返回可读错误，否则平台会直接吐 413 错误页
-  const policy = input.overflowPolicy || "redirect"
-  if (!input.authBound && policy === "redirect") return "redirect"
-  return "too-large"
+  // 超过平台上限：能交给浏览器直连就降级 302，否则必须给出可读错误，
+  // 而不是让平台返回它自己的 413 错误页。
+  return input.authBound ? "too-large" : "redirect"
 }

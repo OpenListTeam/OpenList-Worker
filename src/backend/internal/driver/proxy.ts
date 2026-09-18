@@ -34,12 +34,8 @@ export interface ProxyDecision {
 }
 
 /**
- * 驱动代理能力。
- * 未在此表登记的驱动视为「无强制代理、无默认代理」，行为与此前一致（默认 302）。
- */
-/**
  * ============================================================================
- * 驱动代理能力 ↔ Go drivers/&lt;name&gt;/meta.go 的对应关系
+ * 驱动代理能力 ↔ Go drivers/&lt;name&gt;/meta.go 的对应关系（本文件是唯一真相）
  * ============================================================================
  *
  * 维护本文件时请对照 Go 侧 `driver.Config` 的以下字段：
@@ -48,17 +44,15 @@ export interface ProxyDecision {
  * |----------------------|------------------------------|--------------------------|
  * | `OnlyProxy: true`    | 无可用直链，必须代理          | DRIVER_FORCE_PROXY       |
  * | `NoLinkURL: true`    | Link() 不返回可公开 URL      | DRIVER_FORCE_PROXY       |
- * | `PreferProxy: true`  | 优先代理，但直链可用          | preferProxy: true        |
- * | `ProxyRangeOption`   | 支持 proxy_range 开关        | admin.ts 的 PROXY_RANGE_DRIVERS |
+ * | `PreferProxy: true`  | 优先代理，但直链可用          | DRIVER_PREFER_PROXY      |
+ * | `ProxyRangeOption`   | 支持 proxy_range 开关        | PROXY_RANGE_DRIVERS      |
  *
- * 注意：`OnlyProxy`/`NoLinkURL` 的**权威来源是各驱动的 meta.go**，
- * 下表是同步后的快照。若 Go 侧增删驱动，请同步更新此处，
- * 并保持与 admin.ts 中 `only_proxy: true` 的驱动集合一致。
+ * 注意：**权威来源是各驱动的 meta.go**（Go 侧按驱动注册），下表是同步后的快照。
+ * Go 侧增删驱动时请同步更新此处；admin.ts 的表单字段与运行时决策都从这里派生，
+ * 不要在别处再抄一份。
  *
- * --- OnlyProxy / NoLinkURL（强制 native_proxy，表单不提供 302 选项）---
- *   123pan        drivers/123/meta.go
- *   baidunetdisk  drivers/baidu_netdisk/meta.go
- *   115open       drivers/115_open/meta.go
+ * --- OnlyProxy / NoLinkURL（MustProxy，强制 native_proxy，表单不提供 302）---
+ *   weiyun        drivers/weiyun/meta.go
  *   sftp          drivers/sftp/meta.go
  *   ftp           drivers/ftp/meta.go
  *   smb           drivers/smb/meta.go
@@ -67,40 +61,45 @@ export interface ProxyDecision {
  *   strm          drivers/strm/meta.go
  *   meganz        drivers/mega/meta.go
  *   protondrive   drivers/proton_drive/meta.go
- *   189cloud      drivers/189/meta.go
- *   weiyun        drivers/weiyun/meta.go（见下方 DRIVER_PROXY_CAPABILITY）
+ *   chunk         drivers/chunk/meta.go
+ *   googledrive   drivers/google_drive/meta.go
+ *   googlephoto   drivers/google_photo/meta.go
+ *   quarkopen     drivers/quark_open/meta.go
+ *   quarkuc       drivers/quark_uc/meta.go（Go 注册名为 "UC"）
+ *   chaoxing      drivers/chaoxing/meta.go
  *
- * --- PreferProxy（默认 native_proxy）---
+ *   未列入但 Go 侧同样是 MustProxy 的驱动及原因：
+ *     local         TS 走本地文件分支（server/raw.ts），不经过驱动下载链路
+ *     bunny_storage Go 是「运行时条件」（配置了 CDN 域才可直链），TS 未实现该条件
+ *                   —— 见下方「与 Go 的已知差异」
+ *
+ * --- PreferProxy（DefaultProxy()：web_proxy 未配置时的表单默认值）---
  *   webdav        drivers/webdav/meta.go
+ *   baidunetdisk  drivers/baidu_netdisk/meta.go
+ *   123pan        drivers/123/meta.go
+ *   123open       drivers/123_open/meta.go
+ *   123panshare   drivers/123_share/meta.go
  *
  * --- ProxyRangeOption（表单显示 proxy_range）---
- *   139yun        drivers/139/meta.go（实例默认 ProxyRange = true）
+ *   139yun        drivers/139/meta.go
  *   alias         drivers/alias/meta.go
  *   alistv3       drivers/alist_v3/meta.go
  *   openlist      drivers/openlist/meta.go
  *
  * 未登记的驱动一律视为「不强制代理、不默认代理」→ 默认 302_redirect。
- */
-
-const DRIVER_PROXY_CAPABILITY: Record<
-  string,
-  { preferProxy?: boolean; forceProxy?: boolean }
-> = {
-  // drivers/webdav/meta.go: PreferProxy = true
-  webdav: { preferProxy: true },
-}
-
-/**
- * 强制代理驱动的运行时集合（等价 Go 的 OnlyProxy / NoLinkURL）。
  *
- * 运行时集合而非静态常量，是因为另有驱动模块通过
- * registerDriverProxyCapability() 自声明能力；
- * 初始值对应上方映射表中「OnlyProxy / NoLinkURL」一节。
+ * --- 与 Go 的已知差异 ---
+ * 1. `PreferProxy` 在 Go 里只用于**表单默认值**；本文件让它在运行时也生效
+ *    （仅当存储的 `web_proxy` 未配置时兜底），否则 TS 存量数据（web_proxy 为
+ *    null）会把默认应代理的驱动判成直链。
+ * 2. Go 的 `canProxy` 还包含 `proxy_types` / `text_types`（按扩展名代理）与
+ *    `proxy_ignore_headers`，TS 尚未实现。
+ * 3. Go 的 `/p` 对未开启代理的存储返回 403，TS 一律放行（由签名鉴权兜底）。
  */
+
+/** 强制代理（Go: Config.MustProxy() = OnlyProxy || NoLinkURL） */
 const DRIVER_FORCE_PROXY = new Set<string>([
-  "123pan",
-  "baidunetdisk",
-  "115open",
+  "weiyun",
   "sftp",
   "ftp",
   "smb",
@@ -109,13 +108,30 @@ const DRIVER_FORCE_PROXY = new Set<string>([
   "strm",
   "meganz",
   "protondrive",
-  "189cloud",
-  "weiyun",
+  "chunk",
+  "googledrive",
+  "googlephoto",
+  "quarkopen",
+  "quarkuc",
+  "chaoxing",
+])
+
+/** 默认代理（Go: Config.DefaultProxy() = PreferProxy） */
+const DRIVER_PREFER_PROXY = new Set<string>([
+  "webdav",
+  "baidunetdisk",
+  "123pan",
+  "123open",
+  "123panshare",
 ])
 
 /**
  * 允许 `proxy_range` 的驱动（等价 Go 的 Config.ProxyRangeOption）。
  * 供 admin.ts 决定是否展示 proxy_range 表单项。
+ *
+ * 注意：透传客户端 Range 是**默认行为**（对齐 Go 透明代理总是转发客户端头），
+ * 该开关只在这几个驱动上作为「可显式关闭」的入口，Go 里 139Yun 实例默认
+ * `d.ProxyRange = true` 的差异因此不再需要单独表达。
  */
 export const PROXY_RANGE_DRIVERS = new Set([
   "139yun",
@@ -123,27 +139,6 @@ export const PROXY_RANGE_DRIVERS = new Set([
   "alistv3",
   "openlist",
 ])
-
-/** 139Yun 的 proxy_range 默认值为 true（对齐 Go drivers/139 的 d.ProxyRange = true） */
-export function proxyRangeDefaultFor(driver: string): boolean {
-  return normalizeDriverName(driver) === "139yun"
-}
-
-/**
- * 运行时注册驱动能力（供驱动模块自声明，避免在此处硬编码驱动清单）。
- * 与下方静态表等价，重复注册以显式声明为准。
- */
-export function registerDriverProxyCapability(
-  driver: string,
-  cap: { preferProxy?: boolean; forceProxy?: boolean },
-): void {
-  const norm = normalizeDriverName(driver)
-  if (!norm) return
-  if (cap.forceProxy) DRIVER_FORCE_PROXY.add(norm)
-  if (cap.preferProxy) {
-    DRIVER_PROXY_CAPABILITY[norm] = { preferProxy: true }
-  }
-}
 
 /** 管理员自定义下载代理地址的字段（落在 storage.addition 内） */
 const PROXY_URL_ADDITION_KEYS = [
@@ -168,20 +163,9 @@ export function driverMustProxy(driver: string): boolean {
   return DRIVER_FORCE_PROXY.has(normalizeDriverName(driver))
 }
 
-/** 该驱动是否默认代理（Go: Config.DefaultProxy()） */
+/** 该驱动是否默认代理（Go: Config.DefaultProxy() = PreferProxy） */
 export function driverPreferProxy(driver: string): boolean {
-  const cap = DRIVER_PROXY_CAPABILITY[normalizeDriverName(driver)]
-  return !!cap?.preferProxy
-}
-
-/** Go: Proxy.Webdav302() */
-export function isWebdav302(policy: unknown): boolean {
-  return policy === "302_redirect"
-}
-
-/** Go: Proxy.WebdavProxyURL() */
-export function isWebdavProxyURL(policy: unknown): boolean {
-  return policy === "use_proxy_url"
+  return DRIVER_PREFER_PROXY.has(normalizeDriverName(driver))
 }
 
 /** 读取存储行上的代理策略（兼容 camelCase 与 "policy" 别名） */
@@ -238,38 +222,37 @@ export function getDisableProxySign(storage: any): boolean {
  * 从 storage.addition 的 order_by / order_direction 解析排序参数。
  * 部分驱动的排序配置落在 addition 而不是 storage 行上，这里做统一兜底。
  */
-export function getAdditionOrder(
-  storage: any,
-): { order_by: string; order_direction: string } | null {
-  if (!storage) return null
-  let addition: any = storage.addition
-  if (typeof addition === "string") {
-    try {
-      addition = JSON.parse(addition || "{}")
-    } catch {
-      return null
-    }
-  }
-  if (!addition || typeof addition !== "object") return null
-  const by = addition.order_by
-  const dir = addition.order_direction
-  if (typeof by !== "string" && typeof dir !== "string") return null
-  return {
-    order_by: typeof by === "string" ? by : "",
-    order_direction: typeof dir === "string" ? dir : "",
-  }
+/**
+ * 存储级 web_proxy 的**生效值**。
+ *
+ * Go 的行为：`web_proxy` 是存储字段，其**默认值**由驱动能力决定
+ * （`op/driver.go`：PreferProxy 驱动的表单默认 true），运行时只看该字段
+ * （`common.ShouldProxy`：`MustProxy() || WebProxy`）。
+ *
+ * TS 的存量数据里 `web_proxy` 常为 null（早期表单未写入），直接按 false 处理会
+ * 把本该默认代理的驱动（WebDav 等）判成直链——这正是历史上「WebDAV 下载丢认证」
+ * 的成因。因此这里在字段未配置时回退到驱动默认值，等价于 Go 的表单默认。
+ */
+export function effectiveWebProxy(storage: any, driver: string): boolean {
+  const raw = storage?.web_proxy ?? storage?.webProxy
+  if (raw === true || raw === "true") return true
+  if (raw === false || raw === "false") return false
+  return driverPreferProxy(driver)
 }
 
 /**
  * 统一的下载模式决策入口（对齐 Go 的 ShouldProxy / canProxy + webdav_policy）。
  *
- * 决策顺序（与 Go 的优先级一致：强制代理 > 存储开关 > 路径 > 存储策略 > 驱动默认）：
- *   1. 驱动强制代理（MustProxy）        → native_proxy
- *   2. 存储级 web_proxy = true          → native_proxy
- *   3. 请求命中代理前缀（/p、/sd ...）  → native_proxy
- *   4. 存储级 webdav_policy 已配置      → 按配置值
- *   5. 驱动默认（PreferProxy）          → native_proxy
- *   6. 兜底                             → 302_redirect（对齐 Go 默认值）
+ * 决策顺序（对齐 Go：强制代理 > 存储开关 > 路径 > 存储策略 > 默认直链）：
+ *   1. 驱动强制代理（MustProxy）              → native_proxy
+ *   2. 存储级 web_proxy（未配置时取驱动默认）  → native_proxy
+ *   3. 请求命中代理前缀（/p、/sd ...）        → native_proxy
+ *   4. 存储级 webdav_policy 已配置            → 按配置值
+ *   5. 兜底                                   → 302_redirect
+ *
+ * 与 Go 的差异：Go 的 `ShouldProxy` 不看 `webdav_policy`（`302_redirect` 只作用于
+ * WebDAV 协议端点，`use_proxy_url` 由 `canProxy` 处理）；TS 在此统一按策略值决策，
+ * 因此「webdav_policy=native_proxy 且 web_proxy=false」在 TS 会代理、在 Go 会直链。
  */
 export function resolveProxyDecision(
   storage: any,
@@ -282,8 +265,7 @@ export function resolveProxyDecision(
     return { mode: "native_proxy", needsProxy: true, source: "force" }
   }
 
-  const webProxy = storage?.web_proxy
-  if (webProxy === true || webProxy === "true") {
+  if (effectiveWebProxy(storage, norm)) {
     return { mode: "native_proxy", needsProxy: true, source: "web_proxy" }
   }
 
@@ -298,10 +280,6 @@ export function resolveProxyDecision(
       needsProxy: policy !== "302_redirect",
       source: "storage_policy",
     }
-  }
-
-  if (driverPreferProxy(norm)) {
-    return { mode: "native_proxy", needsProxy: true, source: "driver_default" }
   }
 
   return { mode: "302_redirect", needsProxy: false, source: "driver_default" }
