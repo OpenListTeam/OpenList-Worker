@@ -6,6 +6,7 @@ import {
   injectCdnIntoHtml,
   getIndexHtmlWithCdn,
   parseFrontendVersion,
+  extractEntryAsset,
 } from "./assets"
 
 const env: any = {}
@@ -45,12 +46,57 @@ async function withFetch(fn: any, impl: any) {
   }
 }
 
+/**
+ * 模拟 CDN 外呼。
+ *   HEAD <cdn>/<asset>     → 资产存在性探测（asset=false 时 404）
+ *   GET  <cdn>/index.html  → html=null 时 404，否则返回该 HTML
+ * log 收集 "METHOD url" 便于断言调用次数与顺序。
+ */
+function cdnImpl(opts: { asset?: boolean; html?: string | null; log?: string[] }) {
+  return async (url: string, init?: any) => {
+    const method = (init?.method || "GET").toUpperCase()
+    opts.log?.push(`${method} ${url}`)
+    if (method === "HEAD") {
+      return new Response(null, { status: opts.asset === false ? 404 : 200 })
+    }
+    if (opts.html === null) return new Response("not found", { status: 404 })
+    return new Response(opts.html ?? INDEX_HTML, {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    })
+  }
+}
+
 // ---------------------------------------------------------------- version stamp
 
 test("parseFrontendVersion: 解析构建期版本戳", () => {
   assert.equal(parseFrontendVersion(INDEX_HTML), "4.2.6")
   assert.equal(parseFrontendVersion(LOCAL_HTML), "")
   assert.equal(parseFrontendVersion("<html></html>"), "")
+})
+
+// ------------------------------------------------------------- extractEntryAsset
+
+test("extractEntryAsset: 取 preloads 里的 module 入口", () => {
+  const html = `<script>(function(){
+var preloads = [{"parentTagName":"head","tagName":"script","attrs":{"type":"module","crossorigin":"","src":"/assets/index-CelfHslL.js"}},{"parentTagName":"head","tagName":"link","attrs":{"rel":"stylesheet","crossorigin":"","href":"/assets/index-MlAvXon-.css"}}];
+})();</script>`
+  assert.equal(extractEntryAsset(html), "/assets/index-CelfHslL.js")
+})
+
+test("extractEntryAsset: 退化取任意 /assets/*.js 引用", () => {
+  assert.equal(
+    extractEntryAsset('<script data-src="/assets/index-legacy-Exg5IBbL.js"></script>'),
+    "/assets/index-legacy-Exg5IBbL.js",
+  )
+  assert.equal(
+    extractEntryAsset("<script src=/assets/app-abc123.js></script>"),
+    "/assets/app-abc123.js",
+  )
+})
+
+test("extractEntryAsset: 无 /assets 引用时返回空串", () => {
+  assert.equal(extractEntryAsset("<html><body>no assets</body></html>"), "")
 })
 
 // ---------------------------------------------------------------- resolveCdnUrl
@@ -157,48 +203,76 @@ test("getIndexHtmlWithCdn: 非 http(s) scheme 直接回退本地 HTML", async ()
   assert.equal(out, LOCAL_HTML)
 })
 
-test("getIndexHtmlWithCdn: 从 CDN 拉取 HTML 并注入 cdn（修复哈希错配的 404）", async () => {
-  let called = 0
-  let requested = ""
+test("getIndexHtmlWithCdn: CDN 上有本地哈希资产时用本地 HTML（不拉 CDN 的 index.html）", async () => {
+  // npmmirror 等禁止访问 .html 的 CDN 只能靠这条路径（等价 Go Release 版行为）
+  const log: string[] = []
+  const out = await withFetch(
+    () =>
+      getIndexHtmlWithCdn(
+        { ASSET_URLS: "https://registry.npmmirror.com/@pkg/1.0.0/files/dist" },
+        INDEX_HTML,
+      ),
+    cdnImpl({ asset: true, log }),
+  )
+  assert.deepEqual(log, [
+    "HEAD https://registry.npmmirror.com/@pkg/1.0.0/files/dist/assets/index-LOCAL.js",
+  ])
+  // 下发的必须是本地 HTML（哈希与本地 dist 一致），且已注入 cdn
+  assert.match(out, /index-LOCAL\.js/)
+  assert.match(
+    out,
+    /cdn: 'https:\/\/registry\.npmmirror\.com\/@pkg\/1\.0\.0\/files\/dist'/,
+  )
+})
+
+test("getIndexHtmlWithCdn: 本地哈希不在 CDN 上时改用 CDN 的 index.html（哈希同源）", async () => {
+  const log: string[] = []
   const cdnHtml = INDEX_HTML.replace("index-LOCAL.js", "index-CDN.js")
   const out = await withFetch(
     () => getIndexHtmlWithCdn({ ASSET_URLS: "https://cdn-a.example.com/dist" }, LOCAL_HTML),
-    async (url: string) => {
-      called++
-      requested = url
-      return new Response(cdnHtml, {
-        status: 200,
-        headers: { "content-type": "text/html" },
-      })
-    },
+    cdnImpl({ asset: false, html: cdnHtml, log }),
   )
-  assert.equal(called, 1)
-  assert.equal(requested, "https://cdn-a.example.com/dist/index.html")
-  // 下发的是 CDN 的 HTML（哈希与 CDN 资产一致）且已注入 cdn
+  assert.deepEqual(log, [
+    "HEAD https://cdn-a.example.com/dist/assets/index-LOCAL.js",
+    "GET https://cdn-a.example.com/dist/index.html",
+  ])
   assert.match(out, /index-CDN\.js/)
   assert.match(out, /cdn: 'https:\/\/cdn-a\.example\.com\/dist'/)
 })
 
+test("getIndexHtmlWithCdn: 探测失败且 CDN 拦截 .html 时降级为不注入", async () => {
+  // npmmirror registry 端点：.html 返回 451 {"error":"blocked"}，资产探测也失败
+  const log: string[] = []
+  const out = await withFetch(
+    () =>
+      getIndexHtmlWithCdn(
+        { ASSET_URLS: "https://registry.npmmirror.com/@pkg/9.9.9/files/dist" },
+        LOCAL_HTML,
+      ),
+    cdnImpl({ asset: false, html: null, log }),
+  )
+  assert.deepEqual(log, [
+    "HEAD https://registry.npmmirror.com/@pkg/9.9.9/files/dist/assets/index-LOCAL.js",
+    "GET https://registry.npmmirror.com/@pkg/9.9.9/files/dist/index.html",
+  ])
+  assert.equal(out, LOCAL_HTML)
+  assert.match(out, /cdn: undefined/, "两条路径都不可用时绝不能注入失效地址")
+})
+
 test("getIndexHtmlWithCdn: 模块级缓存命中，不重复外呼", async () => {
-  let called = 0
-  const impl = async () =>
-    new Response(INDEX_HTML, { status: 200, headers: { "content-type": "text/html" } })
+  const log: string[] = []
   const url = "https://cdn-cache.example.com/dist"
-  await withFetch(
-    () => getIndexHtmlWithCdn({ ASSET_URLS: url }, LOCAL_HTML),
-    async () => {
-      called++
-      return impl()
-    },
+  const impl = cdnImpl({ asset: true, log })
+  const first = await withFetch(
+    () => getIndexHtmlWithCdn({ ASSET_URLS: url }, INDEX_HTML),
+    impl,
   )
-  await withFetch(
-    () => getIndexHtmlWithCdn({ ASSET_URLS: url }, LOCAL_HTML),
-    async () => {
-      called++
-      return impl()
-    },
+  const second = await withFetch(
+    () => getIndexHtmlWithCdn({ ASSET_URLS: url }, INDEX_HTML),
+    impl,
   )
-  assert.equal(called, 1, "第二次应命中缓存")
+  assert.equal(first, second)
+  assert.equal(log.length, 1, "第二次应命中缓存")
 })
 
 test("getIndexHtmlWithCdn: CDN 不可达时回退本地 HTML 且【不注入】cdn（避免白屏）", async () => {
@@ -214,34 +288,46 @@ test("getIndexHtmlWithCdn: CDN 不可达时回退本地 HTML 且【不注入】c
 
 test("getIndexHtmlWithCdn: CDN 返回 404 / 非 HTML 时回退本地 HTML", async () => {
   const out404 = await withFetch(
-    () => getIndexHtmlWithCdn({ ASSET_URLS: "https://cdn-404.example.com/dist" }, LOCAL_HTML),
-    async () => new Response("not found", { status: 404 }),
+    () =>
+      getIndexHtmlWithCdn(
+        { ASSET_URLS: "https://cdn-404.example.com/dist" },
+        LOCAL_HTML,
+      ),
+    cdnImpl({ asset: false, html: null }),
   )
   assert.equal(out404, LOCAL_HTML)
 
   const outJson = await withFetch(
-    () => getIndexHtmlWithCdn({ ASSET_URLS: "https://cdn-json.example.com/dist" }, LOCAL_HTML),
-    async () =>
-      new Response('{"error":"blocked"}', {
+    () =>
+      getIndexHtmlWithCdn(
+        { ASSET_URLS: "https://cdn-json.example.com/dist" },
+        LOCAL_HTML,
+      ),
+    async (url: string, init?: any) => {
+      if ((init?.method || "GET").toUpperCase() === "HEAD") {
+        return new Response(null, { status: 404 })
+      }
+      return new Response('{"error":"blocked"}', {
         status: 200,
         headers: { "content-type": "application/json" },
-      }),
+      })
+    },
   )
   assert.equal(outJson, LOCAL_HTML, "CDN 的 JSON 错误页不能被当作 HTML 下发")
 })
 
 test("getIndexHtmlWithCdn: $version 用本地 HTML 的版本戳解析 CDN 地址", async () => {
-  let requested = ""
+  const log: string[] = []
   await withFetch(
     () =>
       getIndexHtmlWithCdn(
         { ASSET_URLS: "https://cdn-ver.example.com/@pkg@$version/dist" },
         INDEX_HTML,
       ),
-    async (url: string) => {
-      requested = url
-      return new Response(INDEX_HTML, { status: 200 })
-    },
+    cdnImpl({ asset: false, log }),
   )
-  assert.equal(requested, "https://cdn-ver.example.com/@pkg@4.2.6/dist/index.html")
+  assert.deepEqual(log, [
+    "HEAD https://cdn-ver.example.com/@pkg@4.2.6/dist/assets/index-LOCAL.js",
+    "GET https://cdn-ver.example.com/@pkg@4.2.6/dist/index.html",
+  ])
 })

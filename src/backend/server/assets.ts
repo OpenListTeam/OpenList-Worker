@@ -31,30 +31,37 @@ assetsRouter.get("/favicon.ico", redirectToLogo)
 /**
  * 前端静态资源 CDN 注入。
  *
- * 当配置了 ASSET_URLS 时，Worker 从 `${ASSET_URLS}/index.html` 拉取前端的
- * index.html（对齐 Go 版 server/static/static.go 的 initIndex() 行为），
- * 注入 window.OPENLIST_CONFIG.cdn 后下发；浏览器据此直连 CDN 加载
- * JS/CSS/图片等静态资源，无需经 Worker 中转。
+ * 当配置了 ASSET_URLS 时，把 CDN 地址注入 index.html 的
+ * window.OPENLIST_CONFIG.cdn；前端 vite-plugin-dynamic-base 读取
+ * window.__dynamic_base__（= cdn）后，浏览器直连 CDN 加载 JS/CSS/图片等资源，
+ * 不再经 Worker 中转（对齐 Go 版 server/static/static.go）。
  *
- * 为什么要「从 CDN 拉 HTML」而不是「下发本地 HTML + 注入 cdn」：
- * 前端产物是内容哈希文件名（/assets/index-XXXX.js），本地构建的 HTML 只与
- * 本地构建的资产匹配。若本地 HTML 引用的哈希在 CDN 上不存在（版本偏差、
- * $version 解析为 latest、或 CDN 版本与部署版本不一致），浏览器会遭到
- * 全量资产 404（白屏）。从 CDN 拉取 HTML 则 HTML 与资产天然同源一致。
+ * 两条路径，按优先级排列：
  *
- * 降级策略：CDN 不可达 / 返回非 HTML 时，返回本地 HTML 且【不注入】cdn ——
- * 资源回退到源站加载，站点依然可用（宁可 CDN 不生效，不可白屏）。
+ *  A. 本地 index.html + CDN 资产（首选，等价 Go Release 版行为）
+ *     仅当 CDN 上确实存在本地 HTML 引用的哈希资产时才采用。这条路径【不要求
+ *     CDN 能返回 HTML】—— npmmirror 等禁止访问 .html 的 CDN 只能走这条。
+ *     官方文档明确：Release 版用内置 index.html，
+ *     "Some NPM CDNs (like npmmirror) may prohibit access to HTML files,"
+ *     "but Release versions dont depend on CDNs index.html, so they are unaffected"。
  *
- * ⚠️ 对 ASSET_URLS 的两个硬性要求（浏览器侧直接加载，缺一即白屏）：
- *   1. 必须能返回 index.html：部分 npm 镜像会拦截 .html（npmmirror 的
- *      registry.npmmirror.com/.../files/ 对 .html 返回 451 {"error":"blocked"}，
- *      该端点只放行 js/css）。
- *   2. 必须带 Access-Control-Allow-Origin：前端产物以 crossorigin 加载
- *      module script / modulepreload / stylesheet / 字体，缺少 CORS 头会被
- *      浏览器整批拦下（npmmirror 的 registry 与 cdn 两个端点都不发该头）。
- *   实测可用：jsdelivr、unpkg。npmmirror 不可用。
+ *  B. CDN 的 index.html（本地构建与 CDN 版本不一致时的兜底）
+ *     前端产物是内容哈希文件名（/assets/index-XXXX.js），本地构建的 HTML 只与
+ *     本地构建的资产匹配。若本地 HTML 引用的哈希在 CDN 上不存在（$version 落到
+ *     latest、或 dist 由 main 分支构建而版本戳仍是已发布版本号），直接用本地
+ *     HTML 会让浏览器全量资产 404（白屏）。此时改用 CDN 自己的 index.html，
+ *     HTML 与资产天然同源一致。
+ *
+ * 降级：两条路径都不可用时返回本地 HTML 且【不注入】cdn —— 资源回退源站加载，
+ * 站点依然可用（宁可 CDN 不生效，不可白屏）。
+ *
+ * 对 ASSET_URLS 的要求：资源由浏览器直接加载，CDN 必须对 .js/.css/字体返回
+ * Access-Control-Allow-Origin（前端产物以 crossorigin 加载 module script /
+ * stylesheet）。jsdelivr、unpkg 固定返回 *；npmmirror 在请求带 Origin 时回显
+ * 该头，浏览器场景下同样可用。
  *
  * 示例：
+ *   ASSET_URLS = https://registry.npmmirror.com/@openlist-frontend/openlist-frontend/$version/files/dist
  *   ASSET_URLS = https://cdn.jsdelivr.net/npm/@openlist-frontend/openlist-frontend@$version/dist
  *   ASSET_URLS = https://unpkg.com/@openlist-frontend/openlist-frontend@$version/dist
  */
@@ -130,11 +137,48 @@ export function injectCdnIntoHtml(html: string, cdn: string): string {
 }
 
 /**
- * 获取应下发的 index.html（CDN 优先，源站兜底）。
+ * 从 index.html 中取一个内容哈希资产路径，用于验证 CDN 与本地构建是否同一版本。
  *
- * 1. 未配置 ASSET_URLS → 本地 HTML 原样返回
- * 2. 已配置 → 从 `${cdn}/index.html` 拉取（带超时），校验为 HTML 后注入 cdn 返回
- * 3. 拉取失败 / 非 HTML → 本地 HTML 原样返回（不注入 cdn，资源回退源站）
+ * 优先取 preloads 数组里的 module 入口（现代构建一定存在），其次退化为任意
+ * `/assets/*.js` 引用。取不到时返回空串，调用方跳过「本地 HTML」路径。
+ */
+export function extractEntryAsset(html: string): string {
+  const m =
+    html.match(/"type"\s*:\s*"module"[^{}]*?"src"\s*:\s*"([^"]+)"/) ||
+    html.match(/"(\/assets\/[^"]+\.js)"/) ||
+    html.match(/(\/assets\/[A-Za-z0-9_.-]+\.js)/)
+  return m ? m[1] : ""
+}
+
+/**
+ * 探测 CDN 上是否存在该哈希资产。
+ *
+ * 用 HEAD 而非 GET：只关心存在性，不下载 1MB+ 的 bundle。哈希文件名是内容
+ * 寻址的，同一个文件在 CDN 与本地构建中的名字一致当且仅当内容一致，因此
+ * 单个入口资产存在即可判定「本地 HTML 引用的整套哈希在 CDN 上都存在」。
+ */
+async function cdnHasAsset(cdn: string, assetPath: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${cdn}${assetPath}`, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(4000),
+    })
+    return res.ok
+  } catch {
+    // CDN 不可达 / 超时：按「不存在」处理，走 CDN 的 index.html 兜底
+    return false
+  }
+}
+
+/**
+ * 获取应下发的 index.html。
+ *
+ * A. 本地 HTML + CDN 资产：CDN 上存在本地 HTML 引用的哈希资产时采用。
+ *    不要求 CDN 能返回 HTML，因此 npmmirror 这类禁止 .html 的 CDN 也能用
+ *    （等价 Go Release 版行为）。
+ * B. CDN 的 index.html：本地构建与 CDN 版本不一致时兜底，保证 HTML 与哈希资产
+ *    同源一致。
+ * C. 两条都不可用 → 本地 HTML 原样返回（不注入 cdn，资源回退源站，不白屏）。
  */
 export async function getIndexHtmlWithCdn(
   env: any,
@@ -146,6 +190,17 @@ export async function getIndexHtmlWithCdn(
   if (!/^https?:\/\//i.test(cdn)) return localHtml
   const hit = cdnHtmlCache.get(cdn)
   if (hit && Date.now() - hit.ts < CDN_HTML_TTL_MS) return hit.html
+
+  // A. 本地 HTML：先确认 CDN 上确实有这套哈希，避免本地构建与 CDN 版本不一致
+  //    时把浏览器引到 404 上（那会比不注入更糟）。
+  const entry = extractEntryAsset(localHtml)
+  if (entry && (await cdnHasAsset(cdn, entry))) {
+    const html = injectCdnIntoHtml(localHtml, cdn)
+    cdnHtmlCache.set(cdn, { html, ts: Date.now() })
+    return html
+  }
+
+  // B. CDN 的 index.html
   try {
     const res = await fetch(`${cdn}/index.html`, {
       headers: { accept: "text/html" },
@@ -153,7 +208,7 @@ export async function getIndexHtmlWithCdn(
     })
     if (res.ok) {
       let html = await res.text()
-      // 校验确实是 HTML，而非 CDN 的 JSON 错误页
+      // 校验确实是 HTML，而非 CDN 的 JSON 错误页（如 npmmirror 的 451 blocked）
       if (/<html/i.test(html)) {
         html = injectCdnIntoHtml(html, cdn)
         cdnHtmlCache.set(cdn, { html, ts: Date.now() })
@@ -163,5 +218,7 @@ export async function getIndexHtmlWithCdn(
   } catch {
     // CDN 不可达 / 超时：回退源站
   }
+
+  // C. 降级：不注入
   return localHtml
 }

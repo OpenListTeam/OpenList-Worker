@@ -32,21 +32,23 @@ ADMIN_PASS=
 ALLOW_URLS=
 
 # 前端静态资源 CDN 地址（可选）。需指向包含完整前端 dist 的目录（含 index.html）。
-# 配置后 Worker 从该 CDN 拉取 index.html 并注入 cdn，浏览器直连 CDN 加载 JS/CSS，
-# 使 HTML 与哈希资产同源一致（避免本地 HTML 引用 CDN 上不存在的哈希导致批量 404）；
-# CDN 不可达或返回非 HTML 时自动回退源站加载，不影响站点可用性。
+# 配置后浏览器直连 CDN 加载 JS/CSS/图片等资源，不再经 Worker 中转。
+# 注入自动在两条路径中选择：
+#   A. CDN 上存在本地构建引用的哈希资产 → 直接下发本地 index.html 并注入 cdn
+#      （不要求 CDN 能返回 HTML —— npmmirror 等禁止访问 .html 的 CDN 靠这条工作，
+#       等价 Go Release 版行为）
+#   B. 否则改用 CDN 自己的 index.html，保证 HTML 与哈希资产同源一致
+#   A、B 都不可用 → 不注入，资源回退源站加载（不会白屏）
 # 支持 $version 占位符，替换为本构建的前端版本号（构建期写入，解析失败回退 latest）。
 # 注意：Cloudflare 默认「资源优先」，/ 与 /index.html 会被静态层直接返回而绕过
 # Worker，注入不会生效；本仓库 wrangler.jsonc 已用 assets.run_worker_first 放行
 # 这两个 HTML 入口（带 hash 的 JS/CSS 仍由静态层直出，不经 Worker）。
 #
-# ⚠️ 该地址由浏览器直接加载 JS/CSS，必须同时满足两个条件，否则页面白屏：
-#   1. 能返回 index.html —— 部分 npm 镜像会拦截 .html（npmmirror 的
-#      registry.npmmirror.com/.../files/ 返回 451 {"error":"blocked"}）
-#   2. 响应带 Access-Control-Allow-Origin —— 前端以 crossorigin 加载
-#      module script / stylesheet / 字体，缺少 CORS 头会被浏览器全部拦下
-#   实测：jsdelivr、unpkg 满足；npmmirror 的 registry 与 cdn 两个端点均不满足。
+# ⚠️ 资源由浏览器直接加载，CDN 必须对 .js/.css/字体返回 Access-Control-Allow-Origin
+#    （前端产物以 crossorigin 加载 module script / stylesheet）。
+#    jsdelivr、unpkg 固定返回 *；npmmirror 在请求带 Origin 时回显该头，同样可用。
 # 例：
+#   https://registry.npmmirror.com/@openlist-frontend/openlist-frontend/$version/files/dist
 #   https://cdn.jsdelivr.net/npm/@openlist-frontend/openlist-frontend@$version/dist
 #   https://unpkg.com/@openlist-frontend/openlist-frontend@$version/dist
 ASSET_URLS=

@@ -86,10 +86,10 @@
     // "MAX_UPPART": "16777216",
     //
     // 前端静态资源 CDN 地址，需包含完整 dist（含 index.html），支持 $version 占位符
-    // Worker 从 CDN 拉取 index.html 并注入 cdn（HTML 与哈希资产同源一致），
-    // CDN 不可达时自动回退源站加载
-    // ⚠️ 该地址由浏览器直接加载 JS/CSS，必须能返回 index.html 且带
-    //    Access-Control-Allow-Origin（实测 jsdelivr / unpkg 可用，npmmirror 不可用）
+    // 优先「本地 index.html + CDN 资产」（不要求 CDN 能返回 HTML，npmmirror 也能用）；
+    // 本地哈希不在 CDN 上时改用 CDN 的 index.html 保证同源；都不可用则回退源站
+    // ⚠️ 资源由浏览器直接加载，CDN 必须对 .js/.css 返回 Access-Control-Allow-Origin
+    // "ASSET_URLS": "https://registry.npmmirror.com/@openlist-frontend/openlist-frontend/$version/files/dist",
     // "ASSET_URLS": "https://cdn.jsdelivr.net/npm/@openlist-frontend/openlist-frontend@$version/dist",
     // "ASSET_URLS": "https://unpkg.com/@openlist-frontend/openlist-frontend@$version/dist",
     //

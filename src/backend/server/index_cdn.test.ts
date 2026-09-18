@@ -54,27 +54,82 @@ async function withFetch(fn: any, impl: any) {
   }
 }
 
-const okCdn = async (url: string) =>
-  new Response(CDN_HTML, { status: 200, headers: { "content-type": "text/html" } })
+/**
+ * 模拟 CDN 外呼。
+ *   HEAD <cdn>/<asset>     → 资产存在性探测（asset=false 时 404）
+ *   GET  <cdn>/index.html  → html=null 时 404，否则返回该 HTML
+ */
+function cdnImpl(opts: { asset?: boolean; html?: string | null; log?: string[] }) {
+  return async (url: string, init?: any) => {
+    const method = (init?.method || "GET").toUpperCase()
+    opts.log?.push(`${method} ${url}`)
+    if (method === "HEAD") {
+      return new Response(null, { status: opts.asset === false ? 404 : 200 })
+    }
+    if (opts.html === null) return new Response("not found", { status: 404 })
+    return new Response(opts.html ?? CDN_HTML, {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    })
+  }
+}
 
-test("集成[ASSETS 路径]: 从 CDN 拉取 HTML 并注入 cdn（哈希与 CDN 一致）", async () => {
-  let requested = ""
+test("集成[本地 HTML 路径]: CDN 有本地哈希时用本地 HTML，不拉 CDN 的 index.html", async () => {
+  // npmmirror 等禁止访问 .html 的 CDN 只能靠这条路径（等价 Go Release 版行为）
+  const log: string[] = []
+  const env = {
+    ASSETS: makeFakeAssets(),
+    ASSET_URLS: "https://registry.npmmirror.com/@pkg/4.2.6/files/dist",
+  }
+  const res = await withFetch(
+    () => app.request("/", { headers }, env as any),
+    cdnImpl({ asset: true, log }),
+  )
+  assert.equal(res.status, 200)
+  assert.deepEqual(log, [
+    "HEAD https://registry.npmmirror.com/@pkg/4.2.6/files/dist/assets/index-LOCAL.js",
+  ])
+  const html = await res.text()
+  assert.match(html, /index-LOCAL\.js/)
+  assert.doesNotMatch(html, /cdn: undefined/)
+  assert.match(
+    html,
+    /cdn: 'https:\/\/registry\.npmmirror\.com\/@pkg\/4\.2\.6\/files\/dist'/,
+  )
+})
+
+test("集成[CDN HTML 路径]: 本地哈希不在 CDN 上时改用 CDN 的 index.html（哈希同源）", async () => {
+  const log: string[] = []
   const env = { ASSETS: makeFakeAssets(), ASSET_URLS: "https://cdn-i1.example.com/dist" }
   const res = await withFetch(
     () => app.request("/", { headers }, env as any),
-    async (url: string) => {
-      requested = url
-      return okCdn(url)
-    },
+    cdnImpl({ asset: false, log }),
   )
   assert.equal(res.status, 200)
-  assert.equal(requested, "https://cdn-i1.example.com/dist/index.html")
+  assert.deepEqual(log, [
+    "HEAD https://cdn-i1.example.com/dist/assets/index-LOCAL.js",
+    "GET https://cdn-i1.example.com/dist/index.html",
+  ])
   const html = await res.text()
   // 下发的必须是 CDN 的 HTML（含 CDN 的哈希），而非本地 HTML
   assert.match(html, /index-CDN\.js/)
   assert.doesNotMatch(html, /cdn: undefined/)
   assert.match(html, /cdn: 'https:\/\/cdn-i1\.example\.com\/dist'/)
   assert.match(html, /window\.__dynamic_base__/)
+})
+
+test("集成[降级]: 两条路径都不可用（CDN 拦截 .html）时不注入 cdn", async () => {
+  const env = {
+    ASSETS: makeFakeAssets(),
+    ASSET_URLS: "https://registry.npmmirror.com/@pkg/9.9.9/files/dist",
+  }
+  const res = await withFetch(
+    () => app.request("/", { headers }, env as any),
+    cdnImpl({ asset: false, html: null }),
+  )
+  assert.equal(res.status, 200)
+  const html = await res.text()
+  assert.match(html, /cdn: undefined/, "两条路径都不可用时必须回退源站资源")
 })
 
 test("集成[ASSETS 路径]: 未配置 ASSET_URLS 时 / 原样返回（cdn: undefined 保留）", async () => {
@@ -140,7 +195,7 @@ test("集成[编码头]: 注入 cdn 时清掉 content-encoding/content-length", 
   }
   const res = await withFetch(
     () => app.request("/", { headers }, env as any),
-    async (url: string) => okCdn(url),
+    cdnImpl({ asset: true }),
   )
   assert.equal(res.status, 200)
   assert.equal(res.headers.get("content-encoding"), null)
@@ -164,24 +219,24 @@ test("集成[降级]: CDN 不可达时回退本地 HTML 且不注入 cdn（不�
   assert.match(html, /cdn: undefined/, "CDN 故障时必须回退源站资源，而非注入失效地址")
 })
 
-test("集成[ASSETS 兜底]: SPA 路由 /login 同样从 CDN 拉取并注入", async () => {
+test("集成[ASSETS 兜底]: SPA 路由 /login 同样注入 cdn", async () => {
   const env = { ASSETS: makeFakeAssets(), ASSET_URLS: "https://cdn-i2.example.com/dist" }
-  // /login 在 ASSETS 里 404 -> 走 SPA 兜底 fetch "/" -> 再走 CDN 拉取
+  // /login 在 ASSETS 里 404 -> 走 SPA 兜底 fetch "/" -> 再走 CDN 注入
   const res = await withFetch(
     () => app.request("/login", { headers }, env as any),
-    async (url: string) => okCdn(url),
+    cdnImpl({ asset: true }),
   )
   assert.equal(res.status, 200)
   const html = await res.text()
   assert.match(html, /cdn: 'https:\/\/cdn-i2\.example\.com\/dist'/)
 })
 
-test("集成[spaFallbackHtml 路径]: EdgeOne/ESA 无 ASSETS 绑定时从 CDN 拉取并注入", async () => {
+test("集成[spaFallbackHtml 路径]: EdgeOne/ESA 无 ASSETS 绑定时注入 cdn", async () => {
   setSpaFallbackHtml(INDEX_HTML)
   const env = { ASSET_URLS: "https://cdn-i3.example.com/dist" }
   const res = await withFetch(
     () => app.request("/manage", { headers }, env as any),
-    async (url: string) => okCdn(url),
+    cdnImpl({ asset: true }),
   )
   assert.equal(res.status, 200)
   const html = await res.text()
@@ -190,7 +245,7 @@ test("集成[spaFallbackHtml 路径]: EdgeOne/ESA 无 ASSETS 绑定时从 CDN �
 })
 
 test("集成: $version 用构建期版本戳解析（不再落 latest）", async () => {
-  let requested = ""
+  const log: string[] = []
   const env = {
     ASSETS: makeFakeAssets(),
     ASSET_URLS:
@@ -198,16 +253,12 @@ test("集成: $version 用构建期版本戳解析（不再落 latest）", async
   }
   const res = await withFetch(
     () => app.request("/", { headers }, env as any),
-    async (url: string) => {
-      requested = url
-      return okCdn(url)
-    },
+    cdnImpl({ asset: true, log }),
   )
   assert.equal(res.status, 200)
-  assert.equal(
-    requested,
-    "https://cdn.jsdelivr.net/npm/@openlist-frontend/openlist-frontend@4.2.6/dist/index.html",
-  )
+  assert.deepEqual(log, [
+    "HEAD https://cdn.jsdelivr.net/npm/@openlist-frontend/openlist-frontend@4.2.6/dist/assets/index-LOCAL.js",
+  ])
   const html = await res.text()
   assert.match(
     html,
