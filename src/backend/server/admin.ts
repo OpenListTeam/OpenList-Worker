@@ -398,8 +398,12 @@ adminRouter.post("/storage/update", async (c) => {
     }
     if (!updatedStorage.disabled) {
       try {
-        const driver = await getDriver(updatedStorage.driver, updatedStorage)
-        await driver.init?.()
+        // getDriver creates and initializes a cache miss. Calling init again
+        // refreshes rotating credentials twice and persists the whole config
+        // twice before the final update below.
+        await getDriver(updatedStorage.driver, updatedStorage, {
+          deferTokenPersistence: true,
+        })
         updatedStorage.status = "work"
       } catch (e: any) {
         updatedStorage.status = e.message || String(e)
@@ -442,8 +446,7 @@ adminRouter.post("/storage/enable", async (c) => {
     // 重新加载时会再次尝试。
     ;(async () => {
       try {
-        const driver = await getDriver(s.driver, s)
-        await driver.init?.()
+        await getDriver(s.driver, s)
         const db2 = await getDb(c.env)
         const st = db2.storages.find((x: any) => x.id === id)
         if (st && !st.disabled) {

@@ -21,7 +21,7 @@ export async function refreshToken(
     }
     d.accessToken = data.access_token
     d.refresh_token = data.refresh_token
-    ;(d as any).onTokenUpdate?.(d.refresh_token)
+    await (d as any).onTokenUpdate?.(d.refresh_token)
     return
   }
 
@@ -51,7 +51,7 @@ export async function refreshToken(
   }
   d.refresh_token = data.refresh_token
   d.accessToken = data.access_token
-  ;(d as any).onTokenUpdate?.(d.refresh_token)
+  await (d as any).onTokenUpdate?.(d.refresh_token)
 }
 
 export async function requestApi<T>(

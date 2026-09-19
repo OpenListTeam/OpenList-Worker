@@ -1,4 +1,9 @@
-import { encrypt, decrypt } from "../../pkg/crypto"
+import {
+  decrypt,
+  decryptConfigValue,
+  deriveConfigEncryptionKey,
+  encryptConfigValue,
+} from "../../pkg/crypto"
 import {
   generateSecret,
   readPersistedSecret,
@@ -1272,7 +1277,15 @@ export const getDb = async (envCtx?: any) => {
 // 保持既有部署（无密钥）向后兼容。已存在的明文数据不带前缀，unseal 时原样
 // 返回，不会因升级而丢失。
 // ============================================================
-const ENCRYPTION_PREFIX = "enc:v1:"
+const LEGACY_ENCRYPTION_PREFIX = "enc:v1:"
+const ENCRYPTION_PREFIX = "enc:v2:"
+
+function isSealedValue(value: string): boolean {
+  return (
+    value.startsWith(ENCRYPTION_PREFIX) ||
+    value.startsWith(LEGACY_ENCRYPTION_PREFIX)
+  )
+}
 
 const SENSITIVE_SETTING_KEYS = new Set([
   "token",
@@ -1557,16 +1570,26 @@ export async function ensureEncryptionSecret(
   }
 }
 
-async function sealValue(value: string, key: string): Promise<string> {
+async function sealValue(value: string, key: CryptoKey): Promise<string> {
   if (!value) return value
-  if (value.startsWith(ENCRYPTION_PREFIX)) return value // idempotent
-  return ENCRYPTION_PREFIX + (await encrypt(value, key))
+  if (isSealedValue(value)) return value // idempotent
+  return ENCRYPTION_PREFIX + (await encryptConfigValue(value, key))
 }
 
-async function unsealValue(value: string, key: string): Promise<string> {
-  if (!value || !value.startsWith(ENCRYPTION_PREFIX)) return value
+async function unsealValue(
+  value: string,
+  secret: string,
+  configKey: () => Promise<CryptoKey>,
+): Promise<string> {
+  if (!value || !isSealedValue(value)) return value
   try {
-    return await decrypt(value.slice(ENCRYPTION_PREFIX.length), key)
+    if (value.startsWith(ENCRYPTION_PREFIX)) {
+      return await decryptConfigValue(
+        value.slice(ENCRYPTION_PREFIX.length),
+        await configKey(),
+      )
+    }
+    return await decrypt(value.slice(LEGACY_ENCRYPTION_PREFIX.length), secret)
   } catch (e) {
     console.warn(
       "[DB] Failed to decrypt a sealed secret (wrong JWT_SECRET?):",
@@ -1579,6 +1602,8 @@ async function unsealValue(value: string, key: string): Promise<string> {
 async function sealDb(data: any, key: string | null): Promise<any> {
   if (!key || !data) return data
   const copy = JSON.parse(JSON.stringify(data))
+  // Derive once per save. All fields still receive independent random GCM IVs.
+  const configKey = await deriveConfigEncryptionKey(key)
 
   // 1. 加密存储配置中的 addition 字段（网盘凭据）
   for (const s of copy.storages || []) {
@@ -1586,14 +1611,14 @@ async function sealDb(data: any, key: string | null): Promise<any> {
     const str =
       typeof s.addition === "string" ? s.addition : JSON.stringify(s.addition)
     if (str && str !== "{}") {
-      s.addition = await sealValue(str, key)
+      s.addition = await sealValue(str, configKey)
     }
   }
 
   // 2. 加密敏感的系统设置
   for (const st of copy.settings || []) {
     if (st && SENSITIVE_SETTING_KEYS.has(st.key) && st.value) {
-      st.value = await sealValue(String(st.value), key)
+      st.value = await sealValue(String(st.value), configKey)
     }
   }
 
@@ -1601,11 +1626,11 @@ async function sealDb(data: any, key: string | null): Promise<any> {
   for (const u of copy.users || []) {
     // OTP 密钥
     if (u && u.otp_secret) {
-      u.otp_secret = await sealValue(String(u.otp_secret), key)
+      u.otp_secret = await sealValue(String(u.otp_secret), configKey)
     }
     // 密码二次加密（defense-in-depth，即使已哈希也加密存储）
     if (u && u.password) {
-      u.password = await sealValue(String(u.password), key)
+      u.password = await sealValue(String(u.password), configKey)
     }
   }
 
@@ -1615,39 +1640,40 @@ async function sealDb(data: any, key: string | null): Promise<any> {
 /**
  * 解密并发上限。
  *
- * 解密是 WebCrypto + PBKDF2（10 万次迭代）的异步重活：串行会让墙钟随字段数
- * 线性增长，而一次性全部并发又会在字段极多时造成 CPU/内存峰值。16 是兼顾
- * serverless 延迟与峰值的折中值。
+ * v2 密文只需一次快速密钥派生；旧 v1 密文仍需 PBKDF2（10 万次迭代），并在
+ * 下次保存时自动迁移。限制并发可避免旧数据字段很多时产生 CPU/内存峰值。
  */
 const UNSEAL_CONCURRENCY = 16
 
 async function unsealDb(data: any, key: string | null): Promise<void> {
   if (!key || !data) return
 
+  // v2 的派生结果在本次加载中共享；纯 v1 数据不会做这次派生。
+  let configKey: Promise<CryptoKey> | null = null
+  const getConfigKey = () => (configKey ||= deriveConfigEncryptionKey(key))
+
   // 并行解密（带并发上限）：
   //
-  // 原先三类字段（storage/setting/user）各自串行 await，字段一多就是「N 次
-  // await 叠加」；而 decrypt 走 WebCrypto + PBKDF2（10 万次迭代），是真正的
-  // 异步重活，且该函数在一次请求内会被调用多次（历史缺陷下更是数十次），
-  // 是加载变慢的主要贡献之一。
+  // 原先三类字段（storage/setting/user）各自串行 await，旧 v1 字段一多就是
+  // 「N 次 PBKDF2（10 万次迭代）」叠加，且该函数在一次请求内会被调用多次
+  // （历史缺陷下更是数十次），是加载变慢的主要贡献之一。
   //
   // 这里先**同步收集 thunk**（不在收集阶段就把解密全部发起），再按
   // UNSEAL_CONCURRENCY 分批 await：既拿到并行带来的墙钟收益，又避免字段极多
   // （如数千用户）时一次性并发过多造成 CPU/内存峰值。
   const tasks: Array<() => Promise<void>> = []
 
-
   // 1. 解密存储配置
   for (const s of data.storages || []) {
     if (
       s &&
       typeof s.addition === "string" &&
-      s.addition.startsWith(ENCRYPTION_PREFIX)
+      isSealedValue(s.addition)
     ) {
       const target = s
       const cipher = target.addition
       tasks.push(async () => {
-        target.addition = await unsealValue(cipher, key)
+        target.addition = await unsealValue(cipher, key, getConfigKey)
       })
     }
   }
@@ -1658,12 +1684,12 @@ async function unsealDb(data: any, key: string | null): Promise<void> {
       st &&
       SENSITIVE_SETTING_KEYS.has(st.key) &&
       typeof st.value === "string" &&
-      st.value.startsWith(ENCRYPTION_PREFIX)
+      isSealedValue(st.value)
     ) {
       const target = st
       const cipher = target.value
       tasks.push(async () => {
-        target.value = await unsealValue(cipher, key)
+        target.value = await unsealValue(cipher, key, getConfigKey)
       })
     }
   }
@@ -1672,25 +1698,19 @@ async function unsealDb(data: any, key: string | null): Promise<void> {
   for (const u of data.users || []) {
     if (!u) continue
     // OTP 密钥
-    if (
-      typeof u.otp_secret === "string" &&
-      u.otp_secret.startsWith(ENCRYPTION_PREFIX)
-    ) {
+    if (typeof u.otp_secret === "string" && isSealedValue(u.otp_secret)) {
       const target = u
       const cipher = target.otp_secret
       tasks.push(async () => {
-        target.otp_secret = await unsealValue(cipher, key)
+        target.otp_secret = await unsealValue(cipher, key, getConfigKey)
       })
     }
     // 密码解密
-    if (
-      typeof u.password === "string" &&
-      u.password.startsWith(ENCRYPTION_PREFIX)
-    ) {
+    if (typeof u.password === "string" && isSealedValue(u.password)) {
       const target = u
       const cipher = target.password
       tasks.push(async () => {
-        target.password = await unsealValue(cipher, key)
+        target.password = await unsealValue(cipher, key, getConfigKey)
       })
     }
   }
