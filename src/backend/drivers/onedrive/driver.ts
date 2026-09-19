@@ -25,11 +25,11 @@ export class Onedrive implements StorageDriver {
   order_direction: string = "asc"
 
   accessToken: string = ""
-  onTokenUpdate?: (token: string) => void
+  onTokenUpdate?: (token: string) => void | Promise<void>
 
   constructor(
     addition?: Partial<Addition>,
-    onTokenUpdate?: (token: string) => void,
+    onTokenUpdate?: (token: string) => void | Promise<void>,
   ) {
     if (addition) {
       if (addition.root_folder_path !== undefined)

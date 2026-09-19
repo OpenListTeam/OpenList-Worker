@@ -1,7 +1,13 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 import { Hono } from "hono"
-import { encrypt, decrypt } from "./crypto"
+import {
+  decrypt,
+  decryptConfigValue,
+  deriveConfigEncryptionKey,
+  encrypt,
+  encryptConfigValue,
+} from "./crypto"
 import { hashPasswordSHA256, authRouter, getOrInitUsers } from "../server/auth"
 import { saveDb, getDb } from "../internal/model/db"
 
@@ -56,6 +62,16 @@ test("AES decrypt backwards compatibility with 2-segment legacy format", async (
     plaintext,
     "Legacy format must be decrypted successfully",
   )
+})
+
+test("config encryption reuses one derived key with independent IVs", async () => {
+  const key = await deriveConfigEncryptionKey("my-test-secret-key-123456")
+  const first = await encryptConfigValue("first-secret", key)
+  const second = await encryptConfigValue("second-secret", key)
+
+  assert.notEqual(first.split(":")[0], second.split(":")[0])
+  assert.equal(await decryptConfigValue(first, key), "first-secret")
+  assert.equal(await decryptConfigValue(second, key), "second-secret")
 })
 
 test("StaticHash produces consistent 64-char sha256 output (Go StaticHash)", async () => {

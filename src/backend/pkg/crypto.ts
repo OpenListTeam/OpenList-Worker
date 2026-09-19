@@ -222,7 +222,7 @@ export async function decrypt(
       legacyKdfWarned = true
       console.warn(
         "[Crypto] Decrypting legacy weak-KDF format. It will be re-encrypted " +
-          "with the strong PBKDF2 format on the next config save.",
+          "with the current config format on the next save.",
       )
     }
   } else {
@@ -235,6 +235,77 @@ export async function decrypt(
   const plainBuf = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: iv as any },
     ck,
+    cipherBuf as any,
+  )
+  return new TextDecoder().decode(plainBuf)
+}
+
+// ─── Low-CPU config encryption helpers ──────────────────────────────────────
+
+/**
+ * Derive the AES key used by the versioned config-encryption envelope.
+ *
+ * Config encryption is keyed by JWT_SECRET or by a randomly generated secret
+ * persisted during setup. Running a password-strengthening KDF separately for
+ * every encrypted field made a single config load exceed the CPU allowance of
+ * Cloudflare Workers. HKDF keeps this key independent from other JWT_SECRET
+ * uses while allowing all fields in one load or save to reuse one CryptoKey.
+ *
+ * The legacy PBKDF2 envelope remains supported by decrypt() above. Callers can
+ * therefore migrate existing values when they next persist the config.
+ */
+export async function deriveConfigEncryptionKey(
+  secret: string,
+): Promise<CryptoKey> {
+  const material = await crypto.subtle.importKey(
+    "raw",
+    toBytes(secret),
+    "HKDF",
+    false,
+    ["deriveKey"],
+  )
+  return crypto.subtle.deriveKey(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: toBytes("openlist-config-encryption-v2"),
+      info: toBytes("AES-256-GCM"),
+    },
+    material,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  )
+}
+
+/** Encrypt one config field with an already-derived AES key. */
+export async function encryptConfigValue(
+  data: string,
+  key: CryptoKey,
+): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const cipherBuf = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    toBytes(data),
+  )
+  return `${hexEncode(iv.buffer)}:${hexEncode(cipherBuf)}`
+}
+
+/** Decrypt one config field encrypted by encryptConfigValue(). */
+export async function decryptConfigValue(
+  encryptedData: string,
+  key: CryptoKey,
+): Promise<string> {
+  const parts = encryptedData.split(":")
+  if (parts.length !== 2) {
+    throw new Error("Invalid config encrypted data format")
+  }
+  const iv = fromHex(parts[0])
+  const cipherBuf = fromHex(parts[1])
+  const plainBuf = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: iv as any },
+    key,
     cipherBuf as any,
   )
   return new TextDecoder().decode(plainBuf)

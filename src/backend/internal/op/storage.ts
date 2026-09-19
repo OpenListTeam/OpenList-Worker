@@ -122,6 +122,7 @@ async function getFTPDriver(storageConfig: any): Promise<StorageDriver> {
 const driverCache = new Map<string, StorageDriver>()
 const driverInitCache = new Map<string, Promise<StorageDriver>>()
 const cookiePersistenceCache = new Map<string, Promise<void>>()
+const deferredTokenPersistence = new WeakSet<object>()
 
 // M-8：驱动实例缓存容量上限。storage.modified 变化会产生新 key，旧条目若不清理，
 // 长生命周期 isolate 中会无限累积。超出上限时按插入顺序淘汰最旧条目。
@@ -138,6 +139,10 @@ function setDriverCache(key: string, driver: StorageDriver): void {
 export interface StorageRequestContext {
   waitUntil?: (promise: Promise<unknown>) => void
   env?: any // ESA/Cloudflare env，用于请求级缓存复用
+}
+
+export interface GetDriverOptions {
+  deferTokenPersistence?: boolean
 }
 
 export async function getOrCreateDriver(
@@ -224,6 +229,11 @@ async function createDriver(
               : st.addition || {}
           stAddition.refresh_token = refreshToken
           st.addition = JSON.stringify(stAddition)
+          // The admin update path persists updatedStorage after driver init.
+          // Keep that object in sync so its final save cannot restore the old
+          // refresh token over the rotated token saved here.
+          storageConfig.addition = st.addition
+          if (deferredTokenPersistence.has(storageConfig)) return
           await saveDb(db)
         } catch (e) {
           console.warn("[Onedrive] failed to persist refresh token:", e)
@@ -1175,29 +1185,43 @@ async function createDriver(
 export async function getDriver(
   driverName: string,
   storageConfig?: any,
+  options: GetDriverOptions = {},
 ): Promise<StorageDriver> {
-  const normDriver = (driverName || "").toLowerCase().replace(/[^a-z0-9]/g, "")
-  if (normDriver === "local") {
-    return createDriver(driverName, storageConfig)
+  const deferTokenPersistence = Boolean(
+    options.deferTokenPersistence &&
+      storageConfig &&
+      typeof storageConfig === "object",
+  )
+  if (deferTokenPersistence) deferredTokenPersistence.add(storageConfig)
+
+  try {
+    const normDriver = (driverName || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+    if (normDriver === "local") {
+      return createDriver(driverName, storageConfig)
+    }
+
+    if (!storageConfig) {
+      throw new Error(
+        "failed get driver: storage config not found for driver " + driverName,
+      )
+    }
+
+    const cacheKey = `${storageConfig.id}_${storageConfig.modified}`
+    const cached = driverCache.get(cacheKey)
+    if (cached) return cached
+
+    return getOrCreateDriver(driverInitCache, cacheKey, async () => {
+      const ready = driverCache.get(cacheKey)
+      if (ready) return ready
+      const driver = await createDriver(driverName, storageConfig)
+      setDriverCache(cacheKey, driver)
+      return driver
+    })
+  } finally {
+    if (deferTokenPersistence) deferredTokenPersistence.delete(storageConfig)
   }
-
-  if (!storageConfig) {
-    throw new Error(
-      "failed get driver: storage config not found for driver " + driverName,
-    )
-  }
-
-  const cacheKey = `${storageConfig.id}_${storageConfig.modified}`
-  const cached = driverCache.get(cacheKey)
-  if (cached) return cached
-
-  return getOrCreateDriver(driverInitCache, cacheKey, async () => {
-    const ready = driverCache.get(cacheKey)
-    if (ready) return ready
-    const driver = await createDriver(driverName, storageConfig)
-    setDriverCache(cacheKey, driver)
-    return driver
-  })
 }
 
 function isCloud189Driver(driverName: string): boolean {
