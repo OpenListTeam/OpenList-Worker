@@ -32,6 +32,7 @@ import {
   getSignExpiresIn,
 } from "../pkg/sign"
 import { safeErrorMessage } from "../pkg/errs"
+import { encodeDownloadPath } from "../pkg/path"
 import { search } from "../internal/op/search"
 import {
   getDisableIndex,
@@ -1310,11 +1311,20 @@ fsRouter.post("/link", async (c) => {
         requestContext,
       )
     }
-    // 无直链（如本地/加密驱动）：返回代理下载地址
+    // 无直链（如本地/加密驱动）：返回代理下载地址。
+    //
+    // 对齐 Go server/handles/fsmanage.go Link：
+    //   fmt.Sprintf("%s/p%s?d&sign=%s", GetApiUrl(c), EncodePath(rawPath, true), sign.Sign(rawPath))
+    // 即路径逐段编码 + **无条件**带签名（Go 不看 needSign；这里同样补齐，
+    // 否则在 sign_all / enable_sign / 密码 meta 生效时复制出来的链接必然 401）。
+    // 「?d」（强制 attachment 下载）TS 侧无对应语义，故不追加。
+    const sign = await signDownloadPath(c, reqPath, await getSignExpiresIn(c))
     return c.json({
       code: 200,
       message: "success",
-      data: { url: `/api/p${reqPath.startsWith("/") ? "" : "/"}${reqPath}` },
+      data: {
+        url: `/api/p${encodeDownloadPath(reqPath)}?sign=${encodeURIComponent(sign)}`,
+      },
     })
   } catch (e: any) {
     return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)

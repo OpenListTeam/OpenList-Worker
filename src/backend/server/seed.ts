@@ -3,6 +3,7 @@ import { getUserFromContext } from "./middlewares"
 import { canWrite, getActualPath, can, PermissionBit } from "../pkg/permission"
 import { assertSafeUrl } from "../pkg/http"
 import { safeErrorMessage } from "../pkg/errs"
+import { encodeDownloadPath } from "../pkg/path"
 import { getSettings, resolvePath } from "../internal/model/db"
 import {
   flushPendingDriverState,
@@ -287,7 +288,8 @@ async function readStoredSeed(
   if (item.is_dir || item.size < 0 || item.size > max)
     throw new Error(`Seed file exceeds the ${max} byte limit`)
   const rawUrl =
-    item.raw_url || `${new URL(c.req.url).origin}/api/p${actualPath}`
+    item.raw_url ||
+    `${new URL(c.req.url).origin}/api/p${encodeDownloadPath(actualPath)}`
   const headers = item.raw_url_headers || {}
   if (!item.raw_url && c.req.header("Authorization"))
     headers.Authorization = c.req.header("Authorization")!
@@ -375,7 +377,8 @@ async function collectSourceFiles(
     const { item } = await getItem(actualPath, storageContext(c))
     if (!item.is_dir) {
       const rawUrl =
-        item.raw_url || `${new URL(c.req.url).origin}/api/p${actualPath}`
+        item.raw_url ||
+        `${new URL(c.req.url).origin}/api/p${encodeDownloadPath(actualPath)}`
       const headers = { ...(item.raw_url_headers || {}) }
       if (!item.raw_url && c.req.header("Authorization"))
         headers.Authorization = c.req.header("Authorization")!

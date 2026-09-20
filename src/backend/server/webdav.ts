@@ -12,6 +12,7 @@ import {
 } from "../internal/op/storage"
 import { buildWebDavPropfindResponse } from "../internal/webdav/webdav"
 import { safeErrorMessage } from "../pkg/errs"
+import { encodeDownloadPath } from "../pkg/path"
 import { getSettings, resolvePath } from "../internal/model/db"
 import { canUseProxyEndpoint, normalizeExtList } from "../internal/driver/proxy"
 
@@ -178,7 +179,9 @@ webdavRouter.all("/*", async (c) => {
           // 解析失败时保持默认 /p，交由 rawRouter 给出最终结论
         }
         return c.redirect(
-          rawUrl || `${prefix}${davPath.startsWith("/") ? "" : "/"}${davPath}`,
+          // 路径逐段编码（对齐 Go utils.EncodePath(path, true)），否则含
+          // `%`/`#`/空格的路径会拼出非法 Location。
+          rawUrl || `${prefix}${encodeDownloadPath(davPath)}`,
           302,
         )
       }
