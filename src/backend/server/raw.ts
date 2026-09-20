@@ -7,7 +7,6 @@ import {
   needDownloadSign,
   verifyDownloadSign,
   signDownloadPath,
-  getSignPolicy,
   getSignExpiresIn,
 } from "../pkg/sign"
 import { safeErrorMessage } from "../pkg/errs"
@@ -357,8 +356,11 @@ async function buildDownProxyUrl(
     !/[?&]sign=/.test(url)
   ) {
     try {
-      const policy = await getSignPolicy(c)
-      if (policy.enabled) {
+      // 判定条件与验签侧保持一致（needDownloadSign = sign_all /
+      // link_expiration / 存储 enable_sign / 密码 meta 覆盖）。此前只看
+      // sign_all，导致「只靠存储级 enable_sign 或密码 meta 才需要签名」的
+      // 部署把用户重定向到一个没有签名、必然 401 的地址。
+      if (await needDownloadSign(c, reqPath)) {
         const sign = await signDownloadPath(
           c,
           reqPath,
