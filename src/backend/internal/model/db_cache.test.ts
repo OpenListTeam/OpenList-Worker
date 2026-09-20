@@ -129,6 +129,34 @@ test("getDb: saveDb 后无参读取可观察到最新写入（写后读一致）
   assert.equal(getData().settings[0].value, "Changed")
 })
 
+test("saveDb: sensitive fields use the low-CPU v2 envelope and remain readable", async () => {
+  __resetDbCacheForTest()
+  const { backend, getData } = createCountingBackend({
+    ...SAMPLE,
+    users: [{ id: 1, username: "admin", password: "password-hash" }],
+    storages: [{ id: 1, addition: '{"refresh_token":"secret"}' }],
+  })
+  __setStoreBackendLoaderForTest(async () => backend)
+
+  const env = {
+    DB_DRIVER: "counting",
+    JWT_SECRET: "test-config-encryption-secret",
+  }
+  const plain = await getDb(env)
+  await saveDb(plain, env)
+
+  const persisted = getData()
+  assert.match(persisted.storages[0].addition, /^enc:v2:/)
+  assert.match(persisted.users[0].password, /^enc:v2:/)
+
+  __resetDbCacheForTest()
+  const reloadedBackend = createCountingBackend(persisted).backend
+  __setStoreBackendLoaderForTest(async () => reloadedBackend)
+  const reloaded = await getDb(env)
+  assert.equal(reloaded.storages[0].addition, plain.storages[0].addition)
+  assert.equal(reloaded.users[0].password, plain.users[0].password)
+})
+
 test("getDb: 五个无参 getter 复用同一份缓存快照", async () => {
   __resetDbCacheForTest()
   const { backend, stats } = createCountingBackend({
