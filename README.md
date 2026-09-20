@@ -168,6 +168,14 @@ pnpm run deploy:worker
 - `do`：Cloudflare Durable Objects（SQLite）
 - `mysql`：MySQL（仅 Node.js 容器）
 
+**DB_CIPHER**（敏感字段落盘算法，**默认不加密**）
+- `none`（默认）：不加密，敏感字段与普通 JSON 一样明文落盘
+- `aes-256-gcm`：HKDF-SHA256 派生一把 AES-256-GCM 密钥，每次读/写只派生一次
+  （既有加密部署写入的 `enc:v2:` 形态，开销最低，开启加密时推荐使用）
+- `aes-256-gcm-pbkdf2`：AES-256-GCM，密钥由 PBKDF2-SHA256（10 万次迭代）逐字段派生
+  （历史 `enc:v1:` envelope，抗弱口令但开销大，仅建议用于兼容）
+- `aes-256-cbc-hmac`：AES-256-CBC + HMAC-SHA256（Encrypt-then-MAC，非 GCM 族）
+
 **推荐配置组合：**
 ```bash
 # Cloudflare Workers + D1（推荐）
@@ -205,8 +213,29 @@ CF_API_KEY=your_api_token
 > 非法「驱动 × 格式」组合（如 `DB_FORMAT=sql` + `DB_DRIVER=kv`）同样只报错，
 > 不会自动改驱动或格式。
 
+**关于 DB_CIPHER 的补充说明：**
+- 加密只作用于 `storages[].addition`（网盘凭据）、敏感 `settings`、`users[].password`、
+  `users[].otp_secret`；内存中始终为明文，其余逻辑（驱动、路径解析、管理接口）不受影响。
+- **`none` 只表示「不加密数据库字段」，不影响其它任何行为**：JWT 令牌签名仍需一把
+  跨实例/跨冷启动一致的共享密钥，若未通过环境变量 `JWT_SECRET` 提供，安装向导仍会
+  自动生成并持久化 `openlist_encryption_secret`（与加密是否启用无关）。
+- 密文带版本前缀（`enc:v1:` / `enc:v2:` / `enc:v3:`），**读取时按前缀自动识别算法**，
+  与当前配置无关。因此：
+  - 从加密切回 `none`（或升级后不再配置 `DB_CIPHER`）：既有密文仍能正常解密，
+    并在**下一次配置保存**时自动转为明文（逐字段迁移，无需任何手动步骤）；
+  - 更换算法：既有密文按旧算法解开，下次写入按新算法落盘；
+  - 既有的明文数据（无前缀）原样返回，升级不会丢数据。
+- 加密算法选择是**正交的一维**，不改变 `DB_DRIVER` / `DB_FORMAT` 的语义。
+- 取值无法识别时回退 `none` 并在日志告警（不会静默启用某个算法）；
+  `/api/public/env_check` 的 `config.db_cipher` 会回显当前生效值。
+- 三种算法均基于 WebCrypto，在 Cloudflare Workers / EdgeOne Node 云函数 / Node.js 上行为一致。
+
 **向后兼容：**
 - `DB_DRIVER=json` 自动转换为 `DB_FORMAT=map` + 自动检测驱动
+- 未配置 `DB_CIPHER` 时**不再对敏感字段加密**（旧版本默认加密）。升级已有部署时：
+  存储中的 `enc:v1:`（PBKDF2）与 `enc:v2:`（HKDF）密文仍会按前缀自动解密、保持可读，
+  并在**下一次配置保存**时自动转为明文；如需继续加密，显式设置 `DB_CIPHER` 即可
+  （`DB_CIPHER=aes-256-gcm` 与既有加密部署的写入形态一致）。
 
 **表名对齐（仅 SQL 格式）：**
 `sql` 格式采用列式表，命名策略与 Go 后端的 GORM 一致（snake_case + 复数表名 + 前缀）：
@@ -224,7 +253,9 @@ CF_API_KEY=your_api_token
 
 #### 安全配置
 
-- `JWT_SECRET`：JWT 令牌签名密钥（必填），**同时用于数据加密与定时任务鉴权**
+- `JWT_SECRET`：JWT 令牌签名密钥（必填），**同时用作可选的字段加密密钥**与定时任务鉴权
+- `DB_CIPHER`：敏感字段落盘算法（可选，默认 `none` 不加密）：`none` /
+  `aes-256-gcm`（历史默认）/ `aes-256-gcm-sha256` / `aes-256-cbc-hmac`
 - `ADMIN_PASS`：初始管理员密码（可选，设置后跳过安装向导自动初始化 admin）
 
 #### 其他配置

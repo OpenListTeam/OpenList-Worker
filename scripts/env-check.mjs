@@ -40,7 +40,8 @@ async function probe(name, env) {
   )
   console.log(
     `  config       : format=${d.config.db_format}->${d.config.resolved_format} ` +
-      `driver=${d.config.db_driver}->${d.config.resolved_driver}`,
+      `driver=${d.config.db_driver}->${d.config.resolved_driver} ` +
+      `cipher=${d.config.db_cipher}`,
   )
   console.log(
     `  storage      : available=${d.storage.available} memory=${d.storage.memory} connected=${d.storage.connected}`,
