@@ -61,11 +61,13 @@
 
     // 敏感字段落盘算法（默认 none：不加密；与 DB_DRIVER/DB_FORMAT 正交）：
     //   none（默认）              - 不加密，敏感字段明文落盘
-    //   aes-256-gcm              - HKDF 派生 AES-256-GCM 密钥，每次读写只派生一次
-    //                              （既有加密部署的 enc:v2: 形态，开销最低）
+    //   aes-256-gcm              - HKDF 派生 AES-256-GCM 密钥（enc:v2:，推荐）
     //   aes-256-gcm-pbkdf2       - AES-256-GCM + PBKDF2-SHA256(10 万次) 逐字段派生
-    //                              （历史 enc:v1: envelope，开销大）
-    //   aes-256-cbc-hmac         - AES-256-CBC + HMAC-SHA256（Encrypt-then-MAC）
+    //                              （历史 enc:v1: envelope，每字段约 27ms，慢）
+    //   aes-256-cbc-hmac         - AES-256-CBC + HMAC-SHA256（enc:v3:）
+    //   chacha20-poly1305        - ChaCha20-Poly1305（enc:v4:，RFC 8439，纯 JS）
+    //   des-cbc-hmac             - 单 DES + HMAC-SHA256（enc:v5:，仅兼容，不安全）
+    //   3des-cbc-hmac            - 3DES + HMAC-SHA256（enc:v6:，仅兼容，已弃用）
     // 说明：加密对象为 storages[].addition / 敏感 settings / users[].password /
     //       users[].otp_secret。密文带 enc:vN: 前缀，读取时按前缀自动解密，
     //       因此把该项改回 none 不会导致既有数据不可读（下次保存自动转为明文）。
