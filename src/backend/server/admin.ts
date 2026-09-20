@@ -54,7 +54,14 @@ function generateSecureToken(length = 32): string {
 
 adminRouter.get("/storage/list", async (c) => {
   const db = await getDb(c.env)
-  const content = db.storages || []
+  // 排序对齐 Go internal/db.GetStorages（addStorageOrder = `order, id`）：
+  // 后台存储列表按「序号」升序、同序号按 id 升序，此前是按数组原始顺序返回。
+  const content = [...(db.storages || [])].sort((a: any, b: any) => {
+    const orderA = Number(a.order) || 0
+    const orderB = Number(b.order) || 0
+    if (orderA !== orderB) return orderA - orderB
+    return (Number(a.id) || 0) - (Number(b.id) || 0)
+  })
   return c.json({
     code: 200,
     message: "success",

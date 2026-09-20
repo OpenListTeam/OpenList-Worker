@@ -1364,7 +1364,19 @@ export async function listItems(
   const activeStorages = (db.storages || []).filter((s: any) => !s.disabled)
   const cleanListedPath = resolved.cleanPath
 
-  activeStorages.forEach((s: any) => {
+  // 挂载点顺序对齐 Go op.getStorageVirtualFilesByPath：
+  //   Order 升序；Order 相同时按 MountPath 升序。
+  // 此前直接沿用数据库数组顺序，后台存储编辑页里的「序号」因此完全不生效。
+  const orderedStorages = [...activeStorages].sort((a: any, b: any) => {
+    const orderA = Number(a.order) || 0
+    const orderB = Number(b.order) || 0
+    if (orderA !== orderB) return orderA - orderB
+    const mountA = String(a.mount_path || "")
+    const mountB = String(b.mount_path || "")
+    return mountA < mountB ? -1 : mountA > mountB ? 1 : 0
+  })
+
+  orderedStorages.forEach((s: any) => {
     const mount =
       "/" + (s.mount_path || "").split("/").filter(Boolean).join("/")
     if (mount === cleanListedPath || mount === "/") return

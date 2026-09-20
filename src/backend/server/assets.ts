@@ -2,7 +2,7 @@ import { Hono } from "hono"
 import { getDb } from "../internal/model/db"
 
 /**
- * 品牌资源路由。
+ * 品牌资源 + CDN 静态资源路由。
  *
  * 背景：老前端（含 logo.svg / logo.png / favicon 静态文件）已移除，前端统一
  * 由官方 OpenList-Frontend 产物提供，但官方产物不包含 /logo.png、/favicon.png
@@ -29,48 +29,56 @@ assetsRouter.get("/favicon.png", redirectToLogo)
 assetsRouter.get("/favicon.ico", redirectToLogo)
 
 /**
- * CDN 静态资源重定向路由。
- * 
- * 当配置了 ASSET_URLS 时，前端静态资源（assets/、images/ 等）将重定向到 CDN 加载。
- * 支持 $version 占位符自动替换为前端版本号。
- * 
- * 参考原版 OpenList 实现：https://github.com/OpenListTeam/OpenList/blob/main/server/static/static.go
- * 
- * 示例：ASSET_URLS = https://registry.npmmirror.com/@openlist-frontend/openlist-frontend/$version/files/dist
+ * 允许重定向到 CDN 的静态资源目录（对齐 Go server/static/static.go 的
+ * `folders := []string{"assets", "images", "streamer", "static"}`）。
+ *
+ * ⚠️ 这里**必须**是固定前缀白名单。此前用的是 `/:folder/:filepath*`——
+ * 它会吞掉**任意两段路径**，于是「存储挂载点/文件」这种路由（例如
+ * `<域名>/存储2/xxx.exe`，即文件预览页的地址）在刷新时会被它拦下，
+ * 未配置 ASSET_URLS 时直接返回 `Static resource not found`（404），
+ * 前端来不及走到 SPA 兜底，表现为「进预览页后刷新白屏/404」。
  */
-assetsRouter.get("/:folder/:filepath*", async (c) => {
-  const env = c.env as any
-  const cdnUrl = env?.ASSET_URLS || process.env.ASSET_URLS
-  
-  if (!cdnUrl) {
-    // 未配置 CDN，返回 404
-    return c.text("Static resource not found", 404)
-  }
-  
-  // 获取前端版本号
-  const db = await getDb()
+const CDN_FOLDERS = ["assets", "images", "streamer", "static"]
+
+/** 解析 CDN 模板：`$version` 占位符会替换为前端版本号（取不到则 latest） */
+async function resolveCdnBase(cdnUrl: string): Promise<string> {
   let version = "latest"
   try {
-    const versionItem = db.get("SELECT * FROM x_settings WHERE key = 'version'") as any
+    const db = await getDb()
+    const versionItem = db.get(
+      "SELECT * FROM x_settings WHERE key = 'version'",
+    ) as any
     if (versionItem && versionItem.value) {
-      // 从版本字符串提取 frontend 版本，如 "v4.2.3 (Commit: xxx) - Frontend: v1.0.0 - Build at: xxx"
+      // 从版本字符串提取 frontend 版本，如
+      // "v4.2.3 (Commit: xxx) - Frontend: v1.0.0 - Build at: xxx"
       const match = versionItem.value.match(/Frontend:\s*([^\s-]+)/)
-      if (match) {
-        version = match[1]
-      }
+      if (match) version = match[1]
     }
-  } catch (e) {
-    // 忽略错误，使用默认值
+  } catch {
+    // 读不到版本号时退回 latest（与 Go 的 $version 缺省行为一致）
   }
-  
-  // 替换 $version 占位符
-  const resolvedCdnUrl = cdnUrl.replace(/\$version/g, version)
-  
-  // 构建 CDN 资源完整 URL
-  const folder = c.req.param("folder")
-  const filepath = c.req.param("filepath") || ""
-  const resourceUrl = `${resolvedCdnUrl}/${folder}/${filepath}`
-  
-  // 重定向到 CDN 资源
-  return c.redirect(resourceUrl, 302)
-})
+  return cdnUrl.replace(/\$version/g, version)
+}
+
+for (const folder of CDN_FOLDERS) {
+  assetsRouter.get(`/${folder}/*`, async (c, next) => {
+    const env = c.env as any
+    const cdnUrl =
+      env?.ASSET_URLS ||
+      (typeof process !== "undefined" ? process.env?.ASSET_URLS : "") ||
+      ""
+
+    // 未配置 CDN：不能在这里 404，必须放行给后面的本地静态资源
+    //（Workers 的 ASSETS 绑定 / SPA 兜底），否则这些目录之外的请求不会受影响，
+    // 但 `/assets/...` 这类真实静态资源会直接 404。
+    if (!cdnUrl) return await next()
+
+    const resolvedCdnUrl = await resolveCdnBase(cdnUrl)
+    const prefix = `/${folder}/`
+    const filepath = c.req.path.startsWith(prefix)
+      ? c.req.path.slice(prefix.length)
+      : ""
+
+    return c.redirect(`${resolvedCdnUrl}/${folder}/${filepath}`, 302)
+  })
+}
