@@ -3,7 +3,6 @@ import { getUserFromContext } from "./middlewares"
 import { canWrite, getActualPath, can, PermissionBit } from "../pkg/permission"
 import { assertSafeUrl } from "../pkg/http"
 import { safeErrorMessage } from "../pkg/errs"
-import { encodeDownloadPath } from "../pkg/path"
 import { getSettings, resolvePath } from "../internal/model/db"
 import {
   flushPendingDriverState,
@@ -283,13 +282,16 @@ async function readStoredSeed(
   path: string,
 ): Promise<Uint8Array> {
   const actualPath = getActualPath(user, normalizeVirtualPath(path))
-  const { item } = await getItem(actualPath, storageContext(c))
+  const { item, rawUrl: apiRawUrl } = await getItem(
+    actualPath,
+    storageContext(c),
+  )
   const max = envNumber(c, "SEED_MAX_METADATA_SIZE", DEFAULT_MAX_SEED_BYTES)
   if (item.is_dir || item.size < 0 || item.size > max)
     throw new Error(`Seed file exceeds the ${max} byte limit`)
-  const rawUrl =
-    item.raw_url ||
-    `${new URL(c.req.url).origin}/api/p${encodeDownloadPath(actualPath)}`
+  // 驱动直链优先；否则回退到 getItem 给出的代理地址（前缀已按 canProxy() 选好，
+  // 路径已编码，不能在这里硬编码 /api/p，否则未开代理的存储会 403）。
+  const rawUrl = item.raw_url || new URL(apiRawUrl, c.req.url).toString()
   const headers = item.raw_url_headers || {}
   if (!item.raw_url && c.req.header("Authorization"))
     headers.Authorization = c.req.header("Authorization")!
@@ -374,11 +376,13 @@ async function collectSourceFiles(
     if (result.length >= maxFiles)
       throw new Error(`Seed file count exceeds the ${maxFiles} file limit`)
     const actualPath = getActualPath(user, virtualPath)
-    const { item } = await getItem(actualPath, storageContext(c))
+    const { item, rawUrl: apiRawUrl } = await getItem(
+      actualPath,
+      storageContext(c),
+    )
     if (!item.is_dir) {
-      const rawUrl =
-        item.raw_url ||
-        `${new URL(c.req.url).origin}/api/p${encodeDownloadPath(actualPath)}`
+      // 同 readStoredSeed：直链优先，否则用 getItem 的代理地址（前缀/编码已定）
+      const rawUrl = item.raw_url || new URL(apiRawUrl, c.req.url).toString()
       const headers = { ...(item.raw_url_headers || {}) }
       if (!item.raw_url && c.req.header("Authorization"))
         headers.Authorization = c.req.header("Authorization")!

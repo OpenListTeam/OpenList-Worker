@@ -561,9 +561,9 @@ fsRouter.post("/get", async (c) => {
     // 前端把本接口的 raw_url 直接当下载地址使用：预览页的「下载」按钮就是
     // <a href={raw_url}>（pages/home/previews/download.tsx），图片/视频预览也
     // 直接把它塞进 <img>/<video> 的 src，都不会再自己拼 ?sign=。而 raw_url
-    // 指向的正是需要验签的 /p 端点：sign_all、存储级 enable_sign、密码 meta
-    // 覆盖任一命中时，缺签名一律 401 "sign verify failed"——外部表现就是
-    // 「预览页能正常打开，一点下载就 401」。
+    // 指向的是需要验签的 /p 或 /d 端点（前缀由 getItem 按 canProxy() 选定）：
+    // sign_all、存储级 enable_sign、密码 meta 覆盖任一命中时，缺签名一律
+    // 401 "sign verify failed"——外部表现就是「预览页能正常打开，一点下载就 401」。
     //
     // 对齐 Go server/handles/fsread.go FsGet：
     //   if isEncrypt(meta, reqPath) || setting.GetBool(conf.SignAll) {
