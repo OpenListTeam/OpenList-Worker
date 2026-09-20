@@ -1454,7 +1454,7 @@ export async function getItem(
     provider: driverName,
     // 路径必须逐段编码（对齐 Go utils.EncodePath(path, true)）：raw_url 会被
     // 前端直接当 href/src 使用，未编码的 `?`/`#` 会被截断、裸 `%` 会让服务端
-    // decodeURIComponent 抛错（见 pkg/utils.encodeDownloadPath 注释）。
+    // decodeURIComponent 抛错（见 pkg/path.encodeDownloadPath 注释）。
     rawUrl: `/api/p${encodeDownloadPath(virtualPath)}`,
   }
 }
