@@ -1,8 +1,10 @@
 import {
-  decrypt,
-  decryptConfigValue,
-  deriveConfigEncryptionKey,
-  encryptConfigValue,
+  __resetCipherKeyCacheForTest,
+  cipherPrefix,
+  createFieldCipher,
+  detectCipherPrefix,
+  isSealedCiphertext,
+  type FieldCipher,
 } from "../../pkg/crypto"
 import {
   generateSecret,
@@ -10,7 +12,7 @@ import {
   setJsonEnvCtx,
   writePersistedSecret,
 } from "./store/json"
-import { getStoreBackend } from "./store/backend"
+import { getStoreBackend, readCipher } from "./store/backend"
 
 // 保持外部（middlewares.ts / router.ts / admin.ts）对 getKvBinding / getKvStatus
 // 的既有引用不变，从 json 后端 re-export。
@@ -1106,6 +1108,19 @@ export const __resetDbCacheForTest = () => {
   dbTrusted = false
   dbLastLoadError = null
   dbWriteBlocked = false
+  // 加密相关的缓存与一次性告警复位：
+  // 用例可能先后使用不同密钥/不同 DB_CIPHER，缓存串味会让「首次告警」「换钥后
+  // 可解」这类断言依赖执行顺序。
+  cachedEncryptionKey = null
+  cachedFromEnv = false
+  encryptionKeyWarned = false
+  unsealKeyWarned = false
+  sealKeyMissingWarned = false
+  plaintextMigrationLogged = false
+  // 密钥派生缓存与「未变化字段跳过加密」缓存同样必须复位：
+  // 用例会切换 DB_CIPHER / 密钥，缓存串味会让断言依赖执行顺序。
+  __resetCipherKeyCacheForTest()
+  sealedCache.clear()
 }
 
 /** 仅供测试：注入统计型存储后端。 */
@@ -1162,7 +1177,28 @@ const loadDb = async (envCtx?: any) => {
     backend = await storeBackendLoader(activeEnv)
     const persisted = await backend.load(activeEnv)
     if (persisted) {
-      await unsealDb(persisted, await getEncryptionKey(activeEnv))
+      // 只在数据里确实存在密文时才构造解密器（才需要解析密钥）：
+      //   - DB_CIPHER=none（默认）且历史数据全为明文 → 完全不需要密钥，
+      //     省掉一次持久化读取，也不会误报「缺少加密密钥」；
+      //   - 存在 enc:vN: 密文（旧部署 / 曾开启加密）→ 仍按前缀解密，
+      //     因此「关掉加密」不会让既有数据读不出来。
+      const hadSealed = hasSealedValues(persisted)
+      if (
+        hadSealed &&
+        readCipher(activeEnv) === "none" &&
+        !plaintextMigrationLogged
+      ) {
+        plaintextMigrationLogged = true
+        console.log(
+          "[DB] DB_CIPHER=none: existing encrypted values were decrypted; the " +
+            "next save will write them back as PLAINTEXT (per-field migration, " +
+            "no explicit step needed). Set DB_CIPHER to keep them encrypted.",
+        )
+      }
+      const fieldCipher = hadSealed
+        ? await resolveFieldCipher(activeEnv, { needDecrypt: true })
+        : null
+      await unsealDb(persisted, fieldCipher)
       memoryDb = persisted
       ensureDefaultSettings(memoryDb)
       ensureDefaultStorages(memoryDb)
@@ -1271,24 +1307,23 @@ export const getDb = async (envCtx?: any) => {
  * warn-and-continue behavior, so unpersisted deployments are not broken by it.
  */
 // ============================================================
-// 静态加密（At-rest encryption）
+// 静态加密（At-rest encryption）—— 可选，由 DB_CIPHER 控制
+//
 // 修复 H-1：网盘 token/secret/OTP 等敏感字段此前以明文 JSON 落 KV/Blob。
 // 这里在「持久化边界」做字段级加密（落盘前 seal、读盘后 unseal），内存中
 // 始终保持明文，因此 resolvePath / parseAddition / 各驱动 / admin 接口均无需
-// 改动。密钥统一取 JWT_SECRET（签名与加密共用）；未配置时跳过加密，
-// 保持既有部署（无密钥）向后兼容。已存在的明文数据不带前缀，unseal 时原样
-// 返回，不会因升级而丢失。
+// 改动。密钥统一取 JWT_SECRET（签名与加密共用）。
+//
+// 与历史实现的差别：
+//   - **默认不加密**（DB_CIPHER=none）。加密是可选能力，而不是强制行为。
+//   - 算法由 DB_CIPHER 选择，见 pkg/crypto.ts 的 DbCipher：
+//       aes-256-gcm（HKDF，低成本，推荐） / aes-256-gcm-pbkdf2（历史 envelope）
+//       / aes-256-cbc-hmac（Encrypt-then-MAC）
+//   - **解密永远由密文前缀驱动**（`enc:vN:`），与当前配置无关。于是：
+//       关掉加密 → 既有密文仍能解开，并在下次写入时转为明文（自动迁移）；
+//       换算法   → 既有密文按旧算法解开，下次写入按新算法落盘；
+//       明文数据 → 不带前缀，原样返回，升级不丢数据。
 // ============================================================
-const LEGACY_ENCRYPTION_PREFIX = "enc:v1:"
-const ENCRYPTION_PREFIX = "enc:v2:"
-
-function isSealedValue(value: string): boolean {
-  return (
-    value.startsWith(ENCRYPTION_PREFIX) ||
-    value.startsWith(LEGACY_ENCRYPTION_PREFIX)
-  )
-}
-
 const SENSITIVE_SETTING_KEYS = new Set([
   "token",
   "sso_client_secret",
@@ -1300,6 +1335,12 @@ const SENSITIVE_SETTING_KEYS = new Set([
 ])
 
 let encryptionKeyWarned = false
+/** 一次性告警：数据中存在密文但拿不到密钥（避免每次加载都刷屏） */
+let unsealKeyWarned = false
+/** 一次性告警：配置了 DB_CIPHER 却没有密钥，只能明文落盘 */
+let sealKeyMissingWarned = false
+/** 一次性提示：旧部署的密文在 DB_CIPHER=none 下会被自动迁移为明文 */
+let plaintextMigrationLogged = false
 
 /**
  * 字段加密密钥的持久化键名。
@@ -1406,7 +1447,8 @@ async function getEncryptionKey(envCtx?: any): Promise<string | null> {
     encryptionKeyWarned = true
     console.error(
       "[DB] No encryption key available: set JWT_SECRET. " +
-        "Sensitive fields would otherwise be written in plaintext.",
+        "Encrypted fields cannot be decrypted and new sensitive fields will be " +
+        "stored in plaintext until a key becomes available.",
     )
   }
   return null
@@ -1442,7 +1484,12 @@ export async function isEncryptionReady(envCtx?: any): Promise<boolean> {
 }
 
 /**
- * 初始化阶段确保字段加密密钥存在。只在 setup 流程中调用。
+ * 初始化阶段确保**共享密钥**存在（JWT 签名 + DB_CIPHER 启用时的字段加密）。
+ * 只在 setup 中调用。
+ *
+ * 为什么 DB_CIPHER=none 时同样要生成：这把密钥同时充当 JWT 令牌的签名密钥
+ * （middlewares.ts 的 getJwtSecret 会复用本槽位）。多实例 / 冷启动必须共用同一把，
+ * 否则令牌会随机失效。`none` 只表示「不加密数据库字段」，与密钥是否存在无关。
  *
  * 行为（与 getEncryptionKey 使用完全相同的优先级，避免加解密分裂）：
  *   1. 环境变量已配置 → 直接采用，不写持久化（尊重运维配置）
@@ -1572,26 +1619,147 @@ export async function ensureEncryptionSecret(
   }
 }
 
-async function sealValue(value: string, key: CryptoKey): Promise<string> {
-  if (!value) return value
-  if (isSealedValue(value)) return value // idempotent
-  return ENCRYPTION_PREFIX + (await encryptConfigValue(value, key))
+/**
+ * 「未变化字段跳过重新加密」缓存（纯性能优化，不参与任何功能语义）。
+ *
+ * ## 为什么需要
+ *
+ * 内存中的库**始终是明文**，而每次 `saveDb`（任何一次配置改动、任何一次 admin
+ * 操作）都会把所有敏感字段重新加密一遍。字段没变时这次加密毫无意义：
+ *
+ *   - 用 `aes-256-gcm` 时每字段约 30 µs（WebCrypto 调用开销）；
+ *   - 用 `aes-256-gcm-pbkdf2` 时每字段约 27 ms（PBKDF2 10 万次）—— 这才是真痛；
+ *   - 用 `des/3des-cbc-hmac` 时每字段约 0.3 ms（纯 JS）。
+ *
+ * load 时我们恰好知道「密文 ↔ 明文」的对应关系，把它记下来，save 时若明文未变、
+ * 且算法与密钥都未变，就直接复用原密文，跳过整个密码学运算。
+ *
+ * ## 为什么是安全的（无功能风险）
+ *
+ * 1. **三重校验**后才复用：`明文相同` + `算法/密钥指纹相同` + `密文算法 == 当前写入算法`。
+ *    任一不满足都走正常加密路径 —— 因此「换算法」「关加密」「轮换密钥」「改值」
+ *    的行为与不做该优化时**完全一致**（含自动迁移）。
+ * 2. 复用只发生在**同一明文、同一密钥、同一算法**下，不会造成 nonce/IV 与
+ *    不同明文复用（这是 AEAD 唯一需要避免的禁忌）。
+ * 3. 缓存只在进程内、键为字段身份（`users:1:password`），容量有上限；
+ *    对同一字段写入不同值时条目会被覆盖，不会读到过期值。
+ */
+interface SealedCacheEntry {
+  plain: string
+  sealed: string
+  /** 生成该密文时的 fieldCipher 指纹（算法 + 密钥） */
+  fp: string
+  /** 生成该密文的算法（必须等于当前写入算法才允许复用） */
+  cipher: string
 }
 
+const SEALED_CACHE_LIMIT = 4096
+const sealedCache = new Map<string, SealedCacheEntry>()
+
+function rememberSealed(
+  identity: string,
+  plain: string,
+  sealed: string,
+  fp: string,
+  cipher: string,
+): void {
+  if (sealedCache.size >= SEALED_CACHE_LIMIT) {
+    const oldest = sealedCache.keys().next().value
+    if (oldest !== undefined) sealedCache.delete(oldest)
+  }
+  sealedCache.set(identity, { plain, sealed, fp, cipher })
+}
+
+function recallSealed(
+  identity: string,
+  plain: string,
+  fp: string,
+  cipher: string,
+): string | null {
+  const hit = sealedCache.get(identity)
+  if (!hit) return null
+  if (hit.fp !== fp) return null // 算法或密钥变了 → 必须重新加密
+  if (hit.cipher !== cipher) return null // 密文算法 ≠ 当前写入算法 → 需要迁移
+  if (hit.plain !== plain) return null // 值变了 → 必须重新加密
+  return hit.sealed
+}
+
+/**
+ * 加密单个字段（`seal`）。
+ *
+ * - 未启用加密（fieldCipher 为 null）或未取到密钥：原样返回明文。
+ * - 已有任意版本前缀：视为已加密（幂等），避免重复加密 —— 双重加密会在下次读取
+ *   时只解开一层、仍然呈现密文，表现为「密码看起来还是乱码」的诡异故障。
+ * - 明文未变且算法/密钥未变：复用上次的密文，跳过密码学运算（见 sealedCache）。
+ */
+async function sealValue(
+  value: string,
+  fieldCipher: FieldCipher | null,
+  identity: string,
+): Promise<string> {
+  if (!value || !fieldCipher || fieldCipher.cipher === "none") return value
+  if (isSealedCiphertext(value)) return value // idempotent
+
+  const reused = recallSealed(
+    identity,
+    value,
+    fieldCipher.fingerprint,
+    fieldCipher.cipher,
+  )
+  if (reused) return reused
+
+  const sealed =
+    cipherPrefix(fieldCipher.cipher) + (await fieldCipher.encrypt(value))
+  rememberSealed(
+    identity,
+    value,
+    sealed,
+    fieldCipher.fingerprint,
+    fieldCipher.cipher,
+  )
+  return sealed
+}
+
+/**
+ * 解密单个字段（`unseal`）。
+ *
+ * 算法由**密文前缀**决定，而不是当前 DB_CIPHER —— 这保证了「换算法 / 关加密」
+ * 不会让既有密文无法读取。无前缀（明文）直接返回。
+ */
 async function unsealValue(
   value: string,
-  secret: string,
-  configKey: () => Promise<CryptoKey>,
+  fieldCipher: FieldCipher | null,
+  identity: string,
 ): Promise<string> {
-  if (!value || !isSealedValue(value)) return value
-  try {
-    if (value.startsWith(ENCRYPTION_PREFIX)) {
-      return await decryptConfigValue(
-        value.slice(ENCRYPTION_PREFIX.length),
-        await configKey(),
+  if (!value || !isSealedCiphertext(value)) return value
+  if (!fieldCipher) {
+    // 有密文但拿不到密钥：保持原值，绝不丢数据，但必须显式告警 ——
+    // 否则表现为「密码/凭据看起来是乱码」而无任何线索。
+    if (!unsealKeyWarned) {
+      unsealKeyWarned = true
+      console.error(
+        "[DB] Sealed values found in storage but no encryption key is " +
+          "available; they will be left as-is (set JWT_SECRET, or restore the " +
+          "original openlist_encryption_secret).",
       )
     }
-    return await decrypt(value.slice(LEGACY_ENCRYPTION_PREFIX.length), secret)
+    return value
+  }
+  const hit = detectCipherPrefix(value)
+  try {
+    const plain = await fieldCipher.decrypt(value)
+    // 只有「密文算法 == 当前写入算法」时才记账：否则一旦复用就等于阻止了
+    // 「读到 v1 → 保存为 v2」这类自动迁移（那是必须发生的）。
+    if (hit && hit.cipher === fieldCipher.cipher) {
+      rememberSealed(
+        identity,
+        plain,
+        value,
+        fieldCipher.fingerprint,
+        hit.cipher,
+      )
+    }
+    return plain
   } catch (e) {
     console.warn(
       "[DB] Failed to decrypt a sealed secret (wrong JWT_SECRET?):",
@@ -1601,58 +1769,163 @@ async function unsealValue(
   }
 }
 
-async function sealDb(data: any, key: string | null): Promise<any> {
-  if (!key || !data) return data
-  const copy = JSON.parse(JSON.stringify(data))
-  // Derive once per save. All fields still receive independent random GCM IVs.
-  const configKey = await deriveConfigEncryptionKey(key)
+/**
+ * 数据中是否存在本模块产生的密文（任意版本）。
+ *
+ * 用途：`DB_CIPHER=none` 且数据全为明文时，加载路径**完全不需要**解析密钥 ——
+ * 既能避免一次额外的持久化读取，也避免误报「缺少加密密钥」。
+ */
+function hasSealedValues(data: any): boolean {
+  if (!data) return false
+  for (const s of data.storages || []) {
+    if (s && detectCipherPrefix(s.addition)) return true
+  }
+  for (const st of data.settings || []) {
+    if (
+      st &&
+      SENSITIVE_SETTING_KEYS.has(st.key) &&
+      detectCipherPrefix(st.value)
+    ) {
+      return true
+    }
+  }
+  for (const u of data.users || []) {
+    if (
+      u &&
+      (detectCipherPrefix(u.otp_secret) || detectCipherPrefix(u.password))
+    ) {
+      return true
+    }
+  }
+  return false
+}
 
-  // 1. 加密存储配置中的 addition 字段（网盘凭据）
-  for (const s of copy.storages || []) {
+/**
+ * 依据 `DB_CIPHER` 与共享密钥构造字段加解密器（一次 save / load 复用一个实例）。
+ *
+ * @param opts.needDecrypt 读取路径专用：即使当前 `DB_CIPHER=none`，只要数据里存在
+ *        历史密文（`enc:vN:`）就仍然需要密钥去解开它 —— 这正是「关掉加密后旧数据
+ *        依旧可读、并在下次保存时自动转为明文」所依赖的分支。
+ *        此时返回的对象写入算法是 `none`（seal 侧本就不会调用它）。
+ * @returns null 表示「不需要加密/解密」或「需要但拿不到密钥」。后者由调用方告警。
+ */
+async function resolveFieldCipher(
+  env: any,
+  opts?: { needDecrypt?: boolean },
+): Promise<FieldCipher | null> {
+  const cipher = readCipher(env)
+  if (cipher === "none" && !opts?.needDecrypt) return null
+  const secret = await getEncryptionKey(env)
+  if (!secret) return null
+  return createFieldCipher(cipher, secret)
+}
+
+async function sealDb(
+  data: any,
+  fieldCipher: FieldCipher | null,
+): Promise<any> {
+  // 未启用加密：原样落盘（不做无意义的复制）
+  if (!fieldCipher || fieldCipher.cipher === "none" || !data) return data
+
+  // ── 写时复制（copy-on-write）而不是整库 JSON 深拷贝 ──
+  //
+  // 历史实现每次落盘前都 `JSON.parse(JSON.stringify(data))`：把**整个配置**
+  // （含大量与敏感字段无关的数据）序列化再反序列化一遍，大配置下是纯开销。
+  // 这里只在「某个字段确实被修改」时才复制它所属的数组/实体；同时用展开运算符
+  // 保持键顺序，落盘结果与深拷贝版本逐字节一致。
+  //
+  // 密钥派生由 fieldCipher 内部完成并缓存（见 crypto.ts 的 cachedDerive），
+  // 每个字段仍然各自使用独立随机 IV。
+  let storagesOut: any[] | undefined
+  let settingsOut: any[] | undefined
+  let usersOut: any[] | undefined
+
+  // 1. 存储配置中的 addition 字段（网盘凭据）
+  const srcStorages: any[] = Array.isArray(data.storages) ? data.storages : []
+  for (let i = 0; i < srcStorages.length; i++) {
+    const s = srcStorages[i]
     if (!s || !s.addition) continue
     const str =
       typeof s.addition === "string" ? s.addition : JSON.stringify(s.addition)
-    if (str && str !== "{}") {
-      s.addition = await sealValue(str, configKey)
-    }
+    if (!str || str === "{}") continue
+    const sealed = await sealValue(
+      str,
+      fieldCipher,
+      `storages:${s.id ?? i}:addition`,
+    )
+    if (sealed === s.addition) continue
+    if (!storagesOut) storagesOut = srcStorages.slice()
+    storagesOut![i] = { ...s, addition: sealed }
   }
 
-  // 2. 加密敏感的系统设置
-  for (const st of copy.settings || []) {
-    if (st && SENSITIVE_SETTING_KEYS.has(st.key) && st.value) {
-      st.value = await sealValue(String(st.value), configKey)
-    }
+  // 2. 敏感的系统设置
+  const srcSettings: any[] = Array.isArray(data.settings) ? data.settings : []
+  for (let i = 0; i < srcSettings.length; i++) {
+    const st = srcSettings[i]
+    if (!st || !SENSITIVE_SETTING_KEYS.has(st.key) || !st.value) continue
+    const sealed = await sealValue(
+      String(st.value),
+      fieldCipher,
+      `settings:${st.key}:value`,
+    )
+    if (sealed === st.value) continue
+    if (!settingsOut) settingsOut = srcSettings.slice()
+    settingsOut![i] = { ...st, value: sealed }
   }
 
-  // 3. 加密用户敏感信息
-  for (const u of copy.users || []) {
+  // 3. 用户敏感信息（OTP 密钥 / 密码）
+  const srcUsers: any[] = Array.isArray(data.users) ? data.users : []
+  for (let i = 0; i < srcUsers.length; i++) {
+    const u = srcUsers[i]
+    if (!u) continue
+    let next = u
     // OTP 密钥
-    if (u && u.otp_secret) {
-      u.otp_secret = await sealValue(String(u.otp_secret), configKey)
+    if (u.otp_secret) {
+      const sealed = await sealValue(
+        String(u.otp_secret),
+        fieldCipher,
+        `users:${u.id ?? i}:otp_secret`,
+      )
+      if (sealed !== u.otp_secret) next = { ...next, otp_secret: sealed }
     }
     // 密码二次加密（defense-in-depth，即使已哈希也加密存储）
-    if (u && u.password) {
-      u.password = await sealValue(String(u.password), configKey)
+    if (u.password) {
+      const sealed = await sealValue(
+        String(u.password),
+        fieldCipher,
+        `users:${u.id ?? i}:password`,
+      )
+      if (sealed !== u.password) next = { ...next, password: sealed }
+    }
+    if (next !== u) {
+      if (!usersOut) usersOut = srcUsers.slice()
+      usersOut![i] = next
     }
   }
 
-  return copy
+  // 没有任何字段被修改：直接复用原对象（与深拷贝版本落盘结果一致）
+  if (!storagesOut && !settingsOut && !usersOut) return data
+
+  const out: any = { ...data }
+  if (storagesOut) out.storages = storagesOut
+  if (settingsOut) out.settings = settingsOut
+  if (usersOut) out.users = usersOut
+  return out
 }
 
 /**
  * 解密并发上限。
  *
- * v2 密文只需一次快速密钥派生；旧 v1 密文仍需 PBKDF2（10 万次迭代），并在
+ * v2/v3 密文只需一次快速密钥派生；旧 v1 密文仍需 PBKDF2（10 万次迭代），并在
  * 下次保存时自动迁移。限制并发可避免旧数据字段很多时产生 CPU/内存峰值。
  */
 const UNSEAL_CONCURRENCY = 16
 
-async function unsealDb(data: any, key: string | null): Promise<void> {
-  if (!key || !data) return
-
-  // v2 的派生结果在本次加载中共享；纯 v1 数据不会做这次派生。
-  let configKey: Promise<CryptoKey> | null = null
-  const getConfigKey = () => (configKey ||= deriveConfigEncryptionKey(key))
+async function unsealDb(
+  data: any,
+  fieldCipher: FieldCipher | null,
+): Promise<void> {
+  if (!fieldCipher || !data) return
 
   // 并行解密（带并发上限）：
   //
@@ -1663,56 +1936,64 @@ async function unsealDb(data: any, key: string | null): Promise<void> {
   // 这里先**同步收集 thunk**（不在收集阶段就把解密全部发起），再按
   // UNSEAL_CONCURRENCY 分批 await：既拿到并行带来的墙钟收益，又避免字段极多
   // （如数千用户）时一次性并发过多造成 CPU/内存峰值。
+  //
+  // 密钥派生（v2 的 HKDF）由 fieldCipher 内部缓存，本次加载只发生一次。
   const tasks: Array<() => Promise<void>> = []
 
-  // 1. 解密存储配置
-  for (const s of data.storages || []) {
-    if (
-      s &&
-      typeof s.addition === "string" &&
-      isSealedValue(s.addition)
-    ) {
+  // 1. 解密存储配置（算法由密文前缀决定，与当前 DB_CIPHER 无关）
+  const srcStorages: any[] = Array.isArray(data.storages) ? data.storages : []
+  for (let i = 0; i < srcStorages.length; i++) {
+    const s = srcStorages[i]
+    if (s && typeof s.addition === "string" && isSealedCiphertext(s.addition)) {
       const target = s
-      const cipher = target.addition
+      const sealedValue = target.addition
+      const identity = `storages:${s.id ?? i}:addition`
       tasks.push(async () => {
-        target.addition = await unsealValue(cipher, key, getConfigKey)
+        target.addition = await unsealValue(sealedValue, fieldCipher, identity)
       })
     }
   }
 
   // 2. 解密系统设置
-  for (const st of data.settings || []) {
+  const srcSettings: any[] = Array.isArray(data.settings) ? data.settings : []
+  for (let i = 0; i < srcSettings.length; i++) {
+    const st = srcSettings[i]
     if (
       st &&
       SENSITIVE_SETTING_KEYS.has(st.key) &&
       typeof st.value === "string" &&
-      isSealedValue(st.value)
+      isSealedCiphertext(st.value)
     ) {
       const target = st
-      const cipher = target.value
+      const sealedValue = target.value
+      const identity = `settings:${st.key}:value`
       tasks.push(async () => {
-        target.value = await unsealValue(cipher, key, getConfigKey)
+        target.value = await unsealValue(sealedValue, fieldCipher, identity)
       })
     }
   }
 
   // 3. 解密用户信息（OTP 密钥 / 密码）
-  for (const u of data.users || []) {
+  const srcUsers: any[] = Array.isArray(data.users) ? data.users : []
+  for (let i = 0; i < srcUsers.length; i++) {
+    const u = srcUsers[i]
     if (!u) continue
     // OTP 密钥
-    if (typeof u.otp_secret === "string" && isSealedValue(u.otp_secret)) {
+    if (typeof u.otp_secret === "string" && isSealedCiphertext(u.otp_secret)) {
       const target = u
-      const cipher = target.otp_secret
+      const sealedValue = target.otp_secret
+      const identity = `users:${u.id ?? i}:otp_secret`
       tasks.push(async () => {
-        target.otp_secret = await unsealValue(cipher, key, getConfigKey)
+        target.otp_secret = await unsealValue(sealedValue, fieldCipher, identity)
       })
     }
     // 密码解密
-    if (typeof u.password === "string" && isSealedValue(u.password)) {
+    if (typeof u.password === "string" && isSealedCiphertext(u.password)) {
       const target = u
-      const cipher = target.password
+      const sealedValue = target.password
+      const identity = `users:${u.id ?? i}:password`
       tasks.push(async () => {
-        target.password = await unsealValue(cipher, key, getConfigKey)
+        target.password = await unsealValue(sealedValue, fieldCipher, identity)
       })
     }
   }
@@ -1787,11 +2068,22 @@ export const saveDb = async (
   }
 
   try {
-    // 落盘前对敏感字段做静态加密（H-1），内存中的 data 保持明文
+    // 落盘前对敏感字段做静态加密（可选，见 DB_CIPHER），内存中的 data 保持明文。
+    // cipher=none（默认）时直接按明文落盘，不解析密钥（也不需要密钥）。
+    const cipher = readCipher(activeEnv)
     console.log(
-      `[DB] saveDb: sealing and persisting to ${backend.name}, storages=${data.storages?.length || 0}`,
+      `[DB] saveDb: cipher=${cipher}, persisting to ${backend.name}, storages=${data.storages?.length || 0}`,
     )
-    const sealed = await sealDb(data, await getEncryptionKey(activeEnv))
+    const fieldCipher = cipher === "none" ? null : await resolveFieldCipher(activeEnv)
+    if (cipher !== "none" && !fieldCipher && !sealKeyMissingWarned) {
+      // 只在首次告警：密钥缺失会持续到密钥可用为止，逐次写入都打印只会刷屏。
+      sealKeyMissingWarned = true
+      console.error(
+        `[DB] DB_CIPHER=${cipher} but no encryption key is available; ` +
+          "sensitive fields will be stored in PLAINTEXT. Set JWT_SECRET.",
+      )
+    }
+    const sealed = await sealDb(data, fieldCipher)
     console.log(
       `[DB] saveDb: sealed data size=${JSON.stringify(sealed).length} bytes`,
     )

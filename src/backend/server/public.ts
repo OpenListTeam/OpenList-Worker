@@ -12,6 +12,7 @@ import {
   getStoreConfigErrorDetail,
   isPersistentStorageAvailable,
   isServerlessRuntime,
+  readCipher,
   readDriver,
   readFormat,
 } from "../internal/model/store/backend"
@@ -70,7 +71,7 @@ function bindBackendSuggestion(): string {
  * 只报告「配置了什么」「是否就绪」「哪里不对」，绝不回显密钥或 DSN 原文。
  *
  * 返回：
- *   - config：DB_FORMAT / DB_DRIVER 的配置值与实际解析值
+ *   - config：DB_FORMAT / DB_DRIVER / DB_CIPHER 的配置值与实际解析值
  *   - storage：驱动可用性、健康状态、连接错误
  *   - jwt：签名/加密密钥是否就绪
  *   - ready：综合就绪判定（数据库 + 密钥都就绪）
@@ -80,6 +81,8 @@ publicRouter.get("/env_check", async (c) => {
   const env = c.env as any
   const driverCfg = readDriver(env)
   const formatCfg = readFormat(env)
+  // 字段加密算法（none = 不加密，默认）。只报告配置，不回显任何密钥。
+  const cipherCfg = readCipher(env)
   const serverless = isServerlessRuntime(env)
 
   // ── 存储状态（不抛错，内部已做容错）──
@@ -288,6 +291,10 @@ publicRouter.get("/env_check", async (c) => {
         // 配置值（用户显式设置，或默认值）
         db_format: formatCfg,
         db_driver: driverCfg,
+        // 敏感字段落盘算法：none（默认，不加密）/ aes-256-gcm /
+        // aes-256-gcm-sha256 / aes-256-cbc-hmac。历史密文带 enc:vN: 前缀，
+        // 读取时自动识别，因此该项只影响**新写入**。
+        db_cipher: cipherCfg,
         // 实际解析值（auto 探测后的结果）；解析失败时后端内部是 "none"，
         // 对界面没有意义且会显示成「do → none」，这里统一归一为 null。
         resolved_driver: resolvedOrNull(storage?.driver),
@@ -685,10 +692,15 @@ publicRouter.post("/init/setup", async (c) => {
     )
   }
 
-  // 初始化阶段：确保加密密钥存在。
+  // 初始化阶段：确保**共享密钥**存在（JWT 签名 + DB_CIPHER 启用时的字段加密）。
   //
   // 只在 setup 中生成 —— 且仅当持久化键不存在时。一旦写入永不覆盖，
   // 否则既有加密数据将无法解密。其他任何阶段都只读不生成。
+  //
+  // 注意：**与 DB_CIPHER 无关**。DB_CIPHER=none 仅表示「不加密数据库字段」，
+  // JWT 令牌签名仍然需要一把跨实例/跨冷启动一致的密钥：如果运维没有通过环境
+  // 变量 JWT_SECRET 提供，就必须在这里生成并持久化，否则每个实例/每次冷启动
+  // 都会各生成一把随机密钥，导致令牌随机失效。因此这里无条件调用。
   await ensureEncryptionSecret(c.env)
 
   if (existing) {

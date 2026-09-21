@@ -19,6 +19,9 @@
       },
       "DB_DRIVER": {
         "description": "Storage driver: `auto` (default), `blob`, `cfkv`, `kv`, `d1`, `do`, `mysql`. Leave as `auto` unless you need to force one. An explicitly configured driver is never replaced automatically: if it is unavailable, the app reports a configuration error (including which driver auto-detection would have picked) instead of writing to another backend. Invalid driver/format pairs are reported the same way."
+      },
+      "DB_CIPHER": {
+        "description": "At-rest cipher for sensitive fields (drive credentials, 2FA secrets, password hashes): `none` (default, no encryption), `aes-256-gcm` (HKDF-derived AES-256-GCM key — the `enc:v2:` envelope written by existing encrypted deployments, recommended), `aes-256-gcm-pbkdf2` (legacy `enc:v1:` envelope, PBKDF2 per field, slow), `aes-256-cbc-hmac` (`enc:v3:`), `chacha20-poly1305` (`enc:v4:`, RFC 8439, pure-JS implementation), `des-cbc-hmac` / `3des-cbc-hmac` (`enc:v5:`/`enc:v6:`, compatibility only — single DES is 56-bit and 3DES is deprecated, do not use for real data). Ciphertexts carry an `enc:vN:` prefix and are decrypted by prefix on read, so switching back to `none` (or changing algorithms) never makes existing data unreadable — it only changes how newly written data is stored (legacy ciphertext is migrated to plaintext on the next save). Key derivation is cached per isolate, and unchanged fields are not re-encrypted on save. This setting does NOT affect the shared secret: with `none`, a secret is still generated and persisted during setup when JWT_SECRET is not provided, because JWT signing needs it."
       }
     }
   },
@@ -51,10 +54,11 @@
     "test:drivers": "tsx --test \"src/backend/drivers/**/*.test.ts\"",
     "test:server": "tsx --test \"src/backend/server/*.test.ts\"",
     "test:store": "tsx --test src/backend/internal/model/store/store.test.ts",
+    "test:model": "tsx --test \"src/backend/internal/model/*.test.ts\"",
     "test:regress": "tsx scripts/_regress.mjs",
     "test:deploy": "node scripts/test-deploy.js",
     "env:check": "tsx scripts/env-check.mjs",
-    "test:all": "npm run test:189 && npm run test:drivers && npm run test:server && npm run test:store && npm run test:regress",
+    "test:all": "npm run test:189 && npm run test:drivers && npm run test:server && npm run test:store && npm run test:model && npm run test:regress",
     "sls:deploy": "serverless deploy",
     "sls:package": "serverless package",
     "sls:info": "serverless info",

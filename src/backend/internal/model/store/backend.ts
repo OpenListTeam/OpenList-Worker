@@ -25,6 +25,12 @@ import { memoryDriver } from "./driver/memory"
 import { mapFormat } from "./format/map"
 import { keyFormat } from "./format/key"
 import { sqlFormat } from "./format/sql"
+import {
+  DB_CIPHER_VALUES,
+  DEFAULT_DB_CIPHER,
+  resolveDbCipher,
+  type DbCipher,
+} from "../../../pkg/crypto"
 
 /**
  * 读取环境变量（支持 process.env 和 env 对象）。
@@ -76,6 +82,44 @@ export function readFormat(env?: any): StorageFormat {
   }
 
   return readEnv("DB_FORMAT", "map", env) as StorageFormat
+}
+
+/**
+ * 读取数据库字段加密算法（DB_CIPHER）。
+ *
+ * 契约（与 DB_DRIVER / DB_FORMAT 同为「正交的一维」）：只决定**敏感字段如何
+ * 落盘**，不改变存储位置与数据组织方式。
+ *
+ *   none（默认）              - 不加密，敏感字段与普通 JSON 一样明文落盘
+ *   aes-256-gcm              - HKDF-SHA256 派生一把 AES-256-GCM 密钥（enc:v2:）
+ *   aes-256-gcm-pbkdf2       - AES-256-GCM，PBKDF2-SHA256(10 万次) 派生（enc:v1:，慢）
+ *   aes-256-cbc-hmac         - AES-256-CBC + HMAC-SHA256（enc:v3:，Encrypt-then-MAC）
+ *   chacha20-poly1305        - ChaCha20-Poly1305（enc:v4:，RFC 8439，纯 JS）
+ *   des-cbc-hmac             - 单 DES-CBC + HMAC-SHA256（enc:v5:，**仅兼容，不安全**）
+ *  3des-cbc-hmac             - 3DES-CBC + HMAC-SHA256（enc:v6:，**仅兼容，已弃用**）
+ *
+ * 为什么默认 none：加密会让「共享库给 Go 后端 / 直接用 SQL 查询」变得不可读，
+ * 且读取时需逐字段解密（详见 #69 的 CPU 优化）。需要静态加密的部署显式配置即可；
+ * 历史密文带 `enc:vN:` 前缀，读取时按前缀自动解密，因此从加密切回 none
+ * **不会导致数据不可读**，只会在下次写入时转为明文（自动迁移）。
+ *
+ * DES/3DES 只作为「非 AES 族」的兼容选项存在：单 DES 的 56-bit 密钥可被暴力破解，
+ * 3DES 已被 NIST SP 800-131A 弃用，二者都不应保护真实数据（见 crypto.ts 的
+ * WEAK_DB_CIPHERS 与一次性告警）。
+ *
+ * 取值无法识别时告警并回退 none（而不是静默启用某个算法）。注意：读取时
+ * 解密算法由密文前缀决定，与本函数取值无关 —— 拼错变量只会影响**新写入**。
+ */
+export function readCipher(env?: any): DbCipher {
+  const raw = readEnv("DB_CIPHER", DEFAULT_DB_CIPHER, env)
+  const { cipher, known } = resolveDbCipher(raw)
+  if (!known) {
+    console.warn(
+      `[DB] Unknown DB_CIPHER "${raw}"; falling back to "${DEFAULT_DB_CIPHER}". ` +
+        `Valid values: ${DB_CIPHER_VALUES.join(", ")}.`,
+    )
+  }
+  return cipher
 }
 
 /**

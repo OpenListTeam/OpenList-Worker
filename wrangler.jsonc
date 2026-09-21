@@ -59,9 +59,25 @@
     // 说明：mysql 仅在配置了连接信息时才参与 auto 探测，避免无谓的 TCP 建连。
     "DB_DRIVER": "auto",
 
+    // 敏感字段落盘算法（默认 none：不加密；与 DB_DRIVER/DB_FORMAT 正交）：
+    //   none（默认）              - 不加密，敏感字段明文落盘
+    //   aes-256-gcm              - HKDF 派生 AES-256-GCM 密钥（enc:v2:，推荐）
+    //   aes-256-gcm-pbkdf2       - AES-256-GCM + PBKDF2-SHA256(10 万次) 逐字段派生
+    //                              （历史 enc:v1: envelope，每字段约 27ms，慢）
+    //   aes-256-cbc-hmac         - AES-256-CBC + HMAC-SHA256（enc:v3:）
+    //   chacha20-poly1305        - ChaCha20-Poly1305（enc:v4:，RFC 8439，纯 JS）
+    //   des-cbc-hmac             - 单 DES + HMAC-SHA256（enc:v5:，仅兼容，不安全）
+    //   3des-cbc-hmac            - 3DES + HMAC-SHA256（enc:v6:，仅兼容，已弃用）
+    // 说明：加密对象为 storages[].addition / 敏感 settings / users[].password /
+    //       users[].otp_secret。密文带 enc:vN: 前缀，读取时按前缀自动解密，
+    //       因此把该项改回 none 不会导致既有数据不可读（下次保存自动转为明文）。
+    // 注意：该项与 JWT 密钥无关 —— DB_CIPHER=none 时，未配置 JWT_SECRET 仍会
+    //       自动生成并持久化共享密钥（JWT 签名需要）。
+    "DB_CIPHER": "none",
+
     // ── 安全鉴权（推荐以 Secret 类型配置，见 .dev.vars.example）──────────
     //
-    // JWT 签名密钥（>=16 字符，兼作字段加密与定时任务鉴权）
+    // JWT 签名密钥（>=16 字符，兼作可选的字段加密密钥与定时任务鉴权）
     // "JWT_SECRET": "",
     //
     // 跳过安装向导，自动以该密码初始化 admin

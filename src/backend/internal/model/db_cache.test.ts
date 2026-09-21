@@ -134,13 +134,25 @@ test("saveDb: sensitive fields use the low-CPU v2 envelope and remain readable",
   const { backend, getData } = createCountingBackend({
     ...SAMPLE,
     users: [{ id: 1, username: "admin", password: "password-hash" }],
-    storages: [{ id: 1, addition: '{"refresh_token":"secret"}' }],
+    // 注意：storage 必须带 driver / mount_path —— 否则会被 ensureDefaultStorages()
+    // 当作损坏条目过滤掉（storages 变为空数组），断言在 storages[0] 上就会炸。
+    storages: [
+      {
+        id: 1,
+        driver: "local",
+        mount_path: "/drive",
+        addition: '{"refresh_token":"secret"}',
+      },
+    ],
   })
   __setStoreBackendLoaderForTest(async () => backend)
 
   const env = {
     DB_DRIVER: "counting",
     JWT_SECRET: "test-config-encryption-secret",
+    // 加密是可选的：默认 DB_CIPHER=none（明文落盘），本用例显式开启加密，
+    // 以锁定 #69 的低 CPU v2 envelope 行为（见下方「默认不加密」用例）。
+    DB_CIPHER: "aes-256-gcm",
   }
   const plain = await getDb(env)
   await saveDb(plain, env)
@@ -155,6 +167,35 @@ test("saveDb: sensitive fields use the low-CPU v2 envelope and remain readable",
   const reloaded = await getDb(env)
   assert.equal(reloaded.storages[0].addition, plain.storages[0].addition)
   assert.equal(reloaded.users[0].password, plain.users[0].password)
+})
+
+test("saveDb: without DB_CIPHER sensitive fields are written as plaintext", async () => {
+  __resetDbCacheForTest()
+  const { backend, getData } = createCountingBackend({
+    ...SAMPLE,
+    users: [{ id: 1, username: "admin", password: "password-hash" }],
+    storages: [
+      {
+        id: 1,
+        driver: "local",
+        mount_path: "/drive",
+        addition: '{"refresh_token":"secret"}',
+      },
+    ],
+  })
+  __setStoreBackendLoaderForTest(async () => backend)
+
+  // 不配置 DB_CIPHER（默认 none）：即便提供了 JWT_SECRET 也不加密数据库字段。
+  const env = {
+    DB_DRIVER: "counting",
+    JWT_SECRET: "test-config-encryption-secret",
+  }
+  const plain = await getDb(env)
+  await saveDb(plain, env)
+
+  const persisted = getData()
+  assert.equal(persisted.storages[0].addition, '{"refresh_token":"secret"}')
+  assert.equal(persisted.users[0].password, "password-hash")
 })
 
 test("getDb: 五个无参 getter 复用同一份缓存快照", async () => {
