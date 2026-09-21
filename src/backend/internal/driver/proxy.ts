@@ -263,7 +263,9 @@ export function getDownProxyUrl(storage: any): string {
   // 1) 顶层字段（正常路径）
   for (const key of ["down_proxy_url", "downProxyUrl"]) {
     const val = storage[key]
-    if (typeof val === "string" && val.trim()) return val.trim()
+    // 对齐 Go GenerateDownProxyURL：多行只取第一行
+    //（strings.Split(storage.DownProxyURL, "\n")[0]），否则会把换行带进 URL。
+    if (typeof val === "string" && val.trim()) return val.split("\n")[0].trim()
   }
 
   // 2) 回退到 addition 内的别名（兼容历史写法）
@@ -278,7 +280,7 @@ export function getDownProxyUrl(storage: any): string {
   if (!addition || typeof addition !== "object") return ""
   for (const key of PROXY_URL_ADDITION_KEYS) {
     const val = addition[key]
-    if (typeof val === "string" && val.trim()) return val.trim()
+    if (typeof val === "string" && val.trim()) return val.split("\n")[0].trim()
   }
   return ""
 }

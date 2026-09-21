@@ -7,10 +7,10 @@ import {
   needDownloadSign,
   verifyDownloadSign,
   signDownloadPath,
-  getSignPolicy,
   getSignExpiresIn,
 } from "../pkg/sign"
 import { safeErrorMessage } from "../pkg/errs"
+import { encodeDownloadPath } from "../pkg/path"
 import { assertSafeUrl, getTrustedHosts } from "../pkg/http"
 import {
   resolveProxyDecision,
@@ -315,28 +315,20 @@ async function proxyUpstream(
 }
 
 /**
- * 判断某个 URL 是否指向本站（用于决定是否附带下载签名）。
- * 本站地址通常是 /p/... 之类的相对路径，或与请求同 host 的绝对地址。
- */
-function isSameOriginUrl(url: string, c: any): boolean {
-  if (url.startsWith("/")) return true
-  try {
-    const target = new URL(url)
-    const host = c.req.header("host") || new URL(c.req.url).host
-    return target.host === host
-  } catch {
-    return false
-  }
-}
-
-/**
- * 构造 down_proxy_url 形式的下载地址。
+ * 构造 down_proxy_url 形式的下载地址（对齐 Go common.GenerateDownProxyURL）。
  *
- * 对齐 Go internal/common/url.go 的 DownloadProxyURL：模板里的 $path 会被替换为
- * 真实路径；若模板以 / 开头则视为同源相对路径，否则应为 http(s) 绝对地址。
+ * Go 的实现是：
+ *   fmt.Sprintf("%s%s%s", strings.Split(DownProxyURL, "\n")[0],
+ *                        utils.EncodePath(reqPath, true), query)
+ * 即**总是**把编码后的真实路径拼在模板之后、并在未禁用时补上 `?sign=`：
+ *   - 模板里没有 `$path` 概念（全仓库搜不到该占位符）；TS 额外支持 `$path`
+ *     替换，属于向后兼容的超集，无 `$path` 的模板行为与 Go 完全一致。
+ *   - 补签只看 `disable_proxy_sign`，**不限定同源**：down_proxy_url 的典型
+ *     用法正是指向另一个域名（CDN / 前置代理 / 同实例的另一域名），此前
+ *     只在"与请求同 host"时才补签，会让这类配置重定向到一个必然 401 的地址。
  *
  * 注意：模板不携带本服务实例的密钥，因此 worker 场景下无法预先把签名写进模板，
- * 这里在运行时补签（仅当目标是本站 且 需要签名 且 未禁用 disable_proxy_sign）。
+ * 只能在运行时补签。
  */
 async function buildDownProxyUrl(
   c: any,
@@ -345,27 +337,20 @@ async function buildDownProxyUrl(
   storage: any,
 ): Promise<string> {
   if (!template) return ""
-  const encoded = encodeURI(reqPath.startsWith("/") ? reqPath : "/" + reqPath)
+  const encoded = encodeDownloadPath(reqPath)
 
   let url = template.includes("$path")
     ? template.replace(/\$path(?!\w)/g, encoded)
     : template.replace(/\/+$/, "") + encoded
 
-  if (
-    isSameOriginUrl(url, c) &&
-    !getDisableProxySign(storage) &&
-    !/[?&]sign=/.test(url)
-  ) {
+  if (!getDisableProxySign(storage) && !/[?&]sign=/.test(url)) {
     try {
-      const policy = await getSignPolicy(c)
-      if (policy.enabled) {
-        const sign = await signDownloadPath(
-          c,
-          reqPath,
-          await getSignExpiresIn(c),
-        )
-        if (sign) url += (url.includes("?") ? "&" : "?") + "sign=" + sign
-      }
+      const sign = await signDownloadPath(
+        c,
+        reqPath,
+        await getSignExpiresIn(c),
+      )
+      if (sign) url += (url.includes("?") ? "&" : "?") + "sign=" + sign
     } catch (e: any) {
       console.warn(
         `[rawRouter] failed to sign down_proxy_url for '${reqPath}': ${e?.message || e}`,
@@ -396,7 +381,15 @@ rawRouter.get("/*", async (c) => {
     "",
   )
 
-  const reqPath0 = decodeURIComponent(rawPath)
+  // 非法百分号转义（如手工拼出的 `/api/p/100%.txt`）会让 decodeURIComponent
+  // 抛 URIError。Go 侧因为 raw_url 走 EncodePath 编码过 `%`，正常流程不会出现；
+  // 但外部/手工 URL 仍可能出现，这里按 400 处理而不是冒泡成 500。
+  let reqPath0: string
+  try {
+    reqPath0 = decodeURIComponent(rawPath)
+  } catch {
+    return c.text("Bad Request: malformed path encoding", 400)
+  }
 
   try {
     let reqPath = reqPath0

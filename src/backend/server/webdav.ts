@@ -12,8 +12,7 @@ import {
 } from "../internal/op/storage"
 import { buildWebDavPropfindResponse } from "../internal/webdav/webdav"
 import { safeErrorMessage } from "../pkg/errs"
-import { getSettings, resolvePath } from "../internal/model/db"
-import { canUseProxyEndpoint, normalizeExtList } from "../internal/driver/proxy"
+import { encodeDownloadPath } from "../pkg/path"
 
 /**
  * WebDAV 协议服务（挂载于 /dav/*）。
@@ -153,32 +152,11 @@ webdavRouter.all("/*", async (c) => {
         // 重定向到 rawRouter 实际下载；rawRouter 已处理所有驱动的下载协议
         // （proxy/redirect/stream + Range + SSRF 防护）。
         //
-        // 走 /p 还是 /d 取决于存储的代理策略：/p 是受限的公开代理端点
-        // （对齐 Go handles.canProxy()，未开启代理的存储会 403），而 WebDAV 协议
-        // 拉流必须能拿到字节——不能拿直链的存储（如 WebDav 自身）才需要 /p。
-        // 因此这里按同一个判据选择端点，避免 WebDAV 客户端读到 403。
-        let prefix = "/api/p"
-        try {
-          const resolved: any = await resolvePath(davPath)
-          const storage = resolved?.storage
-          if (storage) {
-            const settings: Record<string, any> = await getSettings().catch(
-              () => ({}) as Record<string, any>,
-            )
-            const allowProxy = canUseProxyEndpoint({
-              storage,
-              driver: storage.driver,
-              filename: davPath,
-              proxyTypes: normalizeExtList(settings.proxy_types),
-              textTypes: normalizeExtList(settings.text_types),
-            })
-            if (!allowProxy) prefix = "/api/d"
-          }
-        } catch {
-          // 解析失败时保持默认 /p，交由 rawRouter 给出最终结论
-        }
+        // 端点前缀（/p 还是 /d）与路径编码都由 getItem 决定（见
+        // op/storage.ts resolveRawUrlPrefix）：/p 受 Go canProxy() 限制，未开启
+        // 代理的存储会 403 proxy not allowed，因此不能在这里硬编码 /p。
         return c.redirect(
-          rawUrl || `${prefix}${davPath.startsWith("/") ? "" : "/"}${davPath}`,
+          rawUrl || `/api/d${encodeDownloadPath(davPath)}`,
           302,
         )
       }

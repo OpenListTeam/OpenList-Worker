@@ -6,6 +6,7 @@ import { getDb } from "../internal/model/db"
  */
 
 export * from "./xml"
+export * from "./path"
 export * from "./errs"
 export * from "./generic"
 export * from "./http"

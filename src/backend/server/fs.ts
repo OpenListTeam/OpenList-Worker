@@ -32,6 +32,7 @@ import {
   getSignExpiresIn,
 } from "../pkg/sign"
 import { safeErrorMessage } from "../pkg/errs"
+import { encodeDownloadPath } from "../pkg/path"
 import { search } from "../internal/op/search"
 import {
   getDisableIndex,
@@ -555,6 +556,24 @@ fsRouter.post("/get", async (c) => {
             signPolicy.expiresIn || (await getSignExpiresIn(c)),
           )
         : ""
+    // raw_url 必须自带签名（Issue #66）。
+    //
+    // 前端把本接口的 raw_url 直接当下载地址使用：预览页的「下载」按钮就是
+    // <a href={raw_url}>（pages/home/previews/download.tsx），图片/视频预览也
+    // 直接把它塞进 <img>/<video> 的 src，都不会再自己拼 ?sign=。而 raw_url
+    // 指向的是需要验签的 /p 或 /d 端点（前缀由 getItem 按 canProxy() 选定）：
+    // sign_all、存储级 enable_sign、密码 meta 覆盖任一命中时，缺签名一律
+    // 401 "sign verify failed"——外部表现就是「预览页能正常打开，一点下载就 401」。
+    //
+    // 对齐 Go server/handles/fsread.go FsGet：
+    //   if isEncrypt(meta, reqPath) || setting.GetBool(conf.SignAll) {
+    //       query = "?sign=" + sign.Sign(reqPath)
+    //   }
+    //   rawURL = fmt.Sprintf("%s/p%s%s", common.GetApiUrl(c), ..., query)
+    const rawUrlWithSign =
+      sign && rawUrl && !/[?&]sign=/.test(rawUrl)
+        ? `${rawUrl}${rawUrl.includes("?") ? "&" : "?"}sign=${sign}`
+        : rawUrl
     const writable = canWrite(user) && canWriteMeta(user, meta, reqPath)
     const writeContentBypass = canWriteContentBypassUserPerms(meta, reqPath)
 
@@ -607,7 +626,7 @@ fsRouter.post("/get", async (c) => {
         sign,
         thumb: (item as any).thumb || "",
         type: item.type ?? 0,
-        raw_url: rawUrl,
+        raw_url: rawUrlWithSign,
         readme: getReadme(meta, reqPath),
         header: getHeader(meta, reqPath),
         provider,
@@ -1292,11 +1311,20 @@ fsRouter.post("/link", async (c) => {
         requestContext,
       )
     }
-    // 无直链（如本地/加密驱动）：返回代理下载地址
+    // 无直链（如本地/加密驱动）：返回代理下载地址。
+    //
+    // 对齐 Go server/handles/fsmanage.go Link：
+    //   fmt.Sprintf("%s/p%s?d&sign=%s", GetApiUrl(c), EncodePath(rawPath, true), sign.Sign(rawPath))
+    // 即路径逐段编码 + **无条件**带签名（Go 不看 needSign；这里同样补齐，
+    // 否则在 sign_all / enable_sign / 密码 meta 生效时复制出来的链接必然 401）。
+    // 「?d」（强制 attachment 下载）TS 侧无对应语义，故不追加。
+    const sign = await signDownloadPath(c, reqPath, await getSignExpiresIn(c))
     return c.json({
       code: 200,
       message: "success",
-      data: { url: `/api/p${reqPath.startsWith("/") ? "" : "/"}${reqPath}` },
+      data: {
+        url: `/api/p${encodeDownloadPath(reqPath)}?sign=${encodeURIComponent(sign)}`,
+      },
     })
   } catch (e: any) {
     return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)

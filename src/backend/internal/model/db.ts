@@ -361,7 +361,9 @@ export const defaultDb = {
       key: "link_expiration",
       value: "0",
       type: "number",
-      help: "Link Expiration in Seconds",
+      // 单位与 Go 一致：小时（Go internal/sign 用 time.Duration(expire)*time.Hour，
+      // 官方文档 configuration/global.md 亦为 "in hours"）。0 = 永不过期。
+      help: "Link Expiration in Hours (0 = never expire)",
       group: 4,
       flag: 0,
     },

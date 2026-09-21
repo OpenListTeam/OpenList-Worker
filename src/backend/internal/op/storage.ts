@@ -1,4 +1,6 @@
-import { resolvePath, getDb, saveDb } from "../model/db"
+import { resolvePath, getDb, getSettings, saveDb } from "../model/db"
+import { encodeDownloadPath } from "../../pkg/path"
+import { canUseProxyEndpoint, normalizeExtList } from "../driver/proxy"
 import { FileItem, StorageDriver, calcFileType } from "../driver/base"
 import { Onedrive } from "../../drivers/onedrive/driver"
 import { OnedriveAPP } from "../../drivers/onedrive_app/driver"
@@ -1386,7 +1388,19 @@ export async function listItems(
   const activeStorages = (db.storages || []).filter((s: any) => !s.disabled)
   const cleanListedPath = resolved.cleanPath
 
-  activeStorages.forEach((s: any) => {
+  // 挂载点顺序对齐 Go op.getStorageVirtualFilesByPath：
+  //   Order 升序；Order 相同时按 MountPath 升序。
+  // 此前直接沿用数据库数组顺序，后台存储编辑页里的「序号」因此完全不生效。
+  const orderedStorages = [...activeStorages].sort((a: any, b: any) => {
+    const orderA = Number(a.order) || 0
+    const orderB = Number(b.order) || 0
+    if (orderA !== orderB) return orderA - orderB
+    const mountA = String(a.mount_path || "")
+    const mountB = String(b.mount_path || "")
+    return mountA < mountB ? -1 : mountA > mountB ? 1 : 0
+  })
+
+  orderedStorages.forEach((s: any) => {
     const mount =
       "/" + (s.mount_path || "").split("/").filter(Boolean).join("/")
     if (mount === cleanListedPath || mount === "/") return
@@ -1415,6 +1429,39 @@ export async function listItems(
   })
 
   return { content: items, provider: driverName, storage: resolved.storage }
+}
+
+/**
+ * raw_url 使用哪个端点前缀（`/api/p` 还是 `/api/d`）。
+ *
+ * Go 的 `/p` 在取链接前先跑 `canProxy()`，不通过直接 403 `proxy not allowed`；
+ * `/d` 不受该限制（走 `ShouldProxy`）。因此 raw_url 必须与存储自身的代理配置匹配：
+ * 拿 `/p` 去请求一个既没开 `web_proxy`、扩展名也不在 `proxy_types` / `text_types`
+ * 里的存储，必然 403。
+ *
+ * 这是 #66 修复后暴露的第二个问题：文件列表走 `/d` 所以正常，而预览页的「下载」
+ * 按钮与 `img/video` 的 src 用的是 raw_url（此前恒为 `/api/p`）。
+ */
+async function resolveRawUrlPrefix(
+  storage: any,
+  virtualPath: string,
+): Promise<string> {
+  try {
+    const settings: Record<string, any> = await getSettings().catch(
+      () => ({}) as Record<string, any>,
+    )
+    const allowProxy = canUseProxyEndpoint({
+      storage,
+      driver: storage?.driver || "",
+      filename: virtualPath,
+      proxyTypes: normalizeExtList(settings.proxy_types),
+      textTypes: normalizeExtList(settings.text_types),
+    })
+    return allowProxy ? "/api/p" : "/api/d"
+  } catch {
+    // 设置读不到时保持旧行为（/p），由 rawRouter 给出最终结论
+    return "/api/p"
+  }
 }
 
 export async function getItem(
@@ -1452,7 +1499,7 @@ export async function getItem(
         raw_url: "",
       },
       provider: resolved.storage.driver,
-      rawUrl: `/api/p${virtualPath.startsWith("/") ? "" : "/"}${virtualPath}`,
+      rawUrl: `${await resolveRawUrlPrefix(resolved.storage, virtualPath)}${encodeDownloadPath(virtualPath)}`,
     }
   }
 
@@ -1475,7 +1522,11 @@ export async function getItem(
   return {
     item,
     provider: driverName,
-    rawUrl: `/api/p${virtualPath.startsWith("/") ? "" : "/"}${virtualPath}`,
+    // 端点前缀按 canProxy() 选（见 resolveRawUrlPrefix），路径必须逐段编码
+    // （对齐 Go utils.EncodePath(path, true)）：raw_url 会被前端直接当 href/src
+    // 使用，未编码的 `?`/`#` 会被截断、裸 `%` 会让服务端 decodeURIComponent 抛错
+    // （见 pkg/path.encodeDownloadPath 注释）。
+    rawUrl: `${await resolveRawUrlPrefix(resolved.storage, virtualPath)}${encodeDownloadPath(virtualPath)}`,
   }
 }
 
