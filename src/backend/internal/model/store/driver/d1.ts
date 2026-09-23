@@ -6,7 +6,11 @@
  * - OPENLIST_DB (别名)
  */
 import type { Driver } from "../types"
-import { buildDdl, KV_SCHEMA_SQLITE } from "../schema"
+import {
+  buildDdl,
+  buildSingleFlightDdl,
+  KV_SCHEMA_SQLITE,
+} from "../schema"
 
 /**
  * 判断对象是否具备 D1 绑定接口形态。
@@ -46,8 +50,12 @@ const d1Inited = new WeakMap<object, boolean>()
 
 async function ensureSchema(db: any, env?: any): Promise<void> {
   if (d1Inited.get(db)) return
-  // KV 表（map/key 格式）+ 列式表（sql 格式）一并创建
-  for (const ddl of [...KV_SCHEMA_SQLITE, ...buildDdl("sqlite", env)]) {
+  // KV 表（map/key 格式）+ 列式表（sql 格式）+ singleflight 协调表一并创建
+  for (const ddl of [
+    ...KV_SCHEMA_SQLITE,
+    ...buildDdl("sqlite", env),
+    ...buildSingleFlightDdl("sqlite"),
+  ]) {
     await db.prepare(ddl).run()
   }
   d1Inited.set(db, true)

@@ -1,5 +1,6 @@
 import { resolvePath, getDb, getSettings, saveDb } from "../model/db"
 import { encodeDownloadPath } from "../../pkg/path"
+import { singleflight } from "../../pkg/singleflight"
 import { canUseProxyEndpoint, normalizeExtList } from "../driver/proxy"
 import { FileItem, StorageDriver, calcFileType } from "../driver/base"
 import { Onedrive } from "../../drivers/onedrive/driver"
@@ -1330,11 +1331,45 @@ export async function flushPendingDriverState(
   await scheduleStoragePersistence(requestContext?.waitUntil, persistence)
 }
 
+/**
+ * fs 读操作的 singleflight 去重键。
+ *
+ * 组成：操作名 + 存储 id + 存储修订号 + 虚拟路径。
+ *   - 带存储 id/修订号：不同存储、以及存储配置被编辑后，不会复用旧结果；
+ *   - 带虚拟路径（调用方已做过 base_path 处理）：不会跨用户串味。
+ *
+ * 该键同时用于进程内（L1）与数据库表（L2）两级去重，因此必须稳定可复现：
+ * 绝不能包含时间戳、随机数、用户对象等每次调用都不同的内容。
+ */
+function fsSingleflightKey(
+  op: string,
+  resolved: any,
+  virtualPath: string,
+): string {
+  const storageId = resolved?.storage?.id ?? "virtual"
+  const revision = resolved?.storage?.modified ?? ""
+  return `${op}:${storageId}:${revision}:${virtualPath}`
+}
+
 export async function listItems(
   virtualPath: string,
   requestContext?: StorageRequestContext,
 ): Promise<{ content: FileItem[]; provider: string; storage?: any }> {
   const resolved = await resolvePath(virtualPath, requestContext?.env)
+  // 并发相同的「同一存储 + 同一目录」只向上游发起一次 list。
+  // 键必须在 resolvePath 之后才能确定（需要存储 id），因此去重发生在路径解析之后。
+  return singleflight(
+    fsSingleflightKey("fs.list", resolved, virtualPath),
+    () => listItemsResolved(resolved, virtualPath, requestContext),
+    { env: requestContext?.env },
+  )
+}
+
+async function listItemsResolved(
+  resolved: Awaited<ReturnType<typeof resolvePath>>,
+  virtualPath: string,
+  requestContext?: StorageRequestContext,
+): Promise<{ content: FileItem[]; provider: string; storage?: any }> {
   let items: FileItem[] = []
   let driverName = "Virtual"
 
@@ -1469,6 +1504,19 @@ export async function getItem(
   requestContext?: StorageRequestContext,
 ): Promise<{ item: FileItem; provider: string; rawUrl: string }> {
   const resolved = await resolvePath(virtualPath, requestContext?.env)
+  // 与 listItems 同理：并发相同的「同一存储 + 同一路径」只向上游取一次元信息。
+  return singleflight(
+    fsSingleflightKey("fs.get", resolved, virtualPath),
+    () => getItemResolved(resolved, virtualPath, requestContext),
+    { env: requestContext?.env },
+  )
+}
+
+async function getItemResolved(
+  resolved: Awaited<ReturnType<typeof resolvePath>>,
+  virtualPath: string,
+  requestContext?: StorageRequestContext,
+): Promise<{ item: FileItem; provider: string; rawUrl: string }> {
   if (resolved.isVirtual) {
     const name = resolved.cleanPath.split("/").filter(Boolean).pop() || "root"
     return {

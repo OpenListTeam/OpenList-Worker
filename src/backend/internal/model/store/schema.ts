@@ -487,3 +487,81 @@ export const KV_SCHEMA_SQLITE: string[] = [
 export const KV_SCHEMA_MYSQL: string[] = [
   "CREATE TABLE IF NOT EXISTS `kv` (`key` VARCHAR(512) PRIMARY KEY, `value` LONGTEXT NOT NULL)",
 ]
+
+/**
+ * singleflight 协调表的逻辑名（不含 `x_` 前缀）。
+ *
+ * 与 Go 后端**无对应表**：Go 是单进程模型，`golang.org/x/sync/singleflight`
+ * 只需进程内 Map；TS 侧一个部署会同时跑多个 isolate/实例，进程内 Map 无法
+ * 互相看见，因此需要一张共享表来做跨实例的单飞协调（见 pkg/singleflight.ts）。
+ */
+export const SINGLEFLIGHT_TABLE = "singleflight"
+
+/** singleflight 表的完整 SQL 表名（含 `x_` 前缀）。 */
+export function singleflightTableName(env?: any): string {
+  return getTablePrefix(env) + SINGLEFLIGHT_TABLE
+}
+
+/**
+ * singleflight 协调表（SQLite / Cloudflare D1 / Durable Object 方言）。
+ *
+ * 列语义：
+ *   - `key`        去重键（调用方给定，如 `fs.list:1:/movies`）
+ *   - `owner`      执行者实例标识；只有 owner 能写回结果（防止被接管后串写）
+ *   - `state`      running | done | error
+ *   - `started_at` 开始时间（epoch ms，诊断用）
+ *   - `expires_at` 过期时间（epoch ms）：running 超时表示执行者疑似崩溃，
+ *                  可被其他实例接管；done/error 则是结果交接窗口的截止时间
+ *   - `result`     成功结果的 JSON 序列化（仅 done 有值）
+ *   - `error`      失败原因文本（仅 error 有值）
+ *
+ * 注意：该表存的是**运行时在途记录**，绝不参与 db.ts 的配置往返，
+ * 因此刻意不放进 TABLE_NAMES —— 否则 sqlFormat.save() 的整表 DELETE
+ * 会在每次保存配置时把正在执行中的单飞记录清空。
+ */
+export const SINGLEFLIGHT_SCHEMA_SQLITE: string[] = [
+  `CREATE TABLE IF NOT EXISTS ${quote(singleflightTableName())} (` +
+    [
+      `${quote("key")} TEXT PRIMARY KEY`,
+      `${quote("owner")} TEXT NOT NULL`,
+      `${quote("state")} TEXT NOT NULL`,
+      `${quote("started_at")} INTEGER NOT NULL`,
+      `${quote("expires_at")} INTEGER NOT NULL`,
+      `${quote("result")} TEXT`,
+      `${quote("error")} TEXT`,
+    ].join(", ") +
+    `)`,
+  // 回收过期行（崩溃残留 / 交接窗口结束）按 expires_at 过滤，走索引避免全表扫。
+  `CREATE INDEX IF NOT EXISTS ${quote("idx_singleflight_expires")} ` +
+    `ON ${quote(singleflightTableName())} (${quote("expires_at")})`,
+]
+
+export const SINGLEFLIGHT_SCHEMA_MYSQL: string[] = [
+  `CREATE TABLE IF NOT EXISTS ${quote(singleflightTableName())} (` +
+    [
+      `${quote("key")} VARCHAR(512) PRIMARY KEY`,
+      `${quote("owner")} VARCHAR(128) NOT NULL`,
+      `${quote("state")} VARCHAR(16) NOT NULL`,
+      `${quote("started_at")} BIGINT NOT NULL`,
+      `${quote("expires_at")} BIGINT NOT NULL`,
+      `${quote("result")} LONGTEXT`,
+      `${quote("error")} LONGTEXT`,
+    ].join(", ") +
+    `)`,
+  // MySQL 不支持 `CREATE INDEX IF NOT EXISTS`，而索引缺失只影响过期行的回收效率
+  // （建表失败会中断整个 init），因此这里刻意不建索引。
+]
+
+/**
+ * 生成 singleflight 表的建表语句。
+ *
+ * 与 KV_SCHEMA / D1_SCHEMA 并列，由各 SQL 驱动在 ensureSchema 时一并执行。
+ * 非 SQL 驱动（KV / Blob / 内存）没有该表，此时 singleflight 自动退回内存级。
+ */
+export function buildSingleFlightDdl(
+  dialect: "sqlite" | "mysql",
+): string[] {
+  return dialect === "mysql"
+    ? SINGLEFLIGHT_SCHEMA_MYSQL
+    : SINGLEFLIGHT_SCHEMA_SQLITE
+}
