@@ -77,6 +77,7 @@ OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTea
 - **离线任务**：后台任务队列，支持批量操作与异步处理。
 - **外部接口**：将聚合存储以 WebDAV 或 S3 兼容协议对外暴露，便于挂载到第三方工具。
 - **MCP 服务**：提供 Model Context Protocol 端点，可被 AI 助手等客户端集成调用。
+- **并发去重（singleflight）**：同一时刻相同的目录列表 / 元信息请求只向上游网盘发起一次，其余请求复用同一结果；一个部署存在多个 isolate，因此除进程内合并外，还会用数据库表 `x_singleflight` 做跨实例协调（详见[并发去重](#并发去重-singleflight)）。
 
 ### 权限管理
 
@@ -283,6 +284,30 @@ CF_API_KEY=your_api_token
   （推荐）/ `aes-256-gcm-pbkdf2` / `aes-256-cbc-hmac` / `chacha20-poly1305` /
   `des-cbc-hmac` / `3des-cbc-hmac`（后两者仅兼容用途，不安全）
 - `ADMIN_PASS`：初始管理员密码（可选，设置后跳过安装向导自动初始化 admin）
+
+#### 并发去重（singleflight）
+
+同一时刻对同一存储、同一路径的重复读请求（目录列表、元信息）只向上游发起一次调用，
+其余并发请求等待并复用同一结果，用于规避网盘限流与无谓的 CPU 消耗。
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `SINGLEFLIGHT` | `auto` | `auto`：有 SQL 库（d1/mysql/do）时用表协调，否则退回进程内；`db`：强制用表；`memory`：仅进程内；`off`：关闭 |
+| `SINGLEFLIGHT_HANDOFF_MS` | `1000` | 执行完成后结果在表中保留多久（ms），供**正在等待的**并发实例读取 |
+| `SINGLEFLIGHT_LOCK_TTL_MS` | `30000` | 执行者持锁上限（ms），期间按 1/3 周期续租；执行者崩溃后到期可被接管 |
+| `SINGLEFLIGHT_POLL_MS` | `50` | 等待方轮询间隔（ms） |
+| `SINGLEFLIGHT_WAIT_MS` | `15000` | 等待方最长等待（ms），超时后自行执行，避免被慢请求拖死 |
+
+行为要点：
+
+- **两级去重**：进程内合并（所有模式都生效）+ 数据库表协调（`db` 模式，跨 isolate 生效）。
+- **不做结果缓存**：只有「到达时观察到执行者正在运行」的请求才会复用结果；新到达的请求
+  会回收旧记录并重新执行，因此不存在「删除文件后刷新仍看到旧文件」的脏读。
+- **可用性优先**：表不存在、数据库超时、结果无法序列化、执行者崩溃等**协调层**异常一律
+  降级为「各自执行一次」，业务不会失败；而**业务函数自身的异常会原样抛出且不重试**。
+- **表结构**：`x_singleflight` 由 SQL 驱动在初始化时自动创建，属运行时数据，不参与配置读写。
+- 运行统计（`executed` / `coalesced` / `shared` / `fallback`）可在 `/api/debug/info` 的
+  `singleflight` 字段查看，用于确认跨实例协调是否真的生效。
 
 #### 其他配置
 
