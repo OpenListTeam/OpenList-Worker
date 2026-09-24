@@ -22,6 +22,30 @@
       },
       "DB_CIPHER": {
         "description": "At-rest cipher for sensitive fields (drive credentials, 2FA secrets, password hashes): `none` (default, no encryption), `aes-256-gcm` (HKDF-derived AES-256-GCM key — the `enc:v2:` envelope written by existing encrypted deployments, recommended), `aes-256-gcm-pbkdf2` (legacy `enc:v1:` envelope, PBKDF2 per field, slow), `aes-256-cbc-hmac` (`enc:v3:`), `chacha20-poly1305` (`enc:v4:`, RFC 8439, pure-JS implementation), `des-cbc-hmac` / `3des-cbc-hmac` (`enc:v5:`/`enc:v6:`, compatibility only — single DES is 56-bit and 3DES is deprecated, do not use for real data). Ciphertexts carry an `enc:vN:` prefix and are decrypted by prefix on read, so switching back to `none` (or changing algorithms) never makes existing data unreadable — it only changes how newly written data is stored (legacy ciphertext is migrated to plaintext on the next save). Key derivation is cached per isolate, and unchanged fields are not re-encrypted on save. This setting does NOT affect the shared secret: with `none`, a secret is still generated and persisted during setup when JWT_SECRET is not provided, because JWT signing needs it."
+      },
+      "CACHE_ENABLED": {
+        "description": "Optional. Master switch for the file-tree cache and the download-link cache. Defaults to `true`. Set to `false` to disable both."
+      },
+      "CACHE_DRIVER": {
+        "description": "Optional. Where the caches are stored. Defaults to `db`, meaning the same backend as DB_DRIVER (D1/KV/Blob/MySQL) — i.e. only the database is used unless you opt in explicitly. Comma-separated list to add dedicated backends: `kv`, `blob`, `cfkv`, `do`, `memory`, or `none` to disable. Example: `db,kv` (read prefers KV) or `kv` (KV only). Dedicated backends are never auto-detected or auto-substituted."
+      },
+      "CACHE_FILE_TREE": {
+        "description": "Optional. Toggle the file-tree cache (directory listings). Defaults to `true`. Listings are cached per storage+path; only admin writes invalidate them."
+      },
+      "CACHE_DOWNLOAD_LINK": {
+        "description": "Optional. Toggle the download-link cache (presigned/raw download URLs returned by drivers). Defaults to `true`. Reuses the link instead of re-signing on every download."
+      },
+      "CACHE_TTL": {
+        "description": "Optional. File-tree cache lifetime in minutes. Defaults to `0`, which means 'follow the per-storage cache_expiration' (30 minutes, overridable per path by custom_cache_policies). Set to 0 to never cache a storage whose cache_expiration is 0."
+      },
+      "CACHE_LINK_TTL": {
+        "description": "Optional. Download-link cache lifetime in minutes. Defaults to `5`. Keep it conservative: raw URLs usually carry their own expiry, and a stale link is served to the browser as 403/404."
+      },
+      "CACHE_EXCLUDE_DRIVERS": {
+        "description": "Optional. Comma-separated drivers excluded from caching. Defaults to `virtual,alias,url_tree,strm,chunk` (locally computed drivers where caching only adds staleness)."
+      },
+      "CACHE_PREFIX": {
+        "description": "Optional. Key prefix used to isolate cache entries from business data. Defaults to `openlist_cache`."
       }
     }
   },
@@ -55,10 +79,11 @@
     "test:server": "tsx --test \"src/backend/server/*.test.ts\"",
     "test:store": "tsx --test src/backend/internal/model/store/store.test.ts",
     "test:model": "tsx --test \"src/backend/internal/model/*.test.ts\"",
+    "test:cache": "tsx --test \"src/backend/internal/cache/*.test.ts\"",
     "test:regress": "tsx scripts/_regress.mjs",
     "test:deploy": "node scripts/test-deploy.js",
     "env:check": "tsx scripts/env-check.mjs",
-    "test:all": "npm run test:189 && npm run test:drivers && npm run test:server && npm run test:store && npm run test:model && npm run test:regress",
+    "test:all": "npm run test:189 && npm run test:drivers && npm run test:server && npm run test:store && npm run test:model && npm run test:cache && npm run test:regress",
     "sls:deploy": "serverless deploy",
     "sls:package": "serverless package",
     "sls:info": "serverless info",
