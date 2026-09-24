@@ -276,6 +276,74 @@ CF_API_KEY=your_api_token
 
 前缀固定为 `x_`（与 Go 后端默认值一致）。要与 Go 后端共享同一物理数据库，无需额外配置。
 
+#### 缓存配置
+
+本项目实现了两级持久缓存（参考 [OpenList.ts](https://github.com/Wudarensheng/OpenList.ts)）：
+
+- **文件树缓存**：`/api/fs/list`、`/api/fs/get`、`/api/fs/dirs` 优先从缓存读取目录树，
+  只有缓存未命中（或已过期）才会去请求网盘 / 对象存储；
+- **下载链接缓存**：`/d`、`/p` 等下载链路复用驱动换取的直链，
+  重复下载 / 预览时不再重新签名或重新换链（网盘换链通常最贵、最易被限流）。
+
+**默认只向数据库启用**：缓存与业务数据走同一条存储链路（即 `DB_DRIVER` 指向的
+后端），因此「什么都不配」就等于「用数据库做缓存」。想要改用 / 额外启用 KV、
+Blob 等专用后端，**必须显式添加环境变量**（不会自动探测、不会自动回退）：
+
+**CACHE_ENABLED**（总开关）
+- `true`（默认）：启用两级缓存
+- `false`：完全关闭（等同于 `CACHE_DRIVER=none`）
+
+**CACHE_DRIVER**（缓存后端）
+- `db`（默认）：与业务数据同一个后端（`DB_DRIVER` 解析结果，如 D1 / KV / Blob / MySQL）
+- `kv`：Cloudflare KV 或 EdgeOne KV（binding 名固定为 `KV`）
+- `blob`：EdgeOne Blob SDK / ESA Blob
+- `cfkv`：Cloudflare KV REST API（需 `CF_ACCOUNT`、`CF_KV_UUID`、`CF_API_KEY`）
+- `do`：Cloudflare Durable Objects
+- `memory`：进程内存（仅本地调试，重启即失）
+- `none`：关闭缓存
+- 支持逗号分隔的多后端（**读按顺序命中，写全部铺开**），例如：
+  - `db,kv` —— 数据库 + KV 双写，读优先命中 KV
+  - `kv,blob` —— 只用两个专用后端
+- 显式配置但该后端不可用时：**跳过并告警，不会悄悄换成别的后端**；
+  若最终一个都不剩，缓存自动降级为「不缓存」（请求照常走真实存储）。
+
+**CACHE_FILE_TREE** / **CACHE_DOWNLOAD_LINK**（分级开关）
+- 均为 `true`（默认）；设为 `false` 可单独关闭文件树缓存或下载链接缓存
+
+**CACHE_TTL**（文件树缓存时长，分钟）
+- `0`（默认）：跟随存储级 `cache_expiration`（默认 30 分钟，
+  可被该存储的 `custom_cache_policies` 按路径覆盖）
+- `>0`：全局覆盖所有存储的文件树缓存时长
+- 存储级 `cache_expiration=0` 或路径级策略命中 `0` 时，该目录**永不缓存**
+
+**CACHE_LINK_TTL**（下载链接缓存时长，分钟）
+- 默认 `5`。直链通常自带有效期，取值需保守：缓存过久会把已失效的链接
+  交给浏览器（表现为 403/404）。设为 `0` 可关闭链接缓存。
+
+**CACHE_EXCLUDE_DRIVERS**（不参与缓存的驱动）
+- 默认 `virtual,alias,url_tree,strm,chunk` —— 这些驱动不产生远程 IO，
+  缓存没有收益且只会让结果变陈旧
+- 传空字符串表示不排除任何驱动
+
+**CACHE_PREFIX**（缓存键前缀）
+- 默认 `openlist_cache`，用于与业务数据键（`openlist_config`、`users_1` 等）隔离
+
+**失效与一致性：**
+- 写操作（mkdir / rename / remove / move / copy / put）会**立即失效**受影响的
+  路径与其父目录缓存；
+- 存储配置变更（更新 / 启用 / 禁用 / 删除）会清空该存储的全部缓存；
+- 缓存只存「驱动层结果」，权限、meta 密码、隐藏规则、下载签名都在请求时
+  实时计算，因此**缓存不会造成越权**。
+
+**管理接口：**
+- `GET /api/admin/cache/status` —— 生效配置、实际后端、各级缓存条目数
+- `POST /api/admin/cache/clear` —— body `{ type?: "file_tree" | "download_link", storage_id?: number }`
+- `POST /api/admin/storage/refresh` —— 刷新（清空）全部存储的文件树缓存
+- `POST /api/admin/storage/refresh_one?id=<id>` —— 刷新单个存储的文件树缓存
+
+> 缓存状态也会回显在 `/api/public/env_check` 的 `cache` 字段中，
+> 便于确认「缓存实际落在哪个后端」。
+
 #### 安全配置
 
 - `JWT_SECRET`：JWT 令牌签名密钥（必填），**同时用作可选的字段加密密钥**与定时任务鉴权
