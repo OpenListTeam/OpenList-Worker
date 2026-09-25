@@ -403,7 +403,9 @@ export async function authUserFromReq(
     const user = db.users.find(
       (u: any) => u.id === payload.id || u.username === payload.username,
     )
-    if (!user) return null
+    // FIX(P0): disabled 用户必须与 getUserFromContext 行为一致被拒绝，
+    // 否则被禁用用户的存量 JWT 仍可通过 /s3、/dav(Bearer) 等入口访问。
+    if (!user || user.disabled) return null
     return { db, user }
   } catch {
     return null

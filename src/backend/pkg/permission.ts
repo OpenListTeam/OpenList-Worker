@@ -80,6 +80,64 @@ export function canRemove(user?: UserPermissionObj | null): boolean {
 }
 
 /**
+ * Normalize a virtual path exactly the way resolvePath() does
+ * (decode loop, separator / dot-run collapsing) and then collapse
+ * "." / ".." segments with the same stack rules (a leading ".." that
+ * pops an empty stack is clamped to the root instead of escaping
+ * upward).
+ *
+ * Keeping both implementations in lockstep is essential: resolvePath
+ * decodes the path *after* base_path concatenation happened here, so
+ * any encoded traversal ("%2e%2e", "%2f", "....", ...) must already be
+ * folded away at this layer — otherwise it would only surface (and
+ * escape) inside resolvePath.
+ */
+function normalizeAndCollapse(path: string): string {
+  let p = String(path || "")
+
+  // Mirror resolvePath step 1+2: decode until stable (initial decode +
+  // up to 3 more rounds) to defeat single/double-encoded traversal.
+  try {
+    p = decodeURIComponent(p)
+  } catch {
+    // keep raw value on malformed input
+  }
+  let prev = ""
+  let attempts = 0
+  while (p !== prev && attempts < 3) {
+    prev = p
+    try {
+      const decoded = decodeURIComponent(p)
+      if (decoded === p) break
+      p = decoded
+      attempts++
+    } catch {
+      break
+    }
+  }
+
+  // Mirror resolvePath step 3: separator and dot-run normalization.
+  p = p
+    .replace(/\\/g, "/")
+    .replace(/%5c/gi, "/")
+    .replace(/%2f/gi, "/")
+    .replace(/\.{3,}/g, "..")
+    .replace(/\/+/g, "/")
+
+  // Mirror resolvePath step "Normalize .. / .": stack folding.
+  const stack: string[] = []
+  for (const seg of p.split("/")) {
+    if (seg === "" || seg === ".") continue
+    if (seg === "..") {
+      stack.pop()
+      continue
+    }
+    stack.push(seg)
+  }
+  return "/" + stack.join("/")
+}
+
+/**
  * 计算用户请求路径对应的实际存储路径（结合用户的根目录 base_path）：
  * 1. 忽略以 /@s 开头的分享虚拟路径
  * 2. 若用户 base_path 为空或 "/"，直接返回规范化后的 reqPath
@@ -87,6 +145,9 @@ export function canRemove(user?: UserPermissionObj | null): boolean {
  *    - reqPath = "/" 或 "" -> "/photos"
  *    - reqPath = "/sub" -> "/photos/sub"
  *    - reqPath = "sub" -> "/photos/sub"
+ * 4. 拼接后折叠 "." / ".." 段（安全加固）：任何逃出 base_path 边界的请求
+ *    （如 base_path="/x" 时的 "/../secret"）都被钳制回用户根目录，
+ *    防止用户通过 .. 段越权访问其他存储挂载点。
  */
 export function getActualPath(
   user?: UserPermissionObj | null,
@@ -108,11 +169,23 @@ export function getActualPath(
   if (basePath.endsWith("/") && basePath.length > 1) {
     basePath = basePath.replace(/\/+$/, "")
   }
+  // Guard against a misconfigured base_path that itself contains "..".
+  basePath = normalizeAndCollapse(basePath) || "/"
 
   const cleanReq = p.startsWith("/") ? p : `/${p}`
   if (cleanReq === "/") {
     return basePath
   }
 
-  return `${basePath}${cleanReq}`
+  // FIX(P0): 拼接后按 resolvePath 同样的规则（解码 + 规范化 + 折叠）收敛。
+  // 此前仅做字符串拼接，"/x/../secret"、"/%2e%2e/secret"、"sub%2f..%2f.." 等
+  // 会在 resolvePath 的解码/折叠中把 base_path 前缀"弹掉"，导致 base_path
+  // 监禁被完全绕过（跨存储越权读/写/删）。
+  const joined = normalizeAndCollapse(`${basePath}${cleanReq}`)
+  if (joined === basePath || joined.startsWith(`${basePath}/`)) {
+    return joined
+  }
+  // Escaped the user base path (e.g. "/x/../secret" -> "/secret"):
+  // clamp back to the user root instead of leaking outside storage.
+  return basePath
 }
