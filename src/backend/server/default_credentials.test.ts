@@ -14,36 +14,45 @@ import { userRouter } from "./user"
 const env: any = {}
 const ADMIN_TOKEN = "ADMIN_STATIC_TOKEN"
 
-const resetState = () => {
-  __resetDbCacheForTest()
-  delete process.env.ADMIN_PASS
-  let stored: any = null
-  __setStoreBackendLoaderForTest(async () => ({
-    name: "test",
-    isConfigured: async () => true,
-    load: async () => (stored ? JSON.parse(JSON.stringify(stored)) : null),
-    save: async (next: any) => {
-      stored = JSON.parse(JSON.stringify(next))
-      return true
-    },
-  }))
+const run = async (fn: () => Promise<void>) => {
+  const originalAdminPass = process.env.ADMIN_PASS
+  try {
+    __resetDbCacheForTest()
+    delete process.env.ADMIN_PASS
+    let stored: any = null
+    __setStoreBackendLoaderForTest(async () => ({
+      name: "test",
+      isConfigured: async () => true,
+      load: async () => (stored ? JSON.parse(JSON.stringify(stored)) : null),
+      save: async (next: any) => {
+        stored = JSON.parse(JSON.stringify(next))
+        return true
+      },
+    }))
+    await fn()
+  } finally {
+    __resetDbCacheForTest()
+    if (originalAdminPass === undefined) {
+      delete process.env.ADMIN_PASS
+    } else {
+      process.env.ADMIN_PASS = originalAdminPass
+    }
+  }
 }
 
 const test = (name: string, fn: () => Promise<void>) =>
-  nodeTest(name, { concurrency: false }, async () => {
-    resetState()
-    try {
-      await fn()
-    } finally {
-      resetState()
-    }
-  })
+  nodeTest(name, { concurrency: false }, () => run(fn))
 
-const seed = (
+const seed = async (
   users: any[],
   settings: any[] = [],
   options?: { force?: boolean },
-) => saveDb({ settings, users, storages: [], shares: [] }, env, options)
+) => {
+  assert.equal(
+    await saveDb({ settings, users, storages: [], shares: [] }, env, options),
+    true,
+  )
+}
 
 const adminUser = (password: string) => ({
   id: 1,
@@ -95,7 +104,7 @@ test("Security(F-11): a legacy-format hash is left untouched (no silent reset on
 
 test("Initialization: an empty admin password stays empty (uninitialized), not a random one", async () => {
   delete process.env.ADMIN_PASS
-  await seed([adminUser("")])
+  await seed([adminUser("")], [], { force: true })
   await getOrInitUsers(env)
   const admin = await currentAdmin()
   assert.equal(
