@@ -6,6 +6,7 @@ import {
   getStoreStatus,
   isDbTrusted,
   isEncryptionReady,
+  reloadDb,
   saveDb,
 } from "../internal/model/db"
 import {
@@ -16,6 +17,7 @@ import {
   readDriver,
   readFormat,
 } from "../internal/model/store/backend"
+import { toPublicPlugin } from "../internal/model/plugin"
 import { setUserPassword } from "../pkg/password"
 // 脱敏 / 截断 / 摘要 / 建议组装：与全局 503 拦截（index.ts）共用同一套规则
 import {
@@ -523,13 +525,13 @@ publicRouter.get("/offline_download_tools", (c) => {
 })
 
 publicRouter.get("/plugins", async (c) => {
-  const db = await getDb(c.env)
+  const db = await reloadDb(c.env)
   const plugins = db.plugins || []
   const activePlugins = plugins.filter((p: any) => p.enabled)
   return c.json({
     code: 200,
     message: "success",
-    data: activePlugins,
+    data: activePlugins.map((plugin: any) => toPublicPlugin(plugin)),
   })
 })
 

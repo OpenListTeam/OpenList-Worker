@@ -232,6 +232,7 @@ export const TABLES: Record<DdlTableName, TableDef> = {
       { name: "id", type: "string", pk: true },
       { name: "name", type: "string", nullable: true },
       { name: "version", type: "string", nullable: true },
+      { name: "manifest", type: "json", nullable: true },
       { name: "description", type: "string", nullable: true },
       { name: "author", type: "string", nullable: true },
       { name: "homepage", type: "string", nullable: true },
@@ -417,6 +418,16 @@ function sqlType(col: ColumnDef, dialect: "sqlite" | "mysql"): string {
   }
 }
 
+function ddlColumnType(
+  col: ColumnDef,
+  dialect: "sqlite" | "mysql",
+): string {
+  if (dialect === "mysql" && (col.pk || col.unique) && col.type === "string") {
+    return "VARCHAR(255)"
+  }
+  return sqlType(col, dialect)
+}
+
 /** 列标识符统一加反引号（SQLite 与 MySQL 均支持）。 */
 function quote(name: string): string {
   return "`" + name + "`"
@@ -432,7 +443,7 @@ function buildTableDdl(
 ): string {
   const parts: string[] = []
   for (const col of def.columns) {
-    let line = `${quote(col.name)} ${sqlType(col, dialect)}`
+    let line = `${quote(col.name)} ${ddlColumnType(col, dialect)}`
     if (col.pk) {
       line += " PRIMARY KEY"
     } else if (!col.nullable) {
@@ -444,6 +455,28 @@ function buildTableDdl(
     parts.push(line)
   }
   return `CREATE TABLE IF NOT EXISTS ${quote(tableName)} (${parts.join(", ")})`
+}
+
+export function buildAddColumnDdl(
+  table: DdlTableName,
+  columnName: string,
+  dialect: "sqlite" | "mysql",
+  env?: any,
+): string {
+  const column = TABLES[table].columns.find(
+    (item) => item.name === columnName,
+  )
+  if (!column) {
+    throw new Error(`Unknown column ${table}.${columnName}`)
+  }
+  let definition = `${quote(column.name)} ${ddlColumnType(column, dialect)}`
+  if (!column.nullable) definition += " NOT NULL"
+  if (column.unique) definition += " UNIQUE"
+  return `ALTER TABLE ${quote(tableSqlName(table, env))} ADD COLUMN ${definition}`
+}
+
+export function buildTableInfoDdl(table: DdlTableName, env?: any): string {
+  return `PRAGMA table_info(${quote(tableSqlName(table, env))})`
 }
 
 /**
