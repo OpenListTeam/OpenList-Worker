@@ -45,9 +45,11 @@ async function resolveCdnBase(cdnUrl: string): Promise<string> {
   let version = "latest"
   try {
     const db = await getDb()
-    const versionItem = db.get(
-      "SELECT * FROM x_settings WHERE key = 'version'",
-    ) as any
+    // TS 版 getDb() 返回普通对象（settings 数组），不存在 Go 风格的 db.get(sql) API；
+    // 旧写法必然 TypeError 并被空 catch 吞掉，导致 $version 恒为 latest。
+    const versionItem = (db.settings || []).find(
+      (s: any) => s.key === "version",
+    )
     if (versionItem && versionItem.value) {
       // 从版本字符串提取 frontend 版本，如
       // "v4.2.3 (Commit: xxx) - Frontend: v1.0.0 - Build at: xxx"
