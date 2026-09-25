@@ -16,8 +16,14 @@ export function middleware(context) {
   const { pathname } = new URL(request.url)
   const accept = request.headers.get("accept") || ""
 
+  // /dav（WebDAV）与 /s3（S3 网关）也是后端路由（src/backend/index.ts 挂载），
+  // 必须放行到云函数：否则浏览器以 text/html 访问 /dav/*、/s3/* 时会被改写为
+  // /index.html，返回 SPA 壳而非后端响应。
   const isBackend =
-    pathname === "/health" || /^\/(api|d|p|sd|kv-get|kv-put|kv-delete|kv-list)(\/|$)/.test(pathname)
+    pathname === "/health" ||
+    /^\/(api|d|p|sd|dav|s3|kv-get|kv-put|kv-delete|kv-list)(\/|$)/.test(
+      pathname,
+    )
 
   if (
     !isBackend &&
