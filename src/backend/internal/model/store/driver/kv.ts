@@ -161,7 +161,7 @@ function getProxyBaseUrl(env?: EnvContext): string {
  * KV 代理健康探测（唯一实现）。
  *
  * isAvailable() 与 health() 共用，避免两处各自实现导致判定标准漂移。
- * 判定：HTTP 200 表示代理与 KV 均可用；401 表示代理可达但鉴权失败，
+ * 判定：HTTP 200 且返回合法 key 列表表示代理与 KV 均可用；401 表示代理可达但鉴权失败，
  * 属于「代理部署存在但密钥不对」。
  *
  * 注意两个调用方对 401 的取舍不同，故这里只返回原始探测结果，
@@ -194,7 +194,26 @@ async function probeProxy(
       method: "GET",
       headers: buildProxyHeaders(env),
     })
-    return { ok: response.ok, status: response.status }
+    if (!response.ok) {
+      return { ok: false, status: response.status }
+    }
+    try {
+      const payload = await response.json()
+      if (!payload || !Array.isArray(payload.keys)) {
+        return {
+          ok: false,
+          status: response.status,
+          error: "KV proxy health response is not a valid key listing",
+        }
+      }
+      return { ok: true, status: response.status }
+    } catch {
+      return {
+        ok: false,
+        status: response.status,
+        error: "KV proxy health response is not valid JSON",
+      }
+    }
   } catch (err: any) {
     return { ok: false, status: 0, error: err?.message || String(err) }
   }
