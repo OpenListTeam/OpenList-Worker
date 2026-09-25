@@ -10,6 +10,7 @@ import {
   encryptConfigValue,
   isSealedCiphertext,
   resolveDbCipher,
+  type DbCipher,
 } from "../../pkg/crypto"
 import { readCipher } from "./store/backend"
 import { memoryDriver } from "./store/driver/memory"
@@ -176,7 +177,7 @@ test("解密由前缀驱动：任意写入算法都能解开全部版本的密�
       "v2-secret",
       await deriveConfigEncryptionKey(SECRET),
     ))
-  const producers: Array<[string, string]> = [
+  const producers: Array<[DbCipher, string]> = [
     ["aes-256-cbc-hmac", "v3-secret"],
     ["chacha20-poly1305", "v4-secret"],
     ["des-cbc-hmac", "v5-secret"],
