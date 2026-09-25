@@ -30,9 +30,16 @@
   "workers_dev": false,
   "preview_urls": false,
 
+  // ⚠️ run_worker_first 只放行 HTML 入口，不能改成 true（全量放行）：
+  //   默认「资源优先」时 / 与 /index.html 由静态层直接返回，Worker 根本不会执行，
+  //   ASSET_URLS 的 CDN 注入（fetch CDN index.html → 注入 window.OPENLIST_CONFIG.cdn）
+  //   永远不生效，前端仍从源站加载全部静态资源。
+  //   仅放行 HTML 入口后，带 hash 的 JS/CSS/图片仍由静态层直出、零 Worker 调用，
+  //   只有页面导航请求才多付一次 Worker 调用。
   "assets": {
     "directory": "./dist",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
+    "run_worker_first": ["/", "/index.html"]
   },
 
   // ===========================================================================
@@ -94,8 +101,13 @@
     // 分片上传单片大小上限，单位字节。默认 16777216（16MB）
     // "MAX_UPPART": "16777216",
     //
-    // 前端静态资源 CDN 地址，支持 $version 占位符
-    // "ASSET_URLS": "https://example.com/dist",
+    // 前端静态资源 CDN 地址，需包含完整 dist（含 index.html），支持 $version 占位符
+    // 优先「本地 index.html + CDN 资产」（不要求 CDN 能返回 HTML，npmmirror 也能用）；
+    // 本地哈希不在 CDN 上时改用 CDN 的 index.html 保证同源；都不可用则回退源站
+    // ⚠️ 资源由浏览器直接加载，CDN 必须对 .js/.css 返回 Access-Control-Allow-Origin
+    // "ASSET_URLS": "https://registry.npmmirror.com/@openlist-frontend/openlist-frontend/$version/files/dist",
+    // "ASSET_URLS": "https://cdn.jsdelivr.net/npm/@openlist-frontend/openlist-frontend@$version/dist",
+    // "ASSET_URLS": "https://unpkg.com/@openlist-frontend/openlist-frontend@$version/dist",
     //
     // 允许作为种子数据来源的主机白名单，逗号/空格分隔
     // "ALLOW_SEED": "",

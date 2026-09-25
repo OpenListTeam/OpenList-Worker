@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
   DB_CIPHER_VALUES,
+  type DbCipher,
   cipherPrefix,
   createFieldCipher,
   deriveConfigEncryptionKey,
@@ -176,7 +177,7 @@ test("解密由前缀驱动：任意写入算法都能解开全部版本的密�
       "v2-secret",
       await deriveConfigEncryptionKey(SECRET),
     ))
-  const producers: Array<[string, string]> = [
+  const producers: Array<[DbCipher, string]> = [
     ["aes-256-cbc-hmac", "v3-secret"],
     ["chacha20-poly1305", "v4-secret"],
     ["des-cbc-hmac", "v5-secret"],

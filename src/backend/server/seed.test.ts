@@ -86,7 +86,16 @@ test("CAS codec matches casmeta base64 JSON field names", async () => {
   const payload = JSON.parse(Buffer.from(Buffer.from(bytes).toString(), "base64").toString("utf8"))
   assert.deepEqual(
     Object.keys(payload).sort(),
-    ["create_time", "md5", "name", "size", "sliceMd5"].sort(),
+    [
+      "cloud",
+      "create_time",
+      "md5",
+      "name",
+      "size",
+      "sliceMd5",
+      "slice_md5s",
+      "slice_size",
+    ].sort(),
   )
   const parsed = await parseSeed(bytes, "cas")
   assert.equal(parsed.cas?.name, "hello.txt")

@@ -170,11 +170,11 @@ try {
   check("代理 save/load 正常", ld?.users?.[0]?.username === "admin")
 
   console.log("=== H. 配置错误透出 ===")
-  const ce1 = await backendMod.getStoreConfigError({ __requestOrigin: origin })
+  const ce1 = (await backendMod.getStoreConfigErrorDetail({ __requestOrigin: origin })).message
   check("worker 无存储错误", typeof ce1 === "string" && ce1.includes("No storage backend"))
-  const ce2 = await backendMod.getStoreConfigError({ DB_DRIVER: "kv", KV: respClient })
+  const ce2 = (await backendMod.getStoreConfigErrorDetail({ DB_DRIVER: "kv", KV: respClient })).message
   check("KV 缺密钥错误（精确）", typeof ce2 === "string" && ce2.includes("JWT_SECRET"), String(ce2).slice(0, 50))
-  const ce3 = await backendMod.getStoreConfigError({ DB_DRIVER: "kv", KV: respClient, JWT_SECRET, __requestOrigin: origin })
+  const ce3 = (await backendMod.getStoreConfigErrorDetail({ DB_DRIVER: "kv", KV: respClient, JWT_SECRET, __requestOrigin: origin })).message
   check("配置完整 → null", ce3 === null)
 
   console.log("=== I. 绑定形态 ===")
