@@ -6,7 +6,12 @@
  * - OPENLIST_DB (别名)
  */
 import type { Driver } from "../types"
-import { buildDdl, KV_SCHEMA_SQLITE } from "../schema"
+import {
+  buildAddColumnDdl,
+  buildDdl,
+  buildTableInfoDdl,
+  KV_SCHEMA_SQLITE,
+} from "../schema"
 
 /**
  * 判断对象是否具备 D1 绑定接口形态。
@@ -42,15 +47,39 @@ function getD1(env?: any): any | null {
   return null
 }
 
-const d1Inited = new WeakMap<object, boolean>()
+async function hasPluginManifestColumn(db: any, env?: any): Promise<boolean> {
+  const columns = await db
+    .prepare(buildTableInfoDdl("plugins", env))
+    .all()
+  return (columns.results || []).some(
+    (column: any) => column.name === "manifest",
+  )
+}
 
-async function ensureSchema(db: any, env?: any): Promise<void> {
-  if (d1Inited.get(db)) return
-  // KV 表（map/key 格式）+ 列式表（sql 格式）一并创建
-  for (const ddl of [...KV_SCHEMA_SQLITE, ...buildDdl("sqlite", env)]) {
-    await db.prepare(ddl).run()
-  }
-  d1Inited.set(db, true)
+const d1SchemaInit = new WeakMap<object, Promise<void>>()
+
+function ensureSchema(db: any, env?: any): Promise<void> {
+  const existing = d1SchemaInit.get(db)
+  if (existing) return existing
+  const task = (async () => {
+    for (const ddl of [...KV_SCHEMA_SQLITE, ...buildDdl("sqlite", env)]) {
+      await db.prepare(ddl).run()
+    }
+    if (!(await hasPluginManifestColumn(db, env))) {
+      try {
+        await db
+          .prepare(buildAddColumnDdl("plugins", "manifest", "sqlite", env))
+          .run()
+      } catch (error) {
+        if (!(await hasPluginManifestColumn(db, env))) throw error
+      }
+    }
+  })()
+  d1SchemaInit.set(db, task)
+  void task.catch(() => {
+    if (d1SchemaInit.get(db) === task) d1SchemaInit.delete(db)
+  })
+  return task
 }
 
 export const d1Driver: Driver = {
@@ -62,7 +91,7 @@ export const d1Driver: Driver = {
 
   async init(env?: any): Promise<void> {
     const db = getD1(env)
-    if (db) await ensureSchema(db)
+    if (db) await ensureSchema(db, env)
   },
 
   async get(key: string, env?: any): Promise<string | null> {
@@ -135,14 +164,10 @@ export const d1Driver: Driver = {
     if (!db) throw new Error("D1 binding not found")
 
     await ensureSchema(db, env)
-    
-    // D1 batch 单次语句数上限约 100，分批提交
-    const BATCH = 100
-    const stmts = statements.map((s) => db.prepare(s.sql).bind(...s.params))
-    
-    for (let i = 0; i < stmts.length; i += BATCH) {
-      await db.batch(stmts.slice(i, i + BATCH))
-    }
+    const statementsForBatch = statements.map((statement) =>
+      db.prepare(statement.sql).bind(...statement.params),
+    )
+    await db.batch(statementsForBatch)
   },
 
   async health(env?: any): Promise<any> {

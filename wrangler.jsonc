@@ -97,6 +97,10 @@
     // 前端静态资源 CDN 地址，支持 $version 占位符
     // "ASSET_URLS": "https://example.com/dist",
     //
+    // 允许通过 manifest_url 安装插件的可信 origin，例如 https://yourdomain.com。
+    // 留空禁用 URL 安装；URL 必须与该 origin 完全一致，且不允许重定向。
+    // "PLUGIN_MANIFEST_ORIGIN": "https://yourdomain.com",
+    //
     // 允许作为种子数据来源的主机白名单，逗号/空格分隔
     // "ALLOW_SEED": "",
 

@@ -2003,10 +2003,15 @@ async function unsealDb(
   }
 }
 
+export interface SaveDbOptions {
+  force?: boolean
+  publishOnSuccess?: boolean
+}
+
 export const saveDb = async (
   data: any,
   envCtx?: any,
-  options?: { force?: boolean },
+  options?: SaveDbOptions,
 ): Promise<boolean> => {
   if (envCtx) {
     globalEnvCtx = envCtx
@@ -2043,14 +2048,14 @@ export const saveDb = async (
     return false
   }
 
-  memoryDb = data
-  dbWriteBlocked = false
-  // Refresh the request cache so any getDb() later in this request observes
-  // the write rather than a pre-write snapshot.
-  // 无参调用会以 globalEnvCtx 为键命中缓存，因此这里也同步刷新该键，
-  // 否则「写后读」在无参路径上可能读到 TTL 内的旧快照。
+  const publishOnSuccess = options?.publishOnSuccess === true
   const cacheKey = envCtx || resolveNoArgKey()
-  if (cacheKey) dbCache.set(cacheKey, { ts: Date.now(), db: data })
+  const publish = () => {
+    memoryDb = data
+    dbWriteBlocked = false
+    if (cacheKey) dbCache.set(cacheKey, { ts: Date.now(), db: data })
+  }
+  if (!publishOnSuccess) publish()
 
   // `activeEnv` 已在本函数开头解析（写前守卫也依赖它），这里只需通过可注入的
   // storeBackendLoader 取后端，便于测试统计 load/save 次数。
@@ -2087,7 +2092,13 @@ export const saveDb = async (
     console.log(
       `[DB] saveDb: sealed data size=${JSON.stringify(sealed).length} bytes`,
     )
-    await backend.save(sealed, activeEnv)
+    const saved = await backend.save(sealed, activeEnv)
+    if (!saved) {
+      console.warn(
+        `[DB] saveDb FAILED: backend=${backend.name} returned false`,
+      )
+      return false
+    }
   } catch (err: any) {
     console.error(
       `[DB] saveDb FAILED: backend=${backend.name}, error=${err?.message || err}`,
@@ -2098,6 +2109,7 @@ export const saveDb = async (
     )
   }
 
+  if (publishOnSuccess) publish()
   console.log(
     `[DB] Successfully persisted ${data.storages?.length || 0} storages to ${backend.name}`,
   )
@@ -2107,6 +2119,14 @@ export const saveDb = async (
   dbTrusted = true
   dbLastLoadError = null
   return true
+}
+
+export async function reloadDb(envCtx: any): Promise<any> {
+  if (envCtx && typeof envCtx === "object") {
+    dbCache.delete(envCtx)
+    dbInflight.delete(envCtx)
+  }
+  return loadDb(envCtx)
 }
 
 export async function resolvePath(virtualPath: string, envCtx?: any) {
