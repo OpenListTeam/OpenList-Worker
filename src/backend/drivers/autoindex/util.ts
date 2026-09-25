@@ -1,6 +1,7 @@
 // AutoIndex utility functions
 import * as xpath from "xpath"
 import { DOMParser } from "@xmldom/xmldom"
+import { parse, serialize } from "parse5"
 import { AutoIndexNode } from "./types"
 
 /**
@@ -20,19 +21,30 @@ function extractXPathValue(raw: unknown): string | undefined {
 }
 
 // 将宽松 HTML 清洗为可被 XML 解析器（xmldom）解析的良构 XML：
-// 1) 移除 DOCTYPE 与注释；2) 把 void 标签（<hr>/<meta>/<br> 等）转为自闭合。
-// 这样用 text/xml 解析后节点无命名空间，用户配置的无前缀 XPath（如 //pre/a）
-// 才能正常匹配——与 Go 侧 htmlquery（golang.org/x/net/html）的行为保持一致。
-// 注意：若直接用 text/html 解析，xmldom 会注入 XHTML 命名空间，导致 //pre/a 匹配不到。
+// 1) 先用 parse5 按 HTML5 容错规则修复未闭合/错位/重复标签；
+// 2) 移除 XML 不需要的 DOCTYPE、注释和 script/style；
+// 3) 把 void 标签（<hr>/<meta>/<br> 等）转为自闭合。
+//
+// 不能直接把远端 HTML 交给 xmldom 的 XML 模式：真实目录页常包含浏览器可以
+// 正常处理的非严格 HTML。例如 archive.apache.org/dist/tomcat/ 同时有重复的
+// html/body/pre 标签，旧实现会抛 "Opening and ending tag mismatch"。parse5 与
+// Go 版 htmlquery 底层的 HTML parser 一样会容错，再转 XML 后仍可继续使用用户
+// 配置的无前缀 XPath（如 //pre/a）。
+//
+// 注意：若直接用 xmldom 的 text/html 模式，它会注入 XHTML 命名空间，导致
+// //pre/a 匹配不到。
 const HTML_VOID_TAGS =
   "area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr"
 
 function htmlToXml(html: string): string {
-  let s = html
+  let s = serialize(parse(html))
   s = s.replace(/<!DOCTYPE[^>]*>/gi, "")
   s = s.replace(/<!--[\s\S]*?-->/g, "")
+  // script/style 的 raw text 可以包含 XML 非法的裸 <、&；AutoIndex XPath 不会
+  // 依赖这些内容，移除可避免第二阶段 XML 解析被无关脚本或样式破坏。
+  s = s.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "")
   s = s.replace(
-    new RegExp(`<(${HTML_VOID_TAGS})([^>]*?)/?>`, "gi"),
+    new RegExp(`<(${HTML_VOID_TAGS})([^>]*?)/?\\s*>`, "gi"),
     "<$1$2/>",
   )
   return s
@@ -44,7 +56,7 @@ export function parseAutoIndexHTML(
   nameXPath: string,
   sizeXPath: string,
   modifiedXPath: string,
-  ignoreNames: string[]
+  ignoreNames: string[],
 ): AutoIndexNode[] {
   // @xmldom/xmldom >= 0.9 已废弃 errorHandler，改用 onError 回调
   const doc = new DOMParser({
@@ -146,10 +158,7 @@ export function parseSize(sizeStr: string): number {
   return Math.round(num * mul)
 }
 
-export function parseTime(
-  timeStr: string,
-  format: string
-): string {
+export function parseTime(timeStr: string, format: string): string {
   if (!timeStr) return new Date().toISOString()
 
   try {
@@ -161,7 +170,9 @@ export function parseTime(
     const isoMatch = timeStr.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/)
     if (isoMatch) {
       const [, year, month, day, hour, minute] = isoMatch
-      return new Date(`${year}-${month}-${day}T${hour}:${minute}:00`).toISOString()
+      return new Date(
+        `${year}-${month}-${day}T${hour}:${minute}:00`,
+      ).toISOString()
     }
 
     // Try common formats
