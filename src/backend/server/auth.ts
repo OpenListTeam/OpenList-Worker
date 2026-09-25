@@ -477,6 +477,11 @@ authRouter.post("/login", async (c) => {
 
       const otpCheck = await checkUserOtp(matchedUser, body)
       if (!otpCheck.ok) {
+        // 密码正确但 OTP 错误/缺失时同样计入防爆破计数：否则攻击者可用正确密码
+        // 对 6 位 TOTP 无限高频尝试，绕过 5 次/IP 锁定。
+        const auditLogger = getAuditLogger()
+        await auditLogger.logLoginFailure(c, username, otpCheck.message)
+        await recordLoginFailure(c, username, c.env)
         return c.json(
           { code: otpCheck.code, message: otpCheck.message, data: null },
           otpCheck.httpStatus,
@@ -560,6 +565,10 @@ authRouter.post("/login/hash", async (c) => {
 
       const otpCheck = await checkUserOtp(matchedUser, body)
       if (!otpCheck.ok) {
+        // 同 /login：OTP 失败也必须计入防爆破计数
+        const auditLogger = getAuditLogger()
+        await auditLogger.logLoginFailure(c, username, otpCheck.message)
+        await recordLoginFailure(c, username, c.env)
         return c.json(
           { code: otpCheck.code, message: otpCheck.message, data: null },
           otpCheck.httpStatus,
