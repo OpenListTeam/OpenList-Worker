@@ -613,11 +613,12 @@ rawRouter.get("/*", async (c) => {
             c.header("Access-Control-Allow-Origin", "*")
             const size = fileItem.size || 0
             const rangeHeader = c.req.header("Range")
-            if (rangeHeader && size > 0) {
-              const { start, end, chunksize } = parseRangeHeader(
-                rangeHeader,
-                size,
-              )
+            const parsedRange =
+              rangeHeader && size > 0
+                ? parseRangeHeader(rangeHeader, size)
+                : null
+            if (parsedRange) {
+              const { start, end, chunksize } = parsedRange
               const stream = await (driver as any).createReadStream(
                 resolved.physical,
                 { start, end },
@@ -687,8 +688,13 @@ rawRouter.get("/*", async (c) => {
 
     c.header("Access-Control-Allow-Origin", "*")
     const rangeHeader = c.req.header("Range")
-    if (rangeHeader) {
-      const { start, end, chunksize } = parseRangeHeader(rangeHeader, stat.size)
+    // 非法/不可满足的 Range 解析为 null，回退为全量 200 响应（RFC 允许忽略 Range），
+    // 避免把 NaN 切片传给 createReadStream 导致 ERR_OUT_OF_RANGE 500。
+    const parsedRange = rangeHeader
+      ? parseRangeHeader(rangeHeader, stat.size)
+      : null
+    if (parsedRange) {
+      const { start, end, chunksize } = parsedRange
       const stream = createReadStream(resolved.physical, { start, end })
 
       c.header("Content-Range", `bytes ${start}-${end}/${stat.size}`)

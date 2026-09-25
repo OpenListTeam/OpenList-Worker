@@ -120,8 +120,10 @@ export async function extractZipEntry(
     }
     const ds = new DecompressionStream("deflate-raw")
     const writer = ds.writable.getWriter()
-    writer.write(compressed)
-    writer.close()
+    // write/close 必须等待：否则流中途出错（坏数据等）会变成 unhandled rejection，
+    // 而不是在本次解压的 await 链路上传播，调用方拿到截断结果而无明确报错。
+    await writer.write(compressed)
+    await writer.close()
     const out = await new Response(ds.readable).arrayBuffer()
     return new Uint8Array(out)
   }

@@ -128,7 +128,11 @@ export function parseListObjectsV1(
     const size = parseInt(parseXmlTag(block, "Size") || "0", 10)
     const modified =
       parseXmlTag(block, "LastModified") || new Date().toISOString()
-    const etag = parseXmlTag(block, "ETag")?.replace(/"/g, "")
+    // ETag 在 XML 里形如 &quot;hex&quot;，必须先反转义再剥引号，否则 etag 值带实体前缀
+    const etag = unescapeXml(parseXmlTag(block, "ETag") || "").replace(
+      /"/g,
+      "",
+    )
 
     files.push({
       name,
@@ -199,7 +203,11 @@ export function parseListObjectsV2(
     const size = parseInt(parseXmlTag(block, "Size") || "0", 10)
     const modified =
       parseXmlTag(block, "LastModified") || new Date().toISOString()
-    const etag = parseXmlTag(block, "ETag")?.replace(/"/g, "")
+    // 同 V1：ETag 需先反转义再剥引号
+    const etag = unescapeXml(parseXmlTag(block, "ETag") || "").replace(
+      /"/g,
+      "",
+    )
 
     files.push({
       name,
@@ -467,7 +475,11 @@ export class S3Client {
         if (result.nextMarker) {
           marker = result.nextMarker
         } else if (result.files.length > 0) {
-          marker = result.files[result.files.length - 1].path
+          // 兜底 marker 必须是 S3 对象键：files[].path 是虚拟路径，文件夹还缺
+          // 尾斜杠，直接当 marker 用会导致续列重复/死循环。经 getKey 转换：
+          // 去前导斜杠 + 文件夹补尾斜杠。
+          const last = result.files[result.files.length - 1]
+          marker = getKey(last.path, last.isFolder)
         } else {
           break
         }

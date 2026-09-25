@@ -25,7 +25,9 @@ adminRouter.use("*", async (c, next) => {
   // （role===2 且 DB 中存在未禁用用户）都视为管理员。
   const isAdmin = await checkAdminAuth(c)
   if (!isAdmin) {
-    return c.json({ code: 401, message: "Unauthorized", data: null })
+    // 必须返回真正的 HTTP 401 状态码：缺省第二个参数时 Hono 返回 200，
+    // 网关/监控/按 res.status 判断的客户端会把未授权当成功。
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
   }
   await next()
 })

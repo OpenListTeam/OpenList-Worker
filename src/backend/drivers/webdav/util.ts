@@ -31,6 +31,16 @@ export function pathEscape(p: string): string {
     .join("/")
 }
 
+/** 反转义 XML 实体（&amp; 最后替换，避免二次解码） */
+function unescapeXmlEntities(s: string): string {
+  return s
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+}
+
 /**
  * Robust WebDAV XML Multistatus parser.
  * Handles diverse namespace prefixes (d:, D:, a:, xmlns="DAV:") and case variations.
@@ -105,7 +115,9 @@ export function parseMultistatusXml(
       /<(?:[a-zA-Z0-9_-]+:)?displayname\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?displayname>/i.exec(
         propContent,
       )
-    let displayName = dnMatch ? dnMatch[1].trim() : ""
+    // displayname 是 XML 文本节点：文件名含 & < > ' 时服务端返回的是实体
+    // （如 a&amp;b.txt），必须反转义，否则列表展示错误且后续 rename/move/get 404
+    let displayName = dnMatch ? unescapeXmlEntities(dnMatch[1].trim()) : ""
 
     // Derive name from href if displayname is missing or is pure path
     const cleanHref = decodedHref.replace(/\/+$/, "")
@@ -162,14 +174,20 @@ export function parseMultistatusXml(
     }
 
     // Check if this response represents the directory itself
+    // 注意：只能用精确匹配。旧实现 `normHref.endsWith(normTarget)` 有两个坑：
+    // 1) normTarget 为空串时 endsWith("") 恒真，multistatus 中第一个 <response>
+    //    （若服务器把子项排在目录之前）会被误判为 self 而丢条目；
+    // 2) 子目录与父目录同名（/movies/movies）也会命中 endsWith 被吞。
+    // href 可能是完整 URL（http://host/dav/path），先剥离 scheme://host 再比较。
     const normTarget = targetPath.replace(/\/+$/, "").toLowerCase()
-    const normHref = cleanHref.toLowerCase()
+    const normHref = cleanHref
+      .toLowerCase()
+      .replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]+/, "")
 
     if (
       !selfItem &&
       (normHref === normTarget ||
-        normHref.endsWith(normTarget) ||
-        (normTarget === "" && normHref === ""))
+        (normTarget === "" && (normHref === "" || normHref === "/")))
     ) {
       selfItem = file
     } else {

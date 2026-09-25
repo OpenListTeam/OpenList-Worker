@@ -12,6 +12,11 @@ export interface RangeParams {
 
 /**
  * Parse Range header
+ * 支持 RFC 7233 标准形式：
+ * - `bytes=start-end`（闭区间，end 超出文件大小时按规范收敛到 total-1）
+ * - `bytes=start-`（从 start 到末尾）
+ * - `bytes=-suffix`（取文件末尾 suffix 字节）
+ * 非法/多段/不可满足的 Range 返回 undefined（调用方应回退为全量 200 响应）
  * @param rangeHeader Range header string
  * @param total Total file size
  */
@@ -19,15 +24,43 @@ export function parseRange(
   rangeHeader: string | undefined | null,
   total: number,
 ): RangeParams | undefined {
-  if (!rangeHeader || !rangeHeader.startsWith("bytes=")) {
+  if (!rangeHeader || total <= 0) {
     return undefined
   }
 
-  const parts = rangeHeader.replace(/bytes=/, "").split("-")
-  const start = parseInt(parts[0], 10)
-  const end = parts[1] ? parseInt(parts[1], 10) : total - 1
+  const match = rangeHeader.trim().match(/^bytes=(\d*)-(\d*)$/)
+  if (!match) {
+    return undefined
+  }
 
-  if (isNaN(start) || start >= total || end >= total || start > end) {
+  let start: number
+  let end: number
+
+  if (match[1] === "" && match[2] === "") {
+    // "bytes=-" 无法确定任何区间
+    return undefined
+  }
+
+  if (match[1] === "") {
+    // 后缀形式 "bytes=-N"：取文件末尾 N 字节
+    const suffix = parseInt(match[2], 10)
+    if (isNaN(suffix) || suffix <= 0) {
+      return undefined
+    }
+    start = Math.max(0, total - suffix)
+    end = total - 1
+  } else {
+    start = parseInt(match[1], 10)
+    end = match[2] === "" ? total - 1 : parseInt(match[2], 10)
+    if (isNaN(start) || isNaN(end)) {
+      return undefined
+    }
+    if (end >= total) {
+      end = total - 1 // 按规范收敛，而不是拒绝
+    }
+  }
+
+  if (start >= total || start > end) {
     return undefined
   }
 

@@ -524,7 +524,10 @@ fsRouter.post("/get", async (c) => {
           sign: item.sign || "",
           thumb: (item as any).thumb || "",
           type: item.type ?? 0,
-          raw_url: `/api/sd/${shareId}${subPath}`,
+          // 子路径必须逐段编码：分享文件名含 ?、#、% 时，裸拼接的 raw_url 会被截断或报 400/500
+          raw_url: `/api/sd/${encodeURIComponent(shareId)}${
+            subPath && subPath !== "/" ? encodeDownloadPath(subPath) : ""
+          }`,
           readme: shareRes.share.readme || "",
           header: shareRes.share.header || "",
           provider,
@@ -805,10 +808,30 @@ fsRouter.post("/copy", async (c) => {
   }
 })
 
+/**
+ * 安全解码上传路径 header：值含非法百分号序列（如 /a%zz.txt）时
+ * decodeURIComponent 会抛 URIError，且不在 try 块内 → Hono 兑底 500。
+ * 这里统一返回 null 交由调用方返回 400（对齐 raw.ts 对同类问题的处理）。
+ */
+function decodeUploadHeader(value: string | undefined): string | null {
+  if (!value) return ""
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return null
+  }
+}
+
 fsRouter.put("/put", async (c) => {
   const user = await getUserFromContext(c)
   if (!canWrite(user)) return permissionDenied(c)
-  const rawPath = decodeURIComponent(c.req.header("File-Path") || "")
+  const rawPath = decodeUploadHeader(c.req.header("File-Path"))
+  if (rawPath === null) {
+    return c.json(
+      { code: 400, message: "Malformed File-Path header encoding", data: null },
+      400,
+    )
+  }
   if (!rawPath.trim()) {
     return c.json(
       { code: 400, message: "Missing File-Path header", data: null },
@@ -845,7 +868,13 @@ fsRouter.put("/put", async (c) => {
 fsRouter.put("/form", async (c) => {
   const user = await getUserFromContext(c)
   if (!canWrite(user)) return permissionDenied(c)
-  const rawPath = decodeURIComponent(c.req.header("File-Path") || "")
+  const rawPath = decodeUploadHeader(c.req.header("File-Path"))
+  if (rawPath === null) {
+    return c.json(
+      { code: 400, message: "Malformed File-Path header encoding", data: null },
+      400,
+    )
+  }
   if (!rawPath.trim()) {
     return c.json(
       { code: 400, message: "Missing File-Path header", data: null },
@@ -950,7 +979,17 @@ fsRouter.put("/upload/part", async (c) => {
   if (!canWrite(user)) return permissionDenied(c)
   const session = c.req.header("X-Upload-Session") || ""
   const partNumber = parseInt(c.req.header("X-Part-Number") || "0", 10)
-  const rawDirPath = decodeURIComponent(c.req.header("Upload-Path") || "")
+  const rawDirPath = decodeUploadHeader(c.req.header("Upload-Path"))
+  if (rawDirPath === null) {
+    return c.json(
+      {
+        code: 400,
+        message: "Malformed Upload-Path header encoding",
+        data: null,
+      },
+      400,
+    )
+  }
   const dirPath = getActualPath(user, rawDirPath)
   const requestContext = getStorageRequestContext(c)
   if (!session || !(partNumber >= 1) || !dirPath) {
@@ -1049,7 +1088,7 @@ fsRouter.post("/add_offline_download", async (c) => {
   const { path: rawPath, urls } = await c.req.json().catch(() => ({}))
   const reqPath = getActualPath(user, rawPath || "/")
   if (!urls || urls.length === 0) {
-    return c.json({ code: 400, message: "No URLs provided" })
+    return c.json({ code: 400, message: "No URLs provided" }, 400)
   }
 
   return c.json(
@@ -1390,7 +1429,13 @@ fsRouter.post("/multipart/init", async (c) => {
   const user = await getUserFromContext(c)
   if (!canWrite(user)) return permissionDenied(c)
 
-  const rawPath = decodeURIComponent(c.req.header("File-Path") || "")
+  const rawPath = decodeUploadHeader(c.req.header("File-Path"))
+  if (rawPath === null) {
+    return c.json(
+      { code: 400, message: "Malformed File-Path header encoding", data: null },
+      400,
+    )
+  }
   const size = parseInt(c.req.header("X-File-Size") || "0", 10)
   const rawChunk = parseInt(c.req.header("X-Chunk-Size") || "0", 10)
   const md5 = c.req.header("X-File-Md5") || ""
@@ -1641,7 +1686,10 @@ async function fetchArchiveBytes(
   const driver = await getDriver(resolved.storage!.driver, resolved.storage)
   let item: any
   try {
-    item = await driver.get(virtualPath, resolved.physical!)
+    // 与 getItem / /fs/link 的约定一致：第一个参数传已拼 base_path 的实际路径，
+    // 而不是未处理的 virtualPath，否则依赖路径参数的驱动会把 base_path 用户的
+    // 归档解析到错误对象。
+    item = await driver.get(actual, resolved.physical!)
   } finally {
     await flushPendingDriverState(
       resolved.storage!.driver,

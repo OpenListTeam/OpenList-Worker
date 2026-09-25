@@ -93,6 +93,17 @@ function deleteModuleKvCache(key: string): void {
 }
 
 /**
+ * 模块级 KV 探测结果缓存。
+ *
+ * probe 的目的只是诊断 KV 可用性（结果仅用于日志），但裸调 edgeKv.get()
+ * 每个请求都会烧掉 1 次 KV 子请求配额（ESA 每请求限 8 次）。
+ * 这里将探测结果缓存 60 秒：函数实例存活期内后续请求直接复用结果，
+ * 既保留故障可见性，又不与业务 get 争抢配额。
+ */
+const KV_PROBE_TTL_MS = 60_000
+let kvProbeCache: { ok: boolean; err: string | null; at: number } | null = null
+
+/**
  * 包装 ESA EdgeKV 为项目通用的 { get, put, delete } 接口。
  * @param edgeKv 原始 EdgeKV 实例
  * @param cache  请求级缓存 Map（每次请求新建），同 key 仅发起一次真实 KV 调用
@@ -152,8 +163,13 @@ function wrapEsaEdgeKV(edgeKv: any, cache?: Map<string, string | null>) {
     async delete(key: string): Promise<void> {
       try {
         await edgeKv.delete(key)
-      } catch {}
-      // delete 后使缓存失效
+      } catch (e: any) {
+        // 删除失败必须抛出（与 put 一致）：吞掉错误后再失效本地缓存，
+        // 会让调用方误以为删除成功，而下次 get 又读到旧值（数据"删不掉"且无日志）。
+        console.error(`[ESA/KV] delete failed key=${key}:`, e?.message || e)
+        throw e
+      }
+      // delete 成功后才使缓存失效
       if (cache) cache.delete(key)
       deleteModuleKvCache(key)
     },
@@ -182,14 +198,26 @@ export default {
       if (edgeKvCtor) {
         try {
           const edgeKv = new edgeKvCtor({ namespace })
-          // probe 本身也走缓存，避免和业务 get 争抢配额
+          // probe 走模块级缓存（60s TTL）：探测是诊断行为，结果仅用于日志，
+          // 不应每请求都烧 1 次 KV 子请求配额。注意必须裸调 edgeKv 而非 wrappedKv，
+          // 否则包装层吞错后 probe 永远报 ok，失去故障可见性。
           let kvTestOk = false
           let kvTestErr: string | null = null
-          try {
-            await edgeKv.get("__openlist_probe__")
-            kvTestOk = true
-          } catch (e: any) {
-            kvTestErr = e?.message || String(e)
+          if (
+            kvProbeCache &&
+            Date.now() - kvProbeCache.at <= KV_PROBE_TTL_MS
+          ) {
+            kvTestOk = kvProbeCache.ok
+            kvTestErr = kvProbeCache.err
+          } else {
+            try {
+              await edgeKv.get("__openlist_probe__")
+              kvTestOk = true
+              kvProbeCache = { ok: true, err: null, at: Date.now() }
+            } catch (e: any) {
+              kvTestErr = e?.message || String(e)
+              kvProbeCache = { ok: false, err: kvTestErr, at: Date.now() }
+            }
           }
           // 传入请求级缓存
           const wrappedKv = wrapEsaEdgeKV(edgeKv, kvCache)

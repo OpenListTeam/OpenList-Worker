@@ -185,7 +185,12 @@ async function generateToken(user: any, c: any): Promise<string> {
 }
 
 /** SSO 自动注册 */
-async function autoRegister(db: any, username: string, ssoId: string): Promise<any> {
+async function autoRegister(
+  db: any,
+  env: any,
+  username: string,
+  ssoId: string,
+): Promise<any> {
   let uname = username || ssoId
   if (db.users.some((u: any) => u.username === uname)) {
     uname = `${uname}_${ssoId}`
@@ -208,12 +213,23 @@ async function autoRegister(db: any, username: string, ssoId: string): Promise<a
   // SSO 用户不通过本地口令登录，但仍以双层哈希存储随机口令，避免存明文
   await setUserPassword(user, generateRandomPassword())
   db.users.push(user)
-  await saveDb(db, db.env)
+  // 显式传入调用方的 env（db 对象上不存在 env 属性，之前靠 saveDb 内部兜底才没出问题）
+  await saveDb(db, env)
   return user
 }
 
 function postMessageHtml(field: string, value: string): string {
-  const safe = String(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e")
+  // 注入防护：value 来自 IdP 返回的 id/sub 等字段，可能包含双引号/反斜杠/换行。
+  // 只转义 <> 不足以防止跳出 JS 字符串字面量（值含 `"` 时可注入任意脚本）。
+  const safe = String(value)
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029")
   return `<!DOCTYPE html>
 <head></head>
 <body>
@@ -436,7 +452,7 @@ ssoRouter.get("/sso_callback", async (c) => {
         return c.text("user not found and auto register is disabled", 400)
       }
       const username = String(userInfo?.login ?? userInfo?.[usernameField] ?? userInfo?.name ?? "")
-      user = await autoRegister(db, username || userID, userID)
+      user = await autoRegister(db, c.env, username || userID, userID)
     }
     const token = await generateToken(user, c)
     if (useCompat) {

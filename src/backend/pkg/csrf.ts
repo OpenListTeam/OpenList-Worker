@@ -225,8 +225,18 @@ function getCookie(c: Context, name: string): string | undefined {
 
   const cookies = cookieHeader.split(";").map((c) => c.trim())
   for (const cookie of cookies) {
-    const [key, value] = cookie.split("=")
-    if (key === name) return decodeURIComponent(value)
+    const eq = cookie.indexOf("=")
+    if (eq === -1) continue
+    const key = cookie.slice(0, eq).trim()
+    const rawValue = cookie.slice(eq + 1)
+    if (key !== name) continue
+    // 值含非法百分号序列（如 %zz）时 decodeURIComponent 会抛 URIError，
+    // 导致中间件 500；此时退回原值交由后续比对自然失败。
+    try {
+      return decodeURIComponent(rawValue)
+    } catch {
+      return rawValue
+    }
   }
   return undefined
 }

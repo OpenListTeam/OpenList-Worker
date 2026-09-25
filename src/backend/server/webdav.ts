@@ -137,8 +137,14 @@ webdavRouter.all("/*", async (c) => {
             : davPath.endsWith("/")
               ? davPath
               : davPath + "/"
-        const xml = buildWebDavPropfindResponse(href, items)
-        return c.body(xml, depth === "0" ? 207 : 207, {
+        // RFC 4918：Depth: 0 只返回集合自身，不得附带子项；
+        // 之前 depth 变量读而不用的写法（两个分支同为 207 且都带全部子项）既违反
+        // 规范，也让部分客户端（依赖 Depth: 0 探测目录）拿到错误结果。
+        const xml = buildWebDavPropfindResponse(
+          href,
+          depth === "0" ? [] : items,
+        )
+        return c.body(xml, 207, {
           "Content-Type": "application/xml; charset=utf-8",
         })
       }

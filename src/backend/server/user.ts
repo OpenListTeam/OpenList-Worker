@@ -3,7 +3,7 @@ import { getDb, saveDb } from "../internal/model/db"
 import { generateRandomPassword, verifyUserPassword } from "./auth"
 import { setUserPassword } from "../pkg/password"
 import { verify } from "hono/jwt"
-import { getJwtSecret } from "./middlewares"
+import { getJwtSecret, isTokenRevoked } from "./middlewares"
 import { listUserSshKeys, deleteUserSshKey } from "../internal/op/sshkey"
 
 export const userRouter = new Hono()
@@ -276,6 +276,14 @@ export const updatePwdHandler = async (c: any) => {
   try {
     const secret = await getJwtSecret(c)
     const payload = await verify(token, secret, "HS256")
+    // 与 authUserFromReq 对齐：仅验签还不够，还必须拒绝已吊销（注销拉黑）的 token，
+    // 否则 logout 黑名单对本接口无效，已注销/被风控的 token 仍可改密码。
+    if (
+      (payload as any)?.jti &&
+      (await isTokenRevoked((payload as any).jti as string, c.env))
+    ) {
+      return c.json({ code: 401, message: "Token revoked", data: null }, 401)
+    }
     const body = await c.req.json().catch(() => ({}))
     const oldPassword = body.old_password || ""
     const newPassword = body.new_password || ""
@@ -298,6 +306,10 @@ export const updatePwdHandler = async (c: any) => {
     }
 
     const user = db.users[userIdx]
+    // 被禁用的账号不允许修改密码（对齐 getUserFromContext 的 disabled 语义）
+    if (user.disabled) {
+      return c.json({ code: 403, message: "User disabled", data: null }, 403)
+    }
     if (!user.password || !(await verifyUserPassword(user, oldPassword))) {
       return c.json(
         { code: 400, message: "Incorrect old password", data: null },

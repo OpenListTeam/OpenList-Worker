@@ -225,7 +225,9 @@ export function exceedsProxyPayloadLimit(
   if (!Number.isFinite(size) || size <= 0) return false
   if (range) {
     try {
-      return parseRangeHeader(range, size).chunksize > limit
+      const parsed = parseRangeHeader(range, size)
+      // 非法 Range 会回退为全量内容传输，因此按完整大小判断限额
+      return parsed ? parsed.chunksize > limit : size > limit
     } catch {
       return false
     }

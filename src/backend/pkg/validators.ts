@@ -84,7 +84,9 @@ export const loginRequestSchema = z.object({
 export const createUserRequestSchema = z.object({
   username: usernameSchema,
   password: passwordSchema,
-  role: z.number().int().min(0).max(3).default(1), // 0=超级管理员, 1=管理员, 2=普通用户, 3=访客
+  // 对齐 pkg/permission.ts 的 UserRole 枚举：0=GENERAL(普通用户), 1=GUEST(访客), 2=ADMIN(管理员)。
+  // 此前注释与默认值均与实际枚举相反（default 1 会默认建出访客、传 2 想建"普通用户"实际是管理员）。
+  role: z.number().int().min(0).max(2).default(0),
   permission: z.number().int().min(0).default(0),
   disabled: z.boolean().optional().default(false),
   base_path: pathSchema.optional(),
@@ -95,7 +97,7 @@ export const createUserRequestSchema = z.object({
  */
 export const updateUserRequestSchema = z.object({
   password: passwordSchema.optional(),
-  role: z.number().int().min(0).max(3).optional(),
+  role: z.number().int().min(0).max(2).optional(),
   permission: z.number().int().min(0).optional(),
   disabled: z.boolean().optional(),
   base_path: pathSchema.optional(),
