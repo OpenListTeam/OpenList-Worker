@@ -116,7 +116,10 @@ test("getDb: saveDb 后无参读取可观察到最新写入（写后读一致）
   await getDb()
   assert.equal(stats.load, 1)
 
-  const next = { ...SAMPLE, settings: [{ key: "site_title", value: "Changed" }] }
+  const next = {
+    ...SAMPLE,
+    settings: [{ key: "site_title", value: "Changed" }],
+  }
   await saveDb(next)
   // 注意：saveDb 内部可能同时写入加密密钥等辅助数据，因此不断言 save 恰好为 1，
   // 只要求确实发生过持久化写入。
@@ -229,6 +232,27 @@ test("getDb: 五个无参 getter 复用同一份缓存快照", async () => {
   assert.ok(Array.isArray(storages))
   assert.ok(Array.isArray(metas))
   assert.ok(Array.isArray(plugins))
+})
+
+test("isDbTrusted(snapshot) 绑定到该快照而非模块全局状态", async () => {
+  __resetDbCacheForTest()
+  const { backend } = createCountingBackend(SAMPLE)
+  __setStoreBackendLoaderForTest(async () => backend)
+  const trusted = await getDb({ DB_DRIVER: "trusted" })
+
+  __setStoreBackendLoaderForTest(async () => ({
+    name: "failing",
+    isConfigured: async () => true,
+    load: async () => {
+      throw new Error("read failed")
+    },
+    save: async () => true,
+  }))
+  const untrusted = await getDb({ DB_DRIVER: "failing" })
+
+  assert.equal(mod.isDbTrusted(), false)
+  assert.equal((mod as any).isDbTrusted(trusted), true)
+  assert.equal((mod as any).isDbTrusted(untrusted), false)
 })
 
 test("getDb: TTL 过期后允许重新加载（缓存不是永久固化）", async () => {

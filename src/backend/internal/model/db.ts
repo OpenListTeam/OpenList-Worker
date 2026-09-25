@@ -828,6 +828,7 @@ export const defaultDb = {
 
 let memoryDb: any = null
 let globalEnvCtx: any = null
+let dbSnapshotTrust = new WeakMap<object, boolean>()
 
 /**
  * 数据可信度状态（防止「读失败 → 回退空库 → 落盘覆盖」）。
@@ -841,8 +842,11 @@ let dbTrusted = false
 let dbWriteBlocked = false
 let dbLastLoadError: string | null = null
 
-/** 当前内存库是否可信（可安全写回持久化存储）。 */
-export function isDbTrusted(): boolean {
+/** 当前内存库或指定快照是否可信（可安全写回持久化存储）。 */
+export function isDbTrusted(snapshot?: any): boolean {
+  if (snapshot && typeof snapshot === "object") {
+    return dbSnapshotTrust.get(snapshot) ?? false
+  }
   return dbTrusted
 }
 
@@ -1103,6 +1107,7 @@ export const __resetDbCacheForTest = () => {
   }
   globalEnvCtx = null
   memoryDb = null
+  dbSnapshotTrust = new WeakMap<object, boolean>()
   storeBackendLoader = (env: any) => getStoreBackend(env)
   // 写前守卫状态复位（否则跨用例串味）
   dbTrusted = false
@@ -1208,6 +1213,7 @@ const loadDb = async (envCtx?: any) => {
       // 读取成功：内存库与持久化存储一致，允许后续写回。
       dbTrusted = true
       dbLastLoadError = null
+      dbSnapshotTrust.set(memoryDb, true)
       return memoryDb
     }
     // 后端读取成功但没有数据：可能是全新部署（首次初始化）。
@@ -1223,6 +1229,7 @@ const loadDb = async (envCtx?: any) => {
       ensureDefaultShares(memoryDb)
       ensureDefaultPlugins(memoryDb)
       ensureDefaultMetas(memoryDb)
+      dbSnapshotTrust.set(memoryDb, true)
       return memoryDb
     }
     dbTrusted = false
@@ -1245,6 +1252,7 @@ const loadDb = async (envCtx?: any) => {
     ensureDefaultShares(memoryDb)
     ensureDefaultPlugins(memoryDb)
     ensureDefaultMetas(memoryDb)
+    dbSnapshotTrust.set(memoryDb, true)
     return memoryDb
   }
 
@@ -1255,6 +1263,7 @@ const loadDb = async (envCtx?: any) => {
   ensureDefaultShares(memoryDb)
   ensureDefaultPlugins(memoryDb)
   ensureDefaultMetas(memoryDb)
+  dbSnapshotTrust.set(memoryDb, false)
   return memoryDb
 }
 
@@ -2044,6 +2053,7 @@ export const saveDb = async (
   }
 
   memoryDb = data
+  dbSnapshotTrust.set(memoryDb, false)
   dbWriteBlocked = false
   // Refresh the request cache so any getDb() later in this request observes
   // the write rather than a pre-write snapshot.
@@ -2106,6 +2116,7 @@ export const saveDb = async (
   // 这样同一 isolate 后续的写入不会被守卫误拦。
   dbTrusted = true
   dbLastLoadError = null
+  dbSnapshotTrust.set(memoryDb, true)
   return true
 }
 
