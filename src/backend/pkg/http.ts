@@ -24,7 +24,15 @@ const DEFAULT_TIMEOUT = 30_000
 function buildUrl(url: string, params?: Record<string, string>): string {
   if (!params || Object.keys(params).length === 0) return url
   const qs = new URLSearchParams(params).toString()
-  return `${url}${url.includes("?") ? "&" : "?"}${qs}`
+  // 参数必须拼进 query（第一个 ? 之后），而不能落入 fragment（# 之后）——
+  // 否则 `buildUrl("http://x/a#f", {k:"1"})` 会产出 `http://x/a#f?k=1`，服务端收不到参数。
+  const hashIndex = url.indexOf("#")
+  if (hashIndex === -1) {
+    return `${url}${url.includes("?") ? "&" : "?"}${qs}`
+  }
+  const base = url.slice(0, hashIndex)
+  const fragment = url.slice(hashIndex)
+  return `${base}${base.includes("?") ? "&" : "?"}${qs}${fragment}`
 }
 
 async function fetchWithTimeout(
@@ -34,8 +42,15 @@ async function fetchWithTimeout(
 ): Promise<Response> {
   const controller = new AbortController()
   const id = setTimeout(() => controller.abort(), timeout)
+  // 调用方传入的 signal 不能被超时 signal 无条件覆盖：两者任一触发都应中止请求。
+  // AbortSignal.any 在旧运行时可能不存在，此时退回旧行为（仅超时信号）。
+  const callerSignal = init.signal as AbortSignal | undefined
+  let signal: AbortSignal = controller.signal
+  if (callerSignal && typeof (AbortSignal as any)?.any === "function") {
+    signal = (AbortSignal as any).any([controller.signal, callerSignal])
+  }
   try {
-    return await fetch(url, { ...init, signal: controller.signal })
+    return await fetch(url, { ...init, signal })
   } finally {
     clearTimeout(id)
   }
@@ -85,7 +100,7 @@ export async function get<T = any>(
   const finalUrl = buildUrl(url, config?.params)
   const res = await fetchWithTimeout(
     finalUrl,
-    { method: "GET", headers: config?.headers },
+    { method: "GET", headers: config?.headers, signal: config?.signal },
     config?.timeout ?? DEFAULT_TIMEOUT,
   )
   return parseResponse<T>(res, config?.responseType)
@@ -103,7 +118,7 @@ export async function post<T = any>(
   const body = typeof data === "string" ? data : JSON.stringify(data)
   const res = await fetchWithTimeout(
     url,
-    { method: "POST", headers, body },
+    { method: "POST", headers, body, signal: config?.signal },
     config?.timeout ?? DEFAULT_TIMEOUT,
   )
   return parseResponse<T>(res, config?.responseType)
@@ -116,6 +131,7 @@ export async function request<T = any>(config: {
   headers?: Record<string, string>
   params?: Record<string, string>
   timeout?: number
+  signal?: AbortSignal
   responseType?: string
 }): Promise<HttpResponse<T>> {
   const finalUrl = buildUrl(config.url, config.params)
@@ -131,7 +147,12 @@ export async function request<T = any>(config: {
   }
   const res = await fetchWithTimeout(
     finalUrl,
-    { method: config.method.toUpperCase(), headers, body },
+    {
+      method: config.method.toUpperCase(),
+      headers,
+      body,
+      signal: config.signal,
+    },
     config.timeout ?? DEFAULT_TIMEOUT,
   )
   return parseResponse<T>(res, config.responseType)
@@ -274,10 +295,11 @@ export function isSafeUrl(
       /(^|\.)\d{1,3}-\d{1,3}-\d{1,3}-\d{1,3}(\.|$)/, // 127-0-0-1.example.com
       /(^|\.)0x[0-9a-f]{6,8}(\.|$)/i, // 0x7f000001.example.com (十六进制IP label)
       /(^|\.)\d{8,}(\.|$)/, // 2130706433.example.com (整数IP label)
-      /(^|\.)127\.0\.0\.1\.nip\.io$/, // nip.io DNS rebinding service
+      /\.nip\.io$/i, // nip.io 全域封禁：<任意IP>.nip.io 均解析到该 IP，仅封 127.0.0.1 可被绕过
+      /\.sslip\.io$/i, // sslip.io 同类服务（<ip>.sslip.io / <host>.<ip>.sslip.io）
       /(^|\.)localtest\.me$/, // localtest.me resolves to 127.0.0.1
       /(^|\.)vcap\.me$/, // vcap.me resolves to 127.0.0.1
-      /(^|\.)xip\.io$/, // xip.io DNS rebinding service
+      /\.xip\.io$/i, // xip.io DNS rebinding service
     ]
     for (const pattern of dnsRebindPatterns) {
       if (pattern.test(host)) {

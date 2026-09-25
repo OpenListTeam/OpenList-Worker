@@ -114,10 +114,12 @@ export function verifyBackupCode(
   inputCode: string,
   storedCodes: string[],
 ): boolean {
-  const normalized = inputCode.trim().toUpperCase().replace(/\s/g, "")
-  return storedCodes.some(
-    (code) => code.toUpperCase().replace(/\s/g, "") === normalized,
-  )
+  // 归一化必须同时去掉空白与连字符：generateBackupCodes 产出 `XXXX-XXXX`，
+  // 用户可能输入 `XXXXXXXX` / `XXXX XXXX` / `xxxx-xxxx`，若只去空白则永不匹配。
+  const normalize = (code: string) =>
+    code.trim().toUpperCase().replace(/[-\s]/g, "")
+  const normalized = normalize(inputCode)
+  return storedCodes.some((code) => normalize(code) === normalized)
 }
 
 // ============ 兼容旧代码的函数别名 ============

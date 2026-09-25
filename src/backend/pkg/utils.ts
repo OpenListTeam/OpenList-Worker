@@ -15,11 +15,16 @@ export * from "./stream"
 
 // Format byte sizes to human-readable strings
 export function formatBytes(bytes: number, decimals = 2): string {
+  // 非法输入（NaN/Infinity/负数）按 0 处理，避免返回 "NaN undefined"
+  if (!Number.isFinite(bytes) || bytes < 0) return "0 Bytes"
   if (bytes === 0) return "0 Bytes"
   const k = 1024
   const dm = decimals < 0 ? 0 : decimals
   const sizes = ["Bytes", "KB", "MB", "GB", "TB", "PB"]
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  let i = Math.floor(Math.log(bytes) / Math.log(k))
+  // bytes >= 1024PB 时 i 会越界到 sizes.length 之外，需钳制到最后一档
+  if (i < 0) i = 0
+  if (i >= sizes.length) i = sizes.length - 1
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i]
 }
 

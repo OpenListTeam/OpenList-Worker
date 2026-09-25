@@ -2,6 +2,11 @@
  * XML generation utilities for OpenList protocols (WebDAV, S3).
  */
 
+/** XML 文本转义：href/路径等动态值必须转义后再插入，否则含 & < > 的目录名会产生非法 XML */
+function xmlEscape(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
 export function generateWebDavXml(
   path: string,
   items: Array<{
@@ -16,7 +21,7 @@ export function generateWebDavXml(
 
   // Current folder description
   xml += `  <d:response>\n`
-  xml += `    <d:href>${path}</d:href>\n`
+  xml += `    <d:href>${xmlEscape(path)}</d:href>\n`
   xml += `    <d:propstat>\n`
   xml += `      <d:prop>\n`
   xml += `        <d:resourcetype><d:collection/></d:resourcetype>\n`
@@ -30,7 +35,7 @@ export function generateWebDavXml(
   for (const item of items) {
     const itemHref = `${path}${path.endsWith("/") ? "" : "/"}${encodeURIComponent(item.name)}`
     xml += `  <d:response>\n`
-    xml += `    <d:href>${itemHref}</d:href>\n`
+    xml += `    <d:href>${xmlEscape(itemHref)}</d:href>\n`
     xml += `    <d:propstat>\n`
     xml += `      <d:prop>\n`
     if (item.isFolder) {
