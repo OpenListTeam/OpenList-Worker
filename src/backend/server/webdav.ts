@@ -12,6 +12,7 @@ import {
 } from "../internal/op/storage"
 import { buildWebDavPropfindResponse } from "../internal/webdav/webdav"
 import { safeErrorMessage } from "../pkg/errs"
+import { encodeDownloadPath } from "../pkg/path"
 
 /**
  * WebDAV 协议服务（挂载于 /dav/*）。
@@ -29,7 +30,7 @@ const getStorageRequestContext = (c: any) => {
     if (!executionCtx || typeof executionCtx.waitUntil !== "function") {
       return undefined
     }
-    return { 
+    return {
       waitUntil: (p: Promise<unknown>) => executionCtx.waitUntil(p),
       env: c.env, // 传递 env 用于请求级 KV 缓存复用
     }
@@ -49,7 +50,9 @@ async function webdavAuth(c: any): Promise<any> {
       const username = decoded.substring(0, idx)
       const password = decoded.substring(idx + 1)
       const { users } = await getOrInitUsers(c.env)
-      const user = users.find((u: any) => u.username === username && !u.disabled)
+      const user = users.find(
+        (u: any) => u.username === username && !u.disabled,
+      )
       if (!user) return null
       // 空密码用户（guest）：Basic Auth 下若未提供密码则允许（与 AList 一致）
       if (!user.password) {
@@ -110,7 +113,10 @@ webdavRouter.all("/*", async (c) => {
     switch (method) {
       case "OPTIONS": {
         c.header("DAV", "1, 2")
-        c.header("Allow", "OPTIONS, PROPFIND, GET, HEAD, PUT, MKCOL, DELETE, MOVE, COPY")
+        c.header(
+          "Allow",
+          "OPTIONS, PROPFIND, GET, HEAD, PUT, MKCOL, DELETE, MOVE, COPY",
+        )
         c.header("MS-Author-Via", "DAV")
         return c.body(null, 200)
       }
@@ -125,7 +131,12 @@ webdavRouter.all("/*", async (c) => {
           isFolder: !!it.is_dir,
           modified: it.modified || new Date().toISOString(),
         }))
-        const href = davPath === "/" ? "/" : davPath.endsWith("/") ? davPath : davPath + "/"
+        const href =
+          davPath === "/"
+            ? "/"
+            : davPath.endsWith("/")
+              ? davPath
+              : davPath + "/"
         const xml = buildWebDavPropfindResponse(href, items)
         return c.body(xml, depth === "0" ? 207 : 207, {
           "Content-Type": "application/xml; charset=utf-8",
@@ -138,9 +149,16 @@ webdavRouter.all("/*", async (c) => {
         const { item, rawUrl } = await getItem(davPath, ctx)
         if (!item) return c.text("Not found", 404)
         if (item.is_dir) return c.text("Is a directory", 400)
-        // 重定向到 rawRouter（/api/p/*）实际下载；rawRouter 已处理所有驱动的
-        // 下载协议（proxy/redirect/stream + Range + SSRF 防护）
-        return c.redirect(rawUrl || `/api/p${davPath.startsWith("/") ? "" : "/"}${davPath}`, 302)
+        // 重定向到 rawRouter 实际下载；rawRouter 已处理所有驱动的下载协议
+        // （proxy/redirect/stream + Range + SSRF 防护）。
+        //
+        // 端点前缀（/p 还是 /d）与路径编码都由 getItem 决定（见
+        // op/storage.ts resolveRawUrlPrefix）：/p 受 Go canProxy() 限制，未开启
+        // 代理的存储会 403 proxy not allowed，因此不能在这里硬编码 /p。
+        return c.redirect(
+          rawUrl || `/api/d${encodeDownloadPath(davPath)}`,
+          302,
+        )
       }
 
       case "PUT": {
@@ -168,7 +186,9 @@ webdavRouter.all("/*", async (c) => {
         const destRaw = c.req.header("Destination") || ""
         let dest = destRaw
         try {
-          dest = decodeURIComponent(new URL(destRaw, c.req.url).pathname).replace(/^\/dav/, "")
+          dest = decodeURIComponent(
+            new URL(destRaw, c.req.url).pathname,
+          ).replace(/^\/dav/, "")
         } catch {}
         const src = splitPath(davPath)
         const dst = splitPath(dest)
@@ -181,7 +201,9 @@ webdavRouter.all("/*", async (c) => {
         const destRaw = c.req.header("Destination") || ""
         let dest = destRaw
         try {
-          dest = decodeURIComponent(new URL(destRaw, c.req.url).pathname).replace(/^\/dav/, "")
+          dest = decodeURIComponent(
+            new URL(destRaw, c.req.url).pathname,
+          ).replace(/^\/dav/, "")
         } catch {}
         const src = splitPath(davPath)
         const dst = splitPath(dest)

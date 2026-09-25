@@ -153,7 +153,11 @@ test("resolveCdnUrl: 无版本戳时回退 DB 的 Frontend: 字段", async () =>
 })
 
 test("resolveCdnUrl: 版本不可得时回退 latest", async () => {
-  await saveDb({ settings: [], users: [], storages: [], shares: [] }, env)
+  await saveDb(
+    { settings: [], users: [], storages: [], shares: [] },
+    env,
+    { force: true },
+  )
   const got = await resolveCdnUrl(
     { ASSET_URLS: "https://cdn.example.com/@pkg@$version/dist" },
     LOCAL_HTML,
@@ -192,7 +196,11 @@ test("cdnAssetRedirect: 非静态目录 / 未配置 CDN 时不重定向", async 
 })
 
 test("cdnAssetRedirect: $version 无本地 HTML 时按 env 解析", async () => {
-  await saveDb({ settings: [], users: [], storages: [], shares: [] }, env)
+  await saveDb(
+    { settings: [], users: [], storages: [], shares: [] },
+    env,
+    { force: true },
+  )
   const got = await cdnAssetRedirect(
     { ASSET_URLS: "https://cdn.example.com/@pkg@$version/dist" },
     "/assets/x.js",

@@ -2,7 +2,7 @@ import { Hono } from "hono"
 import { getDb } from "../internal/model/db"
 
 /**
- * 品牌资源路由。
+ * 品牌资源 + CDN 静态资源路由。
  *
  * 背景：老前端（含 logo.svg / logo.png / favicon 静态文件）已移除，前端统一
  * 由官方 OpenList-Frontend 产物提供，但官方产物不包含 /logo.png、/favicon.png
@@ -273,4 +273,15 @@ export async function getIndexHtmlWithCdn(
 
   // C. 降级：不注入
   return localHtml
+}
+
+for (const folder of CDN_REDIRECT_FOLDERS) {
+  assetsRouter.get(`/${folder}/*`, async (c, next) => {
+    const location = await cdnAssetRedirect(
+      c.env,
+      c.req.path + new URL(c.req.url).search,
+    )
+    if (location) return c.redirect(location, 302)
+    return next()
+  })
 }

@@ -1,11 +1,18 @@
-import { encrypt, decrypt } from "../../pkg/crypto"
+import {
+  __resetCipherKeyCacheForTest,
+  cipherPrefix,
+  createFieldCipher,
+  detectCipherPrefix,
+  isSealedCiphertext,
+  type FieldCipher,
+} from "../../pkg/crypto"
 import {
   generateSecret,
   readPersistedSecret,
   setJsonEnvCtx,
   writePersistedSecret,
 } from "./store/json"
-import { getStoreBackend } from "./store/backend"
+import { getStoreBackend, readCipher } from "./store/backend"
 
 // 保持外部（middlewares.ts / router.ts / admin.ts）对 getKvBinding / getKvStatus
 // 的既有引用不变，从 json 后端 re-export。
@@ -16,6 +23,23 @@ export {
   writePersistedSecret,
 } from "./store/json"
 export { getStoreStatus } from "./store/backend"
+
+/**
+ * 预览/代理相关的默认设置，对齐 Go internal/bootstrap/data/setting.go：
+ *   - text_types：Go 的默认值为「一大串文本扩展名」，这里取 Go 与 TSWorker 既有
+ *     默认值的**并集**（保留 TS 的 python/typescript/bash/css/log 等别名写法），
+ *     因为 /p 端点会用该列表判断文本类预览（含字幕 lrc/srt/ass/vtt）能否走代理；
+ *   - proxy_types：Go 默认 `m3u8,url` —— 这类文件内部含相对引用，必须经服务端转发；
+ *   - proxy_ignore_headers：Go 默认 `authorization,referer` —— 转发客户端头时忽略它们。
+ */
+const DEFAULT_TEXT_TYPES =
+  "txt,htm,html,xml,java,properties,sql,js,json,c,cpp,python,py,php,go,rst,css,typescript,ts,log,conf,yaml,yml,cmd,bash,sh,vue,ini,md,bat,gitignore,h,hpp,tsx,vtt,srt,ass,rs,lrc,strm"
+const DEFAULT_PROXY_TYPES = "m3u8,url"
+const DEFAULT_PROXY_IGNORE_HEADERS = "authorization,referer"
+
+/** TSWorker 历史上写入 KV 的 text_types 默认值（用于迁移到并集默认值） */
+const LEGACY_TEXT_TYPES =
+  "txt,htm,html,xml,java,properties,sql,js,json,c,cpp,python,py,php,go,rst,css,typescript,ts,log,conf,yaml,yml,cmd,bash,sh,vue,ini"
 
 // Global default configuration payload for Cloudflare Workers
 export const defaultDb = {
@@ -142,8 +166,7 @@ export const defaultDb = {
     // Group 3: PREVIEW (https://doc.oplist.org/configuration/preview)
     {
       key: "text_types",
-      value:
-        "txt,htm,html,xml,java,properties,sql,js,json,c,cpp,python,py,php,go,rst,css,typescript,ts,log,conf,yaml,yml,cmd,bash,sh,vue,ini",
+      value: DEFAULT_TEXT_TYPES,
       type: "text",
       help: "Text File Extensions",
       group: 3,
@@ -175,7 +198,7 @@ export const defaultDb = {
     },
     {
       key: "proxy_types",
-      value: "",
+      value: DEFAULT_PROXY_TYPES,
       type: "text",
       help: "Proxy File Extensions",
       group: 3,
@@ -183,7 +206,7 @@ export const defaultDb = {
     },
     {
       key: "proxy_ignore_headers",
-      value: "",
+      value: DEFAULT_PROXY_IGNORE_HEADERS,
       type: "text",
       help: "Proxy Ignore Headers",
       group: 3,
@@ -340,7 +363,9 @@ export const defaultDb = {
       key: "link_expiration",
       value: "0",
       type: "number",
-      help: "Link Expiration in Seconds",
+      // 单位与 Go 一致：小时（Go internal/sign 用 time.Duration(expire)*time.Hour，
+      // 官方文档 configuration/global.md 亦为 "in hours"）。0 = 永不过期。
+      help: "Link Expiration in Hours (0 = never expire)",
       group: 4,
       flag: 0,
     },
@@ -362,7 +387,8 @@ export const defaultDb = {
     },
     {
       key: "seed_default_matrix",
-      value: "{\"md5\":{\"whole\":true,\"pieces\":false},\"sha1\":{\"whole\":true,\"pieces\":false},\"sha256\":{\"whole\":true,\"pieces\":false}}",
+      value:
+        '{"md5":{"whole":true,"pieces":false},"sha1":{"whole":true,"pieces":false},"sha256":{"whole":true,"pieces":false}}',
       type: "text",
       help: "Default transfer seed hash matrix",
       group: 4,
@@ -370,7 +396,7 @@ export const defaultDb = {
     },
     {
       key: "seed_format_policies",
-      value: "{\"oss\":\"off\",\"torrent\":\"off\",\"cas\":\"off\"}",
+      value: '{"oss":"off","torrent":"off","cas":"off"}',
       type: "text",
       help: "Automatic transfer seed format policies",
       group: 4,
@@ -804,6 +830,81 @@ let memoryDb: any = null
 let globalEnvCtx: any = null
 
 /**
+ * 数据可信度状态（防止「读失败 → 回退空库 → 落盘覆盖」）。
+ *
+ * - `dbTrusted`: 当前 memoryDb 是否来自一次成功的持久化读取（或已成功写入）。
+ *   为 false 时表示 memoryDb 只是空壳兜底/默认值，绝不能写回存储。
+ * - `dbLastLoadError`: 最近一次读取失败的原因，用于给出可诊断的拦截日志。
+ * - `dbWriteBlocked`: 是否曾拦截过「疑似空数据写回」，供诊断与回归测试使用。
+ */
+let dbTrusted = false
+let dbWriteBlocked = false
+let dbLastLoadError: string | null = null
+
+/** 当前内存库是否可信（可安全写回持久化存储）。 */
+export function isDbTrusted(): boolean {
+  return dbTrusted
+}
+
+/** 最近一次读取持久化存储失败的错误信息（无错误时为 null）。 */
+export function getDbLoadError(): string | null {
+  return dbLastLoadError
+}
+
+/**
+ * 是否曾经拦截过一次「疑似空数据写回」。
+ * 供诊断接口/日志使用，说明写前守卫已生效。
+ */
+export function isDbWriteBlocked(): boolean {
+  return dbWriteBlocked
+}
+
+/**
+ * 判断一份数据是否为「疑似空库/空壳」。
+ *
+ * 判定顺序：
+ *  1) 有任何存储/分享/元数据/插件 → 不是空壳；
+ *  2) 有任一「已设置密码」的用户 → 不是空壳（说明已初始化）；
+ *     注意 defaultDb 自带的 admin/guest 占位用户密码为空，不算数；
+ *  3) 所有设置都等于默认值 → 是空壳。
+ *
+ * 空壳判定用于 saveDb 的写前守卫：读取失败后得到的默认库不会被写回。
+ */
+export function isDbShell(data: any): boolean {
+  if (!data || typeof data !== "object") return true
+
+  const countStorages = Array.isArray(data.storages) ? data.storages.length : 0
+  const countShares = Array.isArray(data.shares) ? data.shares.length : 0
+  const countMetas = Array.isArray(data.metas) ? data.metas.length : 0
+  const countPlugins = Array.isArray(data.plugins) ? data.plugins.length : 0
+
+  if (countStorages + countShares + countMetas + countPlugins > 0) {
+    return false
+  }
+
+  // 注意：不能以「是否存在用户」判断是否为真实库。
+  // defaultDb 自带 admin/guest 两个占位用户（密码为空），所以空壳里也有用户。
+  // 只有当存在「设置了密码的用户」时，才说明这是一份被初始化过的真实库。
+  const users = Array.isArray(data.users) ? data.users : []
+  const hasInitializedUser = users.some(
+    (u: any) => String(u?.password || "").trim() !== "",
+  )
+  if (hasInitializedUser) {
+    return false
+  }
+
+  // 没有任何实体时，只有当设置也全部停留在默认值时，才视作空壳。
+  const settings = Array.isArray(data.settings) ? data.settings : []
+  const defaults = Array.isArray(defaultDb.settings) ? defaultDb.settings : []
+  const defaultMap = new Map(defaults.map((s: any) => [String(s.key), s.value]))
+  return settings.every(
+    (s: any) =>
+      defaultMap.has(String(s.key)) &&
+      defaultMap.get(String(s.key)) === s.value,
+  )
+}
+
+/**
  * 在请求处理开始时注入当前环境的持久化后端上下文。
  * CF Workers 每个实例的模块级 globalEnvCtx 初始为 null，且请求会被负载均衡到
  * 不同实例——若不设置，getDb()/saveDb() 会退回内存模式，导致配置
@@ -835,6 +936,13 @@ const LEGACY_SETTING_MIGRATIONS: Record<string, { from: any[]; to: string }> = {
   home_container: {
     from: ["hope_container"],
     to: "max_980px",
+  },
+  // 对齐 Go 的 text_types 默认值：补上 md / vtt / srt / ass / lrc / strm 等。
+  // 这些扩展名会被 /p 端点用来判断「文本类预览能否走代理」，
+  // 缺了它们会让字幕、歌词、README 在未开 web_proxy 的存储上被 403。
+  text_types: {
+    from: [LEGACY_TEXT_TYPES],
+    to: DEFAULT_TEXT_TYPES,
   },
 }
 
@@ -893,10 +1001,12 @@ const ensureDefaultSettings = (db: any) => {
     }
   }
 
-  if (modified || newSettings.length !== db.settings.length) {
-    db.settings = newSettings
-    saveDb(db).catch(() => {})
-  }
+  // 仅做内存补齐：绝不在这里隐式落盘。
+  //
+  // 历史缺陷：此处曾调用 saveDb(db)，导致「读取失败 → 回退默认库 → 立刻把空壳
+  // 写回存储」，从而覆盖真实配置并让系统反复回到未初始化状态。
+  // 缺失的默认项会在下一次显式写入时随之持久化。
+  db.settings = newSettings
 }
 
 const ensureDefaultStorages = (db: any) => {
@@ -969,6 +1079,85 @@ const DB_CACHE_TTL_MS = 1000
 const dbCache = new WeakMap<object, { ts: number; db: any }>()
 const dbInflight = new WeakMap<object, Promise<any>>()
 
+/**
+ * 存储后端解析入口。默认直接委托给 store/backend 的 getStoreBackend；
+ * 测试可通过 __setStoreBackendLoaderForTest() 注入桩后端，用于统计
+ * load/save 次数，锁定 getDb() 的缓存行为（见 db_cache.test.ts）。
+ */
+let storeBackendLoader: (env: any) => Promise<any> = (env) =>
+  getStoreBackend(env)
+
+/**
+ * 仅供测试：重置模块级缓存与内存快照，保证用例相互隔离。
+ *
+ * 注意：必须把「写前守卫」的状态（dbTrusted / dbLastLoadError / dbWriteBlocked）
+ * 一并复位。它们同样是模块级状态，且 db_write_guard.test.ts 直接断言其取值；
+ * 只清缓存会让「reset 后回到初始态」的假设不成立，用例结果将取决于执行顺序。
+ */
+export const __resetDbCacheForTest = () => {
+  // WeakMap 无法整体清空，但无参调用的缓存键就是 globalEnvCtx 自身
+  // （见 resolveNoArgKey），逐个 delete 即可。
+  if (globalEnvCtx && typeof globalEnvCtx === "object") {
+    dbCache.delete(globalEnvCtx)
+    dbInflight.delete(globalEnvCtx)
+  }
+  globalEnvCtx = null
+  memoryDb = null
+  storeBackendLoader = (env: any) => getStoreBackend(env)
+  // 写前守卫状态复位（否则跨用例串味）
+  dbTrusted = false
+  dbLastLoadError = null
+  dbWriteBlocked = false
+  // 加密相关的缓存与一次性告警复位：
+  // 用例可能先后使用不同密钥/不同 DB_CIPHER，缓存串味会让「首次告警」「换钥后
+  // 可解」这类断言依赖执行顺序。
+  cachedEncryptionKey = null
+  cachedFromEnv = false
+  encryptionKeyWarned = false
+  unsealKeyWarned = false
+  sealKeyMissingWarned = false
+  plaintextMigrationLogged = false
+  // 密钥派生缓存与「未变化字段跳过加密」缓存同样必须复位：
+  // 用例会切换 DB_CIPHER / 密钥，缓存串味会让断言依赖执行顺序。
+  __resetCipherKeyCacheForTest()
+  sealedCache.clear()
+}
+
+/** 仅供测试：注入统计型存储后端。 */
+export const __setStoreBackendLoaderForTest = (
+  loader: (env: any) => Promise<any>,
+) => {
+  storeBackendLoader = loader
+}
+
+/**
+ * 解析无参 getDb() / saveDb() 应使用的缓存键（即请求级 globalEnvCtx）。
+ *
+ * 为什么需要它（这是一次线上性能事故的修复核心）：
+ *
+ * `dbCache` / `dbInflight` 都以调用方传入的 `envCtx` 对象作为键。但仓库里有
+ * 大量内部调用是 **无参** 的（storage.ts 的驱动回调、getSettings/getUsers 等
+ * 五个 getter），它们拿不到 request 级 env。此前 getDb() 对无参调用的处理是：
+ *
+ *     if (!envCtx) return loadDb(envCtx)   // ❌ 直接落盘，两个缓存全部绕过
+ *
+ * 于是「一次无参 getDb()」= 「一次完整的冷加载」：后端全量读 + JSON.parse +
+ * 逐字段 AES 解密 + 5 次 ensureDefault*。而一次 WebDAV PROPFIND 或一次页面加载
+ * 会触发数十次无参 getDb()，于是 KV 被读数十次、D1 被查数十 × N 张表，
+ * 两种后端同时变慢（现象上「cf+kv 和 d1 都慢」）。
+ *
+ * 修复：无参调用回退到 `globalEnvCtx`（由 setEnvCtx / 传参调用写入的请求级
+ * 环境），并以它为键复用同一套缓存。这样同一请求（同一 isolate）内的重复调用
+ * 命中缓存，不再重复落盘与解密。
+ *
+ * 这是一个**纯函数**（不写入任何模块状态）：无参调用的缓存键始终就是
+ * `globalEnvCtx` 本身，saveDb 刷新缓存时用同一个键，天然对称。
+ */
+const resolveNoArgKey = (): object | null => {
+  const ctx = globalEnvCtx
+  return ctx && typeof ctx === "object" ? ctx : null
+}
+
 const loadDb = async (envCtx?: any) => {
   if (envCtx) {
     globalEnvCtx = envCtx
@@ -979,12 +1168,56 @@ const loadDb = async (envCtx?: any) => {
   // 此时必须回退到请求级 globalEnvCtx，否则 readDriver 读不到 DB_DRIVER、
   // getD1 读不到 DB binding，会错误回退到 json 后端读到旧的 KV 数据。
   const activeEnv = envCtx || globalEnvCtx
-  const backend = await getStoreBackend(activeEnv)
+  // 解析器可被测试注入（__setStoreBackendLoaderForTest），故用 let + 可空：
+  // 解析动作必须在 try 内 —— 配置类错误（驱动缺失、驱动 × 格式非法）要与
+  // 读取错误走同一条降级路径，否则它会以「未捕获异常」的形式抛出，
+  // 让 /init/setup 只给前端一个没有原因的裸 500。
+  let backend: Awaited<ReturnType<typeof storeBackendLoader>> | null = null
   try {
+    backend = await storeBackendLoader(activeEnv)
     const persisted = await backend.load(activeEnv)
     if (persisted) {
-      await unsealDb(persisted, await getEncryptionKey(activeEnv))
+      // 只在数据里确实存在密文时才构造解密器（才需要解析密钥）：
+      //   - DB_CIPHER=none（默认）且历史数据全为明文 → 完全不需要密钥，
+      //     省掉一次持久化读取，也不会误报「缺少加密密钥」；
+      //   - 存在 enc:vN: 密文（旧部署 / 曾开启加密）→ 仍按前缀解密，
+      //     因此「关掉加密」不会让既有数据读不出来。
+      const hadSealed = hasSealedValues(persisted)
+      if (
+        hadSealed &&
+        readCipher(activeEnv) === "none" &&
+        !plaintextMigrationLogged
+      ) {
+        plaintextMigrationLogged = true
+        console.log(
+          "[DB] DB_CIPHER=none: existing encrypted values were decrypted; the " +
+            "next save will write them back as PLAINTEXT (per-field migration, " +
+            "no explicit step needed). Set DB_CIPHER to keep them encrypted.",
+        )
+      }
+      const fieldCipher = hadSealed
+        ? await resolveFieldCipher(activeEnv, { needDecrypt: true })
+        : null
+      await unsealDb(persisted, fieldCipher)
       memoryDb = persisted
+      ensureDefaultSettings(memoryDb)
+      ensureDefaultStorages(memoryDb)
+      ensureDefaultShares(memoryDb)
+      ensureDefaultPlugins(memoryDb)
+      ensureDefaultMetas(memoryDb)
+      // 读取成功：内存库与持久化存储一致，允许后续写回。
+      dbTrusted = true
+      dbLastLoadError = null
+      return memoryDb
+    }
+    // 后端读取成功但没有数据：可能是全新部署（首次初始化）。
+    // 但若历史上曾成功读到过数据，则「读到空」极可能是最终一致性/后端切换导致的
+    // 短暂不可见，此时不能把默认库当成事实，更不能让它写回存储。
+    if (dbTrusted && memoryDb) {
+      console.warn(
+        `[DB] Backend ${backend?.name ?? "storage"} returned empty while a trusted snapshot exists; ` +
+          `keeping the in-memory snapshot to avoid overwriting real config.`,
+      )
       ensureDefaultSettings(memoryDb)
       ensureDefaultStorages(memoryDb)
       ensureDefaultShares(memoryDb)
@@ -992,11 +1225,21 @@ const loadDb = async (envCtx?: any) => {
       ensureDefaultMetas(memoryDb)
       return memoryDb
     }
-  } catch (err) {
-    console.error(`[DB] Error reading config from ${backend.name}:`, err)
+    dbTrusted = false
+    dbLastLoadError = null
+  } catch (err: any) {
+    // 读取失败绝不能静默回退到默认库并落盘——这正是「数据库被清空」的根因。
+    console.error(
+      `[DB] Error reading config from ${backend?.name ?? "storage"}:`,
+      err?.message || err,
+    )
+    dbLastLoadError = String(err?.message || err)
+    dbTrusted = false
   }
 
-  if (memoryDb) {
+  // 只有在此前已经成功读取过（同一 isolate 内的可信快照）时，才允许继续使用内存库。
+  // 若从未成功读取过，则返回的只是「不可信空壳」，saveDb 会在落盘前将其拦截。
+  if (memoryDb && dbTrusted) {
     ensureDefaultSettings(memoryDb)
     ensureDefaultStorages(memoryDb)
     ensureDefaultShares(memoryDb)
@@ -1006,6 +1249,7 @@ const loadDb = async (envCtx?: any) => {
   }
 
   // Priority 2: In-Memory DB（模块级，进程内共享；重启即失，仅用于本地调试）
+  // 注意：此分支明确标记为「不可信」，禁止写回持久化存储。
   memoryDb = JSON.parse(JSON.stringify(defaultDb))
   ensureDefaultStorages(memoryDb)
   ensureDefaultShares(memoryDb)
@@ -1018,26 +1262,35 @@ export const getDb = async (envCtx?: any) => {
   if (envCtx) {
     globalEnvCtx = envCtx
   }
-  // envCtx is the cache key — without it there is nothing safe to scope to.
-  if (!envCtx) return loadDb(envCtx)
+
+  // 缓存键解析（性能关键）：
+  //   有参调用 → 直接用 envCtx；
+  //   无参调用 → 回退到请求级 globalEnvCtx，复用同一套缓存。
+  //
+  // 历史缺陷：无参时曾直接 `return loadDb(envCtx)`，绕过下面两个缓存，
+  // 导致每次无参 getDb() 都触发一次完整的后端读取 + 解密，KV 与 D1 同时被
+  // 放大数十倍而变慢。只有当连 globalEnvCtx 都没有（进程刚启动、纯内存调试）
+  // 时才无法缓存，此时退化为直读——不影响数据正确性，仅是性能兜底。
+  const cacheKey = envCtx || resolveNoArgKey()
+  if (!cacheKey) return loadDb(envCtx)
 
   // 1) Concurrent de-duplication: concurrent callers share a single KV read.
-  const pending = dbInflight.get(envCtx)
+  const pending = dbInflight.get(cacheKey)
   if (pending) return pending
 
   // 2) Short-TTL memoization: sequential calls in one request reuse the result.
-  const hit = dbCache.get(envCtx)
+  const hit = dbCache.get(cacheKey)
   if (hit && Date.now() - hit.ts < DB_CACHE_TTL_MS) return hit.db
 
   const promise = loadDb(envCtx)
     .then((db) => {
-      dbCache.set(envCtx, { ts: Date.now(), db })
+      dbCache.set(cacheKey, { ts: Date.now(), db })
       return db
     })
     .finally(() => {
-      dbInflight.delete(envCtx)
+      dbInflight.delete(cacheKey)
     })
-  dbInflight.set(envCtx, promise)
+  dbInflight.set(cacheKey, promise)
   return promise
 }
 
@@ -1054,16 +1307,23 @@ export const getDb = async (envCtx?: any) => {
  * warn-and-continue behavior, so unpersisted deployments are not broken by it.
  */
 // ============================================================
-// 静态加密（At-rest encryption）
+// 静态加密（At-rest encryption）—— 可选，由 DB_CIPHER 控制
+//
 // 修复 H-1：网盘 token/secret/OTP 等敏感字段此前以明文 JSON 落 KV/Blob。
 // 这里在「持久化边界」做字段级加密（落盘前 seal、读盘后 unseal），内存中
 // 始终保持明文，因此 resolvePath / parseAddition / 各驱动 / admin 接口均无需
-// 改动。密钥统一取 JWT_SECRET（签名与加密共用）；未配置时跳过加密，
-// 保持既有部署（无密钥）向后兼容。已存在的明文数据不带前缀，unseal 时原样
-// 返回，不会因升级而丢失。
+// 改动。密钥统一取 JWT_SECRET（签名与加密共用）。
+//
+// 与历史实现的差别：
+//   - **默认不加密**（DB_CIPHER=none）。加密是可选能力，而不是强制行为。
+//   - 算法由 DB_CIPHER 选择，见 pkg/crypto.ts 的 DbCipher：
+//       aes-256-gcm（HKDF，低成本，推荐） / aes-256-gcm-pbkdf2（历史 envelope）
+//       / aes-256-cbc-hmac（Encrypt-then-MAC）
+//   - **解密永远由密文前缀驱动**（`enc:vN:`），与当前配置无关。于是：
+//       关掉加密 → 既有密文仍能解开，并在下次写入时转为明文（自动迁移）；
+//       换算法   → 既有密文按旧算法解开，下次写入按新算法落盘；
+//       明文数据 → 不带前缀，原样返回，升级不丢数据。
 // ============================================================
-const ENCRYPTION_PREFIX = "enc:v1:"
-
 const SENSITIVE_SETTING_KEYS = new Set([
   "token",
   "sso_client_secret",
@@ -1075,6 +1335,12 @@ const SENSITIVE_SETTING_KEYS = new Set([
 ])
 
 let encryptionKeyWarned = false
+/** 一次性告警：数据中存在密文但拿不到密钥（避免每次加载都刷屏） */
+let unsealKeyWarned = false
+/** 一次性告警：配置了 DB_CIPHER 却没有密钥，只能明文落盘 */
+let sealKeyMissingWarned = false
+/** 一次性提示：旧部署的密文在 DB_CIPHER=none 下会被自动迁移为明文 */
+let plaintextMigrationLogged = false
 
 /**
  * 字段加密密钥的持久化键名。
@@ -1102,7 +1368,30 @@ function readEnvEncryptionKey(env: any): string | null {
   const raw =
     env?.JWT_SECRET ||
     (typeof process !== "undefined" ? process.env?.JWT_SECRET : "")
-  return typeof raw === "string" && raw.length >= 16 ? raw : null
+  // 只要求「非空」：长度是运维建议（推荐 32+），不是硬门槛。
+  // 强制长度会带来一个很坏的副作用 —— 用户明明配了 JWT_SECRET，却因为
+  // 不足 16/32 字符被判为「未配置」，于是自动生成逻辑又生成一把新密钥，
+  // 造成「环境变量密钥」与「持久化密钥」并存、加解密分裂。
+  return typeof raw === "string" && raw.trim().length > 0 ? raw : null
+}
+
+/**
+ * JWT_SECRET 的推荐长度（仅用于文案与告警，**不做强制校验**）。
+ *
+ * 为什么是 32：`openssl rand -hex 32` 输出 64 个 hex 字符，但 32 字符已是
+ * 足够强的 HS256 密钥；这里取 32 作为「推荐值」的下界。
+ */
+export const RECOMMENDED_JWT_SECRET_LENGTH = 32
+
+/**
+ * 判断某个密钥是否短于推荐长度（用于**提示**，不用于拒绝）。
+ */
+export function isJwtSecretShort(secret: string | null | undefined): boolean {
+  return (
+    typeof secret === "string" &&
+    secret.length > 0 &&
+    secret.length < RECOMMENDED_JWT_SECRET_LENGTH
+  )
 }
 
 /** 进程内缓存：避免每次 load/save 都读存储 */
@@ -1145,7 +1434,7 @@ async function getEncryptionKey(envCtx?: any): Promise<string | null> {
   // 回退到持久化密钥（仅读取）
   try {
     const persisted = await readPersistedSecret(env, ENCRYPTION_SECRET_KV_KEY)
-    if (persisted && persisted.length >= 16) {
+    if (persisted && persisted.trim().length > 0) {
       cachedEncryptionKey = persisted
       cachedFromEnv = false
       return persisted
@@ -1158,7 +1447,8 @@ async function getEncryptionKey(envCtx?: any): Promise<string | null> {
     encryptionKeyWarned = true
     console.error(
       "[DB] No encryption key available: set JWT_SECRET. " +
-        "Sensitive fields would otherwise be written in plaintext.",
+        "Encrypted fields cannot be decrypted and new sensitive fields will be " +
+        "stored in plaintext until a key becomes available.",
     )
   }
   return null
@@ -1187,14 +1477,19 @@ export async function isEncryptionReady(envCtx?: any): Promise<boolean> {
   // 直查持久化（不走缓存）
   try {
     const persisted = await readPersistedSecret(env, ENCRYPTION_SECRET_KV_KEY)
-    return Boolean(persisted && persisted.length >= 16)
+    return Boolean(persisted && persisted.trim().length > 0)
   } catch {
     return false
   }
 }
 
 /**
- * 初始化阶段确保字段加密密钥存在。只在 setup 流程中调用。
+ * 初始化阶段确保**共享密钥**存在（JWT 签名 + DB_CIPHER 启用时的字段加密）。
+ * 只在 setup 中调用。
+ *
+ * 为什么 DB_CIPHER=none 时同样要生成：这把密钥同时充当 JWT 令牌的签名密钥
+ * （middlewares.ts 的 getJwtSecret 会复用本槽位）。多实例 / 冷启动必须共用同一把，
+ * 否则令牌会随机失效。`none` 只表示「不加密数据库字段」，与密钥是否存在无关。
  *
  * 行为（与 getEncryptionKey 使用完全相同的优先级，避免加解密分裂）：
  *   1. 环境变量已配置 → 直接采用，不写持久化（尊重运维配置）
@@ -1233,7 +1528,9 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-export async function ensureEncryptionSecret(envCtx?: any): Promise<string | null> {
+export async function ensureEncryptionSecret(
+  envCtx?: any,
+): Promise<string | null> {
   // 进程内单飞：并发 setup 只生成一次
   if (ensureSecretInflight) return ensureSecretInflight
 
@@ -1252,7 +1549,7 @@ export async function ensureEncryptionSecret(envCtx?: any): Promise<string | nul
 
     // 2. 已存在则复用（存在性门控，永不覆盖）
     const existing = await readPersistedSecret(env, ENCRYPTION_SECRET_KV_KEY)
-    if (existing && existing.length >= 16) {
+    if (existing && existing.trim().length > 0) {
       cachedEncryptionKey = existing
       cachedFromEnv = false
       return existing
@@ -1260,7 +1557,11 @@ export async function ensureEncryptionSecret(envCtx?: any): Promise<string | nul
 
     // 3. 生成并写入
     const generated = generateSecret()
-    const ok = await writePersistedSecret(env, ENCRYPTION_SECRET_KV_KEY, generated)
+    const ok = await writePersistedSecret(
+      env,
+      ENCRYPTION_SECRET_KV_KEY,
+      generated,
+    )
     if (!ok) {
       console.error(
         "[DB] Failed to persist an encryption key. Sensitive fields will be " +
@@ -1286,7 +1587,7 @@ export async function ensureEncryptionSecret(envCtx?: any): Promise<string | nul
       }
       // 读到的值不是我们写的那把（可能被并发 setup 覆盖）：说明存在竞态，
       // 采用「先写入者优先」——复用已存在的密钥，避免用两把钥匙加解密。
-      if (readBack && readBack.length >= 16 && readBack !== generated) {
+      if (readBack && readBack.trim().length > 0 && readBack !== generated) {
         console.warn(
           "[DB] A different encryption key already exists; adopting it to " +
             "keep encrypt/decrypt symmetric.",
@@ -1318,16 +1619,147 @@ export async function ensureEncryptionSecret(envCtx?: any): Promise<string | nul
   }
 }
 
-async function sealValue(value: string, key: string): Promise<string> {
-  if (!value) return value
-  if (value.startsWith(ENCRYPTION_PREFIX)) return value // idempotent
-  return ENCRYPTION_PREFIX + (await encrypt(value, key))
+/**
+ * 「未变化字段跳过重新加密」缓存（纯性能优化，不参与任何功能语义）。
+ *
+ * ## 为什么需要
+ *
+ * 内存中的库**始终是明文**，而每次 `saveDb`（任何一次配置改动、任何一次 admin
+ * 操作）都会把所有敏感字段重新加密一遍。字段没变时这次加密毫无意义：
+ *
+ *   - 用 `aes-256-gcm` 时每字段约 30 µs（WebCrypto 调用开销）；
+ *   - 用 `aes-256-gcm-pbkdf2` 时每字段约 27 ms（PBKDF2 10 万次）—— 这才是真痛；
+ *   - 用 `des/3des-cbc-hmac` 时每字段约 0.3 ms（纯 JS）。
+ *
+ * load 时我们恰好知道「密文 ↔ 明文」的对应关系，把它记下来，save 时若明文未变、
+ * 且算法与密钥都未变，就直接复用原密文，跳过整个密码学运算。
+ *
+ * ## 为什么是安全的（无功能风险）
+ *
+ * 1. **三重校验**后才复用：`明文相同` + `算法/密钥指纹相同` + `密文算法 == 当前写入算法`。
+ *    任一不满足都走正常加密路径 —— 因此「换算法」「关加密」「轮换密钥」「改值」
+ *    的行为与不做该优化时**完全一致**（含自动迁移）。
+ * 2. 复用只发生在**同一明文、同一密钥、同一算法**下，不会造成 nonce/IV 与
+ *    不同明文复用（这是 AEAD 唯一需要避免的禁忌）。
+ * 3. 缓存只在进程内、键为字段身份（`users:1:password`），容量有上限；
+ *    对同一字段写入不同值时条目会被覆盖，不会读到过期值。
+ */
+interface SealedCacheEntry {
+  plain: string
+  sealed: string
+  /** 生成该密文时的 fieldCipher 指纹（算法 + 密钥） */
+  fp: string
+  /** 生成该密文的算法（必须等于当前写入算法才允许复用） */
+  cipher: string
 }
 
-async function unsealValue(value: string, key: string): Promise<string> {
-  if (!value || !value.startsWith(ENCRYPTION_PREFIX)) return value
+const SEALED_CACHE_LIMIT = 4096
+const sealedCache = new Map<string, SealedCacheEntry>()
+
+function rememberSealed(
+  identity: string,
+  plain: string,
+  sealed: string,
+  fp: string,
+  cipher: string,
+): void {
+  if (sealedCache.size >= SEALED_CACHE_LIMIT) {
+    const oldest = sealedCache.keys().next().value
+    if (oldest !== undefined) sealedCache.delete(oldest)
+  }
+  sealedCache.set(identity, { plain, sealed, fp, cipher })
+}
+
+function recallSealed(
+  identity: string,
+  plain: string,
+  fp: string,
+  cipher: string,
+): string | null {
+  const hit = sealedCache.get(identity)
+  if (!hit) return null
+  if (hit.fp !== fp) return null // 算法或密钥变了 → 必须重新加密
+  if (hit.cipher !== cipher) return null // 密文算法 ≠ 当前写入算法 → 需要迁移
+  if (hit.plain !== plain) return null // 值变了 → 必须重新加密
+  return hit.sealed
+}
+
+/**
+ * 加密单个字段（`seal`）。
+ *
+ * - 未启用加密（fieldCipher 为 null）或未取到密钥：原样返回明文。
+ * - 已有任意版本前缀：视为已加密（幂等），避免重复加密 —— 双重加密会在下次读取
+ *   时只解开一层、仍然呈现密文，表现为「密码看起来还是乱码」的诡异故障。
+ * - 明文未变且算法/密钥未变：复用上次的密文，跳过密码学运算（见 sealedCache）。
+ */
+async function sealValue(
+  value: string,
+  fieldCipher: FieldCipher | null,
+  identity: string,
+): Promise<string> {
+  if (!value || !fieldCipher || fieldCipher.cipher === "none") return value
+  if (isSealedCiphertext(value)) return value // idempotent
+
+  const reused = recallSealed(
+    identity,
+    value,
+    fieldCipher.fingerprint,
+    fieldCipher.cipher,
+  )
+  if (reused) return reused
+
+  const sealed =
+    cipherPrefix(fieldCipher.cipher) + (await fieldCipher.encrypt(value))
+  rememberSealed(
+    identity,
+    value,
+    sealed,
+    fieldCipher.fingerprint,
+    fieldCipher.cipher,
+  )
+  return sealed
+}
+
+/**
+ * 解密单个字段（`unseal`）。
+ *
+ * 算法由**密文前缀**决定，而不是当前 DB_CIPHER —— 这保证了「换算法 / 关加密」
+ * 不会让既有密文无法读取。无前缀（明文）直接返回。
+ */
+async function unsealValue(
+  value: string,
+  fieldCipher: FieldCipher | null,
+  identity: string,
+): Promise<string> {
+  if (!value || !isSealedCiphertext(value)) return value
+  if (!fieldCipher) {
+    // 有密文但拿不到密钥：保持原值，绝不丢数据，但必须显式告警 ——
+    // 否则表现为「密码/凭据看起来是乱码」而无任何线索。
+    if (!unsealKeyWarned) {
+      unsealKeyWarned = true
+      console.error(
+        "[DB] Sealed values found in storage but no encryption key is " +
+          "available; they will be left as-is (set JWT_SECRET, or restore the " +
+          "original openlist_encryption_secret).",
+      )
+    }
+    return value
+  }
+  const hit = detectCipherPrefix(value)
   try {
-    return await decrypt(value.slice(ENCRYPTION_PREFIX.length), key)
+    const plain = await fieldCipher.decrypt(value)
+    // 只有「密文算法 == 当前写入算法」时才记账：否则一旦复用就等于阻止了
+    // 「读到 v1 → 保存为 v2」这类自动迁移（那是必须发生的）。
+    if (hit && hit.cipher === fieldCipher.cipher) {
+      rememberSealed(
+        identity,
+        plain,
+        value,
+        fieldCipher.fingerprint,
+        hit.cipher,
+      )
+    }
+    return plain
   } catch (e) {
     console.warn(
       "[DB] Failed to decrypt a sealed secret (wrong JWT_SECRET?):",
@@ -1337,100 +1769,292 @@ async function unsealValue(value: string, key: string): Promise<string> {
   }
 }
 
-async function sealDb(data: any, key: string | null): Promise<any> {
-  if (!key || !data) return data
-  const copy = JSON.parse(JSON.stringify(data))
-  
-  // 1. 加密存储配置中的 addition 字段（网盘凭据）
-  for (const s of copy.storages || []) {
-    if (!s || !s.addition) continue
-    const str =
-      typeof s.addition === "string" ? s.addition : JSON.stringify(s.addition)
-    if (str && str !== "{}") {
-      s.addition = await sealValue(str, key)
-    }
-  }
-  
-  // 2. 加密敏感的系统设置
-  for (const st of copy.settings || []) {
-    if (st && SENSITIVE_SETTING_KEYS.has(st.key) && st.value) {
-      st.value = await sealValue(String(st.value), key)
-    }
-  }
-  
-  // 3. 加密用户敏感信息
-  for (const u of copy.users || []) {
-    // OTP 密钥
-    if (u && u.otp_secret) {
-      u.otp_secret = await sealValue(String(u.otp_secret), key)
-    }
-    // 密码二次加密（defense-in-depth，即使已哈希也加密存储）
-    if (u && u.password) {
-      u.password = await sealValue(String(u.password), key)
-    }
-  }
-  
-  return copy
-}
-
-async function unsealDb(data: any, key: string | null): Promise<void> {
-  if (!key || !data) return
-  
-  // 1. 解密存储配置
+/**
+ * 数据中是否存在本模块产生的密文（任意版本）。
+ *
+ * 用途：`DB_CIPHER=none` 且数据全为明文时，加载路径**完全不需要**解析密钥 ——
+ * 既能避免一次额外的持久化读取，也避免误报「缺少加密密钥」。
+ */
+function hasSealedValues(data: any): boolean {
+  if (!data) return false
   for (const s of data.storages || []) {
-    if (
-      s &&
-      typeof s.addition === "string" &&
-      s.addition.startsWith(ENCRYPTION_PREFIX)
-    ) {
-      s.addition = await unsealValue(s.addition, key)
-    }
+    if (s && detectCipherPrefix(s.addition)) return true
   }
-  
-  // 2. 解密系统设置
   for (const st of data.settings || []) {
     if (
       st &&
       SENSITIVE_SETTING_KEYS.has(st.key) &&
-      typeof st.value === "string" &&
-      st.value.startsWith(ENCRYPTION_PREFIX)
+      detectCipherPrefix(st.value)
     ) {
-      st.value = await unsealValue(st.value, key)
+      return true
     }
   }
-  
-  // 3. 解密用户信息
   for (const u of data.users || []) {
-    // OTP 密钥
     if (
       u &&
-      typeof u.otp_secret === "string" &&
-      u.otp_secret.startsWith(ENCRYPTION_PREFIX)
+      (detectCipherPrefix(u.otp_secret) || detectCipherPrefix(u.password))
     ) {
-      u.otp_secret = await unsealValue(u.otp_secret, key)
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * 依据 `DB_CIPHER` 与共享密钥构造字段加解密器（一次 save / load 复用一个实例）。
+ *
+ * @param opts.needDecrypt 读取路径专用：即使当前 `DB_CIPHER=none`，只要数据里存在
+ *        历史密文（`enc:vN:`）就仍然需要密钥去解开它 —— 这正是「关掉加密后旧数据
+ *        依旧可读、并在下次保存时自动转为明文」所依赖的分支。
+ *        此时返回的对象写入算法是 `none`（seal 侧本就不会调用它）。
+ * @returns null 表示「不需要加密/解密」或「需要但拿不到密钥」。后者由调用方告警。
+ */
+async function resolveFieldCipher(
+  env: any,
+  opts?: { needDecrypt?: boolean },
+): Promise<FieldCipher | null> {
+  const cipher = readCipher(env)
+  if (cipher === "none" && !opts?.needDecrypt) return null
+  const secret = await getEncryptionKey(env)
+  if (!secret) return null
+  return createFieldCipher(cipher, secret)
+}
+
+async function sealDb(
+  data: any,
+  fieldCipher: FieldCipher | null,
+): Promise<any> {
+  // 未启用加密：原样落盘（不做无意义的复制）
+  if (!fieldCipher || fieldCipher.cipher === "none" || !data) return data
+
+  // ── 写时复制（copy-on-write）而不是整库 JSON 深拷贝 ──
+  //
+  // 历史实现每次落盘前都 `JSON.parse(JSON.stringify(data))`：把**整个配置**
+  // （含大量与敏感字段无关的数据）序列化再反序列化一遍，大配置下是纯开销。
+  // 这里只在「某个字段确实被修改」时才复制它所属的数组/实体；同时用展开运算符
+  // 保持键顺序，落盘结果与深拷贝版本逐字节一致。
+  //
+  // 密钥派生由 fieldCipher 内部完成并缓存（见 crypto.ts 的 cachedDerive），
+  // 每个字段仍然各自使用独立随机 IV。
+  let storagesOut: any[] | undefined
+  let settingsOut: any[] | undefined
+  let usersOut: any[] | undefined
+
+  // 1. 存储配置中的 addition 字段（网盘凭据）
+  const srcStorages: any[] = Array.isArray(data.storages) ? data.storages : []
+  for (let i = 0; i < srcStorages.length; i++) {
+    const s = srcStorages[i]
+    if (!s || !s.addition) continue
+    const str =
+      typeof s.addition === "string" ? s.addition : JSON.stringify(s.addition)
+    if (!str || str === "{}") continue
+    const sealed = await sealValue(
+      str,
+      fieldCipher,
+      `storages:${s.id ?? i}:addition`,
+    )
+    if (sealed === s.addition) continue
+    if (!storagesOut) storagesOut = srcStorages.slice()
+    storagesOut![i] = { ...s, addition: sealed }
+  }
+
+  // 2. 敏感的系统设置
+  const srcSettings: any[] = Array.isArray(data.settings) ? data.settings : []
+  for (let i = 0; i < srcSettings.length; i++) {
+    const st = srcSettings[i]
+    if (!st || !SENSITIVE_SETTING_KEYS.has(st.key) || !st.value) continue
+    const sealed = await sealValue(
+      String(st.value),
+      fieldCipher,
+      `settings:${st.key}:value`,
+    )
+    if (sealed === st.value) continue
+    if (!settingsOut) settingsOut = srcSettings.slice()
+    settingsOut![i] = { ...st, value: sealed }
+  }
+
+  // 3. 用户敏感信息（OTP 密钥 / 密码）
+  const srcUsers: any[] = Array.isArray(data.users) ? data.users : []
+  for (let i = 0; i < srcUsers.length; i++) {
+    const u = srcUsers[i]
+    if (!u) continue
+    let next = u
+    // OTP 密钥
+    if (u.otp_secret) {
+      const sealed = await sealValue(
+        String(u.otp_secret),
+        fieldCipher,
+        `users:${u.id ?? i}:otp_secret`,
+      )
+      if (sealed !== u.otp_secret) next = { ...next, otp_secret: sealed }
+    }
+    // 密码二次加密（defense-in-depth，即使已哈希也加密存储）
+    if (u.password) {
+      const sealed = await sealValue(
+        String(u.password),
+        fieldCipher,
+        `users:${u.id ?? i}:password`,
+      )
+      if (sealed !== u.password) next = { ...next, password: sealed }
+    }
+    if (next !== u) {
+      if (!usersOut) usersOut = srcUsers.slice()
+      usersOut![i] = next
+    }
+  }
+
+  // 没有任何字段被修改：直接复用原对象（与深拷贝版本落盘结果一致）
+  if (!storagesOut && !settingsOut && !usersOut) return data
+
+  const out: any = { ...data }
+  if (storagesOut) out.storages = storagesOut
+  if (settingsOut) out.settings = settingsOut
+  if (usersOut) out.users = usersOut
+  return out
+}
+
+/**
+ * 解密并发上限。
+ *
+ * v2/v3 密文只需一次快速密钥派生；旧 v1 密文仍需 PBKDF2（10 万次迭代），并在
+ * 下次保存时自动迁移。限制并发可避免旧数据字段很多时产生 CPU/内存峰值。
+ */
+const UNSEAL_CONCURRENCY = 16
+
+async function unsealDb(
+  data: any,
+  fieldCipher: FieldCipher | null,
+): Promise<void> {
+  if (!fieldCipher || !data) return
+
+  // 并行解密（带并发上限）：
+  //
+  // 原先三类字段（storage/setting/user）各自串行 await，旧 v1 字段一多就是
+  // 「N 次 PBKDF2（10 万次迭代）」叠加，且该函数在一次请求内会被调用多次
+  // （历史缺陷下更是数十次），是加载变慢的主要贡献之一。
+  //
+  // 这里先**同步收集 thunk**（不在收集阶段就把解密全部发起），再按
+  // UNSEAL_CONCURRENCY 分批 await：既拿到并行带来的墙钟收益，又避免字段极多
+  // （如数千用户）时一次性并发过多造成 CPU/内存峰值。
+  //
+  // 密钥派生（v2 的 HKDF）由 fieldCipher 内部缓存，本次加载只发生一次。
+  const tasks: Array<() => Promise<void>> = []
+
+  // 1. 解密存储配置（算法由密文前缀决定，与当前 DB_CIPHER 无关）
+  const srcStorages: any[] = Array.isArray(data.storages) ? data.storages : []
+  for (let i = 0; i < srcStorages.length; i++) {
+    const s = srcStorages[i]
+    if (s && typeof s.addition === "string" && isSealedCiphertext(s.addition)) {
+      const target = s
+      const sealedValue = target.addition
+      const identity = `storages:${s.id ?? i}:addition`
+      tasks.push(async () => {
+        target.addition = await unsealValue(sealedValue, fieldCipher, identity)
+      })
+    }
+  }
+
+  // 2. 解密系统设置
+  const srcSettings: any[] = Array.isArray(data.settings) ? data.settings : []
+  for (let i = 0; i < srcSettings.length; i++) {
+    const st = srcSettings[i]
+    if (
+      st &&
+      SENSITIVE_SETTING_KEYS.has(st.key) &&
+      typeof st.value === "string" &&
+      isSealedCiphertext(st.value)
+    ) {
+      const target = st
+      const sealedValue = target.value
+      const identity = `settings:${st.key}:value`
+      tasks.push(async () => {
+        target.value = await unsealValue(sealedValue, fieldCipher, identity)
+      })
+    }
+  }
+
+  // 3. 解密用户信息（OTP 密钥 / 密码）
+  const srcUsers: any[] = Array.isArray(data.users) ? data.users : []
+  for (let i = 0; i < srcUsers.length; i++) {
+    const u = srcUsers[i]
+    if (!u) continue
+    // OTP 密钥
+    if (typeof u.otp_secret === "string" && isSealedCiphertext(u.otp_secret)) {
+      const target = u
+      const sealedValue = target.otp_secret
+      const identity = `users:${u.id ?? i}:otp_secret`
+      tasks.push(async () => {
+        target.otp_secret = await unsealValue(sealedValue, fieldCipher, identity)
+      })
     }
     // 密码解密
-    if (
-      u &&
-      typeof u.password === "string" &&
-      u.password.startsWith(ENCRYPTION_PREFIX)
-    ) {
-      u.password = await unsealValue(u.password, key)
+    if (typeof u.password === "string" && isSealedCiphertext(u.password)) {
+      const target = u
+      const sealedValue = target.password
+      const identity = `users:${u.id ?? i}:password`
+      tasks.push(async () => {
+        target.password = await unsealValue(sealedValue, fieldCipher, identity)
+      })
     }
+  }
+
+  for (let i = 0; i < tasks.length; i += UNSEAL_CONCURRENCY) {
+    await Promise.all(tasks.slice(i, i + UNSEAL_CONCURRENCY).map((run) => run()))
   }
 }
 
-export const saveDb = async (data: any, envCtx?: any): Promise<boolean> => {
+export const saveDb = async (
+  data: any,
+  envCtx?: any,
+  options?: { force?: boolean },
+): Promise<boolean> => {
   if (envCtx) {
     globalEnvCtx = envCtx
   }
-  memoryDb = data
-  // Refresh the request cache so any getDb() later in this request observes
-  // the write rather than a pre-write snapshot.
-  if (envCtx) dbCache.set(envCtx, { ts: Date.now(), db: data })
 
   const activeEnv = envCtx || globalEnvCtx
-  const backend = await getStoreBackend(activeEnv)
+
+  // ============ 写前守卫：永远不得以「空数据」覆盖持久化配置 ============
+  //
+  // 历史缺陷链路：读取失败被吞掉 → 回退到默认（空）库 → 后续任意写操作把它
+  // 落盘，真实配置被空壳覆盖，系统随后被判为「未初始化」，用户看到的就是
+  // 「数据库被清空」。
+  //
+  // 核心不变量（务必长期保持）：
+  //   **默认拒绝写入空壳。** 空壳 = 没有任何存储/分享/元数据/插件，没有设置
+  //   密码的用户，且所有设置都还是默认值。无论当前是否「可信」，只要 payload
+  //   是空壳，就必须显式 force 才允许落盘。
+  //
+  // 这样即使某条调用链在读取失败后拿到默认库，也无法把它写回存储。
+  // 唯一的例外是调用方明确知情（首次初始化、管理员主动重置）并传入 force。
+  const shell = isDbShell(data)
+  if (shell && !options?.force) {
+    dbWriteBlocked = true
+    const reason = dbLastLoadError
+      ? `last load failed: ${dbLastLoadError}`
+      : dbTrusted
+        ? "payload is an empty/shell database"
+        : "database was never successfully loaded from the persistence backend"
+    console.error(
+      `[DB] saveDb BLOCKED: refusing to persist an empty/shell database (${reason}). ` +
+        `This guard prevents an empty payload from wiping real config. ` +
+        `Pass saveDb(db, env, { force: true }) to override intentionally.`,
+    )
+    return false
+  }
+
+  memoryDb = data
+  dbWriteBlocked = false
+  // Refresh the request cache so any getDb() later in this request observes
+  // the write rather than a pre-write snapshot.
+  // 无参调用会以 globalEnvCtx 为键命中缓存，因此这里也同步刷新该键，
+  // 否则「写后读」在无参路径上可能读到 TTL 内的旧快照。
+  const cacheKey = envCtx || resolveNoArgKey()
+  if (cacheKey) dbCache.set(cacheKey, { ts: Date.now(), db: data })
+
+  // `activeEnv` 已在本函数开头解析（写前守卫也依赖它），这里只需通过可注入的
+  // storeBackendLoader 取后端，便于测试统计 load/save 次数。
+  const backend = await storeBackendLoader(activeEnv)
   const configured = backend.isConfigured
     ? await backend.isConfigured(activeEnv)
     : true
@@ -1444,11 +2068,22 @@ export const saveDb = async (data: any, envCtx?: any): Promise<boolean> => {
   }
 
   try {
-    // 落盘前对敏感字段做静态加密（H-1），内存中的 data 保持明文
+    // 落盘前对敏感字段做静态加密（可选，见 DB_CIPHER），内存中的 data 保持明文。
+    // cipher=none（默认）时直接按明文落盘，不解析密钥（也不需要密钥）。
+    const cipher = readCipher(activeEnv)
     console.log(
-      `[DB] saveDb: sealing and persisting to ${backend.name}, storages=${data.storages?.length || 0}`,
+      `[DB] saveDb: cipher=${cipher}, persisting to ${backend.name}, storages=${data.storages?.length || 0}`,
     )
-    const sealed = await sealDb(data, await getEncryptionKey(activeEnv))
+    const fieldCipher = cipher === "none" ? null : await resolveFieldCipher(activeEnv)
+    if (cipher !== "none" && !fieldCipher && !sealKeyMissingWarned) {
+      // 只在首次告警：密钥缺失会持续到密钥可用为止，逐次写入都打印只会刷屏。
+      sealKeyMissingWarned = true
+      console.error(
+        `[DB] DB_CIPHER=${cipher} but no encryption key is available; ` +
+          "sensitive fields will be stored in PLAINTEXT. Set JWT_SECRET.",
+      )
+    }
+    const sealed = await sealDb(data, fieldCipher)
     console.log(
       `[DB] saveDb: sealed data size=${JSON.stringify(sealed).length} bytes`,
     )
@@ -1466,6 +2101,11 @@ export const saveDb = async (data: any, envCtx?: any): Promise<boolean> => {
   console.log(
     `[DB] Successfully persisted ${data.storages?.length || 0} storages to ${backend.name}`,
   )
+
+  // 写入成功 = 存储中的内容与内存库一致，因此内存库现在可视为可信；
+  // 这样同一 isolate 后续的写入不会被守卫误拦。
+  dbTrusted = true
+  dbLastLoadError = null
   return true
 }
 
@@ -1480,7 +2120,7 @@ export async function resolvePath(virtualPath: string, envCtx?: any) {
   } catch {
     // 解码失败，使用原始值
   }
-  
+
   // 2. 多重解码检测（防止双重编码绕过）
   let prevPath = ""
   let decodeAttempts = 0
@@ -1495,28 +2135,30 @@ export async function resolvePath(virtualPath: string, envCtx?: any) {
       break
     }
   }
-  
+
   // 3. 规范化路径分隔符和特殊字符
   path = path
-    .replace(/\\/g, "/")              // 反斜杠 -> 正斜杠
-    .replace(/%5c/gi, "/")            // URL 编码的反斜杠
-    .replace(/%2f/gi, "/")            // URL 编码的正斜杠
-    .replace(/\.{3,}/g, "..")         // 多个点规范化为 ..
-    .replace(/\/+/g, "/")             // 多个斜杠合并为一个
-  
+    .replace(/\\/g, "/") // 反斜杠 -> 正斜杠
+    .replace(/%5c/gi, "/") // URL 编码的反斜杠
+    .replace(/%2f/gi, "/") // URL 编码的正斜杠
+    .replace(/\.{3,}/g, "..") // 多个点规范化为 ..
+    .replace(/\/+/g, "/") // 多个斜杠合并为一个
+
   // 4. 检测非法字符
   const illegalChars = ["\0", "\r", "\n", "\t"]
   for (const ch of illegalChars) {
     if (path.includes(ch)) {
-      throw new Error(`invalid path: illegal character detected (0x${ch.charCodeAt(0).toString(16)})`)
+      throw new Error(
+        `invalid path: illegal character detected (0x${ch.charCodeAt(0).toString(16)})`,
+      )
     }
   }
-  
+
   // 5. Windows 绝对路径检测
   if (/^[A-Za-z]:/.test(path)) {
     throw new Error("invalid path: absolute Windows path not allowed")
   }
-  
+
   // 6. UNC 路径检测
   if (path.startsWith("//") || path.startsWith("\\\\")) {
     throw new Error("invalid path: UNC path not allowed")

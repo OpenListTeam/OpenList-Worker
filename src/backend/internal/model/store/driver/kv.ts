@@ -54,12 +54,18 @@ function getKvBinding(env?: any): any | null {
  *     形成循环依赖；
  *  2. 打包产物中不能依赖源码相对路径的动态 import。
  *
- * 因此 KV 代理模式要求显式配置 JWT_SECRET（>=16 字符）。
+ * 因此 KV 代理模式要求显式配置 JWT_SECRET（推荐 32+ 字符，不强制长度）。
  */
 function getProxySecret(env?: EnvContext): string | null {
   try {
     const s = env?.JWT_SECRET
-    return typeof s === "string" && s.length >= 16 ? s : null
+    // 只要求「非空」，不再强制 >=16：
+    //   - 强制长度会把用户合法设置的短密钥判成「未配置」，进而报一个
+    //     看起来无关的 NO_STORAGE / PROXY_CONFIG 错误，误导排查方向；
+    //   - 密钥强度是**运维建议**（推荐 32+ / openssl rand -hex 32），
+    //     不是程序可以替他决定的门槛。此处与 db.ts:readEnvEncryptionKey
+    //     的策略保持一致，避免同一变量在不同路径下长度要求不同。
+    return typeof s === "string" && s.trim().length > 0 ? s : null
   } catch {
     return null
   }
@@ -70,7 +76,7 @@ function getProxySecret(env?: EnvContext): string | null {
  *
  * Triggered when all of the following hold:
  *  1. The current env has no KV binding, so the HTTP proxy must be used.
- *  2. No JWT_SECRET (>= 16 chars) is configured, so the proxy cannot be
+ *  2. No JWT_SECRET is configured at all, so the proxy cannot be
  *     authenticated.
  *
  * The combination "no binding + proxy required" only occurs on EdgeOne Node
@@ -89,14 +95,13 @@ export function checkProxyConfig(env?: any): string | null {
   }
 
   return (
-    "KV proxy mode requires the JWT_SECRET " +
-    "environment variable with at least 16 characters.\n" +
+    "KV proxy mode requires the JWT_SECRET environment variable to be set.\n" +
     "Reason: EdgeOne Node Functions cannot access KV directly and must go " +
     "through an Edge Function proxy, whose authentication depends on this " +
     "secret.\n" +
     "Add it under Environment Variables in the EdgeOne project settings, for " +
     "example:\n" +
-    "  JWT_SECRET=<random string of 32+ characters>\n" +
+    "  JWT_SECRET=<random string, 32+ characters recommended>\n" +
     "Generate one with: openssl rand -hex 32"
   )
 }
@@ -159,7 +164,8 @@ function getProxyBaseUrl(env?: EnvContext): string {
  * 判定：HTTP 200 表示代理与 KV 均可用；401 表示代理可达但鉴权失败，
  * 属于「代理部署存在但密钥不对」。
  *
- * 注意两个调用方对 401 的取舍不同，故这里只返回原始探测结果：
+ * 注意两个调用方对 401 的取舍不同，故这里只返回原始探测结果，
+ * 由 probeToAvailability() / probeToHealth() 分别映射（见其注释）：
  *   - isAvailable() 把 401 视为可用（代理已部署，驱动可被选中）
  *   - health() 把 401 视为不可用（鉴权失败，持久化不可依赖）
  */
@@ -192,6 +198,31 @@ async function probeProxy(
   } catch (err: any) {
     return { ok: false, status: 0, error: err?.message || String(err) }
   }
+}
+
+/**
+ * 把「原始探测结果」映射为**可用性**（`isAvailable` 的语义）。
+ *
+ * 401 视为可用：代理已部署，只是密钥不匹配 —— 此时应让 kv 被选中，
+ * 再由 `health()` 报出不健康。若这里判为不可用，`auto` 会悄悄换用别的后端，
+ * 而用户明明配了 KV 代理，只会更困惑。
+ */
+function probeToAvailability(probe: { ok: boolean; status: number }): boolean {
+  return probe.ok || probe.status === 401
+}
+
+/**
+ * 把「原始探测结果」映射为**健康状态**（`health()` 的语义）。
+ *
+ * 401 视为不健康：对依赖持久化的接口而言，鉴权失败就是不能读写，
+ * `/env_check` 不应把它判成 ready。
+ *
+ * 两者对 401 的取舍**不同且是有意为之**。抽成具名函数是为了让这个差异
+ * 在调用点显式可见，而不是散落在 `!probe.ok && probe.status !== 401`
+ * 这类字面表达式里（那需要读者反推语义）。
+ */
+function probeToHealth(probe: { ok: boolean }): boolean {
+  return probe.ok
 }
 
 /**
@@ -228,7 +259,7 @@ export const kvDriver: Driver = {
 
     // 模式2: HTTP 代理（EdgeOne Node Functions 拿不到 binding）
     const probe = await probeProxy(env)
-    if (!probe.ok && probe.status !== 401) {
+    if (!probeToAvailability(probe)) {
       if (probe.error) console.error("[DB] KV proxy unavailable: " + probe.error)
       return false
     }
@@ -447,11 +478,12 @@ export const kvDriver: Driver = {
     
     // 模式2: HTTP 代理模式。
     //
-    // 判定比 isAvailable 更严格：健康状态必须真正可读写，401 表示鉴权
-    // 失败（代理在但密钥不对），对依赖持久化的接口而言应报不可用，
-    // 而不是被 /env_check 判定为 ready。共用 probeProxy 仅复用探测动作。
+    // 判定比 isAvailable 更严格（见 probeToHealth / probeToAvailability 的注释）：
+    // 健康状态必须真正可读写，401 表示鉴权失败（代理在但密钥不对），对依赖
+    // 持久化的接口而言应报不可用，而不是被 /env_check 判定为 ready。
+    // 共用 probeProxy 仅复用探测动作，语义映射分别具名。
     const probe = await probeProxy(env)
-    if (!probe.ok) {
+    if (!probeToHealth(probe)) {
       return {
         driver: "kv",
         mode: "proxy",
