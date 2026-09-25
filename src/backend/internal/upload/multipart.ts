@@ -88,7 +88,14 @@ function intervalsOf(set: Set<number>): [number, number][] {
 
 export function snapshot(s: MultipartSession): MultipartSnapshot {
   const intervals = intervalsOf(s.received)
-  const receivedBytes = s.received.size * s.chunk_size
+  // received_bytes 必须按每个分片的实际字节数累加：末分片在 size 不整除
+  // chunk_size 时更小，直接用 received.size * chunk_size 会超算
+  //（例如 15MB 文件、10MB 分片：2 片全收后应为 15MB 而非 20MB）。
+  let receivedBytes = 0
+  for (const idx of s.received) {
+    const offset = idx * s.chunk_size
+    receivedBytes += Math.max(0, Math.min(s.chunk_size, s.size - offset))
+  }
   // frontier：连续已收的最大 index + 1（驱动顺序写入进度）
   let frontier = 0
   for (let i = 0; i < s.total_chunks; i++) {

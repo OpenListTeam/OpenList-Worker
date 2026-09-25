@@ -6,16 +6,60 @@ export interface RangeParams {
   chunksize: number
 }
 
-// Parses the standard Range header
+/**
+ * 解析标准 Range header（RFC 7233）。
+ * 支持 `bytes=start-end` / `bytes=start-` / `bytes=-suffix`（末尾 N 字节）；
+ * end 超出文件大小时按规范收敛到 fileSize-1。
+ * 非法 / 多段 / 不可满足的 Range 返回 null，调用方应回退为全量 200 响应。
+ *
+ * 此前的实现对 `bytes=-N`（部分播放器拖动进度条时发送）会解析出 start=NaN，
+ * 直接传给 fs.createReadStream 会同步抛 ERR_OUT_OF_RANGE 导致下载 500。
+ */
 export function parseRangeHeader(
   rangeHeader: string,
   fileSize: number,
-): RangeParams {
-  const parts = rangeHeader.replace(/bytes=/, "").split("-")
-  const start = parseInt(parts[0], 10)
-  const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1
-  const chunksize = end - start + 1
-  return { start, end, chunksize }
+): RangeParams | null {
+  if (!rangeHeader || !Number.isFinite(fileSize) || fileSize <= 0) {
+    return null
+  }
+
+  const match = rangeHeader.trim().match(/^bytes=(\d*)-(\d*)$/)
+  if (!match) {
+    return null
+  }
+
+  let start: number
+  let end: number
+
+  if (match[1] === "" && match[2] === "") {
+    // "bytes=-" 无法确定任何区间
+    return null
+  }
+
+  if (match[1] === "") {
+    // 后缀形式 "bytes=-N"：取文件末尾 N 字节
+    const suffix = parseInt(match[2], 10)
+    if (isNaN(suffix) || suffix <= 0) {
+      return null
+    }
+    start = Math.max(0, fileSize - suffix)
+    end = fileSize - 1
+  } else {
+    start = parseInt(match[1], 10)
+    end = match[2] === "" ? fileSize - 1 : parseInt(match[2], 10)
+    if (isNaN(start) || isNaN(end)) {
+      return null
+    }
+    if (end >= fileSize) {
+      end = fileSize - 1 // 按规范收敛，而不是返回错误切片
+    }
+  }
+
+  if (start >= fileSize || start > end) {
+    return null
+  }
+
+  return { start, end, chunksize: end - start + 1 }
 }
 
 let fs: any = null
