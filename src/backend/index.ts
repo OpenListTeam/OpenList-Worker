@@ -4,17 +4,77 @@ import { rawRouter } from "./server/raw"
 import { assetsRouter } from "./server/assets"
 import { webdavRouter } from "./server/webdav"
 import { s3Router } from "./server/s3"
-import { setEnvCtx } from "./internal/model/db"
+import { getDb, isDbTrusted, setEnvCtx } from "./internal/model/db"
 import { getStoreConfigErrorDetail } from "./internal/model/store/backend"
 import { storageErrorSummary, uiStorageError } from "./server/storage-error"
 
 const app = new Hono()
 
+export const EDGEONE_SPA_ROUTE = "/__openlist_spa__"
+
+const CUSTOMIZE_HEAD_ANCHOR = "<!-- customize head -->"
+const CUSTOMIZE_BODY_ANCHOR = "<!-- customize body -->"
+const CUSTOMIZE_ANCHOR_PATTERN =
+  /<!--\s*(?:customize head|customize body)\s*-->/gi
+
+export function applyCustomizeToHtml(html: string, settings: unknown): string {
+  const values = new Map<string, string>()
+  if (Array.isArray(settings)) {
+    for (const item of settings) {
+      if (!item || typeof item !== "object") continue
+      const setting = item as { key?: unknown; value?: unknown }
+      if (typeof setting.key === "string") {
+        values.set(setting.key, String(setting.value ?? ""))
+      }
+    }
+  }
+  const customize = (key: string) =>
+    (values.get(key) ?? "").replace(CUSTOMIZE_ANCHOR_PATTERN, "")
+  return html
+    .replace(CUSTOMIZE_HEAD_ANCHOR, () => customize("customize_head"))
+    .replace(CUSTOMIZE_BODY_ANCHOR, () => customize("customize_body"))
+}
+
+async function renderSpaHtml(
+  c: { env: any; req: { method: string } },
+  html: string,
+  status = 200,
+  sourceHeaders?: Headers,
+): Promise<Response> {
+  let body = html
+  try {
+    const db = await getDb(c.env)
+    if (isDbTrusted(db)) {
+      body = applyCustomizeToHtml(html, db.settings)
+    }
+  } catch {}
+  const headers = new Headers(sourceHeaders)
+  for (const name of [
+    "etag",
+    "content-encoding",
+    "content-length",
+    "last-modified",
+  ]) {
+    headers.delete(name)
+  }
+  headers.set("Content-Type", "text/html; charset=utf-8")
+  headers.set("Cache-Control", "no-cache, must-revalidate")
+  return new Response(c.req.method === "HEAD" ? null : body, {
+    status,
+    headers,
+  })
+}
+
 /**
  * 静态资源 / SPA 壳路径：这些请求不应被存储配置错误拦截，
  * 否则前端连提示页面都加载不出来。
  */
-function isStaticOrShell(pathname: string, accept: string, method: string): boolean {
+function isStaticOrShell(
+  pathname: string,
+  accept: string,
+  method: string,
+): boolean {
+  if (pathname === EDGEONE_SPA_ROUTE) return true
   // 带扩展名的静态文件
   if (/\.[a-zA-Z0-9]+$/.test(pathname)) return true
   // 浏览器导航请求（HTML）由 SPA 壳承载
@@ -182,6 +242,7 @@ export function setSpaFallbackHtml(html: string) {
 
 app.all("*", async (c) => {
   const env = c.env as any
+  const accept = c.req.header("accept") || ""
   if (env && env.ASSETS && typeof env.ASSETS.fetch === "function") {
     const url = new URL(c.req.url)
     const res = await env.ASSETS.fetch(c.req.raw)
@@ -189,26 +250,36 @@ app.all("*", async (c) => {
       // 修复「部署新版本后生产环境仍是旧界面」：index.html 若不设缓存头，
       // 会被 Cloudflare 边缘/浏览器长期缓存，导致旧 HTML 引用旧 hash 的 JS/CSS。
       // 只对 HTML 入口 no-cache（JS/CSS 带 hash 可安全长期缓存）。
-      if (url.pathname === "/" || url.pathname === "/index.html") {
-        const headers = new Headers(res.headers)
-        headers.set("Cache-Control", "no-cache, must-revalidate")
-        return new Response(res.body, { status: res.status, headers })
+      const contentType = res.headers.get("content-type") || ""
+      const isHtmlResponse =
+        accept.includes("text/html") && contentType.includes("text/html")
+      if (
+        url.pathname === "/" ||
+        url.pathname === "/index.html" ||
+        isHtmlResponse
+      ) {
+        return renderSpaHtml(c, await res.text(), res.status, res.headers)
       }
       return res
     }
     // SPA fallback: return index.html for non-asset routes (e.g. /login, /manage)
     // 注意：ASSETS.fetch 对 /index.html 也可能返回 307，直接 fetch "/" 获取实际 HTML
     const rootReq = new Request(`${url.origin}/`, c.req.raw)
-    return env.ASSETS.fetch(rootReq)
+    const rootRes = await env.ASSETS.fetch(rootReq)
+    if (rootRes.status >= 200 && rootRes.status < 300) {
+      return renderSpaHtml(
+        c,
+        await rootRes.text(),
+        rootRes.status,
+        rootRes.headers,
+      )
+    }
+    return rootRes
   }
   // EdgeOne 等 ASSETS 缺席的环境：直接返回构建期内联的 SPA 壳，
   // 避免前端路由（/add、/@manage/* 等）落到 404 文本导致整站不可达
   if (spaFallbackHtml && (c.req.method === "GET" || c.req.method === "HEAD")) {
-    return c.body(spaFallbackHtml, 200, {
-      "Content-Type": "text/html; charset=utf-8",
-      // HTML 入口必须 no-cache，否则新版本部署后旧 HTML 仍引用旧 hash 的 JS/CSS
-      "Cache-Control": "no-cache, must-revalidate",
-    })
+    return renderSpaHtml(c, spaFallbackHtml)
   }
   return c.text("404 Not Found", 404)
 })

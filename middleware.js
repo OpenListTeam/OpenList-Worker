@@ -4,8 +4,8 @@
 // 请求（包括 /add、/@manage/* 等前端路由），而 Node 函数内没有 ASSETS 绑定，
 // Hono 兜底只能返回 404 —— 这就是「访问 /add 404 后整站打不开」的原因。
 // 此中间件在边缘层先行拦截：浏览器导航请求（Accept: text/html）且不属于
-// 后端路径时，透明改写为 /index.html，由静态 CDN 直接返回页面壳；
-// /api、/d、/p、/sd、/health 等后端路径照常放行到云函数。
+// 后端路径时，透明改写到动态 SPA 路由，由云函数读取设置并返回页面壳；
+// /api、/d、/p、/sd、/dav、/s3、/kv-* 等后端路径照常放行。
 //
 // 注意：EdgeOne 的 middleware 属于轻量中间件，context 仅提供
 // request / next / redirect / rewrite / geo / clientIp，**没有 env**，
@@ -17,14 +17,18 @@ export function middleware(context) {
   const accept = request.headers.get("accept") || ""
 
   const isBackend =
-    pathname === "/health" || /^\/(api|d|p|sd|kv-get|kv-put|kv-delete|kv-list)(\/|$)/.test(pathname)
+    pathname === "/health" ||
+    pathname === "/__openlist_spa__" ||
+    /^\/(api|d|p|sd|dav|s3|kv-get|kv-put|kv-delete|kv-list)(\/|$)/.test(
+      pathname,
+    )
 
   if (
     !isBackend &&
     (request.method === "GET" || request.method === "HEAD") &&
     accept.includes("text/html")
   ) {
-    return rewrite("/index.html")
+    return rewrite("/__openlist_spa__")
   }
 
   return next()
