@@ -1,20 +1,58 @@
 import assert from "node:assert/strict"
-import { test } from "node:test"
+import { test as nodeTest } from "node:test"
 import { Hono } from "hono"
-import { getDb, saveDb } from "../internal/model/db"
 import {
-  getOrInitUsers,
-  verifyUserPassword,
-  hashPasswordSHA256,
-} from "./auth"
+  getDb,
+  saveDb,
+  __resetDbCacheForTest,
+  __setStoreBackendLoaderForTest,
+} from "../internal/model/db"
+import { getOrInitUsers, verifyUserPassword, hashPasswordSHA256 } from "./auth"
 import { isHex64 } from "../pkg/password"
 import { userRouter } from "./user"
 
 const env: any = {}
 const ADMIN_TOKEN = "ADMIN_STATIC_TOKEN"
 
-const seed = (users: any[], settings: any[] = []) =>
-  saveDb({ settings, users, storages: [], shares: [] }, env)
+const run = async (fn: () => Promise<void>) => {
+  const originalAdminPass = process.env.ADMIN_PASS
+  try {
+    __resetDbCacheForTest()
+    delete process.env.ADMIN_PASS
+    let stored: any = null
+    __setStoreBackendLoaderForTest(async () => ({
+      name: "test",
+      isConfigured: async () => true,
+      load: async () => (stored ? JSON.parse(JSON.stringify(stored)) : null),
+      save: async (next: any) => {
+        stored = JSON.parse(JSON.stringify(next))
+        return true
+      },
+    }))
+    await fn()
+  } finally {
+    __resetDbCacheForTest()
+    if (originalAdminPass === undefined) {
+      delete process.env.ADMIN_PASS
+    } else {
+      process.env.ADMIN_PASS = originalAdminPass
+    }
+  }
+}
+
+const test = (name: string, fn: () => Promise<void>) =>
+  nodeTest(name, { concurrency: false }, () => run(fn))
+
+const seed = async (
+  users: any[],
+  settings: any[] = [],
+  options?: { force?: boolean },
+) => {
+  assert.equal(
+    await saveDb({ settings, users, storages: [], shares: [] }, env, options),
+    true,
+  )
+}
 
 const adminUser = (password: string) => ({
   id: 1,
@@ -26,15 +64,15 @@ const adminUser = (password: string) => ({
   disabled: false,
 })
 
-const currentAdmin = async () => {
-  const db: any = await getDb(env)
+const currentAdmin = async (envCtx = env) => {
+  const db: any = await getDb(envCtx)
   return db.users.find((u: any) => u.username === "admin")
 }
 
 test("Initialization: a fresh deployment stays uninitialized without ADMIN_PASS", async () => {
   // 隔离 CI/宿主机环境变量，避免影响“未初始化”断言
   delete process.env.ADMIN_PASS
-  await seed([])
+  await seed([], [], { force: true })
   await getOrInitUsers(env)
   const admin = await currentAdmin()
   assert.equal(
@@ -66,7 +104,7 @@ test("Security(F-11): a legacy-format hash is left untouched (no silent reset on
 
 test("Initialization: an empty admin password stays empty (uninitialized), not a random one", async () => {
   delete process.env.ADMIN_PASS
-  await seed([adminUser("")])
+  await seed([adminUser("")], [], { force: true })
   await getOrInitUsers(env)
   const admin = await currentAdmin()
   assert.equal(
@@ -80,7 +118,7 @@ test("Security(F-11): ADMIN_PASS still forces an explicit reset (to salted doubl
   await seed([adminUser("pbkdf2:100000:somesalt:deadbeef")])
   const envWithPass: any = { ...env, ADMIN_PASS: "operator-chosen" }
   await getOrInitUsers(envWithPass)
-  const admin = await currentAdmin()
+  const admin = await currentAdmin(envWithPass)
   assert.ok(isHex64(admin.password), "reset must store a 64-hex SHA-256 value")
   assert.ok(admin.salt, "reset must assign a per-user salt (Go two-step hash)")
   assert.equal(
