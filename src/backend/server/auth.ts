@@ -42,7 +42,10 @@ const LOGIN_MAX_FAILURES = 5
 const LOGIN_MAX_FAILURES_GLOBAL = 20
 const LOGIN_LOCK_MS = 15 * 60 * 1000
 const LOGIN_MAX_LOCK_MS = 24 * 60 * 60 * 1000 // 最长锁定 24 小时
-const loginFailures = new Map<string, { count: number; lockedUntil: number; attempts: number }>()
+const loginFailures = new Map<
+  string,
+  { count: number; lockedUntil: number; attempts: number }
+>()
 
 function clientIpOf(c: Context): string {
   return (
@@ -78,11 +81,11 @@ function calculateLockDuration(attempts: number): number {
 async function bumpLoginFailure(
   key: string,
   maxFailures: number,
-  env: any
+  env: any,
 ): Promise<void> {
   const now = Date.now()
   let rec = loginFailures.get(key) || { count: 0, lockedUntil: 0, attempts: 0 }
-  
+
   // 尝试从 KV 读取（多实例共享）
   try {
     const { getKvBinding } = await import("../internal/model/db")
@@ -109,23 +112,23 @@ async function bumpLoginFailure(
   } catch {
     // KV 不可用，回退到内存模式
   }
-  
+
   if (rec.lockedUntil > now) return // already locked
-  
+
   rec.count += 1
   rec.attempts += 1
-  
+
   if (rec.count >= maxFailures) {
     const lockDuration = calculateLockDuration(rec.attempts)
     rec.lockedUntil = now + lockDuration
     rec.count = 0
     console.warn(
-      `[Auth] Login attempts exceeded for ${key}. Locked for ${Math.round(lockDuration / 60000)} minutes (attempt #${rec.attempts}).`
+      `[Auth] Login attempts exceeded for ${key}. Locked for ${Math.round(lockDuration / 60000)} minutes (attempt #${rec.attempts}).`,
     )
   }
-  
+
   loginFailures.set(key, rec)
-  
+
   // 持久化到 KV
   try {
     const { getKvBinding } = await import("../internal/model/db")
@@ -144,7 +147,11 @@ async function bumpLoginFailure(
   }
 }
 
-async function isLoginLocked(c: Context, username: string, env: any): Promise<boolean> {
+async function isLoginLocked(
+  c: Context,
+  username: string,
+  env: any,
+): Promise<boolean> {
   // 懒清理：Map 过大时清掉已过锁定期/无锁定的条目，防止无限增长
   if (loginFailures.size > 10000) {
     const now = Date.now()
@@ -152,15 +159,15 @@ async function isLoginLocked(c: Context, username: string, env: any): Promise<bo
       if (v.lockedUntil < now && v.count === 0) loginFailures.delete(k)
     }
   }
-  
+
   const now = Date.now()
   const ipKey = loginKey(c, username)
   const globalKey = globalLoginKey(username)
-  
+
   // 检查内存缓存
   let rec = loginFailures.get(ipKey)
   let grec = loginFailures.get(globalKey)
-  
+
   // 尝试从 KV 读取（多实例共享）
   try {
     const { getKvBinding } = await import("../internal/model/db")
@@ -193,24 +200,36 @@ async function isLoginLocked(c: Context, username: string, env: any): Promise<bo
   } catch {
     // KV 不可用，使用内存数据
   }
-  
+
   if (rec && rec.lockedUntil > now) return true
   if (grec && grec.lockedUntil > now) return true
   return false
 }
 
-async function recordLoginFailure(c: Context, username: string, env: any): Promise<void> {
+async function recordLoginFailure(
+  c: Context,
+  username: string,
+  env: any,
+): Promise<void> {
   await bumpLoginFailure(loginKey(c, username), LOGIN_MAX_FAILURES, env)
-  await bumpLoginFailure(globalLoginKey(username), LOGIN_MAX_FAILURES_GLOBAL, env)
+  await bumpLoginFailure(
+    globalLoginKey(username),
+    LOGIN_MAX_FAILURES_GLOBAL,
+    env,
+  )
 }
 
-async function clearLoginFailures(c: Context, username: string, env: any): Promise<void> {
+async function clearLoginFailures(
+  c: Context,
+  username: string,
+  env: any,
+): Promise<void> {
   const ipKey = loginKey(c, username)
   const globalKey = globalLoginKey(username)
-  
+
   loginFailures.delete(ipKey)
   loginFailures.delete(globalKey)
-  
+
   // 从 KV 中删除
   try {
     const { getKvBinding } = await import("../internal/model/db")
@@ -230,7 +249,9 @@ async function clearLoginFailures(c: Context, username: string, env: any): Promi
 
 // OpenList/AList StaticHash —— 前端 /login/hash 提交的哈希算法。
 // 与新密码模块 pkg/password.staticHash 一致，保留旧名以兼容既有调用。
-export async function hashPasswordSHA256(plainPassword: string): Promise<string> {
+export async function hashPasswordSHA256(
+  plainPassword: string,
+): Promise<string> {
   return staticHash(plainPassword)
 }
 
@@ -245,8 +266,12 @@ export async function verifyUserStaticHash(
   user: any,
   inputStatic: string,
 ): Promise<boolean> {
-  const stored = String(user?.password || "").trim().toLowerCase()
-  const input = String(inputStatic || "").trim().toLowerCase()
+  const stored = String(user?.password || "")
+    .trim()
+    .toLowerCase()
+  const input = String(inputStatic || "")
+    .trim()
+    .toLowerCase()
   if (!stored || !isHex64(input) || !isHex64(stored)) return false
   if (user?.salt) {
     const expect = (await saltedHash(input, String(user.salt))).toLowerCase()
@@ -483,7 +508,7 @@ authRouter.post("/login", async (c) => {
         )
       }
       await clearLoginFailures(c, username, c.env)
-      
+
       // 生成 JWT Token
       const payload = {
         id: matchedUser.id,
@@ -494,14 +519,14 @@ authRouter.post("/login", async (c) => {
       }
       const secret = await getJwtSecret(c)
       const token = await sign(payload, secret)
-      
+
       // 生成 CSRF Token
       const csrfToken = setCSRFToken(c)
-      
+
       // 记录审计日志
       const auditLogger = getAuditLogger()
       await auditLogger.logLoginSuccess(c, username)
-      
+
       return c.json({
         code: 200,
         message: "success",
@@ -513,7 +538,7 @@ authRouter.post("/login", async (c) => {
   // 登录失败 - 记录审计日志
   const auditLogger = getAuditLogger()
   await auditLogger.logLoginFailure(c, username, "Invalid credentials")
-  
+
   await recordLoginFailure(c, username, c.env)
   return c.json({ code: 401, message: "Invalid credentials", data: null }, 401)
 })
@@ -566,7 +591,7 @@ authRouter.post("/login/hash", async (c) => {
         )
       }
       await clearLoginFailures(c, username, c.env)
-      
+
       // 生成 JWT Token
       const payload = {
         id: matchedUser.id,
@@ -577,14 +602,14 @@ authRouter.post("/login/hash", async (c) => {
       }
       const secret = await getJwtSecret(c)
       const token = await sign(payload, secret)
-      
+
       // 生成 CSRF Token
       const csrfToken = setCSRFToken(c)
-      
+
       // 记录审计日志
       const auditLogger = getAuditLogger()
       await auditLogger.logLoginSuccess(c, username)
-      
+
       return c.json({
         code: 200,
         message: "success",
@@ -596,7 +621,7 @@ authRouter.post("/login/hash", async (c) => {
   // 登录失败 - 记录审计日志
   const auditLogger = getAuditLogger()
   await auditLogger.logLoginFailure(c, username, "Invalid credentials")
-  
+
   await recordLoginFailure(c, username, c.env)
   return c.json({ code: 401, message: "Invalid credentials", data: null }, 401)
 })
@@ -683,14 +708,14 @@ export const logoutHandler = async (c: any) => {
       // token 无效则无需注销
     }
   }
-  
+
   // 清除 CSRF Token
   clearCSRFToken(c)
-  
+
   // 记录审计日志
   const auditLogger = getAuditLogger()
   await auditLogger.logLogout(c)
-  
+
   return c.json({
     code: 200,
     message: "success",
@@ -733,10 +758,11 @@ authRouter.post("/2fa/generate", async (c) => {
   }
   const secret = generateTotpSecret()
   const otpauth = buildOtpauthUrl(secret, user.username)
+  const qr = await buildQrImageUrl(otpauth)
   return c.json({
     code: 200,
     message: "success",
-    data: { qr: buildQrImageUrl(otpauth), secret },
+    data: { qr, secret },
   })
 })
 
