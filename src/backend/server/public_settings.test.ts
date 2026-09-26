@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import { Hono } from "hono"
-import { saveDb } from "../internal/model/db"
+import { getDb, saveDb } from "../internal/model/db"
 import { publicRouter } from "./public"
 
 const env: any = {}
@@ -99,4 +99,47 @@ test("Security(F-14): keys the frontend actually reads are still echoed", async 
   assert.equal(json.data.share_icon, "/icon.png")
   assert.equal(json.data.ldap_login_tips, "use your corp account")
   assert.equal(json.data.sso_login_platform, "github")
+})
+
+const assertShareTemplateUsable = (tpl: string) => {
+  assert.notEqual(
+    tpl.trim(),
+    "",
+    "share_summary_content must not be empty — the share page's copy button " +
+      "renders this template and writeText('') silently clears the clipboard",
+  )
+  assert.ok(
+    tpl.includes("{{base_url}}/@s/{{id}}"),
+    `share template must render a share link, got: ${tpl}`,
+  )
+}
+
+test("share copy link: an empty persisted share_summary_content is migrated", async () => {
+  // 模拟线上已部署实例：空串已经落盘，之后通过 loadDb() 读取（该路径会执行
+  // ensureDefaultSettings 的 LEGACY_SETTING_MIGRATIONS 迁移）。
+  // 直接 saveDb() 的结果会写进 dbCache，短 TTL 内 getDb() 不会走 loadDb，
+  // 所以这里先落盘、等缓存过期，再验证迁移后的对外表现。
+  const env: any = {
+    DB_DRIVER: "auto",
+    DB_FORMAT: "map",
+    JWT_SECRET: "test-secret-for-share-summary",
+    ENCRYPTION_SECRET: "test-secret-for-share-summary",
+  }
+  await saveDb(
+    { settings: [{ key: "share_summary_content", value: "" }], users: [], storages: [], shares: [] },
+    env,
+    { force: true },
+  )
+  await new Promise((r) => setTimeout(r, 1100))
+  const db = await getDb(env)
+  const tpl = String(
+    db.settings.find((s: any) => s.key === "share_summary_content")?.value || "",
+  )
+  assertShareTemplateUsable(tpl)
+})
+
+test("share copy link: a missing share_summary_content falls back to default", async () => {
+  await seed([])
+  const json = await fetchSettings()
+  assertShareTemplateUsable(String(json.data.share_summary_content || ""))
 })

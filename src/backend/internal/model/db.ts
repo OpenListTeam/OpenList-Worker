@@ -41,6 +41,16 @@ const DEFAULT_PROXY_IGNORE_HEADERS = "authorization,referer"
 const LEGACY_TEXT_TYPES =
   "txt,htm,html,xml,java,properties,sql,js,json,c,cpp,python,py,php,go,rst,css,typescript,ts,log,conf,yaml,yml,cmd,bash,sh,vue,ini"
 
+/**
+ * 分享摘要默认模板，与上游 Go 后端 internal/bootstrap/data/setting.go 的
+ * ShareSummaryContent 保持一致（flag=PUBLIC，随 /api/public/settings 下发）。
+ *
+ * 前端「复制链接」= matchTemplate(getSetting("share_summary_content"), data)：
+ * 模板为空时结果就是空串，`writeText("")` 会清空剪贴板，于是按钮弹出「已复制」
+ * 但剪贴板里什么都没有——分享页/分享管理页的复制链接因此完全不可用。
+ */
+const DEFAULT_SHARE_SUMMARY_CONTENT = `@{{creator}} shared {{#each files}}{{#if @first}}"{{filename this}}"{{/if}}{{#if @last}}{{#unless (eq @index 0)}} and {{@index}} more files{{/unless}}{{/if}}{{/each}} from {{site_title}}: {{base_url}}/@s/{{id}}{{#if pwd}} , the share code is {{pwd}}{{/if}}{{#if expires}}, please access before {{dateLocaleString expires}}.{{/if}}`
+
 // Global default configuration payload for Cloudflare Workers
 export const defaultDb = {
   settings: [
@@ -509,7 +519,7 @@ export const defaultDb = {
     },
     {
       key: "share_summary_content",
-      value: "",
+      value: DEFAULT_SHARE_SUMMARY_CONTENT,
       type: "text",
       help: "Share Summary Content",
       group: 4,
@@ -943,6 +953,12 @@ const LEGACY_SETTING_MIGRATIONS: Record<string, { from: any[]; to: string }> = {
   text_types: {
     from: [LEGACY_TEXT_TYPES],
     to: DEFAULT_TEXT_TYPES,
+  },
+  // 早期 seed 把分享摘要模板初始化成了空串，已写入 KV 的空值会让
+  // 「复制链接」复制出空内容（writeText("") 直接清空剪贴板）。
+  share_summary_content: {
+    from: [""],
+    to: DEFAULT_SHARE_SUMMARY_CONTENT,
   },
 }
 
