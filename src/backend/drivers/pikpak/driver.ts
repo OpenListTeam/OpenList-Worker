@@ -257,12 +257,24 @@ export class PikPakDriver implements StorageDriver {
     physicalPath: string,
     names: string[],
   ): Promise<void> {
-    const parentId = await this.resolveParentId(physicalPath)
+    // physicalPath 是目标项自身的物理路径，而 resolveParentId 解析的是路径
+    // 自身的 id；拿它列子项再按 name 查找，命中的其实是 <item>/<name>，
+    // 找不到时静默跳过，对象仍然存在。
+    const expand = names && names.length > 1
+    const clean = this.cleanPath(physicalPath)
+    const targets = expand
+      ? names.map((n) => (clean ? `${clean}/${n}` : `/${n}`))
+      : [clean]
+    // 父目录：展开时 physicalPath 即公共父目录，否则取目标项的父目录
+    const parentPath = expand
+      ? clean
+      : clean.split("/").slice(0, -1).join("/")
+    const parentId = await this.resolveParentId(parentPath)
     const files = await this.getFiles(parentId)
     const ids: string[] = []
 
-    for (const name of names) {
-      const match = files.find((f) => f.name === name)
+    for (const target of targets) {
+      const match = files.find((f) => f.name === (target.split("/").pop() || ""))
       if (match) {
         ids.push(match.id)
       }
@@ -280,9 +292,8 @@ export class PikPakDriver implements StorageDriver {
       },
     )
 
-    const clean = this.cleanPath(physicalPath)
-    for (const name of names) {
-      this.idCache.delete(clean ? `${clean}/${name}` : `/${name}`)
+    for (const target of targets) {
+      this.idCache.delete(target)
     }
   }
 
@@ -293,13 +304,31 @@ export class PikPakDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const srcParentId = await this.resolveParentId(srcPhys)
-    const dstParentId = await this.resolveParentId(dstPhys)
+    // srcPhys/dstPhys 是源/目标项自身的物理路径（已含 name），
+    // 直接当父目录解析会指到项本身：源侧会去 <srcItem> 的子项里找 name（永远落空），
+    // 目标侧解析一个尚不存在的目标项必然报错。
+    const expand = names && names.length > 1
+    const srcClean = this.cleanPath(srcPhys)
+    const dstClean = this.cleanPath(dstPhys)
+    const targets = expand
+      ? names.map((n) => (srcClean ? `${srcClean}/${n}` : `/${n}`))
+      : [srcClean]
+    const srcParentPath = expand
+      ? srcClean
+      : srcClean.split("/").slice(0, -1).join("/")
+    const dstParentPath = expand
+      ? dstClean
+      : dstClean.split("/").slice(0, -1).join("/")
+
+    const srcParentId = await this.resolveParentId(srcParentPath)
+    const dstParentId = await this.resolveParentId(dstParentPath)
     const srcFiles = await this.getFiles(srcParentId)
     const ids: string[] = []
 
-    for (const name of names) {
-      const match = srcFiles.find((f) => f.name === name)
+    for (const target of targets) {
+      const match = srcFiles.find(
+        (f) => f.name === (target.split("/").pop() || ""),
+      )
       if (match) {
         ids.push(match.id)
       }
@@ -320,9 +349,8 @@ export class PikPakDriver implements StorageDriver {
       },
     )
 
-    const srcClean = this.cleanPath(srcPhys)
-    for (const name of names) {
-      this.idCache.delete(srcClean ? `${srcClean}/${name}` : `/${name}`)
+    for (const target of targets) {
+      this.idCache.delete(target)
     }
   }
 
@@ -333,13 +361,29 @@ export class PikPakDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const srcParentId = await this.resolveParentId(srcPhys)
-    const dstParentId = await this.resolveParentId(dstPhys)
+    // 与 move 同理：源/目标项自身路径先去掉末段得到父目录再解析 id。
+    const expand = names && names.length > 1
+    const srcClean = this.cleanPath(srcPhys)
+    const dstClean = this.cleanPath(dstPhys)
+    const targets = expand
+      ? names.map((n) => (srcClean ? `${srcClean}/${n}` : `/${n}`))
+      : [srcClean]
+    const srcParentPath = expand
+      ? srcClean
+      : srcClean.split("/").slice(0, -1).join("/")
+    const dstParentPath = expand
+      ? dstClean
+      : dstClean.split("/").slice(0, -1).join("/")
+
+    const srcParentId = await this.resolveParentId(srcParentPath)
+    const dstParentId = await this.resolveParentId(dstParentPath)
     const srcFiles = await this.getFiles(srcParentId)
     const ids: string[] = []
 
-    for (const name of names) {
-      const match = srcFiles.find((f) => f.name === name)
+    for (const target of targets) {
+      const match = srcFiles.find(
+        (f) => f.name === (target.split("/").pop() || ""),
+      )
       if (match) {
         ids.push(match.id)
       }

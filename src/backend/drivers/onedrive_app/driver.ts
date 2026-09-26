@@ -161,10 +161,17 @@ export class OnedriveAPP implements StorageDriver {
     physicalPath: string,
     names: string[],
   ): Promise<void> {
-    for (const name of names) {
-      const itemPath =
-        physicalPath === "/" ? `/${name}` : `${physicalPath}/${name}`
-      const url = getMetaUrl(this, false, itemPath)
+    // physicalPath 是目标项自身的物理路径（op/storage.ts 逐项调用），
+    // 再拼一次 name 会指向 <item>/<name>，DELETE 404 导致对象仍然存在。
+    const expand = names && names.length > 1
+    const targets = expand
+      ? names.map((n) =>
+          physicalPath === "/" ? `/${n}` : `${physicalPath}/${n}`,
+        )
+      : [physicalPath]
+
+    for (const targetPath of targets) {
+      const url = getMetaUrl(this, false, targetPath)
       await requestApi(this, url, "DELETE")
     }
   }
@@ -176,21 +183,39 @@ export class OnedriveAPP implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const dstUrl = getMetaUrl(this, false, dstPhys)
+    // srcPhys/dstPhys 是源/目标项自身的物理路径（已含 name）：
+    // 目标父目录需去掉末段（直接 GET dstPhys 拿到的是目标项本身，通常还不存在），
+    // 目标名字以 dstPhys 末段为准，源项路径则直接使用 srcPhys。
+    const expand = names && names.length > 1
+    const dstParentPath = expand
+      ? dstPhys
+      : dstPhys.split("/").slice(0, -1).join("/") || "/"
+    const dstUrl = getMetaUrl(this, false, dstParentPath)
     const dstRes = await requestApi<any>(this, dstUrl, "GET")
     const dstId = dstRes.id
     const driveId = dstRes.parentReference?.driveId
 
-    for (const name of names) {
-      const srcItemPath = srcPhys === "/" ? `/${name}` : `${srcPhys}/${name}`
+    const targets = expand
+      ? names.map((n) => ({
+          srcPath: srcPhys === "/" ? `/${n}` : `${srcPhys}/${n}`,
+          name: n,
+        }))
+      : [
+          {
+            srcPath: srcPhys,
+            name: dstPhys.split("/").filter(Boolean).pop() || "",
+          },
+        ]
+
+    for (const target of targets) {
       const data = {
         parentReference: {
           id: dstId,
           ...(driveId ? { driveId } : {}),
         },
-        name,
+        name: target.name,
       }
-      const url = getMetaUrl(this, false, srcItemPath)
+      const url = getMetaUrl(this, false, target.srcPath)
       await requestApi(this, url, "PATCH", data)
     }
   }
@@ -202,21 +227,38 @@ export class OnedriveAPP implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const dstUrl = getMetaUrl(this, false, dstPhys)
+    // 与 move 同理：目标父目录 = dstPhys 去掉末段，目标名字取 dstPhys 末段，
+    // 源项路径直接使用 srcPhys，不再重复拼接 name。
+    const expand = names && names.length > 1
+    const dstParentPath = expand
+      ? dstPhys
+      : dstPhys.split("/").slice(0, -1).join("/") || "/"
+    const dstUrl = getMetaUrl(this, false, dstParentPath)
     const dstRes = await requestApi<any>(this, dstUrl, "GET")
     const dstId = dstRes.id
     const driveId = dstRes.parentReference?.driveId
 
-    for (const name of names) {
-      const srcItemPath = srcPhys === "/" ? `/${name}` : `${srcPhys}/${name}`
+    const targets = expand
+      ? names.map((n) => ({
+          srcPath: srcPhys === "/" ? `/${n}` : `${srcPhys}/${n}`,
+          name: n,
+        }))
+      : [
+          {
+            srcPath: srcPhys,
+            name: dstPhys.split("/").filter(Boolean).pop() || "",
+          },
+        ]
+
+    for (const target of targets) {
       const data = {
         parentReference: {
           id: dstId,
           ...(driveId ? { driveId } : {}),
         },
-        name,
+        name: target.name,
       }
-      const url = getMetaUrl(this, false, srcItemPath, "copy")
+      const url = getMetaUrl(this, false, target.srcPath, "copy")
       await requestApi(this, url, "POST", data)
     }
   }

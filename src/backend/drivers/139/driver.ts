@@ -204,7 +204,16 @@ export class Yun139Driver implements StorageDriver {
     names: string[],
   ): Promise<void> {
     const clean = this.cleanPath(physicalPath)
-    const catalogId = await this.resolveCatalogId(clean)
+    // physicalPath 是目标项自身的路径（op/storage.ts removeItems 逐项调用），
+    // 而下面要按 name 在目录里查找删除；把项路径当目录解析会走进目标项内部
+    //（目录项尤其明显），相当于找 <item>/<name>，永远落空并静默返回成功。
+    // 仅当 names.length > 1 时才按「目录 + 多个 name」展开（调用方恒传 1 个，
+    // 此分支是防御性的）。
+    const expand = names && names.length > 1
+    const dirPath = expand
+      ? clean
+      : clean.substring(0, clean.lastIndexOf("/")) || "/"
+    const catalogId = await this.resolveCatalogId(dirPath)
     const disk = await this.client.listFiles(catalogId)
 
     for (const name of names) {

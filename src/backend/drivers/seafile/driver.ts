@@ -264,9 +264,16 @@ export class SeafileDriver implements StorageDriver {
     physicalPath: string,
     names: string[],
   ): Promise<void> {
+    // physicalPath 是目标项自身的物理路径（op/storage.ts removeItems 逐项调用），
+    // resolveRepoAndPath 已解析到目标项；再拼 name 会指向 `<item>/<name>`，
+    // DELETE 到不存在的路径，接口成功但文件仍在。
+    const expand = names && names.length > 1
     const { repoId, innerPath } = await this.resolveRepoAndPath(physicalPath)
-    for (const name of names) {
-      const targetPath = innerPath === "/" ? `/${name}` : `${innerPath}/${name}`
+    const targets = expand
+      ? names.map((n) => (innerPath === "/" ? `/${n}` : `${innerPath}/${n}`))
+      : [innerPath]
+
+    for (const targetPath of targets) {
       await this.client.request(
         `/api2/repos/${encodeURIComponent(repoId)}/file/`,
         {
@@ -284,22 +291,34 @@ export class SeafileDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
+    // srcPhys/dstPhys 已是源/目标项自身的物理路径（op/storage.ts moveItems 逐项调用），
+    // 源路径直接用 srcPath；dst_dir 需要目录，取 dstPath 的父级，再拼 name 会指向
+    // `<item>/<name>`。
+    const expand = names && names.length > 1
     const src = await this.resolveRepoAndPath(srcPhys)
     const dst = await this.resolveRepoAndPath(dstPhys)
+    const pairs = expand
+      ? names.map(
+          (n) =>
+            [
+              src.innerPath === "/" ? `/${n}` : `${src.innerPath}/${n}`,
+              dst.innerPath === "/" ? `/${n}` : `${dst.innerPath}/${n}`,
+            ] as const,
+        )
+      : ([[src.innerPath, dst.innerPath]] as const)
 
-    for (const name of names) {
-      const targetPath =
-        src.innerPath === "/" ? `/${name}` : `${src.innerPath}/${name}`
+    for (const [srcPath, dstPath] of pairs) {
+      const dstDirPath = dstPath.substring(0, dstPath.lastIndexOf("/")) || "/"
       await this.client.request(
         `/api2/repos/${encodeURIComponent(src.repoId)}/file/`,
         {
           method: "POST",
           isFormData: true,
-          params: { p: targetPath },
+          params: { p: srcPath },
           body: {
             operation: "move",
             dst_repo: dst.repoId,
-            dst_dir: dst.innerPath,
+            dst_dir: dstDirPath,
           },
         },
       )
@@ -313,22 +332,34 @@ export class SeafileDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
+    // srcPhys/dstPhys 已是源/目标项自身的物理路径（op/storage.ts copyItems 逐项调用），
+    // 源路径直接用 srcPath；dst_dir 需要目录，取 dstPath 的父级，再拼 name 会指向
+    // `<item>/<name>`。
+    const expand = names && names.length > 1
     const src = await this.resolveRepoAndPath(srcPhys)
     const dst = await this.resolveRepoAndPath(dstPhys)
+    const pairs = expand
+      ? names.map(
+          (n) =>
+            [
+              src.innerPath === "/" ? `/${n}` : `${src.innerPath}/${n}`,
+              dst.innerPath === "/" ? `/${n}` : `${dst.innerPath}/${n}`,
+            ] as const,
+        )
+      : ([[src.innerPath, dst.innerPath]] as const)
 
-    for (const name of names) {
-      const targetPath =
-        src.innerPath === "/" ? `/${name}` : `${src.innerPath}/${name}`
+    for (const [srcPath, dstPath] of pairs) {
+      const dstDirPath = dstPath.substring(0, dstPath.lastIndexOf("/")) || "/"
       await this.client.request(
         `/api2/repos/${encodeURIComponent(src.repoId)}/file/`,
         {
           method: "POST",
           isFormData: true,
-          params: { p: targetPath },
+          params: { p: srcPath },
           body: {
             operation: "copy",
             dst_repo: dst.repoId,
-            dst_dir: dst.innerPath,
+            dst_dir: dstDirPath,
           },
         },
       )
