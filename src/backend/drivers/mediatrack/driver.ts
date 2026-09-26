@@ -211,9 +211,7 @@ export class MediatrackDriver implements StorageDriver {
       ? names.map((n) => (clean ? `${clean}/${n}` : `/${n}`))
       : [clean]
     // 父目录：展开时 physicalPath 即公共父目录，否则取目标项的父目录
-    const parentPath = expand
-      ? clean
-      : clean.split("/").slice(0, -1).join("/")
+    const parentPath = expand ? clean : clean.split("/").slice(0, -1).join("/")
     const parentId = await this.resolveParentId(parentPath)
     const files = await this.client.getFiles(parentId)
     const ids: string[] = []

@@ -147,7 +147,8 @@ const readMigratedShareSummary = async (persistedValue: string) => {
   await new Promise((r) => setTimeout(r, 1100))
   const db = await getDb(env)
   return String(
-    db.settings.find((s: any) => s.key === "share_summary_content")?.value || "",
+    db.settings.find((s: any) => s.key === "share_summary_content")?.value ||
+      "",
   )
 }
 
