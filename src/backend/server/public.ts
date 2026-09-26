@@ -398,11 +398,10 @@ publicRouter.get("/settings", async (c) => {
     // IMPORTANT: share_preview must be "true" — frontend blocks ALL previews when false
     share_preview: "true",
     share_archive_preview: "true",
-    // 分享摘要模板（对齐 Go setting.go 的 ShareSummaryContent）。前端
-    // 「复制链接」= matchTemplate(getSetting("share_summary_content"), data)：
-    // 缺失或为空时模板渲染成空串，`navigator.clipboard.writeText("")` 会清空
-    // 剪贴板，按钮照常弹「已复制」但粘贴出来是空的。
-    share_summary_content: `@{{creator}} shared {{#each files}}{{#if @first}}"{{filename this}}"{{/if}}{{#if @last}}{{#unless (eq @index 0)}} and {{@index}} more files{{/unless}}{{/if}}{{/each}} from {{site_title}}: {{base_url}}/@s/{{id}}{{#if pwd}} , the share code is {{pwd}}{{/if}}{{#if expires}}, please access before {{dateLocaleString expires}}.{{/if}}`,
+    // 「复制链接」渲染的模板。缺失或为空时会渲染成空串，
+    // `navigator.clipboard.writeText("")` 会清空剪贴板，按钮照常弹「已复制」
+    // 但粘贴出来是空的。默认输出纯分享 URL，与按钮文案一致。
+    share_summary_content: "{{base_url}}/@s/{{id}}",
 
     // --- Global ---
     hide_files: "/\\.DS_Store/i",

@@ -108,17 +108,26 @@ const assertShareTemplateUsable = (tpl: string) => {
     "share_summary_content must not be empty — the share page's copy button " +
       "renders this template and writeText('') silently clears the clipboard",
   )
-  assert.ok(
-    tpl.includes("{{base_url}}/@s/{{id}}"),
-    `share template must render a share link, got: ${tpl}`,
+  assert.equal(
+    tpl,
+    "{{base_url}}/@s/{{id}}",
+    'the "copy link" button must render a bare share URL, not a share blurb',
   )
 }
 
-test("share copy link: an empty persisted share_summary_content is migrated", async () => {
-  // 模拟线上已部署实例：空串已经落盘，之后通过 loadDb() 读取（该路径会执行
-  // ensureDefaultSettings 的 LEGACY_SETTING_MIGRATIONS 迁移）。
-  // 直接 saveDb() 的结果会写进 dbCache，短 TTL 内 getDb() 不会走 loadDb，
-  // 所以这里先落盘、等缓存过期，再验证迁移后的对外表现。
+/**
+ * 上一版曾采用的上游 Go 分享摘要文案（与 db.ts 的 LEGACY_SHARE_SUMMARY_GO 一致）。
+ * 迁移必须把这类已落盘的值换成纯链接。
+ */
+const LEGACY_GO_BLURB = `@{{creator}} shared {{#each files}}{{#if @first}}"{{filename this}}"{{/if}}{{#if @last}}{{#unless (eq @index 0)}} and {{@index}} more files{{/unless}}{{/if}}{{/each}} from {{site_title}}: {{base_url}}/@s/{{id}}{{#if pwd}} , the share code is {{pwd}}{{/if}}{{#if expires}}, please access before {{dateLocaleString expires}}.{{/if}}`
+
+/**
+ * 模拟已部署实例：某个值已经落盘，之后通过 loadDb() 读取（该路径会执行
+ * ensureDefaultSettings 的 LEGACY_SETTING_MIGRATIONS 迁移）。
+ * 直接 saveDb() 的结果会写进 dbCache，短 TTL 内 getDb() 不会走 loadDb，
+ * 所以先落盘、等缓存过期，再取迁移后的值。
+ */
+const readMigratedShareSummary = async (persistedValue: string) => {
   const env: any = {
     DB_DRIVER: "auto",
     DB_FORMAT: "map",
@@ -126,16 +135,28 @@ test("share copy link: an empty persisted share_summary_content is migrated", as
     ENCRYPTION_SECRET: "test-secret-for-share-summary",
   }
   await saveDb(
-    { settings: [{ key: "share_summary_content", value: "" }], users: [], storages: [], shares: [] },
+    {
+      settings: [{ key: "share_summary_content", value: persistedValue }],
+      users: [],
+      storages: [],
+      shares: [],
+    },
     env,
     { force: true },
   )
   await new Promise((r) => setTimeout(r, 1100))
   const db = await getDb(env)
-  const tpl = String(
+  return String(
     db.settings.find((s: any) => s.key === "share_summary_content")?.value || "",
   )
-  assertShareTemplateUsable(tpl)
+}
+
+test("share copy link: an empty persisted share_summary_content is migrated", async () => {
+  assertShareTemplateUsable(await readMigratedShareSummary(""))
+})
+
+test("share copy link: the legacy upstream share blurb is migrated", async () => {
+  assertShareTemplateUsable(await readMigratedShareSummary(LEGACY_GO_BLURB))
 })
 
 test("share copy link: a missing share_summary_content falls back to default", async () => {
