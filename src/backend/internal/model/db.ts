@@ -41,6 +41,23 @@ const DEFAULT_PROXY_IGNORE_HEADERS = "authorization,referer"
 const LEGACY_TEXT_TYPES =
   "txt,htm,html,xml,java,properties,sql,js,json,c,cpp,python,py,php,go,rst,css,typescript,ts,log,conf,yaml,yml,cmd,bash,sh,vue,ini"
 
+/**
+ * 分享摘要/「复制链接」默认模板。
+ *
+ * 前端「复制链接」= matchTemplate(getSetting("share_summary_content"), data)。
+ * 模板为空时结果就是空串，`writeText("")` 会清空剪贴板，于是按钮弹出「已复制」
+ * 但剪贴板里什么都没有——分享管理页的复制链接因此完全不可用。
+ *
+ * 这里输出**纯分享 URL**，与按钮文案（Copy link / 复制链接）以及文件工具栏
+ * 「分享」对话框里 `copy(link())` 的行为保持一致。上游 Go 的默认值是一整段
+ * 社交分享文案（LEGACY_SHARE_SUMMARY_GO），对「复制链接」按钮而言属于误导性
+ * 行为，故不采用；已写入该文案的实例由 LEGACY_SETTING_MIGRATIONS 迁移过来。
+ */
+const DEFAULT_SHARE_SUMMARY_CONTENT = "{{base_url}}/@s/{{id}}"
+
+/** 上一版曾采用的上游 Go 分享摘要文案（仅用于迁移到纯链接） */
+const LEGACY_SHARE_SUMMARY_GO = `@{{creator}} shared {{#each files}}{{#if @first}}"{{filename this}}"{{/if}}{{#if @last}}{{#unless (eq @index 0)}} and {{@index}} more files{{/unless}}{{/if}}{{/each}} from {{site_title}}: {{base_url}}/@s/{{id}}{{#if pwd}} , the share code is {{pwd}}{{/if}}{{#if expires}}, please access before {{dateLocaleString expires}}.{{/if}}`
+
 // Global default configuration payload for Cloudflare Workers
 export const defaultDb = {
   settings: [
@@ -509,7 +526,7 @@ export const defaultDb = {
     },
     {
       key: "share_summary_content",
-      value: "",
+      value: DEFAULT_SHARE_SUMMARY_CONTENT,
       type: "text",
       help: "Share Summary Content",
       group: 4,
@@ -943,6 +960,12 @@ const LEGACY_SETTING_MIGRATIONS: Record<string, { from: any[]; to: string }> = {
   text_types: {
     from: [LEGACY_TEXT_TYPES],
     to: DEFAULT_TEXT_TYPES,
+  },
+  // 「复制链接」：早期 seed 为空串（复制出空白），上一版一度采用上游 Go 的
+  // 整段分享文案（复制出一堆非链接内容）。两种已写入的值都迁移到纯分享 URL。
+  share_summary_content: {
+    from: ["", LEGACY_SHARE_SUMMARY_GO],
+    to: DEFAULT_SHARE_SUMMARY_CONTENT,
   },
 }
 

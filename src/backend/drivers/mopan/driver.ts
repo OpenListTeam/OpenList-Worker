@@ -275,9 +275,20 @@ export class MoPanDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const dstFolderId = await this.resolveFolderId(dstPhys)
-    for (const name of names) {
-      const srcItemPath = srcPhys === "/" ? `/${name}` : `${srcPhys}/${name}`
+    // srcPhys/dstPhys 是目标项自身的物理路径（op/storage.ts moveItems 逐项调用），
+    // 不得再拼 name，否则会指向 `<item>/<name>` 这种不存在的路径；
+    // 实际调用（单 name）时 dstPhys 是目标项，目标文件夹取其父目录。
+    // 仅当 names.length > 1 时才按「目录 + 多个 name」展开（防御性分支）。
+    const expand = names && names.length > 1
+    const srcPaths = expand
+      ? names.map((n) => (srcPhys === "/" ? `/${n}` : `${srcPhys}/${n}`))
+      : [srcPhys]
+    const dstFolderPath = expand
+      ? dstPhys
+      : dstPhys.split("/").slice(0, -1).join("/")
+    const dstFolderId = await this.resolveFolderId(dstFolderPath)
+
+    for (const srcItemPath of srcPaths) {
       const srcItem = await this.get(srcDir, srcItemPath)
       await this.performBatchTask(srcItem, dstFolderId, TaskTypeMove)
     }
@@ -290,9 +301,17 @@ export class MoPanDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const dstFolderId = await this.resolveFolderId(dstPhys)
-    for (const name of names) {
-      const srcItemPath = srcPhys === "/" ? `/${name}` : `${srcPhys}/${name}`
+    // 同 move：srcPhys/dstPhys 已是目标项自身路径，不得再拼 name。
+    const expand = names && names.length > 1
+    const srcPaths = expand
+      ? names.map((n) => (srcPhys === "/" ? `/${n}` : `${srcPhys}/${n}`))
+      : [srcPhys]
+    const dstFolderPath = expand
+      ? dstPhys
+      : dstPhys.split("/").slice(0, -1).join("/")
+    const dstFolderId = await this.resolveFolderId(dstFolderPath)
+
+    for (const srcItemPath of srcPaths) {
       const srcItem = await this.get(srcDir, srcItemPath)
       await this.performBatchTask(srcItem, dstFolderId, TaskTypeCopy)
     }

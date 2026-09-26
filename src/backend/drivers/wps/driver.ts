@@ -217,17 +217,29 @@ export class WpsDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const dstNode = await this.resolvePath(this.cleanPath(dstPhys))
-    if (!dstNode || !dstNode.isDir || dstNode.kind === "root") {
-      throw new Error("Target destination directory not found")
-    }
+    // srcPhys/dstPhys 已是源/目标项自身的物理路径（op/storage.ts moveItems 逐项调用），
+    // 源直接用 srcPath；目标文件夹是 dstPath 的父级，再拼 name 会指向 `<item>/<name>`。
+    const expand = names && names.length > 1
+    const srcBase = this.cleanPath(srcPhys)
+    const dstBase = this.cleanPath(dstPhys)
+    const pairs = expand
+      ? names.map(
+          (n) =>
+            [
+              srcBase === "/" ? `/${n}` : `${srcBase}/${n}`,
+              dstBase === "/" ? `/${n}` : `${dstBase}/${n}`,
+            ] as const,
+        )
+      : ([[srcBase, dstBase]] as const)
 
-    for (const name of names) {
-      const srcItemPath =
-        this.cleanPath(srcPhys) === "/"
-          ? `/${name}`
-          : `${this.cleanPath(srcPhys)}/${name}`
-      const srcNode = await this.resolvePath(srcItemPath)
+    for (const [srcPath, dstPath] of pairs) {
+      const dstParentPath =
+        dstPath.substring(0, dstPath.lastIndexOf("/")) || "/"
+      const dstNode = await this.resolvePath(dstParentPath)
+      if (!dstNode || !dstNode.isDir || dstNode.kind === "root") {
+        throw new Error("Target destination directory not found")
+      }
+      const srcNode = await this.resolvePath(srcPath)
       if (srcNode) {
         await this.client.move(
           srcNode.groupId,
@@ -259,17 +271,29 @@ export class WpsDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const dstNode = await this.resolvePath(this.cleanPath(dstPhys))
-    if (!dstNode || !dstNode.isDir || dstNode.kind === "root") {
-      throw new Error("Target destination directory not found")
-    }
+    // srcPhys/dstPhys 已是源/目标项自身的物理路径（op/storage.ts copyItems 逐项调用），
+    // 源直接用 srcPath；目标文件夹是 dstPath 的父级，再拼 name 会指向 `<item>/<name>`。
+    const expand = names && names.length > 1
+    const srcBase = this.cleanPath(srcPhys)
+    const dstBase = this.cleanPath(dstPhys)
+    const pairs = expand
+      ? names.map(
+          (n) =>
+            [
+              srcBase === "/" ? `/${n}` : `${srcBase}/${n}`,
+              dstBase === "/" ? `/${n}` : `${dstBase}/${n}`,
+            ] as const,
+        )
+      : ([[srcBase, dstBase]] as const)
 
-    for (const name of names) {
-      const srcItemPath =
-        this.cleanPath(srcPhys) === "/"
-          ? `/${name}`
-          : `${this.cleanPath(srcPhys)}/${name}`
-      const srcNode = await this.resolvePath(srcItemPath)
+    for (const [srcPath, dstPath] of pairs) {
+      const dstParentPath =
+        dstPath.substring(0, dstPath.lastIndexOf("/")) || "/"
+      const dstNode = await this.resolvePath(dstParentPath)
+      if (!dstNode || !dstNode.isDir || dstNode.kind === "root") {
+        throw new Error("Target destination directory not found")
+      }
+      const srcNode = await this.resolvePath(srcPath)
       if (srcNode) {
         await this.client.copy(
           srcNode.groupId,
@@ -286,12 +310,17 @@ export class WpsDriver implements StorageDriver {
     physicalPath: string,
     names: string[],
   ): Promise<void> {
-    for (const name of names) {
-      const itemPath =
-        this.cleanPath(physicalPath) === "/"
-          ? `/${name}`
-          : `${this.cleanPath(physicalPath)}/${name}`
-      const node = await this.resolvePath(itemPath)
+    // physicalPath 是目标项自身的物理路径（op/storage.ts removeItems 逐项调用），
+    // 直接解析它即可；再拼 name 会指向 `<item>/<name>`，resolvePath 返回 null
+    // 后被静默跳过，接口成功但文件仍在。
+    const expand = names && names.length > 1
+    const base = this.cleanPath(physicalPath)
+    const targets = expand
+      ? names.map((n) => (base === "/" ? `/${n}` : `${base}/${n}`))
+      : [base]
+
+    for (const targetPath of targets) {
+      const node = await this.resolvePath(targetPath)
       if (node && node.kind !== "root" && node.kind !== "group") {
         await this.client.delete(node.groupId, node.fileId)
       }

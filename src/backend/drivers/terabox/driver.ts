@@ -200,8 +200,13 @@ export class TeraboxDriver implements StorageDriver {
     physicalPath: string,
     names: string[],
   ): Promise<void> {
+    // physicalPath 是目标项自身的物理路径（op/storage.ts removeItems 逐项调用），
+    // 直接删除它即可；不得再拼 name，否则会指向 `<item>/<name>` 这种不存在的路径。
     const clean = this.cleanPath(physicalPath)
-    const paths = names.map((n) => (clean === "/" ? `/${n}` : `${clean}/${n}`))
+    const expand = names && names.length > 1
+    const paths = expand
+      ? names.map((n) => (clean === "/" ? `/${n}` : `${clean}/${n}`))
+      : [clean]
     await this.client.manage("delete", paths)
   }
 
@@ -214,12 +219,23 @@ export class TeraboxDriver implements StorageDriver {
   ): Promise<void> {
     const srcClean = this.cleanPath(srcPhys)
     const dstClean = this.cleanPath(dstPhys)
-
-    const fileList = names.map((name) => ({
-      path: srcClean === "/" ? `/${name}` : `${srcClean}/${name}`,
-      dest: dstClean,
-      newname: name,
-    }))
+    // srcPhys/dstPhys 是目标项自身的路径：path 不得再拼 name；
+    // filemanager 的 dest 是目标目录，实际调用（单 name）时取 dstPhys 的父目录。
+    // 仅当 names.length > 1 时才按「目录 + 多个 name」展开（防御性分支）。
+    const expand = names && names.length > 1
+    const fileList = expand
+      ? names.map((name) => ({
+          path: srcClean === "/" ? `/${name}` : `${srcClean}/${name}`,
+          dest: dstClean,
+          newname: name,
+        }))
+      : [
+          {
+            path: srcClean,
+            dest: dstClean.split("/").slice(0, -1).join("/") || "/",
+            newname: dstClean.split("/").pop() || "",
+          },
+        ]
 
     await this.client.manage("move", fileList)
   }
@@ -233,12 +249,21 @@ export class TeraboxDriver implements StorageDriver {
   ): Promise<void> {
     const srcClean = this.cleanPath(srcPhys)
     const dstClean = this.cleanPath(dstPhys)
-
-    const fileList = names.map((name) => ({
-      path: srcClean === "/" ? `/${name}` : `${srcClean}/${name}`,
-      dest: dstClean,
-      newname: name,
-    }))
+    // 同 move：srcPhys/dstPhys 已是目标项自身路径，path 不得再拼 name。
+    const expand = names && names.length > 1
+    const fileList = expand
+      ? names.map((name) => ({
+          path: srcClean === "/" ? `/${name}` : `${srcClean}/${name}`,
+          dest: dstClean,
+          newname: name,
+        }))
+      : [
+          {
+            path: srcClean,
+            dest: dstClean.split("/").slice(0, -1).join("/") || "/",
+            newname: dstClean.split("/").pop() || "",
+          },
+        ]
 
     await this.client.manage("copy", fileList)
   }

@@ -239,10 +239,12 @@ export class S3Driver implements StorageDriver {
     await this.checkDogeToken()
     const srcBase = this.getRemotePath(srcPhys)
     const dstBase = this.getRemotePath(dstPhys)
+    const expand = names && names.length > 1
+    const pairs = expand
+      ? names.map((n) => [joinPath(srcBase, n), joinPath(dstBase, n)] as const)
+      : [[srcBase, dstBase] as const]
 
-    for (const name of names) {
-      const srcPath = joinPath(srcBase, name)
-      const dstPath = joinPath(dstBase, name)
+    for (const [srcPath, dstPath] of pairs) {
       const head = await this.client.headObject(srcPath)
       if (head) {
         await this.client.copyObject(srcPath, dstPath, head.size)
@@ -264,10 +266,12 @@ export class S3Driver implements StorageDriver {
     await this.checkDogeToken()
     const srcBase = this.getRemotePath(srcPhys)
     const dstBase = this.getRemotePath(dstPhys)
+    const expand = names && names.length > 1
+    const pairs = expand
+      ? names.map((n) => [joinPath(srcBase, n), joinPath(dstBase, n)] as const)
+      : [[srcBase, dstBase] as const]
 
-    for (const name of names) {
-      const srcPath = joinPath(srcBase, name)
-      const dstPath = joinPath(dstBase, name)
+    for (const [srcPath, dstPath] of pairs) {
       const head = await this.client.headObject(srcPath)
       if (head) {
         await this.client.copyObject(srcPath, dstPath, head.size)
@@ -297,24 +301,20 @@ export class S3Driver implements StorageDriver {
     names: string[],
   ): Promise<void> {
     await this.checkDogeToken()
-    const basePath = this.getRemotePath(physicalPath)
+    // physicalPath 是目标项自身的物理路径（op/storage.ts removeItems 逐项调用），
+    // 直接删除它即可；若再拼一次 name 会指向 `<item>/<name>`，HEAD 404 后退化成
+    // 按目录递归删除，prefix 同样查不到对象，最终静默返回成功但对象仍在。
+    const expand = names && names.length > 1
+    const targets = expand
+      ? names.map((n) => joinPath(this.getRemotePath(physicalPath), n))
+      : [this.getRemotePath(physicalPath)]
 
-    if (names && names.length > 0) {
-      for (const name of names) {
-        const targetPath = joinPath(basePath, name)
-        const head = await this.client.headObject(targetPath)
-        if (head) {
-          await this.client.deleteObject(targetPath)
-        } else {
-          await this.removeDirRecursive(targetPath)
-        }
-      }
-    } else {
-      const head = await this.client.headObject(basePath)
+    for (const targetPath of targets) {
+      const head = await this.client.headObject(targetPath)
       if (head) {
-        await this.client.deleteObject(basePath)
+        await this.client.deleteObject(targetPath)
       } else {
-        await this.removeDirRecursive(basePath)
+        await this.removeDirRecursive(targetPath)
       }
     }
   }

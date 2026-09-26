@@ -302,9 +302,21 @@ export class AzureBlobDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    for (const name of names) {
-      const srcKey = joinPath(this.getKey(srcPhys), name)
-      const dstKey = joinPath(this.getKey(dstPhys), name)
+    // srcPhys/dstPhys 是目标项自身的物理路径（op/storage.ts moveItems 逐项调用），
+    // 不得再拼 name，否则会指向 `<item>/<name>` 这种不存在的 blob；
+    // 仅当 names.length > 1 时才按「目录 + 多个 name」展开（防御性分支）。
+    const expand = names && names.length > 1
+    const pairs = expand
+      ? names.map(
+          (n) =>
+            [
+              joinPath(this.getKey(srcPhys), n),
+              joinPath(this.getKey(dstPhys), n),
+            ] as const,
+        )
+      : ([[this.getKey(srcPhys), this.getKey(dstPhys)]] as const)
+
+    for (const [srcKey, dstKey] of pairs) {
       await this.copyBlob(srcKey, dstKey)
       await this.deleteBlob(srcKey)
     }
@@ -317,9 +329,19 @@ export class AzureBlobDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    for (const name of names) {
-      const srcKey = joinPath(this.getKey(srcPhys), name)
-      const dstKey = joinPath(this.getKey(dstPhys), name)
+    // 同 move：srcPhys/dstPhys 已是目标项自身路径，不得再拼 name。
+    const expand = names && names.length > 1
+    const pairs = expand
+      ? names.map(
+          (n) =>
+            [
+              joinPath(this.getKey(srcPhys), n),
+              joinPath(this.getKey(dstPhys), n),
+            ] as const,
+        )
+      : ([[this.getKey(srcPhys), this.getKey(dstPhys)]] as const)
+
+    for (const [srcKey, dstKey] of pairs) {
       await this.copyBlob(srcKey, dstKey)
     }
   }

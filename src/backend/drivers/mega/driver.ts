@@ -152,17 +152,29 @@ export class MegaDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const dstNode = this.resolveNodeByPath(this.cleanPath(dstPhys))
-    if (!dstNode || !dstNode.is_dir) {
-      throw new Error("Destination folder not found")
-    }
+    // srcPhys/dstPhys 已是源/目标项自身的物理路径（op/storage.ts moveItems 逐项调用），
+    // 源直接用 srcPhys；目标父目录取 dstPhys 的父级，再拼 name 会指向 `<item>/<name>`。
+    const expand = names && names.length > 1
+    const srcBase = this.cleanPath(srcPhys)
+    const dstBase = this.cleanPath(dstPhys)
+    const pairs = expand
+      ? names.map(
+          (n) =>
+            [
+              srcBase === "/" ? `/${n}` : `${srcBase}/${n}`,
+              dstBase === "/" ? `/${n}` : `${dstBase}/${n}`,
+            ] as const,
+        )
+      : ([[srcBase, dstBase]] as const)
 
-    for (const name of names) {
-      const srcItemPath =
-        this.cleanPath(srcPhys) === "/"
-          ? `/${name}`
-          : `${this.cleanPath(srcPhys)}/${name}`
-      const srcNode = this.resolveNodeByPath(srcItemPath)
+    for (const [srcPath, dstPath] of pairs) {
+      const dstParentPath =
+        dstPath.substring(0, dstPath.lastIndexOf("/")) || "/"
+      const dstNode = this.resolveNodeByPath(dstParentPath)
+      if (!dstNode || !dstNode.is_dir) {
+        throw new Error("Destination folder not found")
+      }
+      const srcNode = this.resolveNodeByPath(srcPath)
       if (srcNode) {
         await this.client.moveNode(srcNode.id, dstNode.id)
       }
@@ -186,12 +198,17 @@ export class MegaDriver implements StorageDriver {
     physicalPath: string,
     names: string[],
   ): Promise<void> {
-    for (const name of names) {
-      const itemPath =
-        this.cleanPath(physicalPath) === "/"
-          ? `/${name}`
-          : `${this.cleanPath(physicalPath)}/${name}`
-      const node = this.resolveNodeByPath(itemPath)
+    // physicalPath 是目标项自身的物理路径（op/storage.ts removeItems 逐项调用），
+    // 直接解析它即可；再拼 name 会指向 `<item>/<name>`，resolveNodeByPath 返回
+    // null 后被静默跳过，接口成功但节点仍在。
+    const expand = names && names.length > 1
+    const base = this.cleanPath(physicalPath)
+    const targets = expand
+      ? names.map((n) => (base === "/" ? `/${n}` : `${base}/${n}`))
+      : [base]
+
+    for (const targetPath of targets) {
+      const node = this.resolveNodeByPath(targetPath)
       if (node) {
         await this.client.deleteNode(node.id)
       }

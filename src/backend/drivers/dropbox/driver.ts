@@ -127,9 +127,15 @@ export class DropboxDriver implements StorageDriver {
     physicalPath: string,
     names: string[],
   ): Promise<void> {
-    const cleanDir = this.cleanPath(physicalPath)
-    for (const name of names) {
-      const target = cleanDir === "" ? `/${name}` : `${cleanDir}/${name}`
+    // physicalPath 是目标项自身的物理路径（op/storage.ts removeItems 逐项调用），
+    // 直接删除它即可；再拼 name 会指向 `<item>/<name>`，delete 404 报错。
+    const expand = names && names.length > 1
+    const base = this.cleanPath(physicalPath)
+    const targets = expand
+      ? names.map((n) => (base === "" ? `/${n}` : `${base}/${n}`))
+      : [base]
+
+    for (const target of targets) {
       await this.client.delete(target)
     }
   }
@@ -141,11 +147,22 @@ export class DropboxDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const cleanSrc = this.cleanPath(srcPhys)
-    const cleanDst = this.cleanPath(dstPhys)
-    for (const name of names) {
-      const from = cleanSrc === "" ? `/${name}` : `${cleanSrc}/${name}`
-      const to = cleanDst === "" ? `/${name}` : `${cleanDst}/${name}`
+    // srcPhys/dstPhys 已是源/目标项自身的物理路径（op/storage.ts moveItems 逐项调用），
+    // 直接作为 from/to 使用；再拼 name 会指向 `<item>/<name>`，源/目标错位。
+    const expand = names && names.length > 1
+    const srcBase = this.cleanPath(srcPhys)
+    const dstBase = this.cleanPath(dstPhys)
+    const pairs = expand
+      ? names.map(
+          (n) =>
+            [
+              srcBase === "" ? `/${n}` : `${srcBase}/${n}`,
+              dstBase === "" ? `/${n}` : `${dstBase}/${n}`,
+            ] as const,
+        )
+      : ([[srcBase, dstBase]] as const)
+
+    for (const [from, to] of pairs) {
       await this.client.move(from, to)
     }
   }
@@ -157,11 +174,22 @@ export class DropboxDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const cleanSrc = this.cleanPath(srcPhys)
-    const cleanDst = this.cleanPath(dstPhys)
-    for (const name of names) {
-      const from = cleanSrc === "" ? `/${name}` : `${cleanSrc}/${name}`
-      const to = cleanDst === "" ? `/${name}` : `${cleanDst}/${name}`
+    // srcPhys/dstPhys 已是源/目标项自身的物理路径（op/storage.ts copyItems 逐项调用），
+    // 直接作为 from/to 使用；再拼 name 会指向 `<item>/<name>`，源/目标错位。
+    const expand = names && names.length > 1
+    const srcBase = this.cleanPath(srcPhys)
+    const dstBase = this.cleanPath(dstPhys)
+    const pairs = expand
+      ? names.map(
+          (n) =>
+            [
+              srcBase === "" ? `/${n}` : `${srcBase}/${n}`,
+              dstBase === "" ? `/${n}` : `${dstBase}/${n}`,
+            ] as const,
+        )
+      : ([[srcBase, dstBase]] as const)
+
+    for (const [from, to] of pairs) {
       await this.client.copy(from, to)
     }
   }
