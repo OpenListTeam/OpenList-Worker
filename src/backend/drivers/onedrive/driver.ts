@@ -223,18 +223,9 @@ export class Onedrive implements StorageDriver {
     names: string[],
   ): Promise<void> {
     // physicalPath 是目标项自身的物理路径（op/storage.ts 逐项调用），
-    // 再拼一次 name 会指向 <item>/<name>，DELETE 404 导致对象仍然存在。
-    const expand = names && names.length > 1
-    const targets = expand
-      ? names.map((n) =>
-          physicalPath === "/" ? `/${n}` : `${physicalPath}/${n}`,
-        )
-      : [physicalPath]
-
-    for (const targetPath of targets) {
-      const url = this.getMetaUrl(false, targetPath)
-      await requestApi(this, url, "DELETE")
-    }
+    // 参数即目标项路径，不得再拼 name，否则指向 <item>/<name>，DELETE 404 导致对象仍然存在。
+    const url = this.getMetaUrl(false, physicalPath)
+    await requestApi(this, url, "DELETE")
   }
 
   async move(
@@ -244,41 +235,25 @@ export class Onedrive implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    // srcPhys/dstPhys 是源/目标项自身的物理路径（已含 name）：
-    // 目标父目录需去掉末段（直接 GET dstPhys 拿到的是目标项本身，通常还不存在），
+    // srcPhys/dstPhys 是源/目标项自身的物理路径（已含 name，参数即目标项路径，
+    // 不得再拼 name，否则指向 <item>/<name>）：
+    // 目标父目录取 dstPhys 去掉末段（直接 GET dstPhys 拿到的是目标项本身，通常还不存在），
     // 目标名字以 dstPhys 末段为准，源项路径则直接使用 srcPhys。
-    const expand = names && names.length > 1
-    const dstParentPath = expand
-      ? dstPhys
-      : dstPhys.split("/").slice(0, -1).join("/") || "/"
+    const dstParentPath = dstPhys.split("/").slice(0, -1).join("/") || "/"
     const dstUrl = this.getMetaUrl(false, dstParentPath)
     const dstRes = await requestApi<any>(this, dstUrl, "GET")
     const dstId = dstRes.id
     const driveId = dstRes.parentReference?.driveId
 
-    const targets = expand
-      ? names.map((n) => ({
-          srcPath: srcPhys === "/" ? `/${n}` : `${srcPhys}/${n}`,
-          name: n,
-        }))
-      : [
-          {
-            srcPath: srcPhys,
-            name: dstPhys.split("/").filter(Boolean).pop() || "",
-          },
-        ]
-
-    for (const target of targets) {
-      const data = {
-        parentReference: {
-          id: dstId,
-          ...(driveId ? { driveId } : {}),
-        },
-        name: target.name,
-      }
-      const url = this.getMetaUrl(false, target.srcPath)
-      await requestApi(this, url, "PATCH", data)
+    const data = {
+      parentReference: {
+        id: dstId,
+        ...(driveId ? { driveId } : {}),
+      },
+      name: dstPhys.split("/").filter(Boolean).pop() || "",
     }
+    const url = this.getMetaUrl(false, srcPhys)
+    await requestApi(this, url, "PATCH", data)
   }
 
   async copy(
@@ -288,40 +263,23 @@ export class Onedrive implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    // 与 move 同理：目标父目录 = dstPhys 去掉末段，目标名字取 dstPhys 末段，
-    // 源项路径直接使用 srcPhys，不再重复拼接 name。
-    const expand = names && names.length > 1
-    const dstParentPath = expand
-      ? dstPhys
-      : dstPhys.split("/").slice(0, -1).join("/") || "/"
+    // 与 move 同理：参数是目标项自身路径，不得再拼 name；
+    // 目标父目录 = dstPhys 去掉末段，目标名字取 dstPhys 末段，源项路径直接使用 srcPhys。
+    const dstParentPath = dstPhys.split("/").slice(0, -1).join("/") || "/"
     const dstUrl = this.getMetaUrl(false, dstParentPath)
     const dstRes = await requestApi<any>(this, dstUrl, "GET")
     const dstId = dstRes.id
     const driveId = dstRes.parentReference?.driveId
 
-    const targets = expand
-      ? names.map((n) => ({
-          srcPath: srcPhys === "/" ? `/${n}` : `${srcPhys}/${n}`,
-          name: n,
-        }))
-      : [
-          {
-            srcPath: srcPhys,
-            name: dstPhys.split("/").filter(Boolean).pop() || "",
-          },
-        ]
-
-    for (const target of targets) {
-      const data = {
-        parentReference: {
-          id: dstId,
-          ...(driveId ? { driveId } : {}),
-        },
-        name: target.name,
-      }
-      const url = this.getMetaUrl(false, target.srcPath, "copy")
-      await requestApi(this, url, "POST", data)
+    const data = {
+      parentReference: {
+        id: dstId,
+        ...(driveId ? { driveId } : {}),
+      },
+      name: dstPhys.split("/").filter(Boolean).pop() || "",
     }
+    const url = this.getMetaUrl(false, srcPhys, "copy")
+    await requestApi(this, url, "POST", data)
   }
 
   async put(

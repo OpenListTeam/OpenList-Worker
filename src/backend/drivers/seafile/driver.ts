@@ -265,23 +265,17 @@ export class SeafileDriver implements StorageDriver {
     names: string[],
   ): Promise<void> {
     // physicalPath 是目标项自身的物理路径（op/storage.ts removeItems 逐项调用），
-    // resolveRepoAndPath 已解析到目标项；再拼 name 会指向 `<item>/<name>`，
-    // DELETE 到不存在的路径，接口成功但文件仍在。
-    const expand = names && names.length > 1
+    // resolveRepoAndPath 已解析到目标项，参数即目标项路径，不得再拼 name，否则指向
+    // `<item>/<name>`，DELETE 到不存在的路径，接口成功但文件仍在。
     const { repoId, innerPath } = await this.resolveRepoAndPath(physicalPath)
-    const targets = expand
-      ? names.map((n) => (innerPath === "/" ? `/${n}` : `${innerPath}/${n}`))
-      : [innerPath]
 
-    for (const targetPath of targets) {
-      await this.client.request(
-        `/api2/repos/${encodeURIComponent(repoId)}/file/`,
-        {
-          method: "DELETE",
-          params: { p: targetPath },
-        },
-      )
-    }
+    await this.client.request(
+      `/api2/repos/${encodeURIComponent(repoId)}/file/`,
+      {
+        method: "DELETE",
+        params: { p: innerPath },
+      },
+    )
   }
 
   async move(
@@ -291,38 +285,27 @@ export class SeafileDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    // srcPhys/dstPhys 已是源/目标项自身的物理路径（op/storage.ts moveItems 逐项调用），
-    // 源路径直接用 srcPath；dst_dir 需要目录，取 dstPath 的父级，再拼 name 会指向
-    // `<item>/<name>`。
-    const expand = names && names.length > 1
+    // srcPhys/dstPhys 是源/目标项自身的物理路径（op/storage.ts moveItems 逐项调用），
+    // 参数即目标项路径，不得再拼 name，否则指向 `<item>/<name>`；
+    // 源路径直接用 src.innerPath，dst_dir 需要目录，取 dst.innerPath 的父级。
     const src = await this.resolveRepoAndPath(srcPhys)
     const dst = await this.resolveRepoAndPath(dstPhys)
-    const pairs = expand
-      ? names.map(
-          (n) =>
-            [
-              src.innerPath === "/" ? `/${n}` : `${src.innerPath}/${n}`,
-              dst.innerPath === "/" ? `/${n}` : `${dst.innerPath}/${n}`,
-            ] as const,
-        )
-      : ([[src.innerPath, dst.innerPath]] as const)
+    const dstDirPath =
+      dst.innerPath.substring(0, dst.innerPath.lastIndexOf("/")) || "/"
 
-    for (const [srcPath, dstPath] of pairs) {
-      const dstDirPath = dstPath.substring(0, dstPath.lastIndexOf("/")) || "/"
-      await this.client.request(
-        `/api2/repos/${encodeURIComponent(src.repoId)}/file/`,
-        {
-          method: "POST",
-          isFormData: true,
-          params: { p: srcPath },
-          body: {
-            operation: "move",
-            dst_repo: dst.repoId,
-            dst_dir: dstDirPath,
-          },
+    await this.client.request(
+      `/api2/repos/${encodeURIComponent(src.repoId)}/file/`,
+      {
+        method: "POST",
+        isFormData: true,
+        params: { p: src.innerPath },
+        body: {
+          operation: "move",
+          dst_repo: dst.repoId,
+          dst_dir: dstDirPath,
         },
-      )
-    }
+      },
+    )
   }
 
   async copy(
@@ -332,38 +315,27 @@ export class SeafileDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    // srcPhys/dstPhys 已是源/目标项自身的物理路径（op/storage.ts copyItems 逐项调用），
-    // 源路径直接用 srcPath；dst_dir 需要目录，取 dstPath 的父级，再拼 name 会指向
-    // `<item>/<name>`。
-    const expand = names && names.length > 1
+    // srcPhys/dstPhys 是源/目标项自身的物理路径（op/storage.ts copyItems 逐项调用），
+    // 参数即目标项路径，不得再拼 name，否则指向 `<item>/<name>`；
+    // 源路径直接用 src.innerPath，dst_dir 需要目录，取 dst.innerPath 的父级。
     const src = await this.resolveRepoAndPath(srcPhys)
     const dst = await this.resolveRepoAndPath(dstPhys)
-    const pairs = expand
-      ? names.map(
-          (n) =>
-            [
-              src.innerPath === "/" ? `/${n}` : `${src.innerPath}/${n}`,
-              dst.innerPath === "/" ? `/${n}` : `${dst.innerPath}/${n}`,
-            ] as const,
-        )
-      : ([[src.innerPath, dst.innerPath]] as const)
+    const dstDirPath =
+      dst.innerPath.substring(0, dst.innerPath.lastIndexOf("/")) || "/"
 
-    for (const [srcPath, dstPath] of pairs) {
-      const dstDirPath = dstPath.substring(0, dstPath.lastIndexOf("/")) || "/"
-      await this.client.request(
-        `/api2/repos/${encodeURIComponent(src.repoId)}/file/`,
-        {
-          method: "POST",
-          isFormData: true,
-          params: { p: srcPath },
-          body: {
-            operation: "copy",
-            dst_repo: dst.repoId,
-            dst_dir: dstDirPath,
-          },
+    await this.client.request(
+      `/api2/repos/${encodeURIComponent(src.repoId)}/file/`,
+      {
+        method: "POST",
+        isFormData: true,
+        params: { p: src.innerPath },
+        body: {
+          operation: "copy",
+          dst_repo: dst.repoId,
+          dst_dir: dstDirPath,
         },
-      )
-    }
+      },
+    )
   }
 
   async put(

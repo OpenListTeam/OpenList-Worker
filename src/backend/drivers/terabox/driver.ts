@@ -201,13 +201,9 @@ export class TeraboxDriver implements StorageDriver {
     names: string[],
   ): Promise<void> {
     // physicalPath 是目标项自身的物理路径（op/storage.ts removeItems 逐项调用），
-    // 直接删除它即可；不得再拼 name，否则会指向 `<item>/<name>` 这种不存在的路径。
+    // 参数即项路径，直接删除它即可；不得再拼 name，否则会指向 <item>/<name> 导致静默失败。
     const clean = this.cleanPath(physicalPath)
-    const expand = names && names.length > 1
-    const paths = expand
-      ? names.map((n) => (clean === "/" ? `/${n}` : `${clean}/${n}`))
-      : [clean]
-    await this.client.manage("delete", paths)
+    await this.client.manage("delete", [clean])
   }
 
   async move(
@@ -220,24 +216,14 @@ export class TeraboxDriver implements StorageDriver {
     const srcClean = this.cleanPath(srcPhys)
     const dstClean = this.cleanPath(dstPhys)
     // srcPhys/dstPhys 是目标项自身的路径：path 不得再拼 name；
-    // filemanager 的 dest 是目标目录，实际调用（单 name）时取 dstPhys 的父目录。
-    // 仅当 names.length > 1 时才按「目录 + 多个 name」展开（防御性分支）。
-    const expand = names && names.length > 1
-    const fileList = expand
-      ? names.map((name) => ({
-          path: srcClean === "/" ? `/${name}` : `${srcClean}/${name}`,
-          dest: dstClean,
-          newname: name,
-        }))
-      : [
-          {
-            path: srcClean,
-            dest: dstClean.split("/").slice(0, -1).join("/") || "/",
-            newname: dstClean.split("/").pop() || "",
-          },
-        ]
-
-    await this.client.manage("move", fileList)
+    // filemanager 的 dest 是目标目录，故取 dstPhys 去掉末段后的父目录，newname 取末段。
+    await this.client.manage("move", [
+      {
+        path: srcClean,
+        dest: dstClean.split("/").slice(0, -1).join("/") || "/",
+        newname: dstClean.split("/").pop() || "",
+      },
+    ])
   }
 
   async copy(
@@ -249,23 +235,15 @@ export class TeraboxDriver implements StorageDriver {
   ): Promise<void> {
     const srcClean = this.cleanPath(srcPhys)
     const dstClean = this.cleanPath(dstPhys)
-    // 同 move：srcPhys/dstPhys 已是目标项自身路径，path 不得再拼 name。
-    const expand = names && names.length > 1
-    const fileList = expand
-      ? names.map((name) => ({
-          path: srcClean === "/" ? `/${name}` : `${srcClean}/${name}`,
-          dest: dstClean,
-          newname: name,
-        }))
-      : [
-          {
-            path: srcClean,
-            dest: dstClean.split("/").slice(0, -1).join("/") || "/",
-            newname: dstClean.split("/").pop() || "",
-          },
-        ]
-
-    await this.client.manage("copy", fileList)
+    // 同 move：srcPhys/dstPhys 已是目标项自身路径，path 不得再拼 name；
+    // dest 取 dstPhys 去掉末段后的父目录，newname 取末段。
+    await this.client.manage("copy", [
+      {
+        path: srcClean,
+        dest: dstClean.split("/").slice(0, -1).join("/") || "/",
+        newname: dstClean.split("/").pop() || "",
+      },
+    ])
   }
 
   async put(

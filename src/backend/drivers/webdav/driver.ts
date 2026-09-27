@@ -105,20 +105,13 @@ export class WebdavDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    // srcPhys/dstPhys 已是源/目标项自身的路径，直接移动即可；
+    // srcPhys/dstPhys 已是源/目标项自身的路径，参数即项路径，直接移动即可；
     // 再拼一次 name 会指向不存在的 <item>/<name>，MOVE 源/目标错位。
-    // 仅当 names.length > 1 时才按「目录 + 多个 name」展开（防御分支）。
-    const srcBasePath = this.getRemotePath(srcPhys)
-    const dstBasePath = this.getRemotePath(dstPhys)
-    const expand = names && names.length > 1
-    const pairs = expand
-      ? names.map(
-          (n) => [joinPath(srcBasePath, n), joinPath(dstBasePath, n)] as const,
-        )
-      : [[srcBasePath, dstBasePath] as const]
-    for (const [srcPath, dstPath] of pairs) {
-      await this.client.move(srcPath, dstPath, true)
-    }
+    await this.client.move(
+      this.getRemotePath(srcPhys),
+      this.getRemotePath(dstPhys),
+      true,
+    )
   }
 
   async copy(
@@ -128,20 +121,13 @@ export class WebdavDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    // srcPhys/dstPhys 已是源/目标项自身的路径，直接复制即可；
+    // srcPhys/dstPhys 已是源/目标项自身的路径，参数即项路径，直接复制即可；
     // 再拼一次 name 会让 COPY 源/目标路径错位。
-    // 仅当 names.length > 1 时才按「目录 + 多个 name」展开（防御分支）。
-    const srcBasePath = this.getRemotePath(srcPhys)
-    const dstBasePath = this.getRemotePath(dstPhys)
-    const expand = names && names.length > 1
-    const pairs = expand
-      ? names.map(
-          (n) => [joinPath(srcBasePath, n), joinPath(dstBasePath, n)] as const,
-        )
-      : [[srcBasePath, dstBasePath] as const]
-    for (const [srcPath, dstPath] of pairs) {
-      await this.client.copy(srcPath, dstPath, true)
-    }
+    await this.client.copy(
+      this.getRemotePath(srcPhys),
+      this.getRemotePath(dstPhys),
+      true,
+    )
   }
 
   async remove(
@@ -150,15 +136,9 @@ export class WebdavDriver implements StorageDriver {
     names: string[],
   ): Promise<void> {
     // physicalPath 已是目标项自身的路径（op/storage.ts 逐项解析后传入），
-    // 再拼一次 name 会指向 <item>/<name>，WebDAV DELETE 对 404 视作成功，
-    // 结果接口静默返回成功但对象仍在。多 name 时才按「目录 + name」展开。
-    const expand = names && names.length > 1
-    const targets = expand
-      ? names.map((n) => joinPath(this.getRemotePath(physicalPath), n))
-      : [this.getRemotePath(physicalPath)]
-    for (const targetPath of targets) {
-      await this.client.remove(targetPath)
-    }
+    // 参数即项路径，不得再拼 name，否则指向 <item>/<name>，WebDAV DELETE 对 404 视作成功，
+    // 结果接口静默返回成功但对象仍在。
+    await this.client.remove(this.getRemotePath(physicalPath))
   }
 
   async put(

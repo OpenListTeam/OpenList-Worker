@@ -202,30 +202,17 @@ export class MediatrackDriver implements StorageDriver {
     physicalPath: string,
     names: string[],
   ): Promise<void> {
-    // physicalPath 是目标项自身的物理路径，而 resolveParentId 解析的是路径
-    // 自身的 id；拿它列子项再按 title 查找，命中的其实是 <item>/<name>，
-    // 找不到时静默跳过，对象仍然存在。
-    const expand = names && names.length > 1
+    // physicalPath 是目标项自身的物理路径（op/storage.ts removeItems 逐项调用），
+    // 目标名取参数末段、父目录取去掉末段后的部分；resolveParentId 解析的是
+    // 传入路径自身的 id，把项路径当父目录会去 <item> 的子项里按 title 查找
+    //（相当于找 <item>/<name>），找不到时静默跳过，对象仍然存在。
     const clean = this.cleanPath(physicalPath)
-    const targets = expand
-      ? names.map((n) => (clean ? `${clean}/${n}` : `/${n}`))
-      : [clean]
-    // 父目录：展开时 physicalPath 即公共父目录，否则取目标项的父目录
-    const parentPath = expand ? clean : clean.split("/").slice(0, -1).join("/")
+    const name = clean.split("/").pop() || ""
+    const parentPath = clean.split("/").slice(0, -1).join("/")
     const parentId = await this.resolveParentId(parentPath)
     const files = await this.client.getFiles(parentId)
-    const ids: string[] = []
-
-    for (const target of targets) {
-      const match = files.find(
-        (f) => f.title === (target.split("/").pop() || ""),
-      )
-      if (match) {
-        ids.push(match.id)
-      }
-    }
-
-    if (ids.length === 0) return
+    const match = files.find((f) => f.title === name)
+    if (!match) return
 
     await this.client.request(
       "https://jayce.api.mediatrack.cn/v4/assets/batch/delete",
@@ -233,14 +220,12 @@ export class MediatrackDriver implements StorageDriver {
         method: "DELETE",
         body: {
           origin_id: parentId,
-          ids,
+          ids: [match.id],
         },
       },
     )
 
-    for (const target of targets) {
-      this.idCache.delete(target)
-    }
+    this.idCache.delete(clean)
   }
 
   async move(
@@ -250,37 +235,21 @@ export class MediatrackDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    // srcPhys/dstPhys 是源/目标项自身的物理路径（已含 name），
-    // 直接当父目录解析会指到项本身：源侧会去 <srcItem> 的子项里找 title（永远落空），
+    // srcPhys/dstPhys 是源/目标项自身的物理路径（已含 name），父目录取去掉
+    // 末段后的部分：源侧在其父目录的子项里按 title 找，目标侧解析目标项所在
+    // 目录的 id。把项路径当父目录解析会指到项本身：源侧永远落空，
     // 目标侧解析一个尚不存在的目标项必然报错。
-    const expand = names && names.length > 1
     const srcClean = this.cleanPath(srcPhys)
     const dstClean = this.cleanPath(dstPhys)
-    const targets = expand
-      ? names.map((n) => (srcClean ? `${srcClean}/${n}` : `/${n}`))
-      : [srcClean]
-    const srcParentPath = expand
-      ? srcClean
-      : srcClean.split("/").slice(0, -1).join("/")
-    const dstParentPath = expand
-      ? dstClean
-      : dstClean.split("/").slice(0, -1).join("/")
+    const srcName = srcClean.split("/").pop() || ""
+    const srcParentPath = srcClean.split("/").slice(0, -1).join("/")
+    const dstParentPath = dstClean.split("/").slice(0, -1).join("/")
 
     const srcParentId = await this.resolveParentId(srcParentPath)
     const dstParentId = await this.resolveParentId(dstParentPath)
     const srcFiles = await this.client.getFiles(srcParentId)
-    const ids: string[] = []
-
-    for (const target of targets) {
-      const match = srcFiles.find(
-        (f) => f.title === (target.split("/").pop() || ""),
-      )
-      if (match) {
-        ids.push(match.id)
-      }
-    }
-
-    if (ids.length === 0) return
+    const match = srcFiles.find((f) => f.title === srcName)
+    if (!match) return
 
     await this.client.request(
       "https://jayce.api.mediatrack.cn/v4/assets/batch/move",
@@ -288,7 +257,7 @@ export class MediatrackDriver implements StorageDriver {
         method: "POST",
         body: {
           parent_id: dstParentId,
-          ids,
+          ids: [match.id],
         },
       },
     )
@@ -301,35 +270,18 @@ export class MediatrackDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    // 与 move 同理：源/目标项自身路径先去掉末段得到父目录再解析 id。
-    const expand = names && names.length > 1
+    // 与 move 同理：源/目标项自身路径先去掉末段得到父目录，目标名取源路径末段。
     const srcClean = this.cleanPath(srcPhys)
     const dstClean = this.cleanPath(dstPhys)
-    const targets = expand
-      ? names.map((n) => (srcClean ? `${srcClean}/${n}` : `/${n}`))
-      : [srcClean]
-    const srcParentPath = expand
-      ? srcClean
-      : srcClean.split("/").slice(0, -1).join("/")
-    const dstParentPath = expand
-      ? dstClean
-      : dstClean.split("/").slice(0, -1).join("/")
+    const srcName = srcClean.split("/").pop() || ""
+    const srcParentPath = srcClean.split("/").slice(0, -1).join("/")
+    const dstParentPath = dstClean.split("/").slice(0, -1).join("/")
 
     const srcParentId = await this.resolveParentId(srcParentPath)
     const dstParentId = await this.resolveParentId(dstParentPath)
     const srcFiles = await this.client.getFiles(srcParentId)
-    const ids: string[] = []
-
-    for (const target of targets) {
-      const match = srcFiles.find(
-        (f) => f.title === (target.split("/").pop() || ""),
-      )
-      if (match) {
-        ids.push(match.id)
-      }
-    }
-
-    if (ids.length === 0) return
+    const match = srcFiles.find((f) => f.title === srcName)
+    if (!match) return
 
     await this.client.request(
       "https://jayce.api.mediatrack.cn/v4/assets/batch/clone",
@@ -337,7 +289,7 @@ export class MediatrackDriver implements StorageDriver {
         method: "POST",
         body: {
           parent_id: dstParentId,
-          ids,
+          ids: [match.id],
         },
       },
     )

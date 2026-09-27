@@ -237,22 +237,18 @@ export class S3Driver implements StorageDriver {
     dstPhys: string,
   ): Promise<void> {
     await this.checkDogeToken()
-    const srcBase = this.getRemotePath(srcPhys)
-    const dstBase = this.getRemotePath(dstPhys)
-    const expand = names && names.length > 1
-    const pairs = expand
-      ? names.map((n) => [joinPath(srcBase, n), joinPath(dstBase, n)] as const)
-      : [[srcBase, dstBase] as const]
+    // srcPhys/dstPhys 是源/目标项自身的物理路径（参数即目标项路径，不得再拼 name，
+    // 否则指向 <item>/<name> 导致静默失败）。
+    const srcPath = this.getRemotePath(srcPhys)
+    const dstPath = this.getRemotePath(dstPhys)
 
-    for (const [srcPath, dstPath] of pairs) {
-      const head = await this.client.headObject(srcPath)
-      if (head) {
-        await this.client.copyObject(srcPath, dstPath, head.size)
-        await this.client.deleteObject(srcPath)
-      } else {
-        await this.copyDirRecursive(srcPath, dstPath)
-        await this.removeDirRecursive(srcPath)
-      }
+    const head = await this.client.headObject(srcPath)
+    if (head) {
+      await this.client.copyObject(srcPath, dstPath, head.size)
+      await this.client.deleteObject(srcPath)
+    } else {
+      await this.copyDirRecursive(srcPath, dstPath)
+      await this.removeDirRecursive(srcPath)
     }
   }
 
@@ -264,20 +260,15 @@ export class S3Driver implements StorageDriver {
     dstPhys: string,
   ): Promise<void> {
     await this.checkDogeToken()
-    const srcBase = this.getRemotePath(srcPhys)
-    const dstBase = this.getRemotePath(dstPhys)
-    const expand = names && names.length > 1
-    const pairs = expand
-      ? names.map((n) => [joinPath(srcBase, n), joinPath(dstBase, n)] as const)
-      : [[srcBase, dstBase] as const]
+    // 同 move：srcPhys/dstPhys 已是目标项自身路径，不得再拼 name。
+    const srcPath = this.getRemotePath(srcPhys)
+    const dstPath = this.getRemotePath(dstPhys)
 
-    for (const [srcPath, dstPath] of pairs) {
-      const head = await this.client.headObject(srcPath)
-      if (head) {
-        await this.client.copyObject(srcPath, dstPath, head.size)
-      } else {
-        await this.copyDirRecursive(srcPath, dstPath)
-      }
+    const head = await this.client.headObject(srcPath)
+    if (head) {
+      await this.client.copyObject(srcPath, dstPath, head.size)
+    } else {
+      await this.copyDirRecursive(srcPath, dstPath)
     }
   }
 
@@ -302,20 +293,15 @@ export class S3Driver implements StorageDriver {
   ): Promise<void> {
     await this.checkDogeToken()
     // physicalPath 是目标项自身的物理路径（op/storage.ts removeItems 逐项调用），
-    // 直接删除它即可；若再拼一次 name 会指向 `<item>/<name>`，HEAD 404 后退化成
-    // 按目录递归删除，prefix 同样查不到对象，最终静默返回成功但对象仍在。
-    const expand = names && names.length > 1
-    const targets = expand
-      ? names.map((n) => joinPath(this.getRemotePath(physicalPath), n))
-      : [this.getRemotePath(physicalPath)]
+    // 参数即目标项路径，直接删除它即可；若再拼一次 name 会指向 `<item>/<name>`，
+    // HEAD 404 后退化成按目录递归删除，prefix 同样查不到对象，最终静默返回成功但对象仍在。
+    const targetPath = this.getRemotePath(physicalPath)
 
-    for (const targetPath of targets) {
-      const head = await this.client.headObject(targetPath)
-      if (head) {
-        await this.client.deleteObject(targetPath)
-      } else {
-        await this.removeDirRecursive(targetPath)
-      }
+    const head = await this.client.headObject(targetPath)
+    if (head) {
+      await this.client.deleteObject(targetPath)
+    } else {
+      await this.removeDirRecursive(targetPath)
     }
   }
 

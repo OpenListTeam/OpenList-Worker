@@ -218,36 +218,23 @@ export class WpsDriver implements StorageDriver {
     dstPhys: string,
   ): Promise<void> {
     // srcPhys/dstPhys 已是源/目标项自身的物理路径（op/storage.ts moveItems 逐项调用），
-    // 源直接用 srcPath；目标文件夹是 dstPath 的父级，再拼 name 会指向 `<item>/<name>`。
-    const expand = names && names.length > 1
-    const srcBase = this.cleanPath(srcPhys)
-    const dstBase = this.cleanPath(dstPhys)
-    const pairs = expand
-      ? names.map(
-          (n) =>
-            [
-              srcBase === "/" ? `/${n}` : `${srcBase}/${n}`,
-              dstBase === "/" ? `/${n}` : `${dstBase}/${n}`,
-            ] as const,
-        )
-      : ([[srcBase, dstBase]] as const)
-
-    for (const [srcPath, dstPath] of pairs) {
-      const dstParentPath =
-        dstPath.substring(0, dstPath.lastIndexOf("/")) || "/"
-      const dstNode = await this.resolvePath(dstParentPath)
-      if (!dstNode || !dstNode.isDir || dstNode.kind === "root") {
-        throw new Error("Target destination directory not found")
-      }
-      const srcNode = await this.resolvePath(srcPath)
-      if (srcNode) {
-        await this.client.move(
-          srcNode.groupId,
-          srcNode.fileId,
-          dstNode.groupId,
-          dstNode.fileId,
-        )
-      }
+    // 参数即项路径：源直接用 srcPath，目标文件夹取 dstPath 去掉末段的父目录；
+    // 不得再拼 name，否则会指向 <item>/<name>。
+    const srcPath = this.cleanPath(srcPhys)
+    const dstPath = this.cleanPath(dstPhys)
+    const dstParentPath = dstPath.substring(0, dstPath.lastIndexOf("/")) || "/"
+    const dstNode = await this.resolvePath(dstParentPath)
+    if (!dstNode || !dstNode.isDir || dstNode.kind === "root") {
+      throw new Error("Target destination directory not found")
+    }
+    const srcNode = await this.resolvePath(srcPath)
+    if (srcNode) {
+      await this.client.move(
+        srcNode.groupId,
+        srcNode.fileId,
+        dstNode.groupId,
+        dstNode.fileId,
+      )
     }
   }
 
@@ -272,36 +259,23 @@ export class WpsDriver implements StorageDriver {
     dstPhys: string,
   ): Promise<void> {
     // srcPhys/dstPhys 已是源/目标项自身的物理路径（op/storage.ts copyItems 逐项调用），
-    // 源直接用 srcPath；目标文件夹是 dstPath 的父级，再拼 name 会指向 `<item>/<name>`。
-    const expand = names && names.length > 1
-    const srcBase = this.cleanPath(srcPhys)
-    const dstBase = this.cleanPath(dstPhys)
-    const pairs = expand
-      ? names.map(
-          (n) =>
-            [
-              srcBase === "/" ? `/${n}` : `${srcBase}/${n}`,
-              dstBase === "/" ? `/${n}` : `${dstBase}/${n}`,
-            ] as const,
-        )
-      : ([[srcBase, dstBase]] as const)
-
-    for (const [srcPath, dstPath] of pairs) {
-      const dstParentPath =
-        dstPath.substring(0, dstPath.lastIndexOf("/")) || "/"
-      const dstNode = await this.resolvePath(dstParentPath)
-      if (!dstNode || !dstNode.isDir || dstNode.kind === "root") {
-        throw new Error("Target destination directory not found")
-      }
-      const srcNode = await this.resolvePath(srcPath)
-      if (srcNode) {
-        await this.client.copy(
-          srcNode.groupId,
-          srcNode.fileId,
-          dstNode.groupId,
-          dstNode.fileId,
-        )
-      }
+    // 参数即项路径：源直接用 srcPath，目标文件夹取 dstPath 去掉末段的父目录；
+    // 不得再拼 name，否则会指向 <item>/<name>。
+    const srcPath = this.cleanPath(srcPhys)
+    const dstPath = this.cleanPath(dstPhys)
+    const dstParentPath = dstPath.substring(0, dstPath.lastIndexOf("/")) || "/"
+    const dstNode = await this.resolvePath(dstParentPath)
+    if (!dstNode || !dstNode.isDir || dstNode.kind === "root") {
+      throw new Error("Target destination directory not found")
+    }
+    const srcNode = await this.resolvePath(srcPath)
+    if (srcNode) {
+      await this.client.copy(
+        srcNode.groupId,
+        srcNode.fileId,
+        dstNode.groupId,
+        dstNode.fileId,
+      )
     }
   }
 
@@ -311,19 +285,11 @@ export class WpsDriver implements StorageDriver {
     names: string[],
   ): Promise<void> {
     // physicalPath 是目标项自身的物理路径（op/storage.ts removeItems 逐项调用），
-    // 直接解析它即可；再拼 name 会指向 `<item>/<name>`，resolvePath 返回 null
+    // 参数即项路径，直接解析它即可；再拼 name 会指向 <item>/<name>，resolvePath 返回 null
     // 后被静默跳过，接口成功但文件仍在。
-    const expand = names && names.length > 1
-    const base = this.cleanPath(physicalPath)
-    const targets = expand
-      ? names.map((n) => (base === "/" ? `/${n}` : `${base}/${n}`))
-      : [base]
-
-    for (const targetPath of targets) {
-      const node = await this.resolvePath(targetPath)
-      if (node && node.kind !== "root" && node.kind !== "group") {
-        await this.client.delete(node.groupId, node.fileId)
-      }
+    const node = await this.resolvePath(this.cleanPath(physicalPath))
+    if (node && node.kind !== "root" && node.kind !== "group") {
+      await this.client.delete(node.groupId, node.fileId)
     }
   }
 

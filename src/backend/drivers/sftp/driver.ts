@@ -193,15 +193,8 @@ export class SFTPDriver implements StorageDriver {
     names: string[],
   ): Promise<void> {
     // physicalPath 已是目标项自身的物理路径（op/storage.ts 逐项解析后传入），
-    // 再拼一次 name 会指向不存在的 <item>/<name>，导致静默删除失败。
-    // 仅当 names.length > 1 时才按「目录 + 多个 name」展开（防御分支）。
-    const expand = names && names.length > 1
-    const targets = expand
-      ? names.map((n) => posixJoin(physicalPath, n))
-      : [cleanPosixPath(physicalPath)]
-    for (const target of targets) {
-      await this.client.removeRecursive(target)
-    }
+    // 参数即项路径，不得再拼 name，否则指向 <item>/<name> 导致静默删除失败。
+    await this.client.removeRecursive(cleanPosixPath(physicalPath))
   }
 
   async move(
@@ -211,17 +204,9 @@ export class SFTPDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    // srcPhys/dstPhys 已是源/目标项自身的物理路径，直接重命名即可；
-    // 再拼 name 会让源/目标路径错位。多 name 时才按「目录 + name」展开。
-    const expand = names && names.length > 1
-    const pairs = expand
-      ? names.map(
-          (n) => [posixJoin(srcPhys, n), posixJoin(dstPhys, n)] as const,
-        )
-      : [[cleanPosixPath(srcPhys), cleanPosixPath(dstPhys)] as const]
-    for (const [src, dst] of pairs) {
-      await this.client.rename(src, dst)
-    }
+    // srcPhys/dstPhys 已是源/目标项自身的物理路径，参数即项路径，
+    // 不得再拼 name，否则源/目标会错位到 <item>/<name>。
+    await this.client.rename(cleanPosixPath(srcPhys), cleanPosixPath(dstPhys))
   }
 
   async copy(

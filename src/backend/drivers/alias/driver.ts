@@ -237,14 +237,10 @@ export class AliasDriver implements StorageDriver {
     physicalPath: string,
     names: string[],
   ): Promise<void> {
-    // physicalPath 是目标项自身的路径，而 removeItems 需要「目录 + names」
-    //（内部会再拼 name）；直接把项路径当目录传入会得到 <item>/<name>，
-    // 目标不存在导致删除静默失败。仅当 names.length > 1 时按「目录 + 多个
-    // name」展开（调用方恒传 1 个，此分支是防御性的）。
-    const expand = names && names.length > 1
-    const dirPath = expand
-      ? this.cleanPath(physicalPath)
-      : this.parentPath(physicalPath)
+    // physicalPath 是目标项自身的路径（op/storage.ts removeItems 逐项调用），
+    // 而 removeItems 需要「父目录 + names」（内部会再拼 name）；直接把项路径
+    // 当目录传入会得到 <item>/<name>，目标不存在导致删除静默失败。
+    const dirPath = this.parentPath(physicalPath)
     const targets = this.getTargetsForPath(dirPath)
     if (targets.length === 0) return
     const { removeItems } = await import("../../internal/op/storage")
@@ -258,16 +254,11 @@ export class AliasDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    // srcPhys/dstPhys 是源/目标项自身的路径，moveItems 需要的是各自所在
-    // 目录（内部会再拼 name）；传项路径会得到 <item>/<name>，操作静默失败。
-    // 仅当 names.length > 1 时按「目录 + 多个 name」展开（防御性分支）。
-    const expand = names && names.length > 1
-    const srcDirPath = expand
-      ? this.cleanPath(srcPhys)
-      : this.parentPath(srcPhys)
-    const dstDirPath = expand
-      ? this.cleanPath(dstPhys)
-      : this.parentPath(dstPhys)
+    // srcPhys/dstPhys 是源/目标项自身的路径（已含 name），moveItems 需要的
+    // 是各自所在父目录（内部会再拼 name）；传项路径会得到 <item>/<name>，
+    // 操作静默失败。
+    const srcDirPath = this.parentPath(srcPhys)
+    const dstDirPath = this.parentPath(dstPhys)
     const srcTargets = this.getTargetsForPath(srcDirPath)
     const dstTargets = this.getTargetsForPath(dstDirPath)
     if (srcTargets.length === 0 || dstTargets.length === 0) {
@@ -288,14 +279,9 @@ export class AliasDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    // 同 move：srcPhys/dstPhys 是项自身路径，copyItems 需要所在目录。
-    const expand = names && names.length > 1
-    const srcDirPath = expand
-      ? this.cleanPath(srcPhys)
-      : this.parentPath(srcPhys)
-    const dstDirPath = expand
-      ? this.cleanPath(dstPhys)
-      : this.parentPath(dstPhys)
+    // 同 move：srcPhys/dstPhys 是项自身路径，copyItems 需要各自所在父目录。
+    const srcDirPath = this.parentPath(srcPhys)
+    const dstDirPath = this.parentPath(dstPhys)
     const srcTargets = this.getTargetsForPath(srcDirPath)
     const dstTargets = this.getTargetsForPath(dstDirPath)
     if (srcTargets.length === 0 || dstTargets.length === 0) {

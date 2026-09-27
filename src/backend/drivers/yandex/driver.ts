@@ -137,19 +137,11 @@ export class YandexDriver implements StorageDriver {
     names: string[],
   ): Promise<void> {
     // physicalPath 是目标项自身的物理路径（op/storage.ts removeItems 逐项调用），
-    // 直接删除它即可；再拼 name 会指向 `<item>/<name>`，DELETE 404 报错。
-    const expand = names && names.length > 1
-    const base = this.cleanPath(physicalPath)
-    const targets = expand
-      ? names.map((n) => (base === "/" ? `/${n}` : `${base}/${n}`))
-      : [base]
-
-    for (const targetPath of targets) {
-      await this.client.request("", {
-        method: "DELETE",
-        params: { path: targetPath },
-      })
-    }
+    // 参数即项路径，直接删除它即可；再拼 name 会指向 <item>/<name>，DELETE 404 报错。
+    await this.client.request("", {
+      method: "DELETE",
+      params: { path: this.cleanPath(physicalPath) },
+    })
   }
 
   async move(
@@ -160,30 +152,15 @@ export class YandexDriver implements StorageDriver {
     dstPhys: string,
   ): Promise<void> {
     // srcPhys/dstPhys 已是源/目标项自身的物理路径（op/storage.ts moveItems 逐项调用），
-    // 直接作为 from/path 使用；再拼 name 会指向 `<item>/<name>`，源/目标错位。
-    const expand = names && names.length > 1
-    const srcBase = this.cleanPath(srcPhys)
-    const dstBase = this.cleanPath(dstPhys)
-    const pairs = expand
-      ? names.map(
-          (n) =>
-            [
-              srcBase === "/" ? `/${n}` : `${srcBase}/${n}`,
-              dstBase === "/" ? `/${n}` : `${dstBase}/${n}`,
-            ] as const,
-        )
-      : ([[srcBase, dstBase]] as const)
-
-    for (const [fromPath, toPath] of pairs) {
-      await this.client.request("/move", {
-        method: "POST",
-        params: {
-          from: fromPath,
-          path: toPath,
-          overwrite: "true",
-        },
-      })
-    }
+    // 参数即项路径，直接作为 from/path 使用；再拼 name 会指向 <item>/<name>，源/目标错位。
+    await this.client.request("/move", {
+      method: "POST",
+      params: {
+        from: this.cleanPath(srcPhys),
+        path: this.cleanPath(dstPhys),
+        overwrite: "true",
+      },
+    })
   }
 
   async copy(
@@ -194,30 +171,15 @@ export class YandexDriver implements StorageDriver {
     dstPhys: string,
   ): Promise<void> {
     // srcPhys/dstPhys 已是源/目标项自身的物理路径（op/storage.ts copyItems 逐项调用），
-    // 直接作为 from/path 使用；再拼 name 会指向 `<item>/<name>`，源/目标错位。
-    const expand = names && names.length > 1
-    const srcBase = this.cleanPath(srcPhys)
-    const dstBase = this.cleanPath(dstPhys)
-    const pairs = expand
-      ? names.map(
-          (n) =>
-            [
-              srcBase === "/" ? `/${n}` : `${srcBase}/${n}`,
-              dstBase === "/" ? `/${n}` : `${dstBase}/${n}`,
-            ] as const,
-        )
-      : ([[srcBase, dstBase]] as const)
-
-    for (const [fromPath, toPath] of pairs) {
-      await this.client.request("/copy", {
-        method: "POST",
-        params: {
-          from: fromPath,
-          path: toPath,
-          overwrite: "true",
-        },
-      })
-    }
+    // 参数即项路径，直接作为 from/path 使用；再拼 name 会指向 <item>/<name>，源/目标错位。
+    await this.client.request("/copy", {
+      method: "POST",
+      params: {
+        from: this.cleanPath(srcPhys),
+        path: this.cleanPath(dstPhys),
+        overwrite: "true",
+      },
+    })
   }
 
   async put(
