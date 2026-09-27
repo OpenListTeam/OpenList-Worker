@@ -101,8 +101,15 @@ export class LocalDriver implements StorageDriver {
     await initNodeModules()
     if (!fs || !path)
       throw new Error("LocalDriver is not supported in Edge Runtime")
-    for (const name of names) {
-      const itemPath = path.join(physicalPath, name)
+    // physicalPath 是目标项自身的路径（op/storage.ts removeItems 逐项调用），
+    // 直接删除即可；再拼一次 name 会指向 <item>/<name>，配合 force:true 会
+    // 静默"成功"但什么都没删。仅当 names.length > 1 时按「目录 + 多个 name」
+    // 展开（防御性分支，当前调用链恒传 1 个）。
+    const expand = names && names.length > 1
+    const targets = expand
+      ? names.map((n) => path.join(physicalPath, n))
+      : [physicalPath]
+    for (const itemPath of targets) {
       await fs.rm(itemPath, { recursive: true, force: true })
     }
   }
@@ -117,11 +124,16 @@ export class LocalDriver implements StorageDriver {
     await initNodeModules()
     if (!fs || !path)
       throw new Error("LocalDriver is not supported in Edge Runtime")
-    for (const name of names) {
-      const src = path.join(srcPhys, name)
-      const dst = path.join(dstPhys, name)
+    // srcPhys/dstPhys 是源/目标项自身的路径（已含 name），直接移动即可；
+    // 再拼一次 name 会指向不存在的 <item>/<name> 而 ENOENT。
+    // 仅当 names.length > 1 时按「目录 + 多个 name」展开（防御性分支）。
+    const expand = names && names.length > 1
+    const srcs = expand ? names.map((n) => path.join(srcPhys, n)) : [srcPhys]
+    const dsts = expand ? names.map((n) => path.join(dstPhys, n)) : [dstPhys]
+    for (let i = 0; i < srcs.length; i++) {
+      const dst = dsts[i]
       await fs.mkdir(path.dirname(dst), { recursive: true })
-      await fs.rename(src, dst)
+      await fs.rename(srcs[i], dst)
     }
   }
 
@@ -135,11 +147,15 @@ export class LocalDriver implements StorageDriver {
     await initNodeModules()
     if (!fs || !path)
       throw new Error("LocalDriver is not supported in Edge Runtime")
-    for (const name of names) {
-      const src = path.join(srcPhys, name)
-      const dst = path.join(dstPhys, name)
+    // 同 move：srcPhys/dstPhys 已是源/目标项自身路径，不再拼 name。
+    // 仅当 names.length > 1 时按「目录 + 多个 name」展开（防御性分支）。
+    const expand = names && names.length > 1
+    const srcs = expand ? names.map((n) => path.join(srcPhys, n)) : [srcPhys]
+    const dsts = expand ? names.map((n) => path.join(dstPhys, n)) : [dstPhys]
+    for (let i = 0; i < srcs.length; i++) {
+      const dst = dsts[i]
       await fs.mkdir(path.dirname(dst), { recursive: true })
-      await fs.cp(src, dst, { recursive: true })
+      await fs.cp(srcs[i], dst, { recursive: true })
     }
   }
 
