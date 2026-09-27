@@ -11,6 +11,7 @@ import {
   encryptConfigValue,
   isSealedCiphertext,
   resolveDbCipher,
+  type DbCipher,
 } from "../../pkg/crypto"
 import { readCipher } from "./store/backend"
 import { memoryDriver } from "./store/driver/memory"
