@@ -231,6 +231,43 @@ test("getDb: 五个无参 getter 复用同一份缓存快照", async () => {
   assert.ok(Array.isArray(plugins))
 })
 
+test("saveDb publishOnSuccess keeps the old snapshot after failure", async () => {
+  __resetDbCacheForTest()
+  const { backend } = createCountingBackend(SAMPLE)
+  const originalSave = backend.save
+  let shouldFail = true
+  backend.save = async (next: any) => {
+    if (shouldFail) throw new Error("write failed")
+    return originalSave(next)
+  }
+  __setStoreBackendLoaderForTest(async () => backend)
+  const env = { DB_DRIVER: "counting" }
+  const before = await getDb(env)
+  const candidate = {
+    ...before,
+    settings: [{ key: "site_title", value: "Changed" }],
+  }
+
+  await assert.rejects(
+    saveDb(candidate, env, { publishOnSuccess: true } as any),
+  )
+  assert.equal(await getDb(env), before)
+
+  backend.save = async () => false
+  assert.equal(
+    await saveDb(candidate, env, { publishOnSuccess: true } as any),
+    false,
+  )
+  assert.equal(await getDb(env), before)
+
+  backend.save = originalSave
+  assert.equal(
+    await saveDb(candidate, env, { publishOnSuccess: true } as any),
+    true,
+  )
+  assert.equal(await getDb(env), candidate)
+})
+
 test("getDb: TTL 过期后允许重新加载（缓存不是永久固化）", async () => {
   __resetDbCacheForTest()
   const { backend, stats } = createCountingBackend(SAMPLE)

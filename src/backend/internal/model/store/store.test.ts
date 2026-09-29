@@ -21,7 +21,12 @@ import {
   deserializeColumn,
   rowToEntity,
   entityToRow,
+  buildAddColumnDdl,
+  buildTableInfoDdl,
 } from "./schema"
+import { d1Driver } from "./driver/d1"
+import { __ensureMysqlSchemaForTest } from "./driver/mysql"
+import { OpenListDB } from "../../../durable-objects/OpenListDB"
 
 /** 基于局部 Map 的内存 KV 驱动（隔离测试）。 */
 function createMockKvDriver(): Driver {
@@ -158,7 +163,23 @@ const SAMPLE_DB = {
   ],
   shares: [],
   metas: [{ id: 1, path: "/a", read_users: [1, 2], read_users_sub: false }],
-  plugins: [],
+  plugins: [
+    {
+      id: "com.example.docs",
+      name: "Docs",
+      version: "1.0.0",
+      enabled: true,
+      manifest: {
+        apiVersion: "v1",
+        id: "com.example.docs",
+        version: "1.0.0",
+        displayName: "Docs",
+        description: "",
+        capabilities: ["files_read"],
+        settingsSchema: { type: "object" },
+      },
+    },
+  ],
 }
 
 test("schema: columnar tables match Go backend structure", () => {
@@ -368,7 +389,7 @@ test("secret persistence: degrades gracefully when no backend is available", asy
 
 test("getKvBinding: 同一 env 只解析一次（含 mode=none），重复调用返回同一缓存对象", async () => {
   // 回归：此前只有「成功」的绑定会被缓存，`mode=none` 直接 return，于是每次
-  // 调用都会重新探测 env.KV / globalThis.KV、重试 Blob SDK 初始化，并重新打印
+  // 调用都要重新探测 env.KV / globalThis.KV、重试 Blob SDK 初始化，并重新打印
   // 一次告警。登录失败计数、注销黑名单、审计日志读写都在这条路径上
   // （serverless 日志被同一行刷屏的来源之一）。
   const { getKvBinding } = await import("./json")
@@ -392,5 +413,243 @@ test("getKvBinding: 同一 env 只解析一次（含 mode=none），重复调用
   assert.ok(
     warns.filter((w) => w.includes("getKvBinding")).length <= 1,
     "「未探测到 KV 绑定」的告警每个进程最多打印一次",
+  )
+})
+
+test("schema: plugin manifest column and migration SQL are available", () => {
+  const pluginDdl = D1_SCHEMA.find((sql) => sql.includes("x_plugins"))
+  assert.ok(pluginDdl?.includes("`manifest` TEXT"))
+  assert.equal(
+    buildAddColumnDdl("plugins", "manifest", "sqlite"),
+    "ALTER TABLE `x_plugins` ADD COLUMN `manifest` TEXT",
+  )
+  const mysqlDdl = MYSQL_SCHEMA.join("\n")
+  assert.doesNotMatch(mysqlDdl, /TEXT\s+(?:PRIMARY KEY|UNIQUE)/)
+  assert.match(
+    MYSQL_SCHEMA.find((sql) => sql.includes("x_plugins")) || "",
+    /`id` VARCHAR\(255\) PRIMARY KEY/,
+  )
+  assert.equal(
+    buildAddColumnDdl("plugins", "manifest", "mysql"),
+    "ALTER TABLE `x_plugins` ADD COLUMN `manifest` TEXT",
+  )
+  assert.equal(
+    buildTableInfoDdl("plugins"),
+    "PRAGMA table_info(`x_plugins`)",
+  )
+})
+
+function createD1SchemaBinding(
+  columns: string[],
+  options: { failFirstAlter?: boolean; duplicateFirstAlter?: boolean } = {},
+) {
+  const sql: string[] = []
+  const stats = { batchCalls: 0 }
+  let failFirstAlter = Boolean(options.failFirstAlter)
+  let duplicateFirstAlter = Boolean(options.duplicateFirstAlter)
+  const db = {
+    prepare(statement: string) {
+      sql.push(statement)
+      let params: any[] = []
+      const stmt = {
+        bind(...args: any[]) {
+          params = args
+          return stmt
+        },
+        async first() {
+          return null
+        },
+        async all() {
+          if (/^PRAGMA table_info/i.test(statement)) {
+            return { results: columns.map((name) => ({ name })) }
+          }
+          return { results: [] }
+        },
+        async run() {
+          void params
+          if (statement.includes("ADD COLUMN `manifest`")) {
+            if (failFirstAlter) {
+              failFirstAlter = false
+              throw new Error("alter failed")
+            }
+            if (duplicateFirstAlter) {
+              duplicateFirstAlter = false
+              if (!columns.includes("manifest")) columns.push("manifest")
+              throw new Error("duplicate column name: manifest")
+            }
+            if (!columns.includes("manifest")) columns.push("manifest")
+          }
+          return { success: true }
+        },
+      }
+      return stmt
+    },
+    async batch(statements: any[]) {
+      stats.batchCalls++
+      for (const statement of statements) await statement.run()
+      return []
+    },
+  }
+  return { db, sql, stats, columns }
+}
+
+test("D1 schema migration adds the plugin manifest column exactly once", async () => {
+  const oldSchema = createD1SchemaBinding(["id", "name"])
+  await Promise.all([
+    d1Driver.init({ DB: oldSchema.db }),
+    d1Driver.init({ DB: oldSchema.db }),
+    d1Driver.init({ DB: oldSchema.db }),
+  ])
+  assert.equal(
+    oldSchema.sql.filter((sql) => sql.includes("ADD COLUMN `manifest`"))
+      .length,
+    1,
+  )
+
+  const newSchema = createD1SchemaBinding(["id", "name", "manifest"])
+  await d1Driver.init({ DB: newSchema.db })
+  assert.equal(
+    newSchema.sql.some((sql) => sql.includes("ADD COLUMN `manifest`")),
+    false,
+  )
+})
+
+test("D1 schema migration retries after a failed concurrent attempt", async () => {
+  const schema = createD1SchemaBinding(["id", "name"], {
+    failFirstAlter: true,
+  })
+  await assert.rejects(
+    Promise.all([
+      d1Driver.init({ DB: schema.db }),
+      d1Driver.init({ DB: schema.db }),
+    ]),
+  )
+  assert.equal(
+    schema.sql.filter((sql) => sql.includes("ADD COLUMN `manifest`"))
+      .length,
+    1,
+  )
+  await d1Driver.init({ DB: schema.db })
+  assert.equal(
+    schema.sql.filter((sql) => sql.includes("ADD COLUMN `manifest`"))
+      .length,
+    2,
+  )
+})
+
+test("D1 schema migration accepts a cross-isolate duplicate after recheck", async () => {
+  const schema = createD1SchemaBinding(["id"], {
+    duplicateFirstAlter: true,
+  })
+  await d1Driver.init({ DB: schema.db })
+  assert.deepEqual(schema.columns, ["id", "manifest"])
+})
+
+test("D1 batch uses one native transaction", async () => {
+  const schema = createD1SchemaBinding(["id", "manifest"])
+  const statements = Array.from({ length: 250 }, (_, index) => ({
+    sql: `UPDATE plugins SET version = ? WHERE id = ?`,
+    params: [`${index}`, `${index}`],
+  }))
+  await d1Driver.batch!(statements, { DB: schema.db })
+  assert.equal(schema.stats.batchCalls, 1)
+})
+
+function createMysqlSchemaPool(
+  columns: string[],
+  options: { failFirstAlter?: boolean; duplicateFirstAlter?: boolean } = {},
+) {
+  const sql: string[] = []
+  let failFirstAlter = Boolean(options.failFirstAlter)
+  let duplicateFirstAlter = Boolean(options.duplicateFirstAlter)
+  return {
+    sql,
+    columns,
+    async query(statement: string) {
+      sql.push(statement)
+      if (statement.includes("information_schema.COLUMNS")) {
+        return [
+          columns.includes("manifest")
+            ? [{ COLUMN_NAME: "manifest" }]
+            : [],
+        ]
+      }
+      if (statement.includes("ADD COLUMN `manifest`")) {
+        if (duplicateFirstAlter) {
+          duplicateFirstAlter = false
+          columns.push("manifest")
+          const error: any = new Error("Duplicate column name 'manifest'")
+          error.code = "ER_DUP_FIELDNAME"
+          throw error
+        }
+        if (failFirstAlter) {
+          failFirstAlter = false
+          throw new Error("alter failed")
+        }
+        columns.push("manifest")
+      }
+      return [[], []]
+    },
+  }
+}
+
+test("MySQL schema migration is single-flight per pool and isolated across pools", async () => {
+  const first = createMysqlSchemaPool(["id"])
+  await Promise.all([
+    __ensureMysqlSchemaForTest(first, {}),
+    __ensureMysqlSchemaForTest(first, {}),
+  ])
+  assert.equal(
+    first.sql.filter((sql) => sql.includes("ADD COLUMN `manifest`")).length,
+    1,
+  )
+
+  const second = createMysqlSchemaPool(["id"])
+  await __ensureMysqlSchemaForTest(second, {})
+  assert.equal(
+    second.sql.filter((sql) => sql.includes("ADD COLUMN `manifest`"))
+      .length,
+    1,
+  )
+
+  const retry = createMysqlSchemaPool(["id"], { failFirstAlter: true })
+  await assert.rejects(__ensureMysqlSchemaForTest(retry, {}))
+  await __ensureMysqlSchemaForTest(retry, {})
+  assert.equal(
+    retry.sql.filter((sql) => sql.includes("ADD COLUMN `manifest`")).length,
+    2,
+  )
+})
+
+test("MySQL schema migration accepts a cross-instance duplicate after recheck", async () => {
+  const schema = createMysqlSchemaPool(["id"], {
+    duplicateFirstAlter: true,
+  })
+  await __ensureMysqlSchemaForTest(schema, {})
+  assert.deepEqual(schema.columns, ["id", "manifest"])
+})
+
+test("Durable Object schema migration adds the plugin manifest column", async () => {
+  const sql: string[] = []
+  const state = {
+    storage: {
+      sql: {
+        exec(statement: string) {
+          sql.push(statement)
+          return {
+            toArray: () =>
+              /^PRAGMA table_info/i.test(statement) ? [{ name: "id" }] : [],
+          }
+        },
+      },
+      transactionSync(callback: () => void) {
+        callback()
+      },
+    },
+  }
+  const database = new OpenListDB(state)
+  await database.init()
+  assert.ok(
+    sql.includes("ALTER TABLE `x_plugins` ADD COLUMN `manifest` TEXT"),
   )
 })
