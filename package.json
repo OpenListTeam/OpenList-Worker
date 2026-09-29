@@ -1,0 +1,173 @@
+{
+  "name": "openlist",
+  "version": "4.2.3",
+  "type": "module",
+  "packageManager": "pnpm@9.15.4",
+  "cloudflare": {
+    "bindings": {
+      "JWT_SECRET": {
+        "description": "Signs tokens and encrypts sensitive fields (drive credentials, 2FA secrets). Generate one with `openssl rand -hex 32`."
+      },
+      "ADMIN_PASS": {
+        "description": "Optional. If set, skips the setup wizard and initializes the admin account with this password."
+      },
+      "ALLOW_URLS": {
+        "description": "Optional. Comma-separated CORS allowlist, e.g. `https://yourdomain.com`. Leave empty to allow same-origin only."
+      },
+      "DB_FORMAT": {
+        "description": "Storage format: `map` (whole JSON), `key` (per-key), `sql` (relational, Go-compatible). Defaults to `map`."
+      },
+      "DB_DRIVER": {
+        "description": "Storage driver: `auto` (default), `blob`, `cfkv`, `kv`, `d1`, `do`, `mysql`. Leave as `auto` unless you need to force one. An explicitly configured driver is never replaced automatically: if it is unavailable, the app reports a configuration error (including which driver auto-detection would have picked) instead of writing to another backend. Invalid driver/format pairs are reported the same way."
+      },
+      "DB_CIPHER": {
+        "description": "At-rest cipher for sensitive fields (drive credentials, 2FA secrets, password hashes): `none` (default, no encryption), `aes-256-gcm` (HKDF-derived AES-256-GCM key — the `enc:v2:` envelope written by existing encrypted deployments, recommended), `aes-256-gcm-pbkdf2` (legacy `enc:v1:` envelope, PBKDF2 per field, slow), `aes-256-cbc-hmac` (`enc:v3:`), `chacha20-poly1305` (`enc:v4:`, RFC 8439, pure-JS implementation), `des-cbc-hmac` / `3des-cbc-hmac` (`enc:v5:`/`enc:v6:`, compatibility only — single DES is 56-bit and 3DES is deprecated, do not use for real data). Ciphertexts carry an `enc:vN:` prefix and are decrypted by prefix on read, so switching back to `none` (or changing algorithms) never makes existing data unreadable — it only changes how newly written data is stored (legacy ciphertext is migrated to plaintext on the next save). Key derivation is cached per isolate, and unchanged fields are not re-encrypted on save. This setting does NOT affect the shared secret: with `none`, a secret is still generated and persisted during setup when JWT_SECRET is not provided, because JWT signing needs it."
+      }
+    }
+  },
+  "author": {
+    "name": "The OpenListTeam Contributors"
+  },
+  "description": "A file list program that supports multiple storages, powered by OpenList (TypeScript / Cloudflare Workers port)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpenListTeam/OpenList.git"
+  },
+  "bugs": {
+    "url": "https://github.com/OpenListTeam/OpenList/issues"
+  },
+  "files": [
+    "dist"
+  ],
+  "homepage": "https://doc.oplist.org",
+  "scripts": {
+    "start": "node dist-server/api/[...route].js",
+    "fetch:frontend": "node scripts/fetch-frontend.mjs",
+    "build": "node scripts/fetch-frontend.mjs && node scripts/build-edge.mjs",
+    "build:edge": "node scripts/build-edge.mjs",
+    "dev:unified": "node scripts/fetch-frontend.mjs && wrangler dev",
+    "dev:worker": "wrangler dev",
+    "deploy:worker": "wrangler deploy --yes",
+    "deploy": "node scripts/deploy.js",
+    "build:all": "npm run build",
+    "test:189": "tsx --test src/backend/drivers/189/*.test.ts",
+    "test:drivers": "tsx --test \"src/backend/drivers/**/*.test.ts\"",
+    "test:server": "tsx --test \"src/backend/server/*.test.ts\"",
+    "test:store": "tsx --test src/backend/internal/model/store/store.test.ts",
+    "test:model": "tsx --test \"src/backend/internal/model/*.test.ts\"",
+    "test:regress": "tsx scripts/_regress.mjs",
+    "test:deploy": "node scripts/test-deploy.js",
+    "env:check": "tsx scripts/env-check.mjs",
+    "test:all": "npm run test:189 && npm run test:drivers && npm run test:server && npm run test:store && npm run test:model && npm run test:regress",
+    "sls:deploy": "serverless deploy",
+    "sls:package": "serverless package",
+    "sls:info": "serverless info",
+    "sls:remove": "serverless remove",
+    "prepare": "node -e \"if (require('fs').existsSync('.git')) { try { require('child_process').execSync('husky'); } catch(e) {} }\"",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "format": "prettier --ignore-path .gitignore -w \"src/backend/**/*.ts\""
+  },
+  "license": "AGPL-3.0",
+  "devDependencies": {
+    "@crowdin/cli": "^4.14.3",
+    "@rolldown/binding-linux-x64-gnu": "1.2.2",
+    "@rolldown/binding-linux-x64-musl": "1.2.2",
+    "@rolldown/binding-win32-x64-msvc": "1.2.2",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/bencode": "^2.0.4",
+    "@types/crypto-js": "^4.2.2",
+    "@types/ini": "^4.1.1",
+    "@types/mark.js": "^8.11.12",
+    "@types/node": "^24.13.2",
+    "@types/qrcode": "^1.5.6",
+    "@types/sha256": "^0.2.2",
+    "@types/ssh2": "^1.15.5",
+    "@types/streamsaver": "^2.0.5",
+    "@vitejs/plugin-legacy": "^8.1.0",
+    "concurrently": "^10.0.3",
+    "cross-env": "^10.1.0",
+    "esbuild": "^0.28.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.5",
+    "mermaid": "^11.16.0",
+    "prettier": "3.8.4",
+    "rehype-stringify": "^10.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.2",
+    "terser": "^5.48.0",
+    "tsx": "^4.23.0",
+    "typescript": "^5.9.3",
+    "unified": "^11.0.5",
+    "vite": "^8.1.0",
+    "vite-plugin-dynamic-base": "^1.3.0",
+    "vite-plugin-solid": "^2.11.12",
+    "vite-plugin-static-copy": "^3.4.0",
+    "wrangler": "^4.0.0"
+  },
+  "dependencies": {
+    "@edgeone/pages-blob": "^0.0.14",
+    "@egjs/view360": "4.0.0-beta.7",
+    "@embedpdf/snippet": "^2.14.4",
+    "@hono/vite-dev-server": "^0.26.1",
+    "@hope-ui/solid": "github:OpenListTeam/hope-ui#31b436e36ae5d266016814ba71a442ffa9d91181",
+    "@jellyfin/libass-wasm": "^4.2.4",
+    "@monaco-editor/loader": "1.7.0",
+    "@solid-primitives/i18n": "^2.2.1",
+    "@solid-primitives/keyboard": "^1.3.7",
+    "@solid-primitives/storage": "^1.3.11",
+    "@solidjs/router": "^0.9.1",
+    "@stitches/core": "^1.2.8",
+    "@viselect/vanilla": "^3.9.0",
+    "@xmldom/xmldom": "^0.9.12",
+    "aplayer": "^1.10.1",
+    "artplayer": "^5.4.0",
+    "artplayer-plugin-danmuku": "^5.3.0",
+    "asciinema-player": "^3.15.1",
+    "axios": "^1.18.1",
+    "bcryptjs": "^2.4.3",
+    "bencode": "^4.0.0",
+    "chardet": "^2.2.0",
+    "clsx": "^2.1.1",
+    "copy-to-clipboard": "^3.3.3",
+    "crypto-js": "^4.2.0",
+    "docx-preview": "^0.3.7",
+    "handlebars": "^4.7.9",
+    "hash-wasm": "^4.12.0",
+    "highlight.js": "^11.11.1",
+    "hls.js": "^1.6.16",
+    "hono": "^4.12.28",
+    "ini": "^7.0.0",
+    "katex": "^0.17.0",
+    "libheif-js": "^1.19.8",
+    "lightgallery": "^2.9.0",
+    "mark.js": "^8.11.1",
+    "mitt": "^3.0.1",
+    "monaco-editor": "0.55.1",
+    "mpegts.js": "github:OpenListTeam/mpegts.js#1e51e0f6f918cf08e05dfae9c7bfcf658d6b4ac2",
+    "mysql2": "^3.11.0",
+    "openpgp": "^6.3.1",
+    "otplib": "^12.0.1",
+    "parse5": "^7.3.0",
+    "qrcode": "^1.5.4",
+    "rehype-katex": "7.0.1",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "4.0.1",
+    "remark-math": "6.0.0",
+    "seemly": "^0.3.10",
+    "sha256": "^0.2.0",
+    "solid-contextmenu": "0.0.2",
+    "solid-icons": "1.1.0",
+    "solid-js": "^1.9.14",
+    "solid-motionone": "^1.0.4",
+    "solid-transition-group": "^0.3.0",
+    "ssh2": "^1.17.0",
+    "streamsaver": "^2.0.6",
+    "typescript-natural-sort": "^0.7.2",
+    "xpath": "^0.0.34",
+    "zod": "^3.23.8"
+  },
+  "lint-staged": {
+    "**/*.{js,ts,css,tsx,jsx,md,html,yml,yaml}": "prettier --write"
+  }
+}

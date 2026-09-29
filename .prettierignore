@@ -1,0 +1,11 @@
+dist/
+dist-server/
+cloud-functions/
+solid-router/
+pnpm-lock.yaml
+.husky
+.prettierignore
+.gitignore
+*.ttf
+*.otf
+*.woff2

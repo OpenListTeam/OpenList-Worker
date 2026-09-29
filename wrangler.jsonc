@@ -1,0 +1,181 @@
+// =============================================================================
+// OpenList-TSWorker · Cloudflare Workers 配置
+// 文档：https://developers.cloudflare.com/workers/wrangler/configuration/
+//
+// ⚠️ 本文件只声明 KV 一个存储绑定（见文件末 kv_namespaces），D1 / DO 等
+//    其它存储请按需在控制台添加。
+//
+// 为什么声明 KV 且【省略 id 字段】（不能写 "id": ""）：
+//   wrangler 会自动预配（automatic provisioning）：首次部署创建
+//   "项目名-绑定名" 的命名空间（此处即 openlist-tsworkers-kv）并绑定；
+//   二次部署通过服务端 inherit 复用已有绑定，不会重复创建。
+//
+// 注意：CI / 一键部署属非交互环境，wrangler 不会把生成的 id 回写进本文件。
+// 这是预期行为 —— 复用靠的是服务端 inherit 绑定，而非本地 id。
+//
+// ⚠️ 不要用 `wrangler kv namespace create` 手动建名为 "KV" 的命名空间：
+//   wrangler 的预配链路无法按 title 复用已有命名空间（KVHandler 未实现
+//   isConnectedToExistingResource），它会另建 openlist-tsworkers-kv，
+//   手动建的那个不会被任何绑定使用，成为孤儿资源。参见 Issue #34。
+//
+// Secret（JWT_SECRET / ADMIN_PASS / ALLOW_URLS / MYSQL_URLS / EO_KV_URLS / CF_* 等）请在
+// .dev.vars.example 或 .env.example 中声明 —— 部署按钮据此生成输入项，
+// 用户填入的值会成为该 Worker 的 Secret，后续更新不会被覆盖。
+// =============================================================================
+{
+  "name": "openlist-tsworkers",
+  "main": "src/backend/worker.ts",
+  "compatibility_date": "2026-08-04",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+
+  // ⚠️ run_worker_first 只放行 HTML 入口，不能改成 true（全量放行）：
+  //   默认「资源优先」时 / 与 /index.html 由静态层直接返回，Worker 根本不会执行，
+  //   ASSET_URLS 的 CDN 注入（fetch CDN index.html → 注入 window.OPENLIST_CONFIG.cdn）
+  //   永远不生效，前端仍从源站加载全部静态资源。
+  //   仅放行 HTML 入口后，带 hash 的 JS/CSS/图片仍由静态层直出、零 Worker 调用，
+  //   只有页面导航请求才多付一次 Worker 调用。
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": ["/", "/index.html"]
+  },
+
+  // ===========================================================================
+  // 普通环境变量（非敏感）
+  // 注意：vars 会在每次 wrangler deploy 时被本文件覆盖（Secrets 不会）。
+  // ===========================================================================
+  "vars": {
+    "ENVIRONMENT": "production",
+
+    // 数据存储格式：
+    //   map（默认）- 整对象序列化为单个 JSON 键值，适合 KV/Blob
+    //   key        - 分 key 存储，每实体一条记录（如 users_1）
+    //   sql        - 关系表格式，与 Go 后端一致（适用于 D1/MySQL）
+    "DB_FORMAT": "map",
+
+    // 数据库驱动：
+    //   auto（默认）- 自动检测，顺序 mysql → d1 → kv → cfkv → blob → do
+    //   blob       - 腾讯云 EdgeOne Blob / 阿里云 ESA Blob
+    //   cfkv       - Cloudflare KV REST API（需 CF_ACCOUNT / CF_KV_UUID / CF_API_KEY）
+    //   kv         - Cloudflare KV binding（需下方 kv_namespaces）
+    //   d1         - Cloudflare D1（需下方 d1_databases）
+    //   do         - Cloudflare Durable Objects（需下方 durable_objects）
+    //   mysql      - 外部 MySQL（需 MYSQL_URLS 或 MYSQL_HOST 等，仅 Node 运行时）
+    // 说明：mysql 仅在配置了连接信息时才参与 auto 探测，避免无谓的 TCP 建连。
+    "DB_DRIVER": "auto",
+
+    // 敏感字段落盘算法（默认 none：不加密；与 DB_DRIVER/DB_FORMAT 正交）：
+    //   none（默认）              - 不加密，敏感字段明文落盘
+    //   aes-256-gcm              - HKDF 派生 AES-256-GCM 密钥（enc:v2:，推荐）
+    //   aes-256-gcm-pbkdf2       - AES-256-GCM + PBKDF2-SHA256(10 万次) 逐字段派生
+    //                              （历史 enc:v1: envelope，每字段约 27ms，慢）
+    //   aes-256-cbc-hmac         - AES-256-CBC + HMAC-SHA256（enc:v3:）
+    //   chacha20-poly1305        - ChaCha20-Poly1305（enc:v4:，RFC 8439，纯 JS）
+    //   des-cbc-hmac             - 单 DES + HMAC-SHA256（enc:v5:，仅兼容，不安全）
+    //   3des-cbc-hmac            - 3DES + HMAC-SHA256（enc:v6:，仅兼容，已弃用）
+    // 说明：加密对象为 storages[].addition / 敏感 settings / users[].password /
+    //       users[].otp_secret。密文带 enc:vN: 前缀，读取时按前缀自动解密，
+    //       因此把该项改回 none 不会导致既有数据不可读（下次保存自动转为明文）。
+    // 注意：该项与 JWT 密钥无关 —— DB_CIPHER=none 时，未配置 JWT_SECRET 仍会
+    //       自动生成并持久化共享密钥（JWT 签名需要）。
+    "DB_CIPHER": "none",
+
+    // ── 安全鉴权（推荐以 Secret 类型配置，见 .dev.vars.example）──────────
+    //
+    // JWT 签名密钥（>=16 字符，兼作可选的字段加密密钥与定时任务鉴权）
+    // "JWT_SECRET": "",
+    //
+    // 跳过安装向导，自动以该密码初始化 admin
+    // "ADMIN_PASS": "",
+    //
+    // CORS 白名单（逗号分隔，不设则仅同源）
+    // "ALLOW_URLS": "https://yourdomain.com",
+
+    // ── 可选参数 ──────────────────────────────────────────────────────────
+    //
+    // 单次整体上传（/put、/form）大小上限，单位字节。默认 26214400（25MB）
+    // "MAX_UPLOAD": "26214400",
+    //
+    // 分片上传单片大小上限，单位字节。默认 16777216（16MB）
+    // "MAX_UPPART": "16777216",
+    //
+    // 前端静态资源 CDN 地址，需包含完整 dist（含 index.html），支持 $version 占位符
+    // 优先「本地 index.html + CDN 资产」（不要求 CDN 能返回 HTML，npmmirror 也能用）；
+    // 本地哈希不在 CDN 上时改用 CDN 的 index.html 保证同源；都不可用则回退源站
+    // ⚠️ 资源由浏览器直接加载，CDN 必须对 .js/.css 返回 Access-Control-Allow-Origin
+    // "ASSET_URLS": "https://registry.npmmirror.com/@openlist-frontend/openlist-frontend/$version/files/dist",
+    // "ASSET_URLS": "https://cdn.jsdelivr.net/npm/@openlist-frontend/openlist-frontend@$version/dist",
+    // "ASSET_URLS": "https://unpkg.com/@openlist-frontend/openlist-frontend@$version/dist",
+    //
+    // 允许作为种子数据来源的主机白名单，逗号/空格分隔
+    // "ALLOW_SEED": "",
+
+    // ── Cloudflare KV REST API（DB_DRIVER=cfkv 时三项需全部填写）───────────
+    //
+    // KV namespace ID
+    // "CF_KV_UUID": "",
+    //
+    // 账户 ID
+    // "CF_ACCOUNT": "",
+    //
+    // 具有 KV 读写权限的 API Token
+    // "CF_API_KEY": "",
+
+    // ── EdgeOne Node 云函数 KV 代理（DB_DRIVER=kv 时可选）──────────────────
+    //
+    // EdgeOne 的 KV 绑定只注入 Edge Functions，不会注入 Node 云函数。
+    // 运行在 EdgeOne Node 云函数时，必须经同部署的 Edge Functions 代理访问 KV。
+    // 此处填部署 origin，如 https://your-project.edgeone.app
+    // 留空则自动使用当前请求 origin（同一部署自调用）；跨域或本地调试才需显式设置。
+    // "EO_KV_URLS": "",
+
+    // ── MySQL（DB_DRIVER=mysql 时，方式一 / 方式二 二选一）─────────────────
+    //
+    // 方式一：连接串
+    // "MYSQL_URLS": "mysql://user:pass@host:3306/db",
+    //
+    // 方式二：分项配置
+    // "MYSQL_HOST": "127.0.0.1",
+    // "MYSQL_PORT": "3306",
+    // "MYSQL_USER": "root",
+    // "MYSQL_PASS": "",
+    // "MYSQL_NAME": "openlist",
+  },
+
+  // ===========================================================================
+  // 存储绑定
+  // ===========================================================================
+  //
+  // ▶ 方案 A：KV（默认启用，免费额度大、最通用）
+  //   ⚠️ 必须【完全省略 id 字段】，不能写成 "id": ""：
+  //      wrangler 配置校验会拒绝空字符串 id（"should have a string id field"）。
+  //   省略 id 后：首次部署由 wrangler 自动创建 openlist-tsworkers-kv 并绑定；
+  //   二次部署通过 inherit 复用已有绑定，不会重复创建。
+  //   若想改用账户里已有的 KV，把该命名空间的 id 填进来即可。
+  //
+  //  "kv_namespaces": [{ "binding": "KV" }],
+  //
+  // ▶ 方案 B：D1（关系型，可与 Go 后端共享库；DB_FORMAT 建议改为 "sql"）
+  //   控制台：Workers & Pages → D1 → 创建数据库 → 绑定到 Worker，变量名填 DB
+  //   省略 database_id 时，wrangler >= 4.45.0 会自动创建同名库并回写
+  //
+  // "d1_databases": [
+  //   { "binding": "DB", "database_name": "openlist", "database_id": "" }
+  // ],
+  //
+  // ▶ 方案 C：Durable Objects（内置 SQLite，强一致；DB_FORMAT 建议改为 "sql"）
+  //   注意：DO 需要 migrations，且删除成本高，适合单租户部署。
+  //
+  // "durable_objects": {
+  //   "bindings": [{ "name": "DO", "class_name": "OpenListDB" }]
+  // },
+  // "migrations": [
+  //   { "tag": "v1", "new_sqlite_classes": ["OpenListDB"] }
+  // ],
+  //
+  // ▶ 方案 D：Blob / MySQL
+  //   Blob 由 EdgeOne / ESA 自动注入，无需配置；
+  //   MySQL 通过 Secret 配置 MYSQL_URLS（或 MYSQL_HOST 等分项）。
+}

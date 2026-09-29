@@ -1,0 +1,127 @@
+name: "错误报告"
+description: 错误报告 / 问题（OpenList-Worker）
+title: "[BUG] 请修改标题为您遇到的问题"
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢您花时间反馈问题，这会帮助 OpenList-Worker 变得更好。
+        提交前请先到[讨论区](https://github.com/OpenListTeam/OpenList-Worker/discussions)看看是否已有相同问题，避免重复。
+
+  - type: checkboxes
+    attributes:
+      label: 请确认以下事项
+      description: 请逐条勾选，这些都是为了让我们更快地帮到您。
+      options:
+        - label: 我确认描述清晰有礼貌，已提供必要诊断信息，在最新版本上可以复现。
+        - label: 我确认已经查过相关文档和已有问题和讨论，本次反馈并非是重复提问。
+        - label: 我确认这是Worker项目问题，并非网络和操作导致，也不是Go版的问题。
+        - label: 我确认已阅读开源许可/免责条款/使用政策，理解使用的风险自行承担。
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本（必填）
+      description: 请不要写 `latest`，请填写具体版本号。
+      placeholder: v4.0.0
+    validations:
+      required: false
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台（必填）
+      description: 您将 OpenList-Worker 部署在哪个平台？
+      options:
+        - Cloudflare Workers
+        - Tencent EdgeOne Makers
+        - Alibaba Cloud ESA
+        - Vercel App
+        - Serverless
+        - Local Dev
+        - Others
+    validations:
+      required: true
+
+  - type: dropdown
+    id: db_format
+    attributes:
+      label: DB_FORMAT（必填）
+      description: 数据存储格式。
+      options:
+        - map（整对象 JSON）
+        - key（分 key）
+        - sql（关系表）
+        - 未设置 / 不清楚
+    validations:
+      required: true
+
+  - type: dropdown
+    id: db_driver
+    attributes:
+      label: DB_DRIVER（必填）
+      description: 数据库驱动。
+      options:
+        - auto
+        - blob
+        - kv
+        - cfkv
+        - d1
+        - do
+        - mysql
+        - 未设置 / 不清楚
+    validations:
+      required: true
+
+  - type: input
+    id: storage_driver
+    attributes:
+      label: 存储驱动（必填）
+      description: 您使用的存储驱动名称。
+      placeholder: OneDrive
+    validations:
+      required: true
+
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: 问题描述（必填）
+      description: |
+        请说明：
+        - 复现步骤：操作了什么，结果是什么；预期结果、表现该是什么
+        - 报错信息：报错信息/日志/响应内容；相关代码片段(如果能有)
+        （可隐去隐私字段，且请勿粘贴密钥）
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 报错信息（必填）
+      description: |
+        请把相关报错贴上来，尽量不要截图：
+        - 页面报错：浏览器按 `F12` 打开开发者工具，看 `Console` 和 `Network` 里失败请求的响应。
+        - 后端报错：到部署平台看函数日志，Cloudflare 在 Workers 面板的 Logs，EdgeOne / ESA / Vercel 在对应的函数日志页面。
+        （可隐去隐私字段，但请不要只写“报错了”）
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: 相关配置（必填）
+      description: |
+        请提供与问题相关变量、存储配置截图：
+         - 变量信息：`wrangler.jsonc` / `edgeone.json` / `serverless.yml` 中的相关片段。
+         - 驱动配置：从设置中导出的配置信息（删除机密信息），或简要阐述一下驱动配置配置
+        （可隐去隐私字段，但请勿粘贴密钥）
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现链接（可选）
+      description: |
+        如有可复现的链接或仓库地址，请贴在这里。

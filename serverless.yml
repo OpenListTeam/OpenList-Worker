@@ -1,0 +1,34 @@
+service: openlist
+
+frameworkVersion: "4"
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: us-east-1
+  stage: dev
+  memorySize: 1024
+  timeout: 29 # API Gateway has a max 30s timeout
+  environment:
+    ADMIN_USERNAME: ${env:ADMIN_USERNAME, 'admin'}
+    # FIX(F-11): no 'admin' fallback — leave empty so the app generates a
+    # random initial password instead of a world-known one.
+    ADMIN_PASS: ${env:ADMIN_PASS, ''}
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1" # Performance optimization for keep-alive
+
+build:
+  esbuild:
+    bundle: true
+    minify: true
+    sourcemap: true
+    target: node20
+    platform: node
+    format: esm
+    exclude:
+      - "@aws-sdk/*"
+
+functions:
+  api:
+    handler: handler.handler
+    events:
+      - httpApi: "*"

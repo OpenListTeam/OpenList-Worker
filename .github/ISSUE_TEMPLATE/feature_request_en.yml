@@ -1,0 +1,97 @@
+name: "Feature Request"
+description: Feature Request / Enhancement (OpenList-Worker)
+title: "[Feature] Please modify the title to your feature name"
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a new idea for OpenList-Worker — it helps make OpenList-Worker better.
+        Before submitting, please check the [discussions](https://github.com/OpenListTeam/OpenList-Worker/discussions) for a similar proposal to avoid duplicates.
+
+  - type: checkboxes
+    attributes:
+      label: Please confirm the following
+      description: Please tick each box — they help us evaluate your request faster.
+      options:
+        - label: I confirm my description is clear and polite, and readers can quickly understand what problem this feature solves.
+        - label: I confirm I have checked the relevant documentation and existing issues / discussions, and this proposal is not a duplicate.
+        - label: I confirm this is an issue with the Worker project, not caused by network or user error, and not an issue specific to the Go version.
+        - label: I confirm I have read the open-source license / disclaimers / usage policy, and understand that I bear all risks of use.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform (required)
+      description: Which platform is this feature mainly for?
+      options:
+        - Cloudflare Workers
+        - EdgeOne Makers
+        - Alibaba Cloud ESA
+        - Vercel
+        - Serverless / Node container
+        - Local development
+        - All platforms
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: db_format
+    attributes:
+      label: DB_FORMAT (required)
+      description: The data storage format this feature involves or depends on. If it is irrelevant, choose "Not applicable".
+      options:
+        - map (single JSON blob)
+        - key (per-key)
+        - sql (relational)
+        - Not applicable
+        - Not set / unknown
+    validations:
+      required: true
+
+  - type: dropdown
+    id: db_driver
+    attributes:
+      label: DB_DRIVER (required)
+      description: The database driver this feature involves or depends on. If it is irrelevant, choose "Not applicable".
+      options:
+        - auto
+        - blob
+        - kv
+        - cfkv
+        - d1
+        - do
+        - mysql
+        - Not applicable
+        - Not set / unknown
+    validations:
+      required: true
+
+  - type: input
+    id: storage_driver
+    attributes:
+      label: Storage Driver (required)
+      description: The name of the storage driver this feature involves. If it is irrelevant, write "Not applicable".
+      placeholder: OneDrive
+    validations:
+      required: true
+
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: Feature Description (required)
+      description: |
+        Please describe:
+        - Use case: what you want to achieve and which part is inconvenient today
+        - Expected behavior: how you expect it to be used and what result it should produce
+        (Sharing your actual use case helps a lot)
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested-solution
+    attributes:
+      label: Suggested Solution (optional)
+      description: |
+        If you have an idea of how to implement it, feel free to share; otherwise leave it blank.

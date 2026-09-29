@@ -1,0 +1,11 @@
+packages:
+  - "."
+allowBuilds:
+  "@swc/core": true
+  core-js: true
+# cpu-features 是 ssh2 的可选原生加速依赖（C++ 模块，node-gyp 编译）。
+# CF Workers / EdgeOne 的边缘构建会把 ssh2 替换为空壳（build-edge.mjs 的
+# emptyNodeDriverPlugin），根本用不到它；Node 运行时下 ssh2 也有纯 JS 回退。
+# 跳过其编译可避免 install 阶段做无用的原生编译（拖慢甚至拖垮 CI 构建）。
+neverBuiltDependencies:
+  - cpu-features
