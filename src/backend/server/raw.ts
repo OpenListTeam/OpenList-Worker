@@ -77,7 +77,7 @@ const SAFE_REDIRECT_HEADER_KEYS = new Set([
   "referer",
 ])
 
-async function safeProxyFetch(
+export async function safeProxyFetch(
   url: string,
   headers: Record<string, string>,
   allowHosts?: ReadonlySet<string> | string[],

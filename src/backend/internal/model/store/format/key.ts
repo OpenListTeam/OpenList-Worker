@@ -66,16 +66,16 @@ export const keyFormat: FormatAdapter = {
   },
 
   async save(data: any, driver: Driver, env?: any): Promise<boolean> {
-    // 清空旧数据
-    for (const table of TABLE_NAMES) {
-      const prefix = tablePrefix(table)
-      const keys = await driver.list(prefix, env)
-      for (const key of keys) {
-        await driver.delete(key, env)
-      }
-    }
-
-    // 写入新数据
+    // 先写新数据，**最后**清理陈旧键。
+    //
+    // 稳定性不变量：save 失败不得让「原有数据整体消失」。
+    // 历史实现是「先删光所有前缀键，再写新数据」：一旦写入阶段失败（网络抖动、
+    // 配额、实例被杀），旧记录已被删除、新记录尚未写入，数据库直接变成空表。
+    // 故障注入实测：users 从 1 条变为 0 条 —— 这是数据丢失，不是「保存失败」。
+    //
+    // 改为先写后删后，失败时的最坏情况是**残留**旧键（可被下一次成功保存清理），
+    // 而不会丢数据；正常成功路径的最终状态与原来完全一致。
+    const liveKeys = new Set<string>()
     for (const table of TABLE_NAMES) {
       const keyCol = TABLE_KEY[table]
       const records = data?.[table] || []
@@ -85,8 +85,19 @@ export const keyFormat: FormatAdapter = {
         if (!id) continue
 
         const key = fullKeyOf(table, id)
+        liveKeys.add(key)
         const value = JSON.stringify(record)
         await driver.put(key, value, env)
+      }
+    }
+
+    // 清理本快照中已不存在的键（删除的实体 / 改名的键）
+    for (const table of TABLE_NAMES) {
+      const prefix = tablePrefix(table)
+      const keys = await driver.list(prefix, env)
+      for (const key of keys) {
+        if (liveKeys.has(key)) continue
+        await driver.delete(key, env)
       }
     }
 

@@ -2066,6 +2066,15 @@ export const saveDb = async (
     return false
   }
 
+  // 记录写入前的内存状态，供持久化失败时回滚。
+  //
+  // 稳定性不变量：**持久化失败后，失败的修改不得在内存/请求缓存中生效**。
+  // 历史实现先更新 memoryDb 与 dbCache、再尝试落盘，失败只抛错不回滚。
+  // 结果是「接口报 500，但当前实例的角色/权限/设置已按未保存的内容生效」——
+  // 调用方以为失败、系统却按新值运行（实测：保存失败后 getDb() 仍读到新 role）。
+  const previousDb = memoryDb
+  const previousTrusted = dbTrusted
+
   memoryDb = data
   dbWriteBlocked = false
   // Refresh the request cache so any getDb() later in this request observes
@@ -2112,6 +2121,14 @@ export const saveDb = async (
     )
     await backend.save(sealed, activeEnv)
   } catch (err: any) {
+    // 回滚内存与请求缓存：持久化没成功，就不能让本次修改在本实例内可见，
+    // 否则会出现「报错但已生效」的不一致状态。
+    memoryDb = previousDb
+    dbTrusted = previousTrusted
+    if (cacheKey) {
+      if (previousDb) dbCache.set(cacheKey, { ts: Date.now(), db: previousDb })
+      else dbCache.delete(cacheKey)
+    }
     console.error(
       `[DB] saveDb FAILED: backend=${backend.name}, error=${err?.message || err}`,
       `stack=${err?.stack?.substring(0, 500) || ""}`,
