@@ -8,9 +8,10 @@
  *   1. FRONTEND_DIST 环境变量：已构建好的 dist 目录路径（最快，CI 缓存场景）
  *   2. FRONTEND_REPO 环境变量：本地官方前端仓库路径（自动 install + build）
  *   3. 同级目录 ../OpenList-Frontend（monorepo 布局，自动探测，自动 install + build）
- *   4. 默认：下载 npm 上【已发布】的 dist（版本取 registry 的 latest，
- *      可用 FRONTEND_VERSION 固定）
- *   5. FRONTEND_BUILD_FROM_SOURCE=1：从 Git 克隆前端 main 分支并现构建
+ *   4. 默认：下载 npm 上【已发布】且兼容 Worker 初始化协议的 dist（版本取
+ *      registry 的 latest，可用 FRONTEND_VERSION 固定）
+ *   5. 发布版尚未包含 Worker 初始化协议，或 FRONTEND_BUILD_FROM_SOURCE=1：
+ *      从 Git 克隆前端 main 分支并现构建
  *
  * 为什么默认取「已发布 dist」而不是「克隆 main 现构建」：
  *   前端产物是内容哈希文件名（/assets/index-XXXX.js），而 CDN（jsdelivr /
@@ -21,6 +22,10 @@
  *   完全用不了。取已发布 dist 可让两边哈希天然同源：路径 A 命中，npmmirror
  *   可用（等价 Go Release 版行为）。同时 stampFrontendVersion 会把该版本号写进
  *   index.html，使 ASSET_URLS 的 $version 正好解析到这份 dist 对应的版本。
+ *
+ * 已发布包可能落后于 Worker 后端。只有同时包含 /public/init_status 与 /@init
+ * 的产物才可使用；否则全新部署会只请求会被 503 拦截的 /public/settings，既不
+ * 显示初始化向导也无法创建管理员。遇到这种版本会自动改为构建前端 main。
  *
  * 用法：
  *   FRONTEND_DIST=/path/to/dist node scripts/fetch-frontend.mjs
@@ -95,6 +100,32 @@ function requireDist(src) {
   }
 }
 
+/**
+ * 已构建前端是否包含 Worker 首次初始化协议。
+ *
+ * Vite 会保留路由和 API 路径字符串，因此无需执行或反编译 bundle。两项必须
+ * 同时存在：init_status 负责识别空数据库，/@init 才能渲染创建管理员的向导。
+ */
+function supportsWorkerSetup(src) {
+  let hasStatus = false
+  let hasRoute = false
+  const pending = [src]
+  while (pending.length > 0 && (!hasStatus || !hasRoute)) {
+    const current = pending.pop()
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name)
+      if (entry.isDirectory()) {
+        pending.push(full)
+      } else if (entry.isFile() && entry.name.endsWith(".js")) {
+        const code = fs.readFileSync(full, "utf-8")
+        hasStatus ||= code.includes("/public/init_status")
+        hasRoute ||= code.includes("/@init")
+      }
+    }
+  }
+  return hasStatus && hasRoute
+}
+
 function replaceDist(src) {
   console.log(`  Copying frontend dist: ${src} -> ${DEST}`)
   fs.rmSync(DEST, { recursive: true, force: true })
@@ -113,7 +144,10 @@ function replaceDist(src) {
 function stampFrontendVersion(src) {
   try {
     const pkg = JSON.parse(
-      fs.readFileSync(path.join(path.resolve(src, ".."), "package.json"), "utf-8"),
+      fs.readFileSync(
+        path.join(path.resolve(src, ".."), "package.json"),
+        "utf-8",
+      ),
     )
     // 只信任官方前端包的版本号：FRONTEND_DIST 可能指向任意目录，
     // 误读（例如 worker 自身 package.json 的 4.2.3）会戳出错误的 CDN 版本。
@@ -145,7 +179,9 @@ function stampFrontendVersion(src) {
 function fetchI18n(repo) {
   const langDir = path.join(repo, "src", "lang")
   if (!fs.existsSync(langDir)) {
-    console.warn("  [fetch-frontend] repo missing src/lang, skipping i18n fetch")
+    console.warn(
+      "  [fetch-frontend] repo missing src/lang, skipping i18n fetch",
+    )
     return
   }
   const tmpTar = path.join(os.tmpdir(), `openlist-i18n-${process.pid}.tar.gz`)
@@ -172,8 +208,7 @@ function buildLocalRepo(repo) {
   }
   const pm = detectPackageManager(abs)
   const cmd = resolvePmCommand(abs, pm)
-  const install = (extra = "") =>
-    run(`${cmd} install${extra}`, { cwd: abs })
+  const install = (extra = "") => run(`${cmd} install${extra}`, { cwd: abs })
   try {
     install()
   } catch {
@@ -181,7 +216,9 @@ function buildLocalRepo(repo) {
     // minimumReleaseAge / trustPolicy 供应链复核，registry manifest 缺少
     // 平台子包时会误报（如 @crowdin/cli-*-arm64）。lockfile 来自刚克隆的
     // 官方前端仓库（HTTPS + 官方分支），属于可信来源，跳过复核安全。
-    console.warn("  [fetch-frontend] pnpm install failed (lockfile supply-chain recheck or network issue), retrying once with --trust-lockfile...")
+    console.warn(
+      "  [fetch-frontend] pnpm install failed (lockfile supply-chain recheck or network issue), retrying once with --trust-lockfile...",
+    )
     install(" --trust-lockfile")
   }
   fetchI18n(abs)
@@ -239,7 +276,14 @@ async function fetchPublishedDist() {
     run(`tar -xzf pkg.tgz package/dist package/package.json`, { cwd: tmp })
     const src = path.join(tmp, "package", "dist")
     requireDist(src)
+    if (!supportsWorkerSetup(src)) {
+      console.warn(
+        `  Published frontend ${version} lacks the Worker setup protocol; building ${OFFICIAL_REPO_REF} instead`,
+      )
+      return false
+    }
     replaceDist(src)
+    return true
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true })
   }
@@ -272,17 +316,18 @@ async function main() {
     return
   }
 
-  // 4. 下载 npm 上已发布的 dist（默认）
+  // 4. 下载 npm 上已发布且兼容 Worker 初始化协议的 dist（默认）
   //    从 main 现构建的产物哈希与 CDN 不一致，会让路径 A 失效、npmmirror 之类的
   //    镜像完全不可用（详见文件头），故默认改为取已发布产物。
   if (process.env.FRONTEND_BUILD_FROM_SOURCE !== "1") {
-    await fetchPublishedDist()
-    return
+    if (await fetchPublishedDist()) return
   }
 
-  // 5. 从 Git 克隆 main 并构建（FRONTEND_BUILD_FROM_SOURCE=1 时使用）
+  // 5. 从 Git 克隆 main 并构建（显式要求源码构建，或发布版尚未兼容 Worker）
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openlist-frontend-"))
-  console.log(`  Cloning official frontend: ${OFFICIAL_REPO_URL}#${OFFICIAL_REPO_REF}`)
+  console.log(
+    `  Cloning official frontend: ${OFFICIAL_REPO_URL}#${OFFICIAL_REPO_REF}`,
+  )
   try {
     run(
       // -c core.autocrlf=false：禁用克隆端的换行符转换。Windows 上 autocrlf

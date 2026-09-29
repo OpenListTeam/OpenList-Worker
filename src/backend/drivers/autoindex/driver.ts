@@ -13,6 +13,7 @@ const DefaultItemXPath = "//pre/a"
 const DefaultNameXPath = "@href"
 const DefaultSizeXPath = "string(following-sibling::text()[1])"
 const DefaultModifiedXPath = "string(following-sibling::text()[2])"
+const FETCH_TIMEOUT_MS = 30_000
 
 export function normalizeAutoIndexAddition(a: any): AutoIndexAddition {
   const norm = { ...(a || {}) } as any
@@ -78,7 +79,12 @@ export class AutoIndexDriver implements StorageDriver {
 
   async list(virtualPath: string, physicalPath: string): Promise<FileItem[]> {
     const baseURL = this.buildDirURL(physicalPath)
-    const res = await fetch(baseURL)
+    // 边缘运行时通常会等到平台级超时（EdgeOne 为 120 秒）才中止不可达的
+    // 上游请求。显式限制单次目录读取，避免一个失联的 AutoIndex 挂载长期占用
+    // 实例并拖累同一服务的其他请求。
+    const res = await fetch(baseURL, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    })
     if (!res.ok) {
       throw new Error(`Failed to fetch ${baseURL}: HTTP ${res.status}`)
     }
