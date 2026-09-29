@@ -1,0 +1,91 @@
+name: Build Verify
+
+# dist/、dist-server/、cloud-functions/[[default]].js 全部是构建产物，一律不入库：
+#   - EdgeOne Makers：edgeone.json 的 buildCommand（pnpm run build）在部署时生成
+#     dist/ 与 cloud-functions/[[default]].js
+#   - Cloudflare Workers：wrangler deploy 从 src/backend/worker.ts 打包，并用 dist/ 作静态资源
+#   - 自托管 Node：node dist-server/api/[...route].js 由 pnpm run build 产出
+#
+# 因此"部署用的后端代码"完全取决于构建链路能否跑通，本工作流就是这条链路的看门人：
+# 按平台一致的顺序安装、拉取前端、构建，并校验产物确实生成。任一步失败即失败。
+#
+# 注意：产物按设计不提交（见 .gitignore），所以这里只校验"能否构建出来"，
+# 不再像已移除的 edgeone-artifact-guard.yml 那样比对已提交产物是否新鲜。
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "api/**"
+      - "functions/**"
+      - "scripts/**"
+      - "middleware.js"
+      - "edgeone.json"
+      - "wrangler.jsonc"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/build-verify.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "api/**"
+      - "functions/**"
+      - "scripts/**"
+      - "middleware.js"
+      - "edgeone.json"
+      - "wrangler.jsonc"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/build-verify.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build and verify artifacts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Fetch official frontend dist
+        run: node scripts/fetch-frontend.mjs
+
+      - name: Build edge/serverless artifacts
+        run: node scripts/build-edge.mjs
+
+      - name: Verify artifacts exist
+        run: |
+          set -e
+          test -f dist/index.html
+          test -f "dist-server/api/[...route].js"
+          test -f "cloud-functions/[[default]].js"
+          echo "OK: dist/index.html、dist-server/api/[...route].js、cloud-functions/[[default]].js 均已生成"
+
+      - name: Assert the EdgeOne artifact is not tracked
+        run: |
+          if git ls-files --error-unmatch "cloud-functions/[[default]].js" > /dev/null 2>&1; then
+            echo "::error::cloud-functions/[[default]].js 是构建产物，不应提交进仓库（见 .gitignore）。"
+            exit 1
+          fi
+          echo "OK: cloud-functions/[[default]].js 未被 git 跟踪"

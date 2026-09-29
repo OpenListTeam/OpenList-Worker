@@ -54,6 +54,31 @@ test("parseAutoIndexHTML extracts files, dirs, size and modified", () => {
   assert.equal(nodes[1].isDir, true)
 })
 
+test("parseAutoIndexHTML tolerates malformed Apache directory HTML", () => {
+  // archive.apache.org/dist/tomcat/ 实际返回过这种重复 html/body/pre、只关闭一层
+  // pre 的页面。浏览器与 Go htmlquery 都能解析，AutoIndex 也不能按严格 XML 拒绝。
+  const html = `<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<html><head><title>Index</title></head><body>
+<html><head><title>Index</title></head><body><pre>
+<pre><a href="/dist/">Parent Directory</a>
+<a href="tomcat-10/">tomcat-10/</a> 2026-09-15 10:54 -
+</pre></body></html>`
+
+  const nodes = parseAutoIndexHTML(
+    html,
+    "//pre/a",
+    "@href",
+    "string(following-sibling::text()[1])",
+    "string(following-sibling::text()[2])",
+    ["Parent Directory"],
+  )
+
+  const tomcat = nodes.find((node) => node.name === "tomcat-10")
+  assert.ok(tomcat)
+  assert.equal(tomcat.url, "tomcat-10/")
+  assert.equal(tomcat.isDir, true)
+})
+
 test("normalizeAutoIndexAddition fills defaults", () => {
   const a = normalizeAutoIndexAddition({ url: "example.com/files" })
   assert.equal(a.url, "https://example.com/files/")

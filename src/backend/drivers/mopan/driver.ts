@@ -275,12 +275,14 @@ export class MoPanDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const dstFolderId = await this.resolveFolderId(dstPhys)
-    for (const name of names) {
-      const srcItemPath = srcPhys === "/" ? `/${name}` : `${srcPhys}/${name}`
-      const srcItem = await this.get(srcDir, srcItemPath)
-      await this.performBatchTask(srcItem, dstFolderId, TaskTypeMove)
-    }
+    // srcPhys/dstPhys 是源/目标项自身的物理路径（op/storage.ts moveItems 逐项调用），
+    // 参数即目标项路径，不得再拼 name，否则指向 `<item>/<name>` 这种不存在的路径。
+    // 目标文件夹取 dstPhys 去掉末段后的父目录。
+    const srcItem = await this.get(srcDir, srcPhys)
+    const dstFolderPath = dstPhys.split("/").slice(0, -1).join("/")
+    const dstFolderId = await this.resolveFolderId(dstFolderPath)
+
+    await this.performBatchTask(srcItem, dstFolderId, TaskTypeMove)
   }
 
   async copy(
@@ -290,12 +292,12 @@ export class MoPanDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const dstFolderId = await this.resolveFolderId(dstPhys)
-    for (const name of names) {
-      const srcItemPath = srcPhys === "/" ? `/${name}` : `${srcPhys}/${name}`
-      const srcItem = await this.get(srcDir, srcItemPath)
-      await this.performBatchTask(srcItem, dstFolderId, TaskTypeCopy)
-    }
+    // 同 move：srcPhys/dstPhys 已是目标项自身路径，参数即目标项路径，不得再拼 name。
+    const srcItem = await this.get(srcDir, srcPhys)
+    const dstFolderPath = dstPhys.split("/").slice(0, -1).join("/")
+    const dstFolderId = await this.resolveFolderId(dstFolderPath)
+
+    await this.performBatchTask(srcItem, dstFolderId, TaskTypeCopy)
   }
 
   private async performBatchTask(

@@ -152,20 +152,18 @@ export class MegaDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const dstNode = this.resolveNodeByPath(this.cleanPath(dstPhys))
+    // srcPhys/dstPhys 是源/目标项自身的物理路径（op/storage.ts moveItems 逐项调用），
+    // 参数即目标项路径，不得再拼 name，否则指向 `<item>/<name>` 导致静默失败。
+    const srcPath = this.cleanPath(srcPhys)
+    const dstPath = this.cleanPath(dstPhys)
+    const dstParentPath = dstPath.substring(0, dstPath.lastIndexOf("/")) || "/"
+    const dstNode = this.resolveNodeByPath(dstParentPath)
     if (!dstNode || !dstNode.is_dir) {
       throw new Error("Destination folder not found")
     }
-
-    for (const name of names) {
-      const srcItemPath =
-        this.cleanPath(srcPhys) === "/"
-          ? `/${name}`
-          : `${this.cleanPath(srcPhys)}/${name}`
-      const srcNode = this.resolveNodeByPath(srcItemPath)
-      if (srcNode) {
-        await this.client.moveNode(srcNode.id, dstNode.id)
-      }
+    const srcNode = this.resolveNodeByPath(srcPath)
+    if (srcNode) {
+      await this.client.moveNode(srcNode.id, dstNode.id)
     }
   }
 
@@ -186,15 +184,12 @@ export class MegaDriver implements StorageDriver {
     physicalPath: string,
     names: string[],
   ): Promise<void> {
-    for (const name of names) {
-      const itemPath =
-        this.cleanPath(physicalPath) === "/"
-          ? `/${name}`
-          : `${this.cleanPath(physicalPath)}/${name}`
-      const node = this.resolveNodeByPath(itemPath)
-      if (node) {
-        await this.client.deleteNode(node.id)
-      }
+    // physicalPath 是目标项自身的物理路径（op/storage.ts removeItems 逐项调用），
+    // 参数即目标项路径，不得再拼 name，否则指向 `<item>/<name>`，resolveNodeByPath
+    // 返回 null 后被静默跳过，接口成功但节点仍在。
+    const node = this.resolveNodeByPath(this.cleanPath(physicalPath))
+    if (node) {
+      await this.client.deleteNode(node.id)
     }
   }
 

@@ -14,7 +14,7 @@ const env: any = {}
 const ADMIN_TOKEN = "ADMIN_STATIC_TOKEN"
 
 const seed = (users: any[], settings: any[] = []) =>
-  saveDb({ settings, users, storages: [], shares: [] }, env)
+  saveDb({ settings, users, storages: [], shares: [] }, env, { force: true })
 
 const adminUser = (password: string) => ({
   id: 1,
@@ -26,8 +26,8 @@ const adminUser = (password: string) => ({
   disabled: false,
 })
 
-const currentAdmin = async () => {
-  const db: any = await getDb(env)
+const currentAdmin = async (context = env) => {
+  const db: any = await getDb(context)
   return db.users.find((u: any) => u.username === "admin")
 }
 
@@ -80,7 +80,7 @@ test("Security(F-11): ADMIN_PASS still forces an explicit reset (to salted doubl
   await seed([adminUser("pbkdf2:100000:somesalt:deadbeef")])
   const envWithPass: any = { ...env, ADMIN_PASS: "operator-chosen" }
   await getOrInitUsers(envWithPass)
-  const admin = await currentAdmin()
+  const admin = await currentAdmin(envWithPass)
   assert.ok(isHex64(admin.password), "reset must store a 64-hex SHA-256 value")
   assert.ok(admin.salt, "reset must assign a per-user salt (Go two-step hash)")
   assert.equal(
