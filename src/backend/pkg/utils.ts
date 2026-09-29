@@ -34,20 +34,37 @@ export async function checkAdminAuth(c: Context): Promise<boolean> {
     ? authHeader.substring(7)
     : authHeader
 
-  // JWT：管理员登录用户也视为管理员（登录用户变管理员判定）
+  // JWT：以**数据库当前状态**为权威来源判定管理员。
+  //
+  // 安全不变量（必须长期保持）：管理员授权必须同时满足
+  //   1. 令牌签名有效且未过期（HS256，alg 已 pin）；
+  //   2. 令牌未被注销（jti 不在吊销名单）；
+  //   3. 用户在库中存在且未被禁用；
+  //   4. 用户的**当前** role 仍是管理员。
+  //
+  // 历史缺陷：只读取 JWT 里的 `payload.role`，且完全不检查 jti。后果是
+  // 「退出登录」和「把管理员降权为普通用户」都不会立即生效 —— 旧令牌在 7 天
+  // 有效期内继续拥有完整后台权限（实测：注销后 /api/admin/* 仍返回 200）。
+  // 注意不能反过来只信 JWT：那样降权/禁用同样无效。
   try {
     const { verify } = await import("hono/jwt")
-    const { getJwtSecret } = await import("../server/middlewares")
+    const { getJwtSecret, isTokenRevoked } = await import(
+      "../server/middlewares"
+    )
     const secret = await getJwtSecret(c)
     const payload: any = await verify(token, secret, "HS256")
-    if (payload && payload.role === 2) {
-      // 确认该用户存在于 DB 且未被禁用
-      const db = await getDb(c.env)
-      const user = (db.users || []).find(
-        (u: any) => u.id === payload.id || u.username === payload.username,
-      )
-      return !!(user && !user.disabled)
-    }
+    if (!payload) return false
+
+    // 注销黑名单：与 getUserFromContext 使用同一套判定
+    if (await isTokenRevoked(payload.jti, c.env)) return false
+
+    // DB 为权威：存在 + 未禁用 + 当前角色仍为管理员
+    const db = await getDb(c.env)
+    const user = (db.users || []).find(
+      (u: any) => u.id === payload.id || u.username === payload.username,
+    )
+    if (!user || user.disabled) return false
+    return user.role === 2
   } catch {}
   return false
 }
