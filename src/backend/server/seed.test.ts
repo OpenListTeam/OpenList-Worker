@@ -86,11 +86,36 @@ test("CAS codec matches casmeta base64 JSON field names", async () => {
   const payload = JSON.parse(Buffer.from(Buffer.from(bytes).toString(), "base64").toString("utf8"))
   assert.deepEqual(
     Object.keys(payload).sort(),
-    ["create_time", "md5", "name", "size", "sliceMd5"].sort(),
+    [
+      "cloud",
+      "create_time",
+      "md5",
+      "name",
+      "size",
+      "sliceMd5",
+      "slice_md5s",
+      "slice_size",
+    ].sort(),
   )
+  assert.equal(payload.cloud, "189")
+  assert.deepEqual(payload.slice_md5s, ["5D41402ABC4B2A76B9719D911017C592"])
+  assert.equal(payload.slice_size, 10 * 1024 * 1024)
   const parsed = await parseSeed(bytes, "cas")
   assert.equal(parsed.cas?.name, "hello.txt")
   assert.equal(parsed.cas?.md5, "5d41402abc4b2a76b9719d911017c592")
+})
+
+test("CAS codec preserves custom cloud across round trips", async () => {
+  const original = casSeed()
+  original.files[0].cas_cloud = "115"
+  const bytes = await encodeCas(original)
+  const parsed = await parseSeed(bytes, "cas")
+  assert.equal(parsed.seed.files[0].cas_cloud, "115")
+  const roundTrip = await encodeCas(parsed.seed)
+  const payload = JSON.parse(
+    Buffer.from(Buffer.from(roundTrip).toString(), "base64").toString("utf8"),
+  )
+  assert.equal(payload.cloud, "115")
 })
 
 test("incremental hashing computes whole-file and piece hashes without buffering the file", async () => {

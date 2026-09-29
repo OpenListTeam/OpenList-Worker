@@ -105,13 +105,13 @@ export class WebdavDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const srcBasePath = this.getRemotePath(srcPhys)
-    const dstBasePath = this.getRemotePath(dstPhys)
-    for (const name of names) {
-      const srcPath = joinPath(srcBasePath, name)
-      const dstPath = joinPath(dstBasePath, name)
-      await this.client.move(srcPath, dstPath, true)
-    }
+    // srcPhys/dstPhys 已是源/目标项自身的路径，参数即项路径，直接移动即可；
+    // 再拼一次 name 会指向不存在的 <item>/<name>，MOVE 源/目标错位。
+    await this.client.move(
+      this.getRemotePath(srcPhys),
+      this.getRemotePath(dstPhys),
+      true,
+    )
   }
 
   async copy(
@@ -121,13 +121,13 @@ export class WebdavDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const srcBasePath = this.getRemotePath(srcPhys)
-    const dstBasePath = this.getRemotePath(dstPhys)
-    for (const name of names) {
-      const srcPath = joinPath(srcBasePath, name)
-      const dstPath = joinPath(dstBasePath, name)
-      await this.client.copy(srcPath, dstPath, true)
-    }
+    // srcPhys/dstPhys 已是源/目标项自身的路径，参数即项路径，直接复制即可；
+    // 再拼一次 name 会让 COPY 源/目标路径错位。
+    await this.client.copy(
+      this.getRemotePath(srcPhys),
+      this.getRemotePath(dstPhys),
+      true,
+    )
   }
 
   async remove(
@@ -135,15 +135,10 @@ export class WebdavDriver implements StorageDriver {
     physicalPath: string,
     names: string[],
   ): Promise<void> {
-    const basePath = this.getRemotePath(physicalPath)
-    if (names && names.length > 0) {
-      for (const name of names) {
-        const targetPath = joinPath(basePath, name)
-        await this.client.remove(targetPath)
-      }
-    } else {
-      await this.client.remove(basePath)
-    }
+    // physicalPath 已是目标项自身的路径（op/storage.ts 逐项解析后传入），
+    // 参数即项路径，不得再拼 name，否则指向 <item>/<name>，WebDAV DELETE 对 404 视作成功，
+    // 结果接口静默返回成功但对象仍在。
+    await this.client.remove(this.getRemotePath(physicalPath))
   }
 
   async put(

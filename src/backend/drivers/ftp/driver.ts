@@ -140,34 +140,24 @@ export class FTPDriver implements StorageDriver {
     physicalPath: string,
     names: string[],
   ): Promise<void> {
-    const targetDir = cleanPosixPath(physicalPath)
-    if (names && names.length > 0) {
-      for (const name of names) {
-        await this.client.removeRecursive(posixJoin(targetDir, name))
-      }
-    } else {
-      await this.client.removeRecursive(targetDir)
-    }
+    // physicalPath 已是目标项自身的物理路径（op/storage.ts 逐项解析后传入），
+    // 直接删除即可；不得再拼 name，否则指向不存在的 <item>/<name>，导致静默删除失败。
+    const target = cleanPosixPath(physicalPath)
+    await this.client.removeRecursive(target)
   }
 
   async move(
     _srcDir: string,
-    dstDir: string,
+    _dstDir: string,
     names: string[],
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    if (names && names.length > 0) {
-      for (const name of names) {
-        const src = posixJoin(srcPhys, name)
-        const dst = posixJoin(dstPhys, name)
-        await this.client.rename(src, dst)
-      }
-    } else {
-      const filename = srcPhys.split("/").filter(Boolean).pop() || ""
-      const dst = posixJoin(dstDir, filename)
-      await this.client.rename(cleanPosixPath(srcPhys), dst)
-    }
+    // srcPhys/dstPhys 已是源/目标项自身的物理路径，直接重命名即可；
+    // 不得再拼 name，否则源/目标路径错位。
+    const src = cleanPosixPath(srcPhys)
+    const dst = cleanPosixPath(dstPhys)
+    await this.client.rename(src, dst)
   }
 
   async copy(

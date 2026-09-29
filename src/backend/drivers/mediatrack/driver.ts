@@ -202,18 +202,17 @@ export class MediatrackDriver implements StorageDriver {
     physicalPath: string,
     names: string[],
   ): Promise<void> {
-    const parentId = await this.resolveParentId(physicalPath)
+    // physicalPath 是目标项自身的物理路径（op/storage.ts removeItems 逐项调用），
+    // 目标名取参数末段、父目录取去掉末段后的部分；resolveParentId 解析的是
+    // 传入路径自身的 id，把项路径当父目录会去 <item> 的子项里按 title 查找
+    //（相当于找 <item>/<name>），找不到时静默跳过，对象仍然存在。
+    const clean = this.cleanPath(physicalPath)
+    const name = clean.split("/").pop() || ""
+    const parentPath = clean.split("/").slice(0, -1).join("/")
+    const parentId = await this.resolveParentId(parentPath)
     const files = await this.client.getFiles(parentId)
-    const ids: string[] = []
-
-    for (const name of names) {
-      const match = files.find((f) => f.title === name)
-      if (match) {
-        ids.push(match.id)
-      }
-    }
-
-    if (ids.length === 0) return
+    const match = files.find((f) => f.title === name)
+    if (!match) return
 
     await this.client.request(
       "https://jayce.api.mediatrack.cn/v4/assets/batch/delete",
@@ -221,15 +220,12 @@ export class MediatrackDriver implements StorageDriver {
         method: "DELETE",
         body: {
           origin_id: parentId,
-          ids,
+          ids: [match.id],
         },
       },
     )
 
-    const clean = this.cleanPath(physicalPath)
-    for (const name of names) {
-      this.idCache.delete(clean ? `${clean}/${name}` : `/${name}`)
-    }
+    this.idCache.delete(clean)
   }
 
   async move(
@@ -239,19 +235,21 @@ export class MediatrackDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const srcParentId = await this.resolveParentId(srcPhys)
-    const dstParentId = await this.resolveParentId(dstPhys)
+    // srcPhys/dstPhys 是源/目标项自身的物理路径（已含 name），父目录取去掉
+    // 末段后的部分：源侧在其父目录的子项里按 title 找，目标侧解析目标项所在
+    // 目录的 id。把项路径当父目录解析会指到项本身：源侧永远落空，
+    // 目标侧解析一个尚不存在的目标项必然报错。
+    const srcClean = this.cleanPath(srcPhys)
+    const dstClean = this.cleanPath(dstPhys)
+    const srcName = srcClean.split("/").pop() || ""
+    const srcParentPath = srcClean.split("/").slice(0, -1).join("/")
+    const dstParentPath = dstClean.split("/").slice(0, -1).join("/")
+
+    const srcParentId = await this.resolveParentId(srcParentPath)
+    const dstParentId = await this.resolveParentId(dstParentPath)
     const srcFiles = await this.client.getFiles(srcParentId)
-    const ids: string[] = []
-
-    for (const name of names) {
-      const match = srcFiles.find((f) => f.title === name)
-      if (match) {
-        ids.push(match.id)
-      }
-    }
-
-    if (ids.length === 0) return
+    const match = srcFiles.find((f) => f.title === srcName)
+    if (!match) return
 
     await this.client.request(
       "https://jayce.api.mediatrack.cn/v4/assets/batch/move",
@@ -259,7 +257,7 @@ export class MediatrackDriver implements StorageDriver {
         method: "POST",
         body: {
           parent_id: dstParentId,
-          ids,
+          ids: [match.id],
         },
       },
     )
@@ -272,19 +270,18 @@ export class MediatrackDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const srcParentId = await this.resolveParentId(srcPhys)
-    const dstParentId = await this.resolveParentId(dstPhys)
+    // 与 move 同理：源/目标项自身路径先去掉末段得到父目录，目标名取源路径末段。
+    const srcClean = this.cleanPath(srcPhys)
+    const dstClean = this.cleanPath(dstPhys)
+    const srcName = srcClean.split("/").pop() || ""
+    const srcParentPath = srcClean.split("/").slice(0, -1).join("/")
+    const dstParentPath = dstClean.split("/").slice(0, -1).join("/")
+
+    const srcParentId = await this.resolveParentId(srcParentPath)
+    const dstParentId = await this.resolveParentId(dstParentPath)
     const srcFiles = await this.client.getFiles(srcParentId)
-    const ids: string[] = []
-
-    for (const name of names) {
-      const match = srcFiles.find((f) => f.title === name)
-      if (match) {
-        ids.push(match.id)
-      }
-    }
-
-    if (ids.length === 0) return
+    const match = srcFiles.find((f) => f.title === srcName)
+    if (!match) return
 
     await this.client.request(
       "https://jayce.api.mediatrack.cn/v4/assets/batch/clone",
@@ -292,7 +289,7 @@ export class MediatrackDriver implements StorageDriver {
         method: "POST",
         body: {
           parent_id: dstParentId,
-          ids,
+          ids: [match.id],
         },
       },
     )

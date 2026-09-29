@@ -127,11 +127,10 @@ export class DropboxDriver implements StorageDriver {
     physicalPath: string,
     names: string[],
   ): Promise<void> {
-    const cleanDir = this.cleanPath(physicalPath)
-    for (const name of names) {
-      const target = cleanDir === "" ? `/${name}` : `${cleanDir}/${name}`
-      await this.client.delete(target)
-    }
+    // physicalPath 是目标项自身的物理路径（op/storage.ts removeItems 逐项调用），
+    // 直接删除它即可；不得再拼 name，否则指向 `<item>/<name>`，delete 404 报错。
+    const target = this.cleanPath(physicalPath)
+    await this.client.delete(target)
   }
 
   async move(
@@ -141,13 +140,11 @@ export class DropboxDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const cleanSrc = this.cleanPath(srcPhys)
-    const cleanDst = this.cleanPath(dstPhys)
-    for (const name of names) {
-      const from = cleanSrc === "" ? `/${name}` : `${cleanSrc}/${name}`
-      const to = cleanDst === "" ? `/${name}` : `${cleanDst}/${name}`
-      await this.client.move(from, to)
-    }
+    // srcPhys/dstPhys 已是源/目标项自身的物理路径（op/storage.ts moveItems 逐项调用），
+    // 直接作为 from/to 使用；不得再拼 name，否则指向 `<item>/<name>`，源/目标错位。
+    const from = this.cleanPath(srcPhys)
+    const to = this.cleanPath(dstPhys)
+    await this.client.move(from, to)
   }
 
   async copy(
@@ -157,13 +154,11 @@ export class DropboxDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const cleanSrc = this.cleanPath(srcPhys)
-    const cleanDst = this.cleanPath(dstPhys)
-    for (const name of names) {
-      const from = cleanSrc === "" ? `/${name}` : `${cleanSrc}/${name}`
-      const to = cleanDst === "" ? `/${name}` : `${cleanDst}/${name}`
-      await this.client.copy(from, to)
-    }
+    // srcPhys/dstPhys 已是源/目标项自身的物理路径（op/storage.ts copyItems 逐项调用），
+    // 直接作为 from/to 使用；不得再拼 name，否则指向 `<item>/<name>`，源/目标错位。
+    const from = this.cleanPath(srcPhys)
+    const to = this.cleanPath(dstPhys)
+    await this.client.copy(from, to)
   }
 
   async put(

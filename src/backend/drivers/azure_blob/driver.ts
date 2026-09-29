@@ -302,12 +302,12 @@ export class AzureBlobDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    for (const name of names) {
-      const srcKey = joinPath(this.getKey(srcPhys), name)
-      const dstKey = joinPath(this.getKey(dstPhys), name)
-      await this.copyBlob(srcKey, dstKey)
-      await this.deleteBlob(srcKey)
-    }
+    // srcPhys/dstPhys 是目标项自身的物理路径（op/storage.ts moveItems 逐项调用），
+    // 不得再拼 name，否则会指向 `<item>/<name>` 这种不存在的 blob。
+    const srcKey = this.getKey(srcPhys)
+    const dstKey = this.getKey(dstPhys)
+    await this.copyBlob(srcKey, dstKey)
+    await this.deleteBlob(srcKey)
   }
 
   async copy(
@@ -317,11 +317,10 @@ export class AzureBlobDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    for (const name of names) {
-      const srcKey = joinPath(this.getKey(srcPhys), name)
-      const dstKey = joinPath(this.getKey(dstPhys), name)
-      await this.copyBlob(srcKey, dstKey)
-    }
+    // 同 move：srcPhys/dstPhys 已是目标项自身路径，不得再拼 name。
+    const srcKey = this.getKey(srcPhys)
+    const dstKey = this.getKey(dstPhys)
+    await this.copyBlob(srcKey, dstKey)
   }
 
   async put(_v: string, physicalPath: string, content: Buffer): Promise<void> {
