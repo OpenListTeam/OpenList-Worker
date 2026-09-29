@@ -22,6 +22,12 @@ export class AliasDriver implements StorageDriver {
     return s === "/" ? "/" : s
   }
 
+  /** 取所在目录：physicalPath 是目标项自身路径时，去掉最后一段即其父目录 */
+  private parentPath(p: string): string {
+    const clean = this.cleanPath(p)
+    return clean.substring(0, clean.lastIndexOf("/")) || "/"
+  }
+
   private parsePaths(): void {
     const raw = this.addition.paths || ""
     const lines = raw
@@ -231,7 +237,11 @@ export class AliasDriver implements StorageDriver {
     physicalPath: string,
     names: string[],
   ): Promise<void> {
-    const targets = this.getTargetsForPath(physicalPath)
+    // physicalPath 是目标项自身的路径（op/storage.ts removeItems 逐项调用），
+    // 而 removeItems 需要「父目录 + names」（内部会再拼 name）；直接把项路径
+    // 当目录传入会得到 <item>/<name>，目标不存在导致删除静默失败。
+    const dirPath = this.parentPath(physicalPath)
+    const targets = this.getTargetsForPath(dirPath)
     if (targets.length === 0) return
     const { removeItems } = await import("../../internal/op/storage")
     await removeItems(targets[0].targetFullPath, names)
@@ -244,8 +254,13 @@ export class AliasDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const srcTargets = this.getTargetsForPath(srcPhys)
-    const dstTargets = this.getTargetsForPath(dstPhys)
+    // srcPhys/dstPhys 是源/目标项自身的路径（已含 name），moveItems 需要的
+    // 是各自所在父目录（内部会再拼 name）；传项路径会得到 <item>/<name>，
+    // 操作静默失败。
+    const srcDirPath = this.parentPath(srcPhys)
+    const dstDirPath = this.parentPath(dstPhys)
+    const srcTargets = this.getTargetsForPath(srcDirPath)
+    const dstTargets = this.getTargetsForPath(dstDirPath)
     if (srcTargets.length === 0 || dstTargets.length === 0) {
       throw new Error("[Alias] cannot resolve source or destination path")
     }
@@ -264,8 +279,11 @@ export class AliasDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    const srcTargets = this.getTargetsForPath(srcPhys)
-    const dstTargets = this.getTargetsForPath(dstPhys)
+    // 同 move：srcPhys/dstPhys 是项自身路径，copyItems 需要各自所在父目录。
+    const srcDirPath = this.parentPath(srcPhys)
+    const dstDirPath = this.parentPath(dstPhys)
+    const srcTargets = this.getTargetsForPath(srcDirPath)
+    const dstTargets = this.getTargetsForPath(dstDirPath)
     if (srcTargets.length === 0 || dstTargets.length === 0) {
       throw new Error("[Alias] cannot resolve source or destination path")
     }

@@ -239,12 +239,14 @@ export class ChunkDriver implements StorageDriver {
       await this.remoteDriver!.get("", srcRemote)
       await this.remoteDriver!.move(srcDir, dstDir, names, srcRemote, dstRemote)
     } catch {
+      // 分片文件：dst 端必须是目标项自己的分片目录（与虚拟文件同级），
+      // 拼成 `<目标项>/<chunkPrefix><name>` 会指向不存在的路径。
       await this.remoteDriver!.move(
         srcDir,
         dstDir,
         names,
         this.chunkDirRemote(srcPhysical),
-        joinPath(dstRemote, this.chunkPrefix + basename(srcPhysical)),
+        this.chunkDirRemote(dstPhysical),
       )
     }
   }
@@ -263,12 +265,13 @@ export class ChunkDriver implements StorageDriver {
       await this.remoteDriver!.get("", srcRemote)
       await this.remoteDriver!.copy(srcDir, dstDir, names, srcRemote, dstRemote)
     } catch {
+      // 分片文件：同 move，dst 端用目标项自己的分片目录。
       await this.remoteDriver!.copy(
         srcDir,
         dstDir,
         names,
         this.chunkDirRemote(srcPhysical),
-        joinPath(dstRemote, this.chunkPrefix + basename(srcPhysical)),
+        this.chunkDirRemote(dstPhysical),
       )
     }
   }

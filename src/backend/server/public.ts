@@ -398,6 +398,10 @@ publicRouter.get("/settings", async (c) => {
     // IMPORTANT: share_preview must be "true" — frontend blocks ALL previews when false
     share_preview: "true",
     share_archive_preview: "true",
+    // 「复制链接」渲染的模板。缺失或为空时会渲染成空串，
+    // `navigator.clipboard.writeText("")` 会清空剪贴板，按钮照常弹「已复制」
+    // 但粘贴出来是空的。默认输出纯分享 URL，与按钮文案一致。
+    share_summary_content: "{{base_url}}/@s/{{id}}",
 
     // --- Global ---
     hide_files: "/\\.DS_Store/i",

@@ -192,34 +192,21 @@ export class SFTPDriver implements StorageDriver {
     physicalPath: string,
     names: string[],
   ): Promise<void> {
-    const targetDir = cleanPosixPath(physicalPath)
-    if (names && names.length > 0) {
-      for (const name of names) {
-        await this.client.removeRecursive(posixJoin(targetDir, name))
-      }
-    } else {
-      await this.client.removeRecursive(targetDir)
-    }
+    // physicalPath 已是目标项自身的物理路径（op/storage.ts 逐项解析后传入），
+    // 参数即项路径，不得再拼 name，否则指向 <item>/<name> 导致静默删除失败。
+    await this.client.removeRecursive(cleanPosixPath(physicalPath))
   }
 
   async move(
     _srcDir: string,
-    dstDir: string,
+    _dstDir: string,
     names: string[],
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    if (names && names.length > 0) {
-      for (const name of names) {
-        const src = posixJoin(srcPhys, name)
-        const dst = posixJoin(dstPhys, name)
-        await this.client.rename(src, dst)
-      }
-    } else {
-      const filename = srcPhys.split("/").filter(Boolean).pop() || ""
-      const dst = posixJoin(dstDir, filename)
-      await this.client.rename(cleanPosixPath(srcPhys), dst)
-    }
+    // srcPhys/dstPhys 已是源/目标项自身的物理路径，参数即项路径，
+    // 不得再拼 name，否则源/目标会错位到 <item>/<name>。
+    await this.client.rename(cleanPosixPath(srcPhys), cleanPosixPath(dstPhys))
   }
 
   async copy(

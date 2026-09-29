@@ -180,11 +180,9 @@ export class UssDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    for (const name of names) {
-      const srcKey = joinPath(this.getKey(srcPhys), name)
-      const dstKey = joinPath(this.getKey(dstPhys), name)
-      await this.moveOrCopy(srcKey, dstKey, "move")
-    }
+    // srcPhys/dstPhys 是目标项自身的物理路径（op/storage.ts moveItems 逐项调用），
+    // 参数即项路径，不得再拼 name，否则会指向 <item>/<name> 导致移动失败。
+    await this.moveOrCopy(this.getKey(srcPhys), this.getKey(dstPhys), "move")
   }
 
   async copy(
@@ -194,11 +192,8 @@ export class UssDriver implements StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void> {
-    for (const name of names) {
-      const srcKey = joinPath(this.getKey(srcPhys), name)
-      const dstKey = joinPath(this.getKey(dstPhys), name)
-      await this.moveOrCopy(srcKey, dstKey, "copy")
-    }
+    // 同 move：srcPhys/dstPhys 已是目标项自身路径，参数即项路径，不得再拼 name。
+    await this.moveOrCopy(this.getKey(srcPhys), this.getKey(dstPhys), "copy")
   }
 
   async put(_v: string, physicalPath: string, content: Buffer): Promise<void> {

@@ -200,9 +200,10 @@ export class TeraboxDriver implements StorageDriver {
     physicalPath: string,
     names: string[],
   ): Promise<void> {
+    // physicalPath 是目标项自身的物理路径（op/storage.ts removeItems 逐项调用），
+    // 参数即项路径，直接删除它即可；不得再拼 name，否则会指向 <item>/<name> 导致静默失败。
     const clean = this.cleanPath(physicalPath)
-    const paths = names.map((n) => (clean === "/" ? `/${n}` : `${clean}/${n}`))
-    await this.client.manage("delete", paths)
+    await this.client.manage("delete", [clean])
   }
 
   async move(
@@ -214,14 +215,15 @@ export class TeraboxDriver implements StorageDriver {
   ): Promise<void> {
     const srcClean = this.cleanPath(srcPhys)
     const dstClean = this.cleanPath(dstPhys)
-
-    const fileList = names.map((name) => ({
-      path: srcClean === "/" ? `/${name}` : `${srcClean}/${name}`,
-      dest: dstClean,
-      newname: name,
-    }))
-
-    await this.client.manage("move", fileList)
+    // srcPhys/dstPhys 是目标项自身的路径：path 不得再拼 name；
+    // filemanager 的 dest 是目标目录，故取 dstPhys 去掉末段后的父目录，newname 取末段。
+    await this.client.manage("move", [
+      {
+        path: srcClean,
+        dest: dstClean.split("/").slice(0, -1).join("/") || "/",
+        newname: dstClean.split("/").pop() || "",
+      },
+    ])
   }
 
   async copy(
@@ -233,14 +235,15 @@ export class TeraboxDriver implements StorageDriver {
   ): Promise<void> {
     const srcClean = this.cleanPath(srcPhys)
     const dstClean = this.cleanPath(dstPhys)
-
-    const fileList = names.map((name) => ({
-      path: srcClean === "/" ? `/${name}` : `${srcClean}/${name}`,
-      dest: dstClean,
-      newname: name,
-    }))
-
-    await this.client.manage("copy", fileList)
+    // 同 move：srcPhys/dstPhys 已是目标项自身路径，path 不得再拼 name；
+    // dest 取 dstPhys 去掉末段后的父目录，newname 取末段。
+    await this.client.manage("copy", [
+      {
+        path: srcClean,
+        dest: dstClean.split("/").slice(0, -1).join("/") || "/",
+        newname: dstClean.split("/").pop() || "",
+      },
+    ])
   }
 
   async put(

@@ -101,10 +101,10 @@ export class LocalDriver implements StorageDriver {
     await initNodeModules()
     if (!fs || !path)
       throw new Error("LocalDriver is not supported in Edge Runtime")
-    for (const name of names) {
-      const itemPath = path.join(physicalPath, name)
-      await fs.rm(itemPath, { recursive: true, force: true })
-    }
+    // physicalPath 是目标项自身的路径（op/storage.ts removeItems 逐项调用），
+    // 直接删除即可；不得再拼 name，否则指向 <item>/<name>，配合 force:true 会
+    // 静默"成功"但什么都没删。
+    await fs.rm(physicalPath, { recursive: true, force: true })
   }
 
   async move(
@@ -117,12 +117,10 @@ export class LocalDriver implements StorageDriver {
     await initNodeModules()
     if (!fs || !path)
       throw new Error("LocalDriver is not supported in Edge Runtime")
-    for (const name of names) {
-      const src = path.join(srcPhys, name)
-      const dst = path.join(dstPhys, name)
-      await fs.mkdir(path.dirname(dst), { recursive: true })
-      await fs.rename(src, dst)
-    }
+    // srcPhys/dstPhys 是源/目标项自身的路径（已含 name），直接移动即可；
+    // 不得再拼 name，否则指向不存在的 <item>/<name> 而 ENOENT。
+    await fs.mkdir(path.dirname(dstPhys), { recursive: true })
+    await fs.rename(srcPhys, dstPhys)
   }
 
   async copy(
@@ -135,12 +133,9 @@ export class LocalDriver implements StorageDriver {
     await initNodeModules()
     if (!fs || !path)
       throw new Error("LocalDriver is not supported in Edge Runtime")
-    for (const name of names) {
-      const src = path.join(srcPhys, name)
-      const dst = path.join(dstPhys, name)
-      await fs.mkdir(path.dirname(dst), { recursive: true })
-      await fs.cp(src, dst, { recursive: true })
-    }
+    // 同 move：srcPhys/dstPhys 已是源/目标项自身路径，不得再拼 name。
+    await fs.mkdir(path.dirname(dstPhys), { recursive: true })
+    await fs.cp(srcPhys, dstPhys, { recursive: true })
   }
 
   async put(
