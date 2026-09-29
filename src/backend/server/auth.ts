@@ -428,7 +428,13 @@ export async function authUserFromReq(
     const user = db.users.find(
       (u: any) => u.id === payload.id || u.username === payload.username,
     )
-    if (!user) return null
+    // 禁用/已删除用户一律视为未认证。
+    //
+    // 安全不变量：身份解析必须复检「当前是否仍被允许」。JWT 只证明「签发时刻
+    // 身份合法」，不证明「现在仍然合法」。历史上这里缺少 disabled 判断，导致
+    // 管理员禁用某用户后，其既有令牌在 S3 网关等直接复用本函数的入口仍然可用
+    // （核心 API 走 getUserFromContext 有该检查，网关入口没有）。
+    if (!user || user.disabled) return null
     return { db, user }
   } catch {
     return null
@@ -502,6 +508,13 @@ authRouter.post("/login", async (c) => {
 
       const otpCheck = await checkUserOtp(matchedUser, body)
       if (!otpCheck.ok) {
+        // OTP 失败必须计入防爆破计数。
+        //
+        // 安全不变量：任何「口令学验证失败」都应当累加失败次数。历史缺陷是
+        // OTP 分支直接 return，不调用 recordLoginFailure —— 攻击者只要先拿到
+        // 正确密码，就能以「无限次猜测」的方式爆破 6 位 TOTP，而账号永远不会
+        // 被锁定（实测：连续 7 次错误 OTP 后仍可继续提交）。
+        await recordLoginFailure(c, username, c.env)
         return c.json(
           { code: otpCheck.code, message: otpCheck.message, data: null },
           otpCheck.httpStatus,
@@ -585,6 +598,13 @@ authRouter.post("/login/hash", async (c) => {
 
       const otpCheck = await checkUserOtp(matchedUser, body)
       if (!otpCheck.ok) {
+        // OTP 失败必须计入防爆破计数。
+        //
+        // 安全不变量：任何「口令学验证失败」都应当累加失败次数。历史缺陷是
+        // OTP 分支直接 return，不调用 recordLoginFailure —— 攻击者只要先拿到
+        // 正确密码，就能以「无限次猜测」的方式爆破 6 位 TOTP，而账号永远不会
+        // 被锁定（实测：连续 7 次错误 OTP 后仍可继续提交）。
+        await recordLoginFailure(c, username, c.env)
         return c.json(
           { code: otpCheck.code, message: otpCheck.message, data: null },
           otpCheck.httpStatus,

@@ -1,6 +1,11 @@
 import { Hono } from "hono"
 import { authUserFromReq, getOrInitUsers, verifyUserPassword } from "./auth"
-import { can, PermissionBit } from "../pkg/permission"
+import {
+  can,
+  getActualPath,
+  isWithinUserRoot,
+  PermissionBit,
+} from "../pkg/permission"
 import {
   listItems,
   getItem,
@@ -92,6 +97,42 @@ function splitPath(p: string): { dir: string; name: string } {
   return { dir, name }
 }
 
+/**
+ * 把客户端可见的 DAV 路径映射为**该用户根目录之下**的实际存储路径。
+ *
+ * 语义：`/dav/` 就是该用户的根，`/dav/sub/x` 即其根下的 `sub/x`。
+ * - 管理员/默认用户（base_path="/"）：路径原样返回，与历史行为完全一致；
+ * - 受限 base_path 的用户：`/dav/sub` -> `<base_path>/sub`。
+ *
+ * 安全不变量：DAV 的源路径与 Destination 都必须经此映射，并在映射后做
+ * isWithinUserRoot 复核。历史缺陷：DAV 全程直接操作全局虚拟路径，既未套用
+ * base_path，也未做用户范围校验——实测「只有 WEBDAV_READ 权限、base_path 受限」
+ * 的用户可以 PROPFIND 其他用户的目录。
+ */
+function scopedDavPath(user: any, davPath: string): string {
+  const root = getActualPath(user, "/")
+  if (root === "/") return davPath
+  const rel = davPath === "/" ? "" : davPath.replace(/^\/+/, "")
+  return rel ? `${root}/${rel}` : root
+}
+
+/** 解析 MOVE / COPY 的 Destination 头并映射到用户根之下 */
+function destinationPath(c: any, user: any): string | null {
+  const destRaw = c.req.header("Destination") || ""
+  if (!destRaw) return null
+  let dest = destRaw
+  try {
+    dest = decodeURIComponent(new URL(destRaw, c.req.url).pathname).replace(
+      /^\/dav/,
+      "",
+    )
+  } catch {
+    return null
+  }
+  if (!dest) dest = "/"
+  return scopedDavPath(user, dest.startsWith("/") ? dest : `/${dest}`)
+}
+
 webdavRouter.all("/*", async (c) => {
   const user = await webdavAuth(c)
   if (!user) {
@@ -106,7 +147,11 @@ webdavRouter.all("/*", async (c) => {
   }
 
   const method = c.req.method.toUpperCase()
+  // davPath 是**客户端可见**路径（用于 href，不能把实际存储路径回显给客户端）；
+  // actualPath 才是交给存储层的路径（已套用该用户的根目录）。
   const davPath = davPathOf(c)
+  const actualPath = scopedDavPath(user, davPath)
+  if (!isWithinUserRoot(user, actualPath)) return c.text("Forbidden", 403)
   const ctx = getStorageRequestContext(c)
 
   try {
@@ -124,7 +169,7 @@ webdavRouter.all("/*", async (c) => {
       case "PROPFIND": {
         if (!canRead) return c.text("Forbidden", 403)
         const depth = c.req.header("Depth") || "1"
-        const res = await listItems(davPath, ctx)
+        const res = await listItems(actualPath, ctx)
         const items = (res.content || []).map((it: any) => ({
           name: it.name,
           size: it.size || 0,
@@ -146,7 +191,7 @@ webdavRouter.all("/*", async (c) => {
       case "GET":
       case "HEAD": {
         if (!canRead) return c.text("Forbidden", 403)
-        const { item, rawUrl } = await getItem(davPath, ctx)
+        const { item, rawUrl } = await getItem(actualPath, ctx)
         if (!item) return c.text("Not found", 404)
         if (item.is_dir) return c.text("Is a directory", 400)
         // 重定向到 rawRouter 实际下载；rawRouter 已处理所有驱动的下载协议
@@ -156,7 +201,7 @@ webdavRouter.all("/*", async (c) => {
         // op/storage.ts resolveRawUrlPrefix）：/p 受 Go canProxy() 限制，未开启
         // 代理的存储会 403 proxy not allowed，因此不能在这里硬编码 /p。
         return c.redirect(
-          rawUrl || `/api/d${encodeDownloadPath(davPath)}`,
+          rawUrl || `/api/d${encodeDownloadPath(actualPath)}`,
           302,
         )
       }
@@ -164,33 +209,31 @@ webdavRouter.all("/*", async (c) => {
       case "PUT": {
         if (!canManage) return c.text("Forbidden", 403)
         const buffer = Buffer.from(await c.req.arrayBuffer())
-        await putItem(davPath, buffer, ctx)
+        await putItem(actualPath, buffer, ctx)
         return c.body(null, 201)
       }
 
       case "MKCOL": {
         if (!canManage) return c.text("Forbidden", 403)
-        await makeDirectory(davPath, ctx)
+        await makeDirectory(actualPath, ctx)
         return c.body(null, 201)
       }
 
       case "DELETE": {
         if (!canManage) return c.text("Forbidden", 403)
-        const { dir, name } = splitPath(davPath)
+        const { dir, name } = splitPath(actualPath)
         await removeItems(dir, [name], ctx)
         return c.body(null, 204)
       }
 
       case "MOVE": {
         if (!canManage) return c.text("Forbidden", 403)
-        const destRaw = c.req.header("Destination") || ""
-        let dest = destRaw
-        try {
-          dest = decodeURIComponent(
-            new URL(destRaw, c.req.url).pathname,
-          ).replace(/^\/dav/, "")
-        } catch {}
-        const src = splitPath(davPath)
+        // Destination 同样必须落在调用者根目录之内，否则可以把文件移出/移入他人目录
+        const dest = destinationPath(c, user)
+        if (!dest || !isWithinUserRoot(user, dest)) {
+          return c.text("Forbidden", 403)
+        }
+        const src = splitPath(actualPath)
         const dst = splitPath(dest)
         await moveItems(src.dir, dst.dir, [src.name], ctx)
         return c.body(null, 201)
@@ -198,14 +241,11 @@ webdavRouter.all("/*", async (c) => {
 
       case "COPY": {
         if (!canManage) return c.text("Forbidden", 403)
-        const destRaw = c.req.header("Destination") || ""
-        let dest = destRaw
-        try {
-          dest = decodeURIComponent(
-            new URL(destRaw, c.req.url).pathname,
-          ).replace(/^\/dav/, "")
-        } catch {}
-        const src = splitPath(davPath)
+        const dest = destinationPath(c, user)
+        if (!dest || !isWithinUserRoot(user, dest)) {
+          return c.text("Forbidden", 403)
+        }
+        const src = splitPath(actualPath)
         const dst = splitPath(dest)
         await copyItems(src.dir, dst.dir, [src.name], ctx)
         return c.body(null, 201)
