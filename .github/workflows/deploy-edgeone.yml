@@ -1,0 +1,194 @@
+name: 部署到 EdgeOne Makers
+
+# 把本仓库部署到腾讯云 EdgeOne Makers（EdgeOne Pages）。
+#
+# 构建契约由 edgeone.json 声明，本workflow 不复制、不覆盖其中任何一项：
+#   installCommand  : pnpm install --no-frozen-lockfile
+#   buildCommand    : pnpm run build
+#   outputDirectory : dist
+#
+# ⚠️ 为什么【不】在 CI 里自己跑 pnpm run build 再 deploy ./dist：
+#   本仓库的 Node 云函数产物由 scripts/build-edge.mjs 写在【项目根】的
+#   cloud-functions/[[default]].js，而 edgeone.json 的 outputDirectory 是 dist。
+#   EdgeOne 官方文档要求「手工构建时，Makers Functions 相关目录与 package.json
+#   必须位于输出目录内」，因此传 ./dist 会漏掉云函数，只剩静态壳。
+#   正确做法是把构建交给 CLI：edgeone makers deploy 会读取 edgeone.json 并依次
+#   执行其中的 installCommand / buildCommand —— 这与 EdgeOne 自身 Git 集成
+#   的构建路径完全一致，也保证 CI 与「一键部署」按钮产出相同。
+#   云函数按设计不入库（见 .gitignore 与 build-verify.yml 的断言），
+#   正因如此才必须由构建过程现场生成。
+#
+# 必需的仓库 secret（Settings → Secrets and variables → Actions）：
+#   EDGEONE_API_TOKENEdgeOne Makers 控制台「API Token」页签创建的 Token
+#                       （https://pages.edgeone.ai/document/api-token）
+#                       Token 自带站点信息（国际站 / 中国站），无需额外指定 --site。
+#
+# 可选的 repository variable：
+#   EDGEONE_PROJECT_NAME   项目名，默认取 edgeone.json 的 name（openlist）
+#   EDGEONE_DEPLOY_ENV     部署环境，production（默认） / preview
+#   EDGEONE_CLI_VERSION    CLI 版本，默认 latest（锁定可获得可复现的部署）
+#
+# 未配置 EDGEONE_API_TOKEN 时本 workflow 跳过并给出警告（而不是失败），
+# 因此合并到上游后不会产生红色的失败运行。
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "scripts/**"
+      - "api/**"
+      - "functions/**"
+      - "edgeone.json"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/deploy-edgeone.yml"
+  workflow_dispatch:
+    inputs:
+      env:
+        description: "部署环境"
+        required: false
+        default: production
+        type: choice
+        options:
+          - production
+          - preview
+      project_name:
+        description: "EdgeOne 项目名（留空则用 edgeone.json 里的 name）"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# 同一 ref 的部署串行化，避免两次 deploy 抢同一个项目。
+concurrency:
+  group: deploy-edgeone-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: 构建并部署到 EdgeOne Makers
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+
+      # edgeone.json 里写的是 22.21.1；官方建议使用预装版本，
+      # 这里用 22 系列以拿到与 edgeone.json 同代的运行时。
+      # pnpm 必须装好 —— edgeone.json 的 installCommand 是 pnpm install。
+      - name: 配置 Node 运行时
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 解析部署配置
+        id: cfg
+        env:
+          EDGEONE_API_TOKEN: ${{ secrets.EDGEONE_API_TOKEN }}
+          DEPLOY_ENV: ${{ inputs.env || vars.EDGEONE_DEPLOY_ENV }}
+          PROJECT_NAME: ${{ inputs.project_name || vars.EDGEONE_PROJECT_NAME }}
+          CLI_VERSION: ${{ vars.EDGEONE_CLI_VERSION }}
+        run: |
+          set -euo pipefail
+
+          # 默认取 edgeone.json 的 name，避免 CI 与平台配置出现两个项目名
+          default_name=$(node -e 'process.stdout.write(require("./edgeone.json").name || "")')
+          project_name="${PROJECT_NAME:-$default_name}"
+          deploy_env="${DEPLOY_ENV:-production}"
+          # CLI 版本默认跟随 latest；需要可复现构建时可锁定具体版本号。
+          # 官方要求 1.6.0 以上才具备非交互环境所需的修复。
+          cli_version="${CLI_VERSION:-latest}"
+
+          case "$deploy_env" in
+            production|preview) ;;
+            *)
+              echo "::error::非法的部署环境 '$deploy_env'，只能是 production 或 preview。"
+              exit 1
+              ;;
+          esac
+
+          {
+            echo "project_name=${project_name}"
+            echo "deploy_env=${deploy_env}"
+            echo "cli_version=${cli_version}"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ -z "${EDGEONE_API_TOKEN:-}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            # 用 warning 而非 error：合并到上游后此处没有 Token 属于正常情况，
+            # 不应让维护者看到红色失败。
+            echo "::warning::未配置 EDGEONE_API_TOKEN，跳过 EdgeOne 部署。配置入口：Settings → Secrets and variables → Actions。"
+            exit 0
+          fi
+          if [ -z "$project_name" ]; then
+            echo "::error::无法确定项目名：请设置 EDGEONE_PROJECT_NAME，或确认 edgeone.json 中存在 name 字段。"
+            exit 1
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: 部署到 EdgeOne Makers
+        if: steps.cfg.outputs.skip == 'false'
+        env:
+          EDGEONE_API_TOKEN: ${{ secrets.EDGEONE_API_TOKEN }}
+          PROJECT_NAME: ${{ steps.cfg.outputs.project_name }}
+          DEPLOY_ENV: ${{ steps.cfg.outputs.deploy_env }}
+          # 必须用上一步的 output（已含 latest 默认值），不能直接读 vars：
+          # 变量未配置时 vars 为空，会拼出非法的 "edgeone@" 规格。
+          CLI_VERSION: ${{ steps.cfg.outputs.cli_version }}
+        run: |
+          set -euo pipefail
+
+          # CLI 会自行读取 edgeone.json 完成构建（installCommand + buildCommand），
+          # 因此这里不再单独执行 pnpm install / pnpm run build。
+          #
+          # Token 经 --token 传入（EdgeOne 官方文档的 CI 写法；CLI 未提供
+          # 环境变量读取方式）。因此它会出现在 runner 的进程参数里，
+          # 但 GitHub Actions 会自动把「已注册为 repository secret 的值」
+          # 在日志中替换为 ***，所以 CI 日志不会泄露 Token。
+          #
+          # deploy 输出里包含 EDGEONE_DEPLOY_URL / EDGEONE_PROJECT_ID，
+          # 用 tee 同时保留完整日志与可提取的字段（与官方 GitHub Actions
+          # 文档中的做法一致）。
+          npx --yes "edgeone@${CLI_VERSION}" makers deploy \
+            --name "$PROJECT_NAME" \
+            --env "$DEPLOY_ENV" \
+            --token "$EDGEONE_API_TOKEN" 2>&1 | tee edgeone-deploy.log
+
+          deploy_url=$(grep -o 'EDGEONE_DEPLOY_URL=.*' edgeone-deploy.log | tail -n 1 | cut -d= -f2- | tr -d '\r')
+          project_id=$(grep -o 'EDGEONE_PROJECT_ID=.*' edgeone-deploy.log | tail -n 1 | cut -d= -f2- | tr -d '\r')
+
+          {
+            echo "deploy_url=${deploy_url}"
+            echo "project_id=${project_id}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 输出部署摘要
+        if: always()
+        env:
+          PROJECT_NAME: ${{ steps.cfg.outputs.project_name }}
+          DEPLOY_ENV: ${{ steps.cfg.outputs.deploy_env }}
+          DEPLOY_URL: ${{ steps.deploy.outputs.deploy_url }}
+          PROJECT_ID: ${{ steps.deploy.outputs.project_id }}
+          SKIP: ${{ steps.cfg.outputs.skip }}
+        run: |
+          {
+            echo "### EdgeOne Makers 部署结果"
+            echo ""
+            if [ "${SKIP}" = "true" ]; then
+              echo "- 状态：已跳过（未配置 EDGEONE_API_TOKEN）"
+            else
+              echo "- 项目名：\`${PROJECT_NAME}\`"
+              echo "- 环境：\`${DEPLOY_ENV}\`"
+              echo "- 项目 ID：${PROJECT_ID:-未返回}"
+              echo "- 访问地址：${DEPLOY_URL:-未返回}"
+              echo "- 提交：\`${GITHUB_SHA}\`"
+              echo ""
+              echo "> 构建由 EdgeOne CLI 依据 \`edgeone.json\` 执行，本 workflow 未改动任何构建配置。"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
