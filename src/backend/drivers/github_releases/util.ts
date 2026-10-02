@@ -61,8 +61,8 @@ export class ClientGithubReleases {
 
   private proxy(url: string): string {
     const p = this.addition.gh_proxy || ""
-    if (!p || url.startsWith("http")) return url
-    return p + url
+    if (p && url.startsWith("http")) return p + url
+    return url
   }
 
   /** 解析挂载点对应的 org/repo */
