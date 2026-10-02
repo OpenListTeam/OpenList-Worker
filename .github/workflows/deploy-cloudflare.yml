@@ -1,0 +1,159 @@
+name: Deploy to Cloudflare Workers
+
+# 把当前仓库部署到 Cloudflare Workers（等价于本地 `pnpm run deploy`：
+# fetch-frontend 拉官方前端 dist → wrangler deploy 打包上传）。
+#
+# 设计要点：
+#   - 只在 push 到 main / 手动触发时部署。【不监听 pull_request】：
+#     fork 的 PR 拿不到 secrets，且用不可信的 PR 代码构建再发布到生产域名
+#     会造成供应链风险。PR 的正确验证方式是仓库已有的 build-verify.yml。
+#   - 凭据只用仓库 secrets：CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID。
+#     不要用 CLOUDFLARE_API_KEY / 全局密钥，也不要在此打印 token。
+#   - 配置以 wrangler.jsonc 为唯一来源，本工作流不修改任何 vars；
+#     KV 由 wrangler 自动预配（见 wrangler.jsonc 顶部注释，勿手动建 KV）。
+#
+# 必需的仓库 secrets（Settings → Secrets and variables → Actions）：
+#   CLOUDFLARE_API_TOKEN   Workers Scripts:Edit + KV Storage:Edit 的 API Token
+#                          （模板：https://dash.cloudflare.com/profile/api-tokens）
+#   CLOUDFLARE_ACCOUNT_ID  Cloudflare 账户 ID（同名 repository variable 亦可，
+#                          但 secrets 优先，避免出现在变量列表里）
+#
+# 可选的 repository variables（Settings → Variables）：
+#   CF_ROUTE           形如 example.com/* 的 route（需要账户有该 zone）
+#   CF_CUSTOM_DOMAIN   形如 list.example.com 的自定义域名
+#   CF_WORKER_NAME     覆盖 Worker 名称（默认取 wrangler.jsonc 的 name）
+#
+# 触发方式：
+#   - push 到 main 且命中 paths 过滤 → 自动部署
+#   - Actions 页面手动 Run workflow（可临时填 route / domain / dry_run）
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "scripts/**"
+      - "wrangler.jsonc"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/deploy-cloudflare.yml"
+  workflow_dispatch:
+    inputs:
+      route:
+        description: "Route to deploy to, e.g. example.com/* (overrides CF_ROUTE)"
+        required: false
+        type: string
+      custom_domain:
+        description: "Custom domain, e.g. list.example.com (overrides CF_CUSTOM_DOMAIN)"
+        required: false
+        type: string
+      dry_run:
+        description: "Only build and bundle, do not upload"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+# 串行化部署：同一 ref 的旧部署直接取消，避免两次 wrangler deploy 抢同一 Worker。
+concurrency:
+  group: deploy-cloudflare-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Build and deploy Worker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # wrangler.jsonc 的 assets.directory 指向 ./dist，dist 不存在时 wrangler
+      # deploy 会直接报错，所以必须先跑 fetch-frontend（与 build-verify.yml 同源）。
+      - name: Fetch official frontend dist
+        run: node scripts/fetch-frontend.mjs
+
+      - name: Ensure the Worker is reachable
+        env:
+          ROUTE: ${{ inputs.route || vars.CF_ROUTE }}
+          CUSTOM_DOMAIN: ${{ inputs.custom_domain || vars.CF_CUSTOM_DOMAIN }}
+        run: |
+          set -euo pipefail
+          if [ -n "$ROUTE" ] || [ -n "$CUSTOM_DOMAIN" ]; then
+            echo "使用仓库配置的 route / custom domain，跳过 workers.dev 兜底。"
+            exit 0
+          fi
+          # wrangler.jsonc 默认 "workers_dev": false 且未声明 routes，
+          # 此时 wrangler deploy 会因为「没有任何入口」而报错。
+          # 这里仅在【未配置 route/domain 且配置里也没有 routes】时，
+          # 把本 runner 上的 wrangler.jsonc 改成 workers_dev: true，
+          # 走 *.workers.dev 兜底域名。该改动只存在于本次运行的 runner，
+          # 不会写回仓库；配置了自定义域名的用户请设置 CF_ROUTE / CF_CUSTOM_DOMAIN。
+          node <<'NODE'
+          const fs = require("node:fs")
+          const file = "wrangler.jsonc"
+          const src = fs.readFileSync(file, "utf8")
+          if (!/"workers_dev"\s*:\s*false/.test(src)) {
+            console.log("workers_dev 已显式开启，跳过补丁。")
+            process.exit(0)
+          }
+          if (/"routes?"\s*:/.test(src.replace(/\/\/.*$/gm, ""))) {
+            console.log("配置中已声明 route/routes，无需开启 workers.dev。")
+            process.exit(0)
+          }
+          fs.writeFileSync(file, src.replace(/"workers_dev"\s*:\s*false/, '"workers_dev": true'))
+          console.log("已在本次运行中开启 workers_dev（仅影响 runner 内的副本）。")
+          NODE
+
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ROUTE: ${{ inputs.route || vars.CF_ROUTE }}
+          CUSTOM_DOMAIN: ${{ inputs.custom_domain || vars.CF_CUSTOM_DOMAIN }}
+          WORKER_NAME: ${{ vars.CF_WORKER_NAME }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "::error::缺少 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID。请在 Settings → Secrets and variables → Actions 中配置这两个仓库 secret。"
+            exit 1
+          fi
+
+          args=(--yes)
+          [ -n "$WORKER_NAME" ] && args+=(--name "$WORKER_NAME")
+          [ -n "$ROUTE" ] && args+=(--route "$ROUTE")
+          [ -n "$CUSTOM_DOMAIN" ] && args+=(--domain "$CUSTOM_DOMAIN")
+          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
+
+          # 注意：这里刻意【不加 --keep-vars】——wrangler.jsonc 是配置的 source of truth，
+          # vars 每次部署都会按它覆盖；Worker 上的 Secret 无论如何都不会被删除。
+          pnpm exec wrangler deploy "${args[@]}"
+
+      - name: Summary
+        if: always()
+        env:
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: |
+          {
+            echo "### Cloudflare 部署结果"
+            echo ""
+            echo "- commit: \`${GITHUB_SHA}\`"
+            echo "- 模式: $([ "$DRY_RUN" = "true" ] && echo 'dry-run（未上传）' || echo '已上传')"
+            echo "- 配置来源: \`wrangler.jsonc\`（未修改 vars）"
+          } >> "$GITHUB_STEP_SUMMARY"
