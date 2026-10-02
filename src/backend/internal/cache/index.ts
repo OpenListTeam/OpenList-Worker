@@ -9,7 +9,8 @@
  * 显式配置 `CACHE_DRIVER=db,kv` / `kv` / `blob` 等才会启用专用后端。
  *
  * 失效：写操作（mkdir/rename/remove/move/copy/put）后调用 `invalidatePaths()`，
- * 同时失效这两级缓存。
+ * 同时失效这两级缓存；分片 / 直传上传的收尾路径（/fs/upload/complete、
+ * /fs/multipart/complete、/fs/other、/fs/get_direct_upload_info）同样接入。
  */
 import { getCacheConfig, describeCacheConfig } from "./config"
 import { clearCache, getCacheDrivers, isCacheActive } from "./store"
@@ -21,6 +22,7 @@ export {
   describeCacheConfig,
   parseCacheBackends,
   parseExcludeDrivers,
+  parseCachePrefix,
   normalizeDriverName,
   __resetCacheConfigForTest,
   DEFAULT_FILE_TREE_TTL_MINUTES,

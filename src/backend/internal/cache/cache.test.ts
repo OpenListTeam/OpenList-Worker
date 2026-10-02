@@ -29,6 +29,7 @@ const {
   getCachedFileTree,
   getCachedLink,
   parseCacheBackends,
+  parseCachePrefix,
   setCachedFileTree,
   setCachedLink,
   storageIdFromCacheKey,
@@ -85,7 +86,8 @@ test("配置：默认只向数据库启用", () => {
   assert.equal(cfg.enabled, true)
   assert.deepEqual(cfg.backends, ["db"])
   assert.equal(cfg.fileTree, true)
-  assert.equal(cfg.downloadLink, true)
+  // 下载链接缓存默认关闭：部分网盘直链 TTL 极短，复用易发出失效直链
+  assert.equal(cfg.downloadLink, false)
   // 默认 TTL：文件树跟随存储级 cache_expiration（0 = 不覆盖）
   assert.equal(cfg.ttlMinutes, 0)
   assert.equal(cfg.linkTtlMinutes, 5)
@@ -127,6 +129,19 @@ test("配置：CACHE_DRIVER=none 时整体关闭", () => {
   assert.deepEqual(cfg.backends, [])
 })
 
+test("配置：CACHE_PREFIX 字符集校验（非法回退默认值）", () => {
+  // 合法：字母数字下划线，最长 64
+  assert.equal(parseCachePrefix(""), "openlist_cache")
+  assert.equal(parseCachePrefix("  my_cache_2  "), "my_cache_2")
+  assert.equal(parseCachePrefix("a".repeat(64)), "a".repeat(64))
+  // 非法：空格 / 斜杠 / 冒号 / 连字符 / 超长 —— 一律回退默认值
+  assert.equal(parseCachePrefix("my cache"), "openlist_cache")
+  assert.equal(parseCachePrefix("cache/v2"), "openlist_cache")
+  assert.equal(parseCachePrefix("cache:v2"), "openlist_cache")
+  assert.equal(parseCachePrefix("my-cache"), "openlist_cache")
+  assert.equal(parseCachePrefix("a".repeat(65)), "openlist_cache")
+})
+
 test("配置：默认排除纯本地计算型驱动", () => {
   __resetCacheConfigForTest()
   const cfg = getCacheConfig({})
@@ -161,6 +176,63 @@ test("键名：超长路径被确定性压缩且仍在合法字符集内", () =>
   assert.match(a, /^[A-Za-z0-9_]+$/)
   // 不同长路径不应碰撞
   assert.notEqual(a, encodeCachePathSegment(long + "x"))
+})
+
+test("键名：编码单射 —— 任意不同路径的键互不相等（键碰撞回归）", () => {
+  // 评审实测复现的碰撞对：转义前缀 x 未转义时，/a/b 与 /ax2fb 曾得到同一个键，
+  // 导致按 /ax2fb 的权限判定返回 /a/b 的内容（跨目录串列表 / 直链）
+  assert.notEqual(
+    encodeCachePathSegment("/a/b"),
+    encodeCachePathSegment("/ax2fb"),
+    "/a/b 与 /ax2fb 不得碰撞",
+  )
+  assert.notEqual(
+    encodeCachePathSegment("/a/b.txt"),
+    encodeCachePathSegment("/ax2fb.txt"),
+  )
+
+  // 参数化：覆盖转义前缀字面量、转义序列字面量、分隔符、大小写、unicode、
+  // 普通编码与长路径折叠分支的交叉
+  const long = "/" + Array.from({ length: 60 }, (_, i) => `dir${i}`).join("/")
+  const longAlt = "/" + Array.from({ length: 59 }, (_, i) => `dir${i}`).concat("dir58x").join("/")
+  const paths = [
+    "/",
+    "/a",
+    "/a/b",
+    "/ax2fb",
+    "/a/b.txt",
+    "/ax2fb.txt",
+    "/x/y",
+    "/xx2fy",
+    "/secret/report.pdf",
+    "/secretx2freport.pdf",
+    "x",
+    "/x2f",
+    "/x78",
+    "/xx",
+    "/X/x", // 大写 X 无歧义，原样保留
+    "/照片/2024/img.jpg",
+    "/a b/c%d.txt",
+    long,
+    longAlt, // 与 long 折叠后前 100 字符相同，仅靠哈希区分
+    long + "x",
+  ]
+  const keys = paths.map((p) => encodeCachePathSegment(p))
+
+  // 全部在 KV 合法字符集内
+  for (const k of keys) {
+    assert.match(k, /^[A-Za-z0-9_]+$/, `键不在合法字符集内: ${k}`)
+  }
+  // 两两互不相等（O(n²)，n=20）
+  for (let i = 0; i < paths.length; i++) {
+    for (let j = i + 1; j < paths.length; j++) {
+      assert.notEqual(
+        keys[i],
+        keys[j],
+        `缓存键碰撞: "${paths[i]}" vs "${paths[j]}"`,
+      )
+    }
+  }
 })
 
 test("失效路径展开：包含父目录", () => {
@@ -286,7 +358,8 @@ const FILE_ITEM = {
 
 test("下载链接缓存：缓存拿到直链的文件，并返回副本", async () => {
   setup()
-  const env = { CACHE_DRIVER: "db" }
+  // 链接缓存默认关闭（直链 TTL 风险），用例显式开启
+  const env = { CACHE_DRIVER: "db", CACHE_DOWNLOAD_LINK: "true" }
   const target = { storage: { id: 10, driver: "fake" }, cleanPath: "/movie.mp4" }
 
   await setCachedLink(target, FILE_ITEM as any, env)
@@ -327,7 +400,7 @@ test("下载链接缓存：CACHE_LINK_TTL=0 时关闭", async () => {
 
 test("clearCache：按存储 id 过滤，不误伤相邻 id", async () => {
   setup()
-  const env = { CACHE_DRIVER: "db", CACHE_TTL: "30" }
+  const env = { CACHE_DRIVER: "db", CACHE_TTL: "30", CACHE_DOWNLOAD_LINK: "true" }
   await setCachedFileTree(
     { storage: { id: 1, driver: "fake" }, cleanPath: "/a" },
     SAMPLE_ITEMS as any,
@@ -360,7 +433,7 @@ test("clearCache：按存储 id 过滤，不误伤相邻 id", async () => {
 
 test("clearCache：按 kind 只清一类", async () => {
   setup()
-  const env = { CACHE_DRIVER: "db", CACHE_TTL: "30" }
+  const env = { CACHE_DRIVER: "db", CACHE_TTL: "30", CACHE_DOWNLOAD_LINK: "true" }
   await setCachedFileTree(
     { storage: { id: 1, driver: "fake" }, cleanPath: "/a" },
     SAMPLE_ITEMS as any,

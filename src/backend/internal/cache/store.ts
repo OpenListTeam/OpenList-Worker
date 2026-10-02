@@ -312,11 +312,58 @@ function fnv1a32(input: string, seed: number): number {
 }
 
 /**
- * 路径片段编码为 KV 合法键片段。
+ * 缓存专用的单射字符判断。
  *
- * EdgeOne KV 只接受 `[A-Za-z0-9_]`，因此复用业务数据的 `encodeKeyPart()`。
- * 超长路径（深层目录）会被压成双 32 位哈希，避免超过 KV 键长上限
- * （Cloudflare KV 512 字节）；编码是确定性的，因此失效时仍能算出同一个键。
+ * 与业务数据的 `encodeKeyPart` 唯一的区别：**小写 `x` 不再原样保留**。
+ * 业务键名仅作存储地址、主键取自记录 JSON，`x` 的歧义无碍；而缓存靠
+ * 「键 → 值」取回数据，键不单射 = 取回别的路径的内容（评审实测复现：
+ * `/a/b` 与 `/ax2fb` 键相同，可跨目录串列表 / 直链）。`x` 的 UTF-8
+ * 字节恰为 0x78，转义成 `x78` 即可让任何 `x` 都只能来自转义序列。
+ */
+function isCachePlain(ch: string): boolean {
+  if (ch === "x") return false
+  return (
+    (ch >= "a" && ch <= "z") ||
+    (ch >= "A" && ch <= "Z") ||
+    (ch >= "0" && ch <= "9") ||
+    ch === "_"
+  )
+}
+
+/** `isCachePlain` 的快路径正则（[A-Za-z] 去掉小写 x + [0-9] + _）。 */
+const CACHE_PLAIN_RE = /^[A-Za-wyz0-9_]+$/
+
+/** 单射编码：合法字符原样（`x` 除外），其余按 UTF-8 逐字节转义为 `xHH`。 */
+function encodePathInjective(s: string): string {
+  if (s === "") return "0"
+  if (CACHE_PLAIN_RE.test(s)) return s
+
+  let out = ""
+  for (const ch of s) {
+    if (isCachePlain(ch)) {
+      out += ch
+    } else {
+      for (const b of new TextEncoder().encode(ch)) {
+        out += "x" + b.toString(16).padStart(2, "0")
+      }
+    }
+  }
+  return out
+}
+
+/**
+ * 路径片段编码为 KV 合法键片段（**单射**）。
+ *
+ * EdgeOne KV 只接受 `[A-Za-z0-9_]`。编码必须单射：任意两个不同虚拟路径
+ * 不得得到同一个键，否则「键碰撞 = 跨目录 / 跨文件串数据」（权限、hide
+ * 规则、meta 密码按请求路径判定，而内容取自碰撞路径，可被利用绕过）。
+ *
+ * - 短路径：直接单射编码（`x` → `x78` 消除转义前缀歧义）。
+ * - 超长路径（编码后 > 180，接近 KV 键长上限）：截取前 100 字符 +
+ *   `xg` + 双 32 位 FNV-1a（合计 64 位）收尾。标记选 `xg` 是因为普通
+ *   编码结果中 `x` 后面必跟两位十六进制，`xg` 不可能出现，因此长路径
+ *   折叠键不会与任何短路径的普通编码键碰撞；两个超长路径之间依赖
+ *   64 位哈希区分。编码是确定性的，失效时仍能算出同一个键。
  */
 export function encodeCachePathSegment(virtualPath: string): string {
   const norm =
@@ -325,11 +372,11 @@ export function encodeCachePathSegment(virtualPath: string): string {
       .split("/")
       .filter(Boolean)
       .join("/")
-  const encoded = encodeKeyPart(norm)
+  const encoded = encodePathInjective(norm)
   if (encoded.length <= 180) return encoded
   const a = fnv1a32(norm, 0x811c9dc5).toString(16).padStart(8, "0")
   const b = fnv1a32(norm, 0x9e3779b9).toString(16).padStart(8, "0")
-  return `h${a}${b}`
+  return encoded.slice(0, 100) + "xg" + a + b
 }
 
 /**

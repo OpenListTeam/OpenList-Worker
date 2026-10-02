@@ -26,11 +26,11 @@
  * | `CACHE_ENABLED` | `true` | 总开关，`false` 时两级缓存全部关闭 |
  * | `CACHE_DRIVER` | `db` | 缓存后端列表，逗号分隔：`db` / `kv` / `blob` / `cfkv` / `do` / `memory` / `none` |
  * | `CACHE_FILE_TREE` | `true` | 文件树缓存开关 |
- * | `CACHE_DOWNLOAD_LINK` | `true` | 下载链接缓存开关 |
+ * | `CACHE_DOWNLOAD_LINK` | `false` | 下载链接缓存开关。默认**关闭**：部分网盘的直链 TTL 很短（分钟级甚至更短），缓存复用容易把已失效的直链发给用户；确认所用网盘直链有效期足够长后再显式开启 |
  * | `CACHE_TTL` | `0` | 文件树缓存时长（分钟）；`0` = 跟随存储级 `cache_expiration`（默认 30） |
  * | `CACHE_LINK_TTL` | `5` | 下载链接缓存时长（分钟）；直链通常带有效期，不宜过长 |
  * | `CACHE_EXCLUDE_DRIVERS` | `virtual,alias,url_tree,strm,chunk` | 不参与缓存的驱动（本地计算型，缓存只会带来陈旧） |
- * | `CACHE_PREFIX` | `openlist_cache` | 缓存键前缀，用于与业务数据键隔离 |
+ * | `CACHE_PREFIX` | `openlist_cache` | 缓存键前缀，用于与业务数据键隔离；仅允许 `[A-Za-z0-9_]`，非法时回退默认值 |
  */
 
 /** 可用的缓存后端名。`db` = 与业务数据同一个后端（默认）。 */
@@ -175,6 +175,29 @@ export function parseExcludeDrivers(raw: string): Set<string> {
   return new Set(tokens)
 }
 
+/** 缓存键前缀默认值。 */
+const DEFAULT_CACHE_PREFIX = "openlist_cache"
+
+/**
+ * 解析 `CACHE_PREFIX`（缓存键前缀）。
+ *
+ * 前缀会成为 KV 键的一部分，因此只允许 `[A-Za-z0-9_]`（EdgeOne KV 的键名
+ * 约束）：含其他字符时所有缓存写入都会失败。另外前缀与业务数据的 KV 键
+ * （`<table>_<主键>`）落在同一个键空间，若放纵任意字符（如空格、`/`、`:`），
+ * 既可能与表名段混淆、又可能让 `sqlFormat.save()` 的整表 DELETE 波及缓存行。
+ * 非法取值一律回退默认值并告警。
+ */
+export function parseCachePrefix(raw: string): string {
+  const value = String(raw || "").trim()
+  if (!value) return DEFAULT_CACHE_PREFIX
+  if (/^[A-Za-z0-9_]{1,64}$/.test(value)) return value
+  console.warn(
+    `[Cache] Invalid CACHE_PREFIX "${value}": only [A-Za-z0-9_] (max 64 chars) ` +
+      `are allowed. Falling back to "${DEFAULT_CACHE_PREFIX}".`,
+  )
+  return DEFAULT_CACHE_PREFIX
+}
+
 /** 计算用于「配置缓存」的指纹（配置一变即失效）。 */
 function configSignature(env?: any): string {
   return [
@@ -203,13 +226,15 @@ export function getCacheConfig(env?: any): CacheConfig {
 
   const backends = parseCacheBackends(readRaw("CACHE_DRIVER", env))
   const enabledRaw = readBool("CACHE_ENABLED", true, env)
-  const prefix = readRaw("CACHE_PREFIX", env).trim() || "openlist_cache"
+  const prefix = parseCachePrefix(readRaw("CACHE_PREFIX", env))
 
   const config: CacheConfig = {
     enabled: enabledRaw && backends.length > 0,
     backends,
     fileTree: readBool("CACHE_FILE_TREE", true, env),
-    downloadLink: readBool("CACHE_DOWNLOAD_LINK", true, env),
+    // 默认关闭：部分网盘直链 TTL 极短，缓存复用容易把失效直链发给用户；
+    // 确认网盘直链有效期后可显式开启（CACHE_DOWNLOAD_LINK=true）
+    downloadLink: readBool("CACHE_DOWNLOAD_LINK", false, env),
     ttlMinutes: readInt("CACHE_TTL", 0, env),
     linkTtlMinutes: readInt("CACHE_LINK_TTL", DEFAULT_LINK_TTL_MINUTES, env),
     excludeDrivers: parseExcludeDrivers(readRaw("CACHE_EXCLUDE_DRIVERS", env)),

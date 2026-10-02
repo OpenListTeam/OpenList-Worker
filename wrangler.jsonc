@@ -105,9 +105,10 @@
     // 支持逗号分隔多后端（读按顺序命中、写全部铺开），如 "db,kv"
     "CACHE_DRIVER": "db",
     //
-    // 分级开关（默认 true）
+    // 分级开关：文件树缓存默认 true；下载链接缓存默认 false（部分网盘直链
+    // TTL 很短，缓存复用可能把已失效的直链发给用户，确认后再显式开启）
     "CACHE_FILE_TREE": "true",
-    "CACHE_DOWNLOAD_LINK": "true",
+    "CACHE_DOWNLOAD_LINK": "false",
     //
     // 文件树缓存时长（分钟）。0 = 跟随存储级 cache_expiration（默认 30 分钟，
     // 可被该存储的 custom_cache_policies 按路径覆盖；命中 0 表示不缓存）

@@ -33,7 +33,7 @@
         "description": "Optional. Toggle the file-tree cache (directory listings). Defaults to `true`. Listings are cached per storage+path; only admin writes invalidate them."
       },
       "CACHE_DOWNLOAD_LINK": {
-        "description": "Optional. Toggle the download-link cache (presigned/raw download URLs returned by drivers). Defaults to `true`. Reuses the link instead of re-signing on every download."
+        "description": "Optional. Toggle the download-link cache (presigned/raw download URLs returned by drivers). Defaults to `false`: some drives mint links with a very short TTL, so cached reuse can hand out already-expired links. Enable explicitly (`true`) once you confirmed your drive's link lifetime is long enough."
       },
       "CACHE_TTL": {
         "description": "Optional. File-tree cache lifetime in minutes. Defaults to `0`, which means 'follow the per-storage cache_expiration' (30 minutes, overridable per path by custom_cache_policies). Set to 0 to never cache a storage whose cache_expiration is 0."
@@ -45,7 +45,7 @@
         "description": "Optional. Comma-separated drivers excluded from caching. Defaults to `virtual,alias,url_tree,strm,chunk` (locally computed drivers where caching only adds staleness)."
       },
       "CACHE_PREFIX": {
-        "description": "Optional. Key prefix used to isolate cache entries from business data. Defaults to `openlist_cache`."
+        "description": "Optional. Key prefix used to isolate cache entries from business data. Defaults to `openlist_cache`. Only [A-Za-z0-9_] (max 64 chars) are allowed; invalid values fall back to the default."
       }
     }
   },
