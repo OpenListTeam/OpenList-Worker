@@ -73,7 +73,14 @@ export interface SingleFlightOptions {
    * 期间执行者会按 1/3 周期续租；若执行者崩溃，锁到期后其他实例可接管。
    */
   lockTtlMs?: number
-  /** 等待方的轮询间隔（ms，默认 50）。 */
+  /**
+   * 等待方的轮询间隔（ms，默认 200）。
+   *
+   * 刻意不放太小：等待方每 tick 都是一次对协调表的 SELECT，间隔过小会显著
+   * 消耗 D1 的 subrequest 配额与 CPU（最坏情况 ≈ waitTimeoutMs / pollMs 次
+   * SELECT × 最多 3 轮）。默认 200ms 下单个等待请求最多约 75 次 SELECT/轮，
+   * 目录列表 / 元信息这类上游调用通常远快于此，多等一两个 tick 无感。
+   */
   pollMs?: number
   /**
    * 等待方最长等待时间（ms，默认 15000）。
@@ -104,7 +111,7 @@ export interface SingleFlightStats {
 
 const DEFAULT_HANDOFF_MS = 1000
 const DEFAULT_LOCK_TTL_MS = 30_000
-const DEFAULT_POLL_MS = 50
+const DEFAULT_POLL_MS = 200
 const DEFAULT_WAIT_TIMEOUT_MS = 15_000
 
 /** 读取配置：env 绑定优先，其次 process.env（Node / 本地开发）。 */

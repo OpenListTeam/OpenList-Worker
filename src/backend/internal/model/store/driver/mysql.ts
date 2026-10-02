@@ -56,7 +56,7 @@ async function ensureSchema(pool: any, env?: any): Promise<void> {
   for (const ddl of [
     ...KV_SCHEMA_MYSQL,
     ...buildDdl("mysql", env),
-    ...buildSingleFlightDdl("mysql"),
+    ...buildSingleFlightDdl("mysql", env),
   ]) {
     await pool.query(ddl)
   }

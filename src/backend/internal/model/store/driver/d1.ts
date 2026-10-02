@@ -54,7 +54,7 @@ async function ensureSchema(db: any, env?: any): Promise<void> {
   for (const ddl of [
     ...KV_SCHEMA_SQLITE,
     ...buildDdl("sqlite", env),
-    ...buildSingleFlightDdl("sqlite"),
+    ...buildSingleFlightDdl("sqlite", env),
   ]) {
     await db.prepare(ddl).run()
   }

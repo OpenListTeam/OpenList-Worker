@@ -100,7 +100,7 @@
     // "SINGLEFLIGHT_LOCK_TTL_MS": "30000",
     //
     // 等待方轮询间隔（ms）
-    // "SINGLEFLIGHT_POLL_MS": "50",
+    // "SINGLEFLIGHT_POLL_MS": "200",
     //
     // 等待方最长等待（ms）；超时后自行执行，避免被慢请求拖死
     // "SINGLEFLIGHT_WAIT_MS": "15000",

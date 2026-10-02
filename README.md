@@ -295,7 +295,7 @@ CF_API_KEY=your_api_token
 | `SINGLEFLIGHT` | `auto` | `auto`：有 SQL 库（d1/mysql/do）时用表协调，否则退回进程内；`db`：强制用表；`memory`：仅进程内；`off`：关闭 |
 | `SINGLEFLIGHT_HANDOFF_MS` | `1000` | 执行完成后结果在表中保留多久（ms），供**正在等待的**并发实例读取 |
 | `SINGLEFLIGHT_LOCK_TTL_MS` | `30000` | 执行者持锁上限（ms），期间按 1/3 周期续租；执行者崩溃后到期可被接管 |
-| `SINGLEFLIGHT_POLL_MS` | `50` | 等待方轮询间隔（ms） |
+| `SINGLEFLIGHT_POLL_MS` | `200` | 等待方轮询间隔（ms）。不建议低于 100：每次轮询都是一次对协调表的 SELECT，过密会显著消耗 D1 subrequest 配额与 CPU |
 | `SINGLEFLIGHT_WAIT_MS` | `15000` | 等待方最长等待（ms），超时后自行执行，避免被慢请求拖死 |
 
 行为要点：

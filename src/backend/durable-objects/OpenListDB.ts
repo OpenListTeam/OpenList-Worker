@@ -14,9 +14,9 @@
  * 固定实例，保证数据持久在同一 DO 实例。
  */
 import {
+  buildSingleFlightDdl,
   D1_SCHEMA,
   KV_SCHEMA_SQLITE,
-  SINGLEFLIGHT_SCHEMA_SQLITE,
 } from "../internal/model/store/schema"
 
 export class OpenListDB {
@@ -38,7 +38,7 @@ export class OpenListDB {
     for (const ddl of [
       ...KV_SCHEMA_SQLITE,
       ...D1_SCHEMA,
-      ...SINGLEFLIGHT_SCHEMA_SQLITE,
+      ...buildSingleFlightDdl("sqlite"),
     ]) {
       this.sql.exec(ddl)
     }

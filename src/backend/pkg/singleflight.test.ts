@@ -184,7 +184,9 @@ test("schema: singleflight 表名带 x_ 前缀，且 DDL 覆盖两种方言", ()
   assert.match(sqlite, /CREATE TABLE IF NOT EXISTS `x_singleflight`/)
   assert.match(sqlite, /`expires_at` INTEGER NOT NULL/)
   // 回收过期行需要按 expires_at 过滤，SQLite 侧建索引
-  assert.match(sqlite, /CREATE INDEX IF NOT EXISTS `idx_singleflight_expires`/)
+  // 索引名与表名一样带 x_ 前缀：多部署共用一个物理库时第二个部署才能建出自己的索引
+  assert.match(sqlite, /CREATE INDEX IF NOT EXISTS `x_idx_singleflight_expires`/)
+  assert.match(sqlite, /ON `x_singleflight` \(`expires_at`\)/)
 
   const mysql = buildSingleFlightDdl("mysql").join("\n")
   assert.match(mysql, /CREATE TABLE IF NOT EXISTS `x_singleflight`/)
