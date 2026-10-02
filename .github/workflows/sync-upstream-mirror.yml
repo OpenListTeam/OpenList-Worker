@@ -18,8 +18,14 @@ name: 同步上游镜像
 #
 # 可选的 repository variable：
 #   SYNC_SOURCE_REPO    上游仓库，默认 OpenListTeam/OpenList-Worker
-#   SYNC_TARGET_REPO    镜像仓库，默认 wumingzhinu/OpenList-Worker
+#   SYNC_TARGET_REPO    镜像仓库，【默认留空 —— 必须显式配置后本 workflow 才会运行】
 #   SYNC_TARGET_BRANCH  镜像分支，默认 upstream-main
+#
+# 为什么 SYNC_TARGET_REPO 默认留空：
+#   force push 会覆盖目标分支，把某个具体仓库写死为默认值会让这个 workflow
+#   在合并后变成「替某个个人仓库服务」的隐式行为，对上游不友好，也容易在
+#   无人察觉时推错地方。留空时下面的跳过分支接管，workflow 退化为纯 opt-in：
+#   谁想用、推到自己的哪个仓库，由谁在自己的 fork 里显式配置决定。
 #
 # 未配置 SYNC_TOKEN / SYNC_TARGET_REPO 时本 workflow 直接跳过（exit 0），
 # 因此合并到上游后不会产生红色的失败运行。
@@ -36,7 +42,7 @@ on:
         default: false
         type: boolean
       target_repo:
-        description: "镜像仓库（覆盖 SYNC_TARGET_REPO），例如 owner/repo"
+        description: "镜像仓库（覆盖 SYNC_TARGET_REPO），例如 owner/repo；留空则跳过同步"
         required: false
         type: string
       target_branch:
@@ -76,9 +82,13 @@ jobs:
             echo "target_branch=${target_branch}"
           } >> "$GITHUB_OUTPUT"
 
-          if [ -z "${SYNC_TOKEN:-}" ] || [ -z "${target_repo}" ]; then
+          if [ -z "${SYNC_TOKEN:-}" ] || [ -z "$target_repo" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::未配置 SYNC_TOKEN 或 SYNC_TARGET_REPO，跳过镜像同步。"
+            if [ -z "$target_repo" ]; then
+              echo "::notice::未配置 SYNC_TARGET_REPO（本workflow 默认留空，需显式启用），跳过镜像同步。"
+            else
+              echo "::notice::未配置 SYNC_TOKEN，跳过镜像同步。"
+            fi
             # 注意：必须用 exit 0 而不是 return —— GitHub 默认 shell 是
             # `bash -e {0}`（并非 source 执行），顶层 return 会报
             # "can only `return' from a function or sourced script" 并以状态码 2 失败。
