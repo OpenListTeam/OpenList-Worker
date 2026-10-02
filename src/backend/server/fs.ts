@@ -40,6 +40,7 @@ import {
 } from "../internal/driver/storageopts"
 import { parseZip, extractZipEntry, ZipArchive } from "../internal/archive/zip"
 import { assertSafeUrl, getTrustedHosts } from "../pkg/http"
+import { invalidatePaths } from "../internal/cache"
 import { seedRouter } from "./seed"
 
 /**
@@ -1035,6 +1036,9 @@ fsRouter.post("/upload/complete", async (c) => {
         requestContext,
       )
     }
+    // 直传收尾：目录列表已变化，失效该目录的文件树 / 链接缓存，
+    // 否则「上传成功但刷新看不到」在缓存 TTL 内稳定复现
+    await invalidatePaths([dirPath], c.env)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: safeErrorMessage(e), data: null })
@@ -1114,6 +1118,14 @@ fsRouter.post("/other", async (c) => {
     const driver = await getDriver(resolved.storage.driver, resolved.storage)
     if (typeof (driver as any).other === "function") {
       const data = await (driver as any).other(method, resolved.relative, body)
+      // other() 可能触发落盘（如 S3 直传 URL 的签发流程）：按已知路径失效缓存。
+      // 直传的实际写入发生在客户端，无法精确感知完成时机，这里失效目标目录
+      // 及（若给定）文件路径，将陈旧窗口压到最小；失效失败不影响响应。
+      const targets = [reqPath]
+      if (typeof body?.file_name === "string" && body.file_name) {
+        targets.push(`${reqPath === "/" ? "" : reqPath}/${body.file_name}`)
+      }
+      await invalidatePaths(targets, c.env)
       return c.json({ code: 200, message: "success", data })
     }
     return c.json(
@@ -1352,6 +1364,17 @@ fsRouter.post("/get_direct_upload_info", async (c) => {
         file_name,
         file_size,
       )
+      // 直传 URL 签发后客户端会向该路径写入新文件：预失效目录与目标路径
+      await invalidatePaths(
+        [
+          reqPath,
+          `${reqPath === "/" ? "" : reqPath}/${file_name || ""}`.replace(
+            /\/$/,
+            "",
+          ),
+        ],
+        c.env,
+      )
       return c.json({ code: 200, message: "success", data: info })
     }
     // 回退到 other("direct_upload") / other("get_direct_upload_info")
@@ -1362,7 +1385,20 @@ fsRouter.post("/get_direct_upload_info", async (c) => {
             file_name,
             file_size,
           })
-          if (info) return c.json({ code: 200, message: "success", data: info })
+          if (info) {
+            // 同上：直传 URL 签发后预失效目录与目标路径
+            await invalidatePaths(
+              [
+                reqPath,
+                `${reqPath === "/" ? "" : reqPath}/${file_name || ""}`.replace(
+                  /\/$/,
+                  "",
+                ),
+              ],
+              c.env,
+            )
+            return c.json({ code: 200, message: "success", data: info })
+          }
         } catch {
           // 尝试下一个 method
         }
@@ -1582,6 +1618,15 @@ fsRouter.post("/multipart/complete", async (c) => {
     session.state = "completed"
     putSession(session)
     deleteSession(session.upload_id)
+    // 分片收尾：失效上传文件及其目录的缓存（对齐 op 层 put 的失效范围）
+    {
+      const { dir, name } = splitUploadPath(session.path)
+      const actualDir = getActualPath(user, dir)
+      await invalidatePaths(
+        [actualDir, `${actualDir === "/" ? "" : actualDir}/${name}`],
+        c.env,
+      )
+    }
     return c.json({ code: 200, message: "success", data: mpSnapshot(session) })
   } catch (e: any) {
     session.state = "failed_permanent"

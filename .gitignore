@@ -17,6 +17,7 @@ public_data
 .idea
 .test
 .codebuddy
+.workbuddy-ai
 .vscode
 .env
 .env.local
