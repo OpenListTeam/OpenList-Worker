@@ -1,8 +1,8 @@
 name: Build Verify
 
-# dist/、dist-server/、cloud-functions/[[default]].js 全部是构建产物，一律不入库：
-#   - EdgeOne Makers：edgeone.json 的 buildCommand（pnpm run build）在部署时生成
-#     dist/ 与 cloud-functions/[[default]].js
+# dist/、dist-server/ 是构建产物，不入库；cloud-functions/[[default]].js 是入库的
+# 薄入口，让 EdgeOne 在项目构建前发现 Node 云函数。实际后端包在构建时生成：
+#   - EdgeOne Makers：pnpm run build 生成 dist/ 与 dist-server/edgeone-entry.js
 #   - Cloudflare Workers：wrangler deploy 从 src/backend/worker.ts 打包，并用 dist/ 作静态资源
 #   - 自托管 Node：node dist-server/api/[...route].js 由 pnpm run build 产出
 #
@@ -20,7 +20,10 @@ on:
       - "src/**"
       - "api/**"
       - "functions/**"
+      - "cloud-functions/**"
       - "scripts/**"
+      - "tests/edgeone-entry.test.mjs"
+      - ".gitignore"
       - "middleware.js"
       - "edgeone.json"
       - "wrangler.jsonc"
@@ -32,7 +35,10 @@ on:
       - "src/**"
       - "api/**"
       - "functions/**"
+      - "cloud-functions/**"
       - "scripts/**"
+      - "tests/edgeone-entry.test.mjs"
+      - ".gitignore"
       - "middleware.js"
       - "edgeone.json"
       - "wrangler.jsonc"
@@ -68,6 +74,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Verify EdgeOne entry is discoverable before building
+        run: |
+          git ls-files --error-unmatch "cloud-functions/[[default]].js"
+          node --check "cloud-functions/[[default]].js"
+          test ! -f dist-server/edgeone-entry.js
+
       - name: Fetch official frontend dist
         run: node scripts/fetch-frontend.mjs
 
@@ -79,13 +91,16 @@ jobs:
           set -e
           test -f dist/index.html
           test -f "dist-server/api/[...route].js"
-          test -f "cloud-functions/[[default]].js"
-          echo "OK: dist/index.html、dist-server/api/[...route].js、cloud-functions/[[default]].js 均已生成"
+          test -f dist-server/edgeone-entry.js
+          echo "OK: dist/index.html、dist-server/api/[...route].js、dist-server/edgeone-entry.js 均已生成"
 
-      - name: Assert the EdgeOne artifact is not tracked
+      - name: Assert the EdgeOne bundle is not tracked
         run: |
-          if git ls-files --error-unmatch "cloud-functions/[[default]].js" > /dev/null 2>&1; then
-            echo "::error::cloud-functions/[[default]].js 是构建产物，不应提交进仓库（见 .gitignore）。"
+          if git ls-files --error-unmatch dist-server/edgeone-entry.js > /dev/null 2>&1; then
+            echo "::error::dist-server/edgeone-entry.js 是构建产物，不应提交进仓库（见 .gitignore）。"
             exit 1
           fi
-          echo "OK: cloud-functions/[[default]].js 未被 git 跟踪"
+          echo "OK: dist-server/edgeone-entry.js 未被 git 跟踪"
+
+      - name: Test EdgeOne entry and API responses
+        run: node --test tests/edgeone-entry.test.mjs

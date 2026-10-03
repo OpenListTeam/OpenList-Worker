@@ -49,9 +49,8 @@ pages/dist/
 dist-server/
 *.tsbuildinfo
 
-# EdgeOne Makers Node 云函数产物：由平台构建命令（pnpm run build -> scripts/build-edge.mjs）
-# 在部署时生成，不入库；构建校验见 .github/workflows/build-verify.yml
-cloud-functions/
+# EdgeOne 的 cloud-functions/ 入口源码需入库，供平台在构建前发现。
+# 实际后端包由 scripts/build-edge.mjs 生成到上方忽略的 dist-server/。
 
 # source maps (optional, can be removed)
 *.map
