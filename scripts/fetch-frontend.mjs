@@ -46,9 +46,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, "..")
 const DEST = path.join(ROOT, "dist")
 
+// 默认克隆本账号下的 fork（含已修复的游客登录逻辑）；上游有更新时同步 fork 即可。
+// 仍可用 FRONTEND_GIT_URL 覆盖，例如临时切回上游验证。
 const OFFICIAL_REPO_URL =
   process.env.FRONTEND_GIT_URL ||
-  "https://github.com/OpenListTeam/OpenList-Frontend.git"
+  "https://github.com/BAJJDY/OpenList-Frontend.git"
 const OFFICIAL_REPO_REF = process.env.FRONTEND_GIT_REF || "main"
 
 // 已发布 dist 的来源（默认路径）。ASSET_URLS 指向的 CDN 提供的正是这份 npm

@@ -668,7 +668,9 @@ export const meHandler = async (c: any) => {
     return c.json(
       {
         code: 401,
-        message: "Unauthorized",
+        // 游客未启用时 /me 返回 401，前端会跳登录页；给出可区分的消息，
+        // 前端可据此不弹“Unauthorized”提示（登录页本就会引导用户登录）。
+        message: !user ? "Unauthorized" : "Account is disabled",
         data: null,
       },
       401,
