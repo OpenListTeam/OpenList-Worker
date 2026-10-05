@@ -428,7 +428,11 @@ export async function authUserFromReq(
     const user = db.users.find(
       (u: any) => u.id === payload.id || u.username === payload.username,
     )
-    if (!user) return null
+    // FIX(security): disabled users must not keep an already-issued JWT alive.
+    // Previously only getUserFromContext checked `disabled`, so disabling a
+    // user (e.g. guest) left their token valid for up to its 7-day `exp`.
+    // Mirrors the check in middlewares.ts getUserFromContext().
+    if (!user || user.disabled) return null
     return { db, user }
   } catch {
     return null
