@@ -80,7 +80,13 @@
     //       因此把该项改回 none 不会导致既有数据不可读（下次保存自动转为明文）。
     // 注意：该项与 JWT 密钥无关 —— DB_CIPHER=none 时，未配置 JWT_SECRET 仍会
     //       自动生成并持久化共享密钥（JWT 签名需要）。
-    "DB_CIPHER": "none",
+    //
+    // ⚠️ 本部署已启用 aes-256-gcm：网盘凭据 / 敏感 settings / 密码哈希 / 2FA 密钥
+    //    落盘前以此算法加密（enc:v2: 前缀）。读取按前缀自动解密，历史明文无需迁移、
+    //    也不会因改回 none 而不可读 —— 只是新写入不再加密。请勿改回 none，
+    //    否则网盘 access_token / cookie 会重新以明文落盘到 KV。
+    //    密钥取自 JWT_SECRET（Secret 绑定，deploy 不覆盖），见 .dev.vars.example。
+    "DB_CIPHER": "aes-256-gcm",
 
     // ── 安全鉴权（推荐以 Secret 类型配置，见 .dev.vars.example）──────────
     //
