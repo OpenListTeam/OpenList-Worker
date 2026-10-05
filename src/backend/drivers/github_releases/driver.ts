@@ -34,13 +34,9 @@ export class DriverGithubReleases implements StorageDriver {
   async get(_virtualPath: string, physicalPath: string): Promise<FileItem> {
     const parts = physicalPath.split("/").filter(Boolean)
     const name = parts[parts.length - 1] || "root"
-    const files = await this.client.list(physicalPath)
-    // 目录：list 成功返回非空或目录项
-    if (files.length > 0 || physicalPath === "/") {
-      const dir = files.find((f) => f.isDir && f.name === name)
-      if (!dir && files.some((f) => !f.isDir)) {
-        // 可能是文件
-      }
+
+    // 目录判定按路径结构；不能用 list() 非空判断（版本目录内的文件会被误判）
+    if (await this.client.isDirectory(physicalPath)) {
       return {
         name,
         size: 0,
@@ -51,19 +47,8 @@ export class DriverGithubReleases implements StorageDriver {
         raw_url: "",
       }
     }
-    // 文件：获取下载链接
+
     const url = await this.client.getDownloadUrl(physicalPath)
-    if (url) {
-      return {
-        name,
-        size: 0,
-        is_dir: false,
-        modified: new Date().toISOString(),
-        sign: "",
-        type: calcFileType(name, false),
-        raw_url: url,
-      }
-    }
     return {
       name,
       size: 0,
@@ -71,7 +56,7 @@ export class DriverGithubReleases implements StorageDriver {
       modified: new Date().toISOString(),
       sign: "",
       type: calcFileType(name, false),
-      raw_url: "",
+      raw_url: url,
     }
   }
 
