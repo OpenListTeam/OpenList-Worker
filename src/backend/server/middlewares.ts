@@ -182,42 +182,47 @@ export async function getJwtSecret(c?: Context | any): Promise<string> {
   return readCachedJwtSecret(env) as string
 }
 
-// ---- JWT 注销黑名单（尽力而为：进程内 Set + KV 持久化）----
-// 说明：Serverless 多实例下各实例独立缓存，KV 持久化仅在冷启动时加载一次，
-// 因此跨实例的「即时」失效不能保证精确，但能在单实例内立即生效，并随新实例
-// 冷启动逐步收敛。exp 过期后条目自动清理，不会无限增长。
+// ---- JWT 注销黑名单（进程内 Set + 统一持久化后端，带 TTL 复核）----
+//
+// 存储层：走统一的 getStorageBackend（经 readPersistedSecret/writePersistedSecret），
+// 覆盖 D1 / MySQL / DO / KV / Blob，而**不再**只探测 KV binding。
+//   历史缺陷：只调用 getKvBinding，而该探测没有 D1 分支。于是在 D1 部署下注销
+//   名单「读不到也写不进」——同一实例内靠内存 Set 生效，跨实例完全失效，
+//   也就是「退出登录只在自己这一台机器上有效」。
+//
+// 刷新：带 TTL 周期回读，让其他实例的注销在有限时间内收敛；本实例的注销
+// 仍然是立即生效（先写内存 Set，再落盘）。
+// 精确性边界：Serverless 多实例下不保证「瞬时」全局一致，这是有意的权衡；
+// 需要更强保证时应改用短 TTL 的强制撤销或服务端会话表。
 const REVOKED_KV_KEY = "openlist_revoked_tokens"
+const REVOKED_RELOAD_MS = 30_000
 const revokedJtis = new Set<string>()
-let revokedLoaded = false
+let revokedLoadedAt = 0
+let revokedInflight: Promise<void> | null = null
 
 async function ensureRevokedLoaded(env: any): Promise<void> {
-  if (revokedLoaded) return
-  revokedLoaded = true
-  try {
-    const { getKvBinding } = await import("../internal/model/db")
-    const kvInfo = await getKvBinding(env)
-    if (kvInfo.mode === "none" || !kvInfo.binding) return
-    const { binding, mode } = kvInfo
-    let val: any = null
-    if (mode === "blob") {
-      val = await binding.get(REVOKED_KV_KEY)
-    } else {
-      try {
-        val = await binding.get(REVOKED_KV_KEY, "text")
-      } catch {
-        val = await binding.get(REVOKED_KV_KEY)
+  if (Date.now() - revokedLoadedAt < REVOKED_RELOAD_MS) return
+  if (revokedInflight) return revokedInflight
+  revokedInflight = (async () => {
+    try {
+      const { readPersistedSecret } = await import("../internal/model/db")
+      const raw = await readPersistedSecret(env, REVOKED_KV_KEY)
+      if (raw) {
+        const arr = JSON.parse(String(raw))
+        const now = Math.floor(Date.now() / 1000)
+        for (const item of arr) {
+          if (item && item.jti && item.exp > now) revokedJtis.add(item.jti)
+        }
       }
+    } catch {
+      // 黑名单读取失败时降级为不拦截（不影响登录）
+    } finally {
+      // 无论成功失败都推迟下次回读，避免存储故障时被反复打爆
+      revokedLoadedAt = Date.now()
+      revokedInflight = null
     }
-    if (val && typeof val.text === "function") val = await val.text()
-    if (!val) return
-    const arr = JSON.parse(String(val))
-    const now = Math.floor(Date.now() / 1000)
-    for (const item of arr) {
-      if (item && item.jti && item.exp > now) revokedJtis.add(item.jti)
-    }
-  } catch {
-    // 黑名单加载失败时降级为不拦截（不影响登录）
-  }
+  })()
+  return revokedInflight
 }
 
 export async function revokeToken(
@@ -226,47 +231,36 @@ export async function revokeToken(
   env: any,
 ): Promise<void> {
   if (!jti) return
+  // 本实例立即生效
   revokedJtis.add(jti)
   try {
-    const { getKvBinding } = await import("../internal/model/db")
-    const kvInfo = await getKvBinding(env)
-    if (kvInfo.mode === "none" || !kvInfo.binding) return
-    const { binding, mode } = kvInfo
+    const { readPersistedSecret, writePersistedSecret } = await import(
+      "../internal/model/db"
+    )
     let arr: Array<{ jti: string; exp: number }> = []
-    if (mode === "blob") {
-      const val = await binding.get(REVOKED_KV_KEY)
-      if (val) arr = typeof val === "string" ? JSON.parse(val) : val
-    } else {
+    const raw = await readPersistedSecret(env, REVOKED_KV_KEY)
+    if (raw) {
       try {
-        const val = await binding.get(REVOKED_KV_KEY, "text")
-        if (val) arr = JSON.parse(String(val))
+        const parsed = JSON.parse(String(raw))
+        if (Array.isArray(parsed)) arr = parsed
       } catch {
-        const val = await binding.get(REVOKED_KV_KEY)
-        if (val) arr = typeof val === "string" ? JSON.parse(val) : val
+        arr = []
       }
     }
     const now = Math.floor(Date.now() / 1000)
-    arr = arr.filter((i) => i && i.exp > now)
-    arr.push({ jti, exp })
-    const payload = JSON.stringify(arr)
-    if (mode === "blob") {
-      if (typeof binding.set === "function")
-        await binding.set(REVOKED_KV_KEY, payload)
-      else if (typeof binding.put === "function")
-        await binding.put(REVOKED_KV_KEY, payload)
-    } else {
-      if (typeof binding.put === "function")
-        await binding.put(REVOKED_KV_KEY, payload)
-      else if (typeof binding.set === "function")
-        await binding.set(REVOKED_KV_KEY, payload)
-    }
+    // exp 过期的条目自动淘汰，列表不会无限增长
+    arr = arr.filter((i) => i && i.jti && i.exp > now)
+    if (!arr.some((i) => i.jti === jti)) arr.push({ jti, exp })
+    await writePersistedSecret(env, REVOKED_KV_KEY, JSON.stringify(arr))
   } catch (e) {
-    console.warn("[JWT] Failed to persist revoked token to KV:", e)
+    console.warn("[JWT] Failed to persist revoked token:", e)
   }
 }
 
 export async function isTokenRevoked(jti: string, env: any): Promise<boolean> {
   if (!jti) return false
+  // 本实例的注销无需等待回读即可生效
+  if (revokedJtis.has(jti)) return true
   await ensureRevokedLoaded(env)
   return revokedJtis.has(jti)
 }

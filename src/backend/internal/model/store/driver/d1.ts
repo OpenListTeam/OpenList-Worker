@@ -135,13 +135,45 @@ export const d1Driver: Driver = {
     if (!db) throw new Error("D1 binding not found")
 
     await ensureSchema(db, env)
-    
-    // D1 batch 单次语句数上限约 100，分批提交
+
+    // D1 batch 单次语句数上限约 100，必须分批提交。
+    //
+    // 语义边界（重要，不要误以为这里提供整体事务）：**片内原子，跨片不原子**。
+    // D1 没有跨 batch 调用的事务，因此语句数 >100 时，后续片失败**不会**回滚
+    // 已提交的片。要让整体操作可恢复，依赖两点：
+    //   ① 上层 format/sql 生成的是幂等 UPSERT + 末位 DELETE NOT IN，整体重跑可收敛；
+    //   ② 这里对**单片的瞬时失败**做有限重试，避免一次网络抖动就留下半成品。
+    // 重试仍失败时，错误信息带上「已提交片数」，供调用方判断是否需要整体重跑。
     const BATCH = 100
+    const MAX_RETRY = 2
     const stmts = statements.map((s) => db.prepare(s.sql).bind(...s.params))
-    
+
+    let committed = 0
     for (let i = 0; i < stmts.length; i += BATCH) {
-      await db.batch(stmts.slice(i, i + BATCH))
+      const chunk = stmts.slice(i, i + BATCH)
+      let lastErr: any = null
+      for (let attempt = 0; attempt <= MAX_RETRY; attempt++) {
+        try {
+          await db.batch(chunk)
+          lastErr = null
+          break
+        } catch (err) {
+          lastErr = err
+          if (attempt < MAX_RETRY) {
+            await new Promise((r) => setTimeout(r, 50 * (attempt + 1)))
+          }
+        }
+      }
+      if (lastErr) {
+        throw new Error(
+          `D1 batch failed at chunk ${Math.floor(i / BATCH) + 1} ` +
+            `(statements ${i}-${i + chunk.length - 1} of ${stmts.length}); ` +
+            `${committed} statement(s) were already committed by earlier chunks and ` +
+            `D1 cannot roll them back across batches. The save is idempotent, so ` +
+            `retrying the whole operation converges. Cause: ${lastErr?.message || lastErr}`,
+        )
+      }
+      committed += chunk.length
     }
   },
 

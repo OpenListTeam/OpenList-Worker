@@ -219,11 +219,138 @@ interface SessionData {
   userVerification: string
 }
 
-function sessionToB64(sd: SessionData): string {
-  return b64Encode(new TextEncoder().encode(JSON.stringify(sd)))
+/**
+ * 服务端挑战（challenge）存储。
+ *
+ * 安全不变量：WebAuthn 的 challenge 必须由**服务端签发**、**一次性消费**、
+ * 且带**有效期**。这是对抗重放的核心——没有它，任何一份曾经合法的 assertion
+ * 都能被无限次重复使用。
+ *
+ * 历史实现把整个会话（含 challenge）base64 后经 `session` 头在客户端往返：
+ * 既没有服务端签发、也没有有效期、更没有消费状态，因此
+ *   ① 客户端可以自行编造 challenge（服务端只比对「自己收到的那份」，等于没校验来源）；
+ *   ② 同一份 assertion 可反复换取新 JWT（实测连续两次都返回 token）；
+ *   ③ clientDataJSON.origin 与 UP/UV 标志完全不校验。
+ *
+ * 现在改为：`begin_*` 生成随机 id，把会话内容写入持久化后端（TTL 5 分钟），
+ * 仅把 id 回给客户端；`finish_*` 读取后**立即作废**该 id，实现单次使用。
+ * 对客户端而言 `session` 仍是不透明字符串，接口形状不变。
+ */
+const CHALLENGE_PREFIX = "openlist_wa_chal_"
+const CHALLENGE_TTL_MS = 5 * 60 * 1000
+const UP_FLAG = 0x01
+const UV_FLAG = 0x04
+
+/**
+ * 无持久化后端时的兜底挑战表（进程内，单实例语义）。
+ *
+ * 边界：内存模式部署本就无法跨实例协作，挑战也只在该实例内有效——这与
+ * 「凭据本身也存在内存里」是同一级别的一致性，不会额外削弱安全性。
+ * 必须带 TTL 与容量上限，避免被扫描式请求撑爆内存。
+ */
+const localChallenges = new Map<string, { data: SessionData; exp: number }>()
+const LOCAL_CHALLENGE_MAX = 1000
+
+function pruneLocalChallenges(): void {
+  const now = Date.now()
+  for (const [k, v] of localChallenges) {
+    if (v.exp < now) localChallenges.delete(k)
+  }
+  // 仍然超限时按插入顺序淘汰最旧条目
+  while (localChallenges.size > LOCAL_CHALLENGE_MAX) {
+    const oldest = localChallenges.keys().next().value
+    if (oldest === undefined) break
+    localChallenges.delete(oldest)
+  }
 }
-function sessionFromB64(s: string): SessionData {
-  return JSON.parse(new TextDecoder().decode(b64Decode(s)))
+
+async function issueChallenge(c: any, sd: SessionData): Promise<string> {
+  const id = b64urlEncode(newChallenge())
+  const exp = Date.now() + CHALLENGE_TTL_MS
+
+  // 先写进程内兜底表：**无论持久化是否可用都要写**。
+  //
+  // 为什么不能「持久化成功就 return」：writePersistedSecret 在驱动不可用时会
+  // 记录日志后仍然返回真值，无法作为「确实写进去了」的依据。实测按返回值提前
+  // return 会导致挑战哪儿都没存，所有 passkey 登录恒定报「invalid or expired」。
+  // 兜底表保证单实例内始终可用；持久化成功则额外获得跨实例能力。
+  pruneLocalChallenges()
+  localChallenges.set(id, { data: sd, exp })
+
+  try {
+    const { writePersistedSecret } = await import("../internal/model/db")
+    await writePersistedSecret(
+      c.env,
+      CHALLENGE_PREFIX + id,
+      JSON.stringify({ ...sd, exp }),
+    )
+  } catch {
+    // 无持久化后端：仅依赖上面的进程内兜底表
+  }
+  return id
+}
+
+async function consumeChallenge(
+  c: any,
+  id: string,
+): Promise<SessionData | null> {
+  if (!id) return null
+
+  // 1) 进程内兜底表（读取即删除 = 单次使用）
+  const local = localChallenges.get(id)
+  if (local) {
+    localChallenges.delete(id)
+    return local.exp < Date.now() ? null : local.data
+  }
+
+  // 2) 持久化后端
+  const { readPersistedSecret, writePersistedSecret } = await import(
+    "../internal/model/db"
+  )
+  const key = CHALLENGE_PREFIX + id
+  let raw: string | null = null
+  try {
+    raw = await readPersistedSecret(c.env, key)
+  } catch {
+    return null
+  }
+  // 一次性消费：无论后续校验是否通过，都先把该挑战作废
+  try {
+    await writePersistedSecret(c.env, key, "")
+  } catch {}
+  if (!raw) return null
+  try {
+    const data = JSON.parse(String(raw))
+    if (!data || typeof data.exp !== "number" || data.exp < Date.now()) {
+      return null
+    }
+    return data as SessionData
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 校验 clientDataJSON.origin：必须是本站源或与 rpId 一致。
+ * WebAuthn 规范要求 RP 校验 origin，防止同 rpId 下的跨源钓鱼。
+ */
+function originAllowed(origin: string, rpId: string, c: any): boolean {
+  if (!origin) return false
+  try {
+    const o = new URL(origin)
+    if (o.hostname === rpId) return true
+    // 覆盖自定义端口/域名：与当前请求同源也放行
+    return o.host === new URL(c.req.url).host
+  } catch {
+    return false
+  }
+}
+
+/** 认证器 data 标志位校验：必须证明「用户在场」；策略要求时还需「用户已验证」 */
+function flagsAllowed(flags: number, userVerification: string): boolean {
+  if ((flags & UP_FLAG) === 0) return false
+  if (userVerification === "required" && (flags & UV_FLAG) === 0) return false
+  return true
 }
 
 async function generateToken(user: any, c: any): Promise<string> {
@@ -279,10 +406,13 @@ webauthnRouter.post("/webauthn_begin_login", async (c) => {
     options.allowCredentials = allowCredentials
   }
 
+  // session 现在只是服务端挑战的**不透明 id**（内容存在持久化后端，单次使用）
+  const session = await issueChallenge(c, sd)
+
   return c.json({
     code: 200,
     message: "success",
-    data: { options, session: sessionToB64(sd) },
+    data: { options, session },
   })
 })
 
@@ -293,17 +423,19 @@ webauthnRouter.post("/webauthn_finish_login", async (c) => {
     return c.json({ code: 403, message: "WebAuthn is not enabled", data: null }, 403)
   }
   const sessionHeader = c.req.header("session") || c.req.header("Session") || ""
-  let sd: SessionData
-  try {
-    sd = sessionFromB64(sessionHeader)
-  } catch {
-    return c.json({ code: 400, message: "invalid session", data: null }, 400)
+  // 服务端签发的挑战，读取即作废（单次使用）
+  const sd = await consumeChallenge(c, sessionHeader)
+  if (!sd) {
+    return c.json(
+      { code: 400, message: "invalid or expired session", data: null },
+      400,
+    )
   }
   const body = await c.req.json().catch(() => ({}))
   const rpId = rpIdOf(c, db)
 
   try {
-    // 1. 解析 clientDataJSON，校验 challenge
+    // 1. 解析 clientDataJSON，校验 challenge 与 origin
     const rawId = b64urlDecode(body.id || "")
     const clientDataJSON = JSON.parse(
       new TextDecoder().decode(b64urlDecode(body.response?.clientDataJSON || "")),
@@ -314,6 +446,10 @@ webauthnRouter.post("/webauthn_finish_login", async (c) => {
     if (clientDataJSON.type !== "webauthn.get") {
       return c.json({ code: 400, message: "invalid ceremony type", data: null }, 400)
     }
+    // origin 必须属于本站（防止同 rpId 下的跨源钓鱼）
+    if (!originAllowed(String(clientDataJSON.origin || ""), rpId, c)) {
+      return c.json({ code: 400, message: "origin not allowed", data: null }, 400)
+    }
 
     // 2. 解析 authenticatorData
     const authData = b64urlDecode(body.response?.authenticatorData || "")
@@ -322,6 +458,13 @@ webauthnRouter.post("/webauthn_finish_login", async (c) => {
     const expectedRpHash = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rpId)))
     if (b64urlEncode(rpIdHash) !== b64urlEncode(expectedRpHash)) {
       return c.json({ code:400, message: "rpId hash mismatch", data: null }, 400)
+    }
+    // 标志位：必须证明用户在场；策略为 required 时还需用户验证
+    if (!flagsAllowed(authData[32], sd.userVerification === "required" ? "required" : "preferred")) {
+      return c.json(
+        { code: 400, message: "user presence/verification check failed", data: null },
+        400,
+      )
     }
 
     // 3. 找到对应用户与 credential
@@ -351,6 +494,12 @@ webauthnRouter.post("/webauthn_finish_login", async (c) => {
     }
     if (!user || !credential) {
       return c.json({ code: 400, message: "credential not found", data: null }, 400)
+    }
+    // 账号状态复核：与其它身份解析入口一致，禁用用户不得换取新令牌。
+    // 历史缺陷：finish_login 签发 JWT 前不检查 disabled，被禁用的账号仍能用
+    // 已有凭证登录（实测：置 disabled=true 后仍返回 token）。
+    if (user.disabled) {
+      return c.json({ code: 403, message: "account is disabled", data: null }, 403)
     }
 
     // 4. 验证签名（credential 存储 JWK 公钥）
@@ -455,10 +604,12 @@ webauthnRouter.post("/webauthn_begin_registration", async (c) => {
   }
   if (existing.length > 0) options.excludeCredentials = existing
 
+  const session = await issueChallenge(c, sd)
+
   return c.json({
     code: 200,
     message: "success",
-    data: { options, session: sessionToB64(sd) },
+    data: { options, session },
   })
 })
 
@@ -473,17 +624,19 @@ webauthnRouter.post("/webauthn_finish_registration", async (c) => {
     return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
   }
   const sessionHeader = c.req.header("Session") || c.req.header("session") || ""
-  let sd: SessionData
-  try {
-    sd = sessionFromB64(sessionHeader)
-  } catch {
-    return c.json({ code: 400, message: "invalid session", data: null }, 400)
+  // 服务端签发的挑战，读取即作废（单次使用）
+  const sd = await consumeChallenge(c, sessionHeader)
+  if (!sd) {
+    return c.json(
+      { code: 400, message: "invalid or expired session", data: null },
+      400,
+    )
   }
   const body = await c.req.json().catch(() => ({}))
   const rpId = rpIdOf(c, db)
 
   try {
-    // 1. 校验 clientDataJSON challenge
+    // 1. 校验 clientDataJSON challenge 与 origin
     const clientDataJSON = JSON.parse(
       new TextDecoder().decode(b64urlDecode(body.response?.clientDataJSON || "")),
     )
@@ -492,6 +645,9 @@ webauthnRouter.post("/webauthn_finish_registration", async (c) => {
     }
     if (clientDataJSON.type !== "webauthn.create") {
       return c.json({ code: 400, message: "invalid ceremony type", data: null }, 400)
+    }
+    if (!originAllowed(String(clientDataJSON.origin || ""), rpId, c)) {
+      return c.json({ code: 400, message: "origin not allowed", data: null }, 400)
     }
 
     // 2. 解析 attestationObject
