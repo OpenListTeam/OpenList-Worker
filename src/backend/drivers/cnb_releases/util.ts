@@ -41,12 +41,10 @@ export class ClientCnbReleases {
       }
     }
     const resp = await fetch(`${API_BASE}${path}`, options)
-    if (
-      resp.status !== 200 &&
-      resp.status !== 201 &&
-      resp.status !== 204
-    ) {
-      throw new Error(`[CNB Releases] ${resp.status} ${await resp.text().catch(() => "")}`)
+    if (resp.status !== 200 && resp.status !== 201 && resp.status !== 204) {
+      throw new Error(
+        `[CNB Releases] ${resp.status} ${await resp.text().catch(() => "")}`,
+      )
     }
     if (resp.status === 204) return {} as T
     return (await resp.json().catch(() => ({}))) as T
@@ -59,6 +57,27 @@ export class ClientCnbReleases {
 
   async getRelease(id: string): Promise<CNBRelease> {
     return this.request<CNBRelease>("GET", `/${this.repo}/-/releases/${id}`)
+  }
+
+  /** 路径里是 release 名称（TS 链路不传 Go 对象 ID），需先解析出 ID 再调 API */
+  async findRelease(idOrName: string): Promise<CNBRelease | null> {
+    const releases = await this.listReleases().catch(() => [] as CNBRelease[])
+    if (!Array.isArray(releases)) return null
+    return (
+      releases.find((r) => r.id === idOrName) ||
+      releases.find((r) => this.releaseName(r) === idOrName) ||
+      releases.find((r) => r.tag_name === idOrName) ||
+      null
+    )
+  }
+
+  /** 兼容按资产名称或 ID 查找 */
+  findAsset(release: CNBRelease, idOrName: string): CNBAsset | null {
+    return (
+      release.assets.find((a) => a.id === idOrName) ||
+      release.assets.find((a) => a.name === idOrName) ||
+      null
+    )
   }
 
   releaseName(r: CNBRelease): string {
@@ -74,7 +93,12 @@ export class ClientCnbReleases {
   }
 
   renameRelease(id: string, newName: string): Promise<void> {
-    return this.request("PATCH", `/${this.repo}/-/releases/${id}`, { name: newName }, true)
+    return this.request(
+      "PATCH",
+      `/${this.repo}/-/releases/${id}`,
+      { name: newName },
+      true,
+    )
   }
 
   deleteRelease(id: string): Promise<void> {
@@ -82,7 +106,10 @@ export class ClientCnbReleases {
   }
 
   deleteAsset(releaseId: string, assetId: string): Promise<void> {
-    return this.request("DELETE", `/${this.repo}/-/releases/${releaseId}/assets/${assetId}`)
+    return this.request(
+      "DELETE",
+      `/${this.repo}/-/releases/${releaseId}/assets/${assetId}`,
+    )
   }
 
   assetDownloadUrl(asset: CNBAsset): string {
