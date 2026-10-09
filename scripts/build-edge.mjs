@@ -74,17 +74,18 @@ const emptyNodeDriverPlugin = {
       return { path: args.path, namespace: "empty-node-driver" }
     })
     // 拦截直接引用 ssh2 / cpu-features / iconv-lite / mysql2
-    build.onResolve({ filter: /^(ssh2|cpu-features|iconv-lite)(\/.*)?$/ }, (args) => {
-      return { path: args.path, namespace: "empty-node-driver" }
-    })
+    build.onResolve(
+      { filter: /^(ssh2|cpu-features|iconv-lite)(\/.*)?$/ },
+      (args) => {
+        return { path: args.path, namespace: "empty-node-driver" }
+      },
+    )
     build.onResolve({ filter: /^mysql2(\/.*)?$/ }, (args) => {
       return { path: args.path, namespace: "empty-node-driver" }
     })
-    build.onLoad(
-      { filter: /.*/, namespace: "empty-node-driver" },
-      () => {
-        return {
-          contents: `
+    build.onLoad({ filter: /.*/, namespace: "empty-node-driver" }, () => {
+      return {
+        contents: `
 // Empty stub for Edge/CloudFunction build — Node-only drivers (sftp/ftp/ssh2/mysql2) are not available in edge/serverless isolates.
 export const SFTPDriver = class { constructor() { throw new Error("[Edge/Serverless] SFTP driver requires full Node.js runtime"); } };
 export const normalizeSFTPAddition = (v) => v;
@@ -95,10 +96,9 @@ export const Client = class { constructor() { throw new Error("[Edge/Serverless]
 export const createPool = () => { throw new Error("[Edge/Serverless] mysql2 is not available in edge/serverless runtime"); };
 export default {};
 `,
-          loader: "js",
-        }
-      },
-    )
+        loader: "js",
+      }
+    })
   },
 }
 
@@ -124,15 +124,24 @@ const normalizeHtmlEolPlugin = {
 const nodeShimPlugin = {
   name: "node-shim",
   setup(build) {
-    const nodeModules = ["crypto", "buffer", "util", "stream", "zlib", "module", "fs", "path"]
+    const nodeModules = [
+      "crypto",
+      "buffer",
+      "util",
+      "stream",
+      "zlib",
+      "module",
+      "fs",
+      "path",
+    ]
     const shimPath = path.resolve(__dirname, "node-shim.mjs")
-    
+
     // 匹配裸模块名（如 "crypto"）
     const bareFilter = new RegExp(`^(${nodeModules.join("|")})$`)
     build.onResolve({ filter: bareFilter }, (args) => {
       return { path: shimPath, external: false }
     })
-    
+
     // 匹配 node: 前缀（如 "node:crypto"）
     const nodeFilter = new RegExp(`^node:(${nodeModules.join("|")})$`)
     build.onResolve({ filter: nodeFilter }, (args) => {
@@ -169,15 +178,15 @@ async function build() {
     plugins: [emptyNodeDriverPlugin],
   })
 
-  // EdgeOne Makers 的 Node 云函数入口。产物按平台约定落在项目根
-  // cloud-functions/[[default]].js，但它**不入库**：EdgeOne 的构建命令
-  // （edgeone.json -> pnpm run build）会在部署时执行本脚本重新生成。
+  // EdgeOne 在执行项目构建前发现 Node 云函数，因此 cloud-functions/[[default]].js
+  // 必须作为源码入库。实际后端包写入 dist-server，由该入口调用；不要写入
+  // cloud-functions，避免覆盖入口或被平台发现为额外路由。
   await esbuild.build({
     entryPoints: ["api/_makers.ts"],
     bundle: true,
     platform: "node",
     target: "node22",
-    outfile: "cloud-functions/[[default]].js",
+    outfile: "dist-server/edgeone-entry.js",
     minify: true,
     format: "esm",
     external: ["ssh2", "cpu-features", "iconv-lite", "mysql2"],
@@ -197,19 +206,14 @@ async function build() {
       format: "esm",
       mainFields: ["browser", "module", "main"], // 优先选择浏览器版本依赖
       conditions: ["browser"], // 强制浏览器条件导出
-      external: [
-        "ssh2",
-        "cpu-features",
-        "iconv-lite",
-        "mysql2",
-      ],
+      external: ["ssh2", "cpu-features", "iconv-lite", "mysql2"],
       loader: { ".html": "text", ".node": "empty" },
       plugins: [emptyNodeDriverPlugin, normalizeHtmlEolPlugin, nodeShimPlugin],
     })
   }
 
   console.log(
-    "✓ Edge build complete -> dist-server/api/[...route].js & cloud-functions/[[default]].js",
+    "✓ Edge build complete -> dist-server/api/[...route].js & dist-server/edgeone-entry.js",
   )
 }
 
