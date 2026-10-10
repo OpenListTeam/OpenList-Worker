@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import { getDb, saveDb } from "../internal/model/db"
 import { getDriver } from "../internal/op/storage"
+import { runQuarkCheckin } from "../internal/checkin/quark"
 import { adminAuthMiddleware, matchCronSecret } from "./middlewares"
 
 export const taskRouter = new Hono()
@@ -89,6 +90,63 @@ taskRouter.all(
       code: 200,
       message: "token refresh executed",
       data: { refreshed, failed, total: db.storages?.length || 0, results },
+    })
+  },
+)
+
+/**
+ * 定时签到入口。
+ *
+ * 鉴权与 /refresh 完全一致：调度平台（EdgeOne Schedules 等）无法附加
+ * Authorization 头，因此复用 JWT_SECRET 作为调度密钥。
+ *
+ * 目前只接入了夸克网盘（唯一实现）。设置项：
+ *   quark_checkin_enabled  是否启用
+ *   quark_checkin_accounts 账号列表，每行一个
+ */
+taskRouter.all(
+  "/checkin",
+  async (c, next) => {
+    if (await matchCronSecret(c)) return next()
+    return adminAuthMiddleware(c, next)
+  },
+  async (c) => {
+    const db = await getDb(c.env)
+    const setting = (key: string): string => {
+      const s = (db.settings || []).find((x: any) => x?.key === key)
+      return s && s.value != null ? String(s.value) : ""
+    }
+
+    if (setting("quark_checkin_enabled").trim().toLowerCase() !== "true") {
+      return c.json({
+        code: 200,
+        message: "checkin skipped: quark_checkin_enabled is off",
+        data: { total: 0, ok: 0, skipped: 0, failed: 0, results: [] },
+      })
+    }
+
+    const results = await runQuarkCheckin(setting("quark_checkin_accounts"))
+    const ok = results.filter((r) => r.status === "ok").length
+    const skipped = results.filter((r) => r.status === "skipped").length
+    const failed = results.filter((r) => r.status === "failed").length
+
+    // 与 /refresh 同一条教训：每个账号都失败时必须返回非 2xx，
+    // 否则每晚静默失败的调度任务看起来一切正常。
+    if (ok === 0 && skipped === 0 && failed > 0) {
+      return c.json(
+        {
+          code: 500,
+          message: `checkin failed: all ${failed} account(s) failed`,
+          data: { total: results.length, ok, skipped, failed, results },
+        },
+        500,
+      )
+    }
+
+    return c.json({
+      code: 200,
+      message: "checkin executed",
+      data: { total: results.length, ok, skipped, failed, results },
     })
   },
 )

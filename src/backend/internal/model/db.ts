@@ -810,6 +810,24 @@ export const defaultDb = {
       group: 14,
       flag: 0,
     },
+    // 定时签到（由 /task/checkin 执行，调度器按 cron 触发）
+    {
+      key: "quark_checkin_enabled",
+      value: "false",
+      type: "bool",
+      help: "启用夸克网盘定时签到",
+      group: 14,
+      flag: 0,
+    },
+    {
+      key: "quark_checkin_accounts",
+      value: "",
+      type: "string",
+      help: "夸克账号（每行一个，格式 user=昵称&kps=..&sign=..&vcode=..）",
+      group: 14,
+      flag: 0,
+    },
+
   ],
   storages: [],
   users: [
