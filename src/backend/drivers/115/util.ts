@@ -180,12 +180,24 @@ export class Client115 {
     await this.request("/open/ufile/delete", { fid: fids, ignore_warn: 1 })
   }
 
-  async getDownloadUrl(pickCode: string): Promise<string> {
+  /**
+   * 取下载链接。
+   *
+   * 随链接一并返回 User-Agent：115 的 downurl 是按请求方 UA 签发的，同族
+   * 115open 使用同一约定（其注释：「115 防盗链校验通过率高」，并把 UA 绑进
+   * 取链请求），115_share 的 link() 同样带 UA + Referer。
+   *
+   * 说明：本次是从 YunX 移植行为并与同族驱动对齐，**并未实机验证**原先的裸
+   * URL 是否真的会失败；改动的目的是让三个 115 驱动行为一致。
+   */
+  async getDownloadUrl(
+    pickCode: string,
+  ): Promise<{ url: string; headers: Record<string, string> }> {
     const resp = await this.request<Cloud115DownResp>("/open/ufile/downurl", {
       pickcode: pickCode,
     })
     const url = resp?.url || resp?.data?.url || ""
     if (!url) throw new Error("[115] empty download url")
-    return url
+    return { url, headers: { "User-Agent": UA } }
   }
 }

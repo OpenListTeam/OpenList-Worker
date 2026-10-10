@@ -55,7 +55,10 @@ export class DriverQuarkUcTv implements StorageDriver {
         const item = this.fileToItem(file)
         if (!item.is_dir) {
           try {
-            item.raw_url = await this.client.getDownloadUrl(file.fid)
+            const link = await this.client.getDownloadUrl(file.fid)
+            item.raw_url = link.url
+            // 夸克系校验来源，下载头必须随链接一起交给客户端
+            item.raw_url_headers = link.headers
           } catch (e: any) {
             item.raw_url_error = e.message
           }

@@ -314,7 +314,10 @@ export class Pan123Driver implements StorageDriver {
     const item = pan123FileToFileItem(file)
     if (file.Type !== 1) {
       try {
-        item.raw_url = await this.client.getDownloadLink(file)
+        const link = await this.client.getDownloadLink(file)
+        item.raw_url = link.url
+        // 123 的 CDN 直链要求 Referer + UA，必须随链接交给客户端
+        item.raw_url_headers = link.headers
         if (!item.raw_url) {
           item.raw_url_error =
             "123 网盘未返回下载链接（DownloadUrl 为空）。常见原因：access_token/cookie 失效，或该文件已删除/被限制下载。请到管理后台更新 access_token 后重试。"

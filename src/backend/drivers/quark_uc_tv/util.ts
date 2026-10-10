@@ -194,7 +194,17 @@ export class ClientQuarkUcTv {
     return all
   }
 
-  async getDownloadUrl(fid: string): Promise<string> {
+  /**
+   * 取下载/播放链接。
+   *
+   * 同族的 quark 驱动（quark/util.ts 的 getDownloadUrl）已确立此形状：链接
+   * 连同 Referer 与 User-Agent 一起返回。本次据此把 quark_uc_tv 对齐到同一约定。
+   *
+   * 说明：属行为移植与统一，未实机验证此前是否真的失败。
+   */
+  async getDownloadUrl(
+    fid: string,
+  ): Promise<{ url: string; headers: Record<string, string> }> {
     if (this.addition.link_method === "streaming") {
       const resp = await this.request<QuarkTvCommonResp>("/file", "GET", {
         method: "streaming",
@@ -206,7 +216,7 @@ export class ClientQuarkUcTv {
       const data = resp.data as QuarkTvStreamingData | undefined
       const url = data?.video_info?.find((v) => v.url)?.url || ""
       if (!url) throw new Error("[QuarkTV] no streaming link found")
-      return url
+      return { url, headers: quarkTvDownloadHeaders() }
     }
     const resp = await this.request<QuarkTvCommonResp>("/file", "GET", {
       method: "download",
@@ -217,6 +227,11 @@ export class ClientQuarkUcTv {
     })
     const data = resp.data as QuarkTvDownloadData | undefined
     if (!data?.download_url) throw new Error("[QuarkTV] empty download url")
-    return data.download_url
+    return { url: data.download_url, headers: quarkTvDownloadHeaders() }
   }
+}
+
+/** 夸克系下载请求头：与 quark 驱动保持一致 */
+function quarkTvDownloadHeaders(): Record<string, string> {
+  return { Referer: "https://pan.quark.cn/", "User-Agent": UA }
 }

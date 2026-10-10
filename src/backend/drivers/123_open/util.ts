@@ -10,6 +10,32 @@ import {
 
 const API = "https://open-api.123pan.com"
 
+/**
+ * 123 网盘下载请求头。
+ *
+ * 依据（参考项目 YunX，https://github.com/CYQawa/YunX）：
+ * - Pan123Api 对解码后的 CDN 直链明确注明「下载需带 Referer: https://yun.123pan.cn/」；
+ * - Pan123Constants.WEB_UA 给出配套浏览器 UA。
+ *
+ * 本仓库此前只把 Referer 用在了**内部**跟随 302 那一步，拿到最终直链后直接
+ * 交给客户端。
+ *
+ * 说明：本次行为移植自 YunX，未实机验证缺少该头是否真的导致失败。
+ */
+
+export const PAN123_DOWNLOAD_REFERER = "https://yun.123pan.cn/"
+
+export const PAN123_DOWNLOAD_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+
+/** 取链时可复用的下载头 */
+export function pan123DownloadHeaders(): Record<string, string> {
+  return {
+    Referer: PAN123_DOWNLOAD_REFERER,
+    "User-Agent": PAN123_DOWNLOAD_UA,
+  }
+}
+
 export class Client123Open {
   private addition: Driver123OpenAddition
   private accessToken = ""
@@ -111,13 +137,16 @@ export class Client123Open {
     return all
   }
 
-  async getDownloadUrl(fileId: number): Promise<string> {
+  /** 取下载链接；CDN 直链需带 Referer + UA（见文件顶部说明） */
+  async getDownloadUrl(
+    fileId: number,
+  ): Promise<{ url: string; headers: Record<string, string> }> {
     const qs = new URLSearchParams({ fileId: String(fileId) })
     const resp = await this.request<DownloadInfoData123>(`${API}/api/v1/file/download_info?${qs.toString()}`, "GET")
     if (resp.code !== 0) throw new Error(`[123Open] ${resp.message}`)
     const url = resp.data?.download_url || ""
     if (!url) throw new Error("[123Open] empty download url")
-    return url
+    return { url, headers: pan123DownloadHeaders() }
   }
 
   async mkdir(parentId: string, name: string): Promise<void> {

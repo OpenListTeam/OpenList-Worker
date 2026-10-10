@@ -60,8 +60,10 @@ export class Driver115 implements StorageDriver {
       const item = fileToItem(file)
       if (!item.is_dir && file.Pc) {
         try {
-          const url = await this.client.getDownloadUrl(file.Pc)
-          item.raw_url = url
+          const link = await this.client.getDownloadUrl(file.Pc)
+          item.raw_url = link.url
+          // 115 的下载链接按 UA 签发，必须随链接一起交给客户端
+          item.raw_url_headers = link.headers
         } catch (e: any) {
           item.raw_url_error = e.message
         }

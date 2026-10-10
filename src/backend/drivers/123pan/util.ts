@@ -160,6 +160,32 @@ function getApi(rawUrl: string): string {
 
 // --- Client ---
 
+/**
+ * 123 网盘下载请求头。
+ *
+ * 依据（参考项目 YunX，https://github.com/CYQawa/YunX）：
+ * - Pan123Api 对解码后的 CDN 直链明确注明「下载需带 Referer: https://yun.123pan.cn/」；
+ * - Pan123Constants.WEB_UA 给出配套浏览器 UA。
+ *
+ * 本仓库此前只把 Referer 用在了**内部**跟随 302 那一步，拿到最终直链后直接
+ * 交给客户端。
+ *
+ * 说明：本次行为移植自 YunX，未实机验证缺少该头是否真的导致失败。
+ */
+
+export const PAN123_DOWNLOAD_REFERER = "https://yun.123pan.cn/"
+
+export const PAN123_DOWNLOAD_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+
+/** 取链时可复用的下载头 */
+export function pan123DownloadHeaders(): Record<string, string> {
+  return {
+    Referer: PAN123_DOWNLOAD_REFERER,
+    "User-Agent": PAN123_DOWNLOAD_UA,
+  }
+}
+
 export class Pan123Client {
   private addition: Pan123Addition
   private accessToken = ""
@@ -421,7 +447,9 @@ export class Pan123Client {
 
   // ---- Download ----
 
-  public async getDownloadLink(file: Pan123File): Promise<string> {
+  public async getDownloadLink(
+    file: Pan123File,
+  ): Promise<{ url: string; headers: Record<string, string> }> {
     const body = {
       driveId: 0,
       etag: file.Etag,
@@ -459,14 +487,14 @@ export class Pan123Client {
       redirect: "manual",
       headers: { Referer: "https://yun.123pan.com/" },
     })
+    let finalUrl = downloadUrl
     if (res.status === 302) {
-      return res.headers.get("location") || downloadUrl
-    }
-    if (res.status < 300) {
+      finalUrl = res.headers.get("location") || downloadUrl
+    } else if (res.status < 300) {
       const body = await res.json().catch(() => ({}))
-      return body.data?.redirect_url || downloadUrl
+      finalUrl = body.data?.redirect_url || downloadUrl
     }
-    return downloadUrl
+    return { url: finalUrl, headers: pan123DownloadHeaders() }
   }
 
   // ---- File operations ----
