@@ -13,7 +13,12 @@
  * 通过 RPC 调用（stub.kvGet / sqlQuery 等），每个实例用 `idFromName` 定位到
  * 固定实例，保证数据持久在同一 DO 实例。
  */
-import { D1_SCHEMA, KV_SCHEMA_SQLITE } from "../internal/model/store/schema"
+import {
+  buildAddColumnDdl,
+  buildTableInfoDdl,
+  D1_SCHEMA,
+  KV_SCHEMA_SQLITE,
+} from "../internal/model/store/schema"
 
 export class OpenListDB {
   private state: any
@@ -31,6 +36,12 @@ export class OpenListDB {
   private ensureSchema(): void {
     for (const ddl of [...KV_SCHEMA_SQLITE, ...D1_SCHEMA]) {
       this.sql.exec(ddl)
+    }
+    const columns = this.sql
+      .exec(buildTableInfoDdl("plugins"))
+      .toArray()
+    if (!columns.some((column: any) => column.name === "manifest")) {
+      this.sql.exec(buildAddColumnDdl("plugins", "manifest", "sqlite"))
     }
   }
 

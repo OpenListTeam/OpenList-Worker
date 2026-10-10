@@ -8,7 +8,12 @@
  * - MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASS, MYSQL_NAME
  */
 import type { Driver } from "../types"
-import { buildDdl, getTablePrefix, KV_SCHEMA_MYSQL } from "../schema"
+import {
+  buildAddColumnDdl,
+  buildDdl,
+  KV_SCHEMA_MYSQL,
+  tableSqlName,
+} from "../schema"
 
 function isNode(): boolean {
   return typeof process !== "undefined" && process.release?.name === "node"
@@ -32,32 +37,69 @@ function getMysqlConfig(env: any): any | null {
 
 let _pool: any = null
 let _poolKey: string | null = null
+let _poolPending: { key: string; promise: Promise<any> } | null = null
 
 async function getPool(env: any): Promise<any | null> {
   const config = getMysqlConfig(env)
   if (!config) return null
   const key = JSON.stringify(config)
   if (_pool && _poolKey === key) return _pool
-  
-  // 动态 import，避免打包到 Workers
-  const specifier = "mysql2/promise"
-  const { createPool } = await import(specifier)
-  _pool = createPool(config)
-  _poolKey = key
-  return _pool
-}
+  if (_poolPending?.key === key) return _poolPending.promise
 
-let _schemaInitedPrefix: string | null = null
-
-async function ensureSchema(pool: any, env?: any): Promise<void> {
-  const prefix = getTablePrefix(env)
-  if (_schemaInitedPrefix === prefix) return
-  // KV 表（map/key 格式）+ 列式表（sql 格式）一并创建
-  for (const ddl of [...KV_SCHEMA_MYSQL, ...buildDdl("mysql", env)]) {
-    await pool.query(ddl)
+  const promise = (async () => {
+    const specifier = "mysql2/promise"
+    const { createPool } = await import(specifier)
+    const pool = createPool(config)
+    _pool = pool
+    _poolKey = key
+    return pool
+  })()
+  _poolPending = { key, promise }
+  try {
+    return await promise
+  } finally {
+    if (_poolPending?.promise === promise) _poolPending = null
   }
-  _schemaInitedPrefix = prefix
 }
+
+async function hasPluginManifestColumn(
+  pool: any,
+  env?: any,
+): Promise<boolean> {
+  const [columns]: any[] = await pool.query(
+    "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+    [tableSqlName("plugins", env), "manifest"],
+  )
+  return Array.isArray(columns) && columns.length > 0
+}
+
+const mysqlSchemaInit = new WeakMap<object, Promise<void>>()
+
+function ensureSchema(pool: any, env?: any): Promise<void> {
+  const existing = mysqlSchemaInit.get(pool)
+  if (existing) return existing
+  const task = (async () => {
+    for (const ddl of [...KV_SCHEMA_MYSQL, ...buildDdl("mysql", env)]) {
+      await pool.query(ddl)
+    }
+    if (!(await hasPluginManifestColumn(pool, env))) {
+      try {
+        await pool.query(
+          buildAddColumnDdl("plugins", "manifest", "mysql", env),
+        )
+      } catch (error) {
+        if (!(await hasPluginManifestColumn(pool, env))) throw error
+      }
+    }
+  })()
+  mysqlSchemaInit.set(pool, task)
+  void task.catch(() => {
+    if (mysqlSchemaInit.get(pool) === task) mysqlSchemaInit.delete(pool)
+  })
+  return task
+}
+
+export const __ensureMysqlSchemaForTest = ensureSchema
 
 export const mysqlDriver: Driver = {
   name: "mysql",
@@ -69,7 +111,7 @@ export const mysqlDriver: Driver = {
 
   async init(env?: any): Promise<void> {
     const pool = await getPool(env)
-    if (pool) await ensureSchema(pool)
+    if (pool) await ensureSchema(pool, env)
   },
 
   async get(key: string, env?: any): Promise<string | null> {
