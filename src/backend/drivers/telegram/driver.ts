@@ -64,8 +64,10 @@ export class DriverTelegram implements StorageDriver {
 
   async init(): Promise<void> {
     this.client.init()
-    // 校验 token/chat 确实可用，并确保索引行存在
+    // 校验 token/chat 确实可用，并确保索引行存在。
+    // verifyChatAccess 用 getChat 明确「chat not found」，把配置错误挡在绑定阶段。
     await this.client.getMe()
+    await this.client.verifyChatAccess()
     const idx = await this.store.load(this.key)
     await this.store.save(this.key, idx)
   }

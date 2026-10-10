@@ -5,8 +5,8 @@
 // **没有列举历史消息的方法**（getUpdates 只推送 24 小时内的增量，且 bot 收不到
 // 自己发出的消息），因此目录结构必须由驱动自己维护 —— 见 manifest.ts。
 //
-// 聊天类型必须是 group / supergroup / channel：ChatFullInfo.description 仅对这三
-// 类存在，而本驱动用它存放 manifest 指针（见 manifest.ts 的 INDEX_MARKER）。
+// 一个 Telegram 聊天（群组 / 超级群 / 频道 / 甚至与 bot 的私聊）就是一个平铺的
+// 消息池。聊天类型不限：目录索引存在 OpenList 侧（见 index.ts），Telegram 只存字节。
 
 export interface DriverTelegramAddition {
   /** @BotFather 获取，形如 123456:ABC-DEF... */

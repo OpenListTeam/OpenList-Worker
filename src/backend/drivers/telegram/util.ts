@@ -126,30 +126,22 @@ export class ClientTelegram {
     return this.call("getMe")
   }
 
-  async getChat(): Promise<TgChatFullInfo> {
-    return this.read("getChat", { chat_id: this.chatId })
-  }
-
-  async editChatDescription(description: string): Promise<void> {
-    await this.call("editChatDescription", {
+  /**
+   * 校验 bot 能否访问目标聊天。
+   *
+   * getChat 是少数几个会明确报 "chat not found" 的方法，放在 init() 里调，
+   * 配置错误（chat_id 写错 / bot 没被拉进聊天）在绑定存储时就暴露，
+   * 而不是等第一次 list 才报一个难懂的错。
+   */
+  async verifyChatAccess(): Promise<{ type: string; title: string }> {
+    const chat = await this.read<TgChatFullInfo>("getChat", {
       chat_id: this.chatId,
-      description,
     })
-  }
-
-  async sendMessage(text: string): Promise<TgMessage> {
-    return this.call<TgMessage>("sendMessage", {
-      chat_id: this.chatId,
-      text,
-    })
-  }
-
-  async editMessageText(messageId: number, text: string): Promise<TgMessage> {
-    return this.call<TgMessage>("editMessageText", {
-      chat_id: this.chatId,
-      message_id: messageId,
-      text,
-    })
+    const title = chat.title || chat.username || String(chat.id || "")
+    if (!title) {
+      throw new TelegramApiError("getChat", "无法读取聊天信息")
+    }
+    return { type: chat.type, title }
   }
 
   async deleteMessage(messageId: number): Promise<void> {
