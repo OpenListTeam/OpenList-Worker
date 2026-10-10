@@ -235,12 +235,8 @@ export class Yun139ApiClient {
       "https://user-njs.yun.139.com/user/auth/refreshToken",
       {
         method: "POST",
-        // Cookie is intentionally omitted: the captured successful request
-        // worked without it, and this Worker has no reliable browser-cookie
-        // jar to forward. This does NOT prove cookies are unnecessary for every
-        // account/session. If refresh fails for cookie-bound sessions, follow
-        // up by defining an explicit, securely stored cookie input and tests
-        // for expiry/rotation; do not silently depend on ambient cookies.
+        // Omit captured cookies (mc_at, mc_bt, mc_pat, mc_pbt, mc_pac):
+        // refresh succeeded without them in our test; other sessions remain unverified.
         credentials: "omit",
         headers,
         body: JSON.stringify({ userDomainId }),
