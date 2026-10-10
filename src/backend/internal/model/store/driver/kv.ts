@@ -434,32 +434,43 @@ export const kvDriver: Driver = {
 
     // 模式1: Binding 模式
     if (kv) {
-      // EdgeOne KV list() 语义（依据官方 functions-kv 示例）：
-      //   page.keys -> [{ key, ttl, meta }]，page.complete 为 true 表示末页，
-      //   下一页 cursor 需手动取本页最后一个 key。
-      const keys: string[] = []
-      let cursor = ""
-      let complete = false
+      // 必须同时支持两套 KV binding 的分页语义（两者返回结构不同）：
+      //   - Cloudflare Workers KV: { keys: [{ name, expiration, metadata }],
+      //                              list_complete, cursor }
+      //   - EdgeOne KV:            { keys: [{ key, ttl, meta }], complete }
+      //     且 EdgeOne 的下一页 cursor 需手动取本页最后一个 key。
+      //
+      // 早期实现只认 EdgeOne 语义（读 item.key / page.complete）：在 Cloudflare
+      // 上一条都取不到，且首轮就被判为 complete ⇒ 恒返回 []。缓存模块的
+      // cacheListKeys() 依赖本方法，于是「缓存统计恒为 0、清空缓存 removed=0」
+      // 在 Cloudflare Workers 上静默失效（键其实早已写进 KV）。
+      const keys = new Set<string>()
+      let cursor: string | undefined
       let guard = 0
 
-      while (!complete && guard < 1000) {
+      while (guard < 1000) {
         guard += 1
 
         const page = await kv.list({ prefix, cursor, limit: 256 })
         const pageKeys = Array.isArray(page?.keys) ? page.keys : []
 
         for (const item of pageKeys) {
-          if (item?.key) keys.push(item.key)
+          const name = item?.key ?? item?.name
+          if (name) keys.add(String(name))
         }
 
-        if (pageKeys.length > 0) {
-          cursor = pageKeys[pageKeys.length - 1].key || ""
-        }
+        if (pageKeys.length === 0) break
+        // Cloudflare 用 list_complete，EdgeOne 用 complete
+        if (page?.list_complete === true || page?.complete === true) break
 
-        complete = Boolean(page?.complete) || pageKeys.length === 0
+        const last = pageKeys[pageKeys.length - 1]
+        const next = page?.cursor ?? last?.key ?? last?.name
+        // 游标没有进展就退出，避免语义不符时死循环
+        if (!next || next === cursor) break
+        cursor = String(next)
       }
 
-      return keys
+      return [...keys]
     }
 
     // 模式2: HTTP 代理模式
