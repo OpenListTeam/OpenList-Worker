@@ -49,9 +49,13 @@ pages/dist/
 dist-server/
 *.tsbuildinfo
 
-# EdgeOne Makers Node 云函数产物：由平台构建命令（pnpm run build -> scripts/build-edge.mjs）
-# 在部署时生成，不入库；构建校验见 .github/workflows/build-verify.yml
-cloud-functions/
+# EdgeOne server-handler 检测占位：cloud-functions/[[default]].js 与
+# node-functions/[[default]].js 以几行的占位文件入库（平台按 Git 仓库内容判断
+# 项目是否含 Node 后端；PR #93 实测仅靠构建期生成会报「No server-handler
+# detected」退化为纯静态，/api/* 全部落静态）。部署构建时 scripts/build-edge.mjs
+# 会在同一路径生成完整产物（~2MB，不入库）覆盖占位，EdgeOne 运行的是构建产物。
+# 占位内容基本永不变更 —— PR 中若出现这两个文件的大段变更，说明误提交了
+# 构建产物，请还原为占位内容。
 
 # source maps (optional, can be removed)
 *.map
