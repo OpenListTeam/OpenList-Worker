@@ -987,7 +987,28 @@ async function createDriver(
     normDriver.includes("139")
   ) {
     const addition = parseAddition(storageConfig)
-    driver = new Yun139Driver(addition)
+    driver = new Yun139Driver(addition, async (authorization) => {
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find(
+          (s: any) => s.id === storageConfig?.id,
+        )
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        stAddition.authorization = authorization
+        st.addition = JSON.stringify(stAddition)
+        // Keep the in-flight admin update object in sync so it cannot overwrite
+        // the newly refreshed authorization with the previous value.
+        storageConfig.addition = st.addition
+        if (deferredTokenPersistence.has(storageConfig)) return
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[139] failed to persist refreshed authorization:", e)
+      }
+    })
     await driver.init?.()
   } else if (
     normDriver === "mega" ||
