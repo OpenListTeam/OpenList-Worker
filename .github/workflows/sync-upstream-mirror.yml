@@ -1,0 +1,185 @@
+name: 同步上游镜像
+
+# 把上游 OpenListTeam/OpenList-Worker 的 main【覆盖式】同步到指定镜像仓库的
+# 同步分支（默认 upstream-main，非 main），用于自建镜像 / 加速 / 备份。
+#
+# 为什么不用现有的 sync_repo.yml：那个 workflow 从【当前仓库】的 main 做
+# orphan 单提交推到 Gitee，属于「本地改动 → 镜像」。本 workflow 方向相反——
+# 从【上游公开仓库】重新 clone 拉取，保证镜像内容与上游逐字节一致，
+# 且不依赖当前仓库工作区的历史。
+#
+# ⚠️ force push 会无条件覆盖目标分支。该分支必须专用（默认 upstream-main），
+#   绝不能是 main/master —— 本 workflow 有硬性断言拦截（见下方「目标安全校验」）。
+#
+# 必需的仓库 secret（Settings → Secrets and variables → Actions）：
+#   SYNC_TOKEN   对目标仓库有 contents:write 的 PAT / fine-grained token
+#                （同步到【自己】的仓库时也可以用本仓库的 GITHUB_TOKEN，
+#                 但跨仓库必须用 PAT）
+#
+# 可选的 repository variable：
+#   SYNC_SOURCE_REPO    上游仓库，默认 OpenListTeam/OpenList-Worker
+#   SYNC_TARGET_REPO    镜像仓库，【默认留空 —— 必须显式配置后本 workflow 才会运行】
+#   SYNC_TARGET_BRANCH  镜像分支，默认 upstream-main
+#
+# 为什么 SYNC_TARGET_REPO 默认留空：
+#   force push 会覆盖目标分支，把某个具体仓库写死为默认值会让这个 workflow
+#   在合并后变成「替某个个人仓库服务」的隐式行为，对上游不友好，也容易在
+#   无人察觉时推错地方。留空时下面的跳过分支接管，workflow 退化为纯 opt-in：
+#   谁想用、推到自己的哪个仓库，由谁在自己的 fork 里显式配置决定。
+#
+# 未配置 SYNC_TOKEN / SYNC_TARGET_REPO 时本 workflow 直接跳过（exit 0），
+# 因此合并到上游后不会产生红色的失败运行。
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "仅拉取并报告，不推送"
+        required: false
+        default: false
+        type: boolean
+      target_repo:
+        description: "镜像仓库（覆盖 SYNC_TARGET_REPO），例如 owner/repo；留空则跳过同步"
+        required: false
+        type: string
+      target_branch:
+        description: "镜像分支（覆盖 SYNC_TARGET_BRANCH）"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# 同一分支只允许一个同步在跑，避免两个 force push 互相覆盖。
+concurrency:
+  group: sync-upstream-mirror
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    name: 覆盖式同步上游 main 到镜像分支
+    steps:
+      - name: 解析同步配置
+        id: cfg
+        env:
+          SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          SOURCE_REPO: ${{ vars.SYNC_SOURCE_REPO }}
+          TARGET_REPO: ${{ inputs.target_repo || vars.SYNC_TARGET_REPO }}
+          TARGET_BRANCH: ${{ inputs.target_branch || vars.SYNC_TARGET_BRANCH }}
+        run: |
+          set -euo pipefail
+          source_repo="${SOURCE_REPO:-OpenListTeam/OpenList-Worker}"
+          target_repo="${TARGET_REPO:-}"
+          target_branch="${TARGET_BRANCH:-upstream-main}"
+
+          {
+            echo "source_repo=${source_repo}"
+            echo "target_repo=${target_repo}"
+            echo "target_branch=${target_branch}"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ -z "${SYNC_TOKEN:-}" ] || [ -z "$target_repo" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            if [ -z "$target_repo" ]; then
+              echo "::notice::未配置 SYNC_TARGET_REPO（本workflow 默认留空，需显式启用），跳过镜像同步。"
+            else
+              echo "::notice::未配置 SYNC_TOKEN，跳过镜像同步。"
+            fi
+            # 注意：必须用 exit 0 而不是 return —— GitHub 默认 shell 是
+            # `bash -e {0}`（并非 source 执行），顶层 return 会报
+            # "can only `return' from a function or sourced script" 并以状态码 2 失败。
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: 目标安全校验
+        if: steps.cfg.outputs.skip == 'false'
+        env:
+          SOURCE_REPO: ${{ steps.cfg.outputs.source_repo }}
+          TARGET_REPO: ${{ steps.cfg.outputs.target_repo }}
+          TARGET_BRANCH: ${{ steps.cfg.outputs.target_branch }}
+        run: |
+          set -euo pipefail
+          case "$TARGET_REPO" in
+            */*/*|/*|*/|"") echo "::error::SYNC_TARGET_REPO 格式非法：'$TARGET_REPO'（应为 owner/repo）"; exit 1 ;;
+          esac
+          # 镜像源与目标相同 => 自我 force push，毫无意义且危险
+          if [ "$TARGET_REPO" = "$SOURCE_REPO" ]; then
+            echo "::error::镜像目标与源仓库相同（$TARGET_REPO），已中止。"; exit 1
+          fi
+          # 目标分支是 main/master 时直接拒绝 —— 这是本 workflow 唯一可能造成的最大破坏
+          case "$TARGET_BRANCH" in
+            main|master)
+              echo "::error::拒绝覆盖目标仓库的 $TARGET_BRANCH 分支。请将 SYNC_TARGET_BRANCH 设为专用分支（例如 upstream-main）。"
+              exit 1
+              ;;
+          esac
+          echo "校验通过：$SOURCE_REPO -> $TARGET_REPO@$TARGET_BRANCH"
+
+      - name: 拉取上游代码
+        if: steps.cfg.outputs.skip == 'false'
+        env:
+          SOURCE_REPO: ${{ steps.cfg.outputs.source_repo }}
+        run: |
+          set -euo pipefail
+          rm -rf mirror
+          # 上游是公开仓库，匿名 clone 即可，完全不接触任何凭据
+          git clone --depth 1 --branch main "https://github.com/${SOURCE_REPO}.git" mirror
+          cd mirror
+          # 构建产物按设计不入库；若上游仓库里意外出现则显式剔除，避免污染镜像
+          rm -rf dist dist-server cloud-functions
+          git rev-parse HEAD | tr -d '\n' > ../upstream_sha
+          echo "上游 HEAD：$(cat ../upstream_sha)"
+
+      - name: 覆盖推送到镜像分支
+        if: steps.cfg.outputs.skip == 'false'
+        env:
+          SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          TARGET_REPO: ${{ steps.cfg.outputs.target_repo }}
+          TARGET_BRANCH: ${{ steps.cfg.outputs.target_branch }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          cd mirror
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "dry-run：跳过推送。上游 HEAD = $(cat ../upstream_sha)"
+            exit 0
+          fi
+          # token 只经 remote 的 http header 传递，不出现在命令行 / 进程列表 / 日志中
+          auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$SYNC_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=$auth_header" \
+              remote add mirror "https://github.com/${TARGET_REPO}.git"
+
+          # 先取回目标分支的当前状态：分支已存在则改用 --force-with-lease，
+          # 这样别人在镜像分支上的新提交会被拒绝，而不是被静默覆盖。
+          if git -c "http.https://github.com/.extraheader=$auth_header" \
+                fetch --depth 1 mirror "+refs/heads/${TARGET_BRANCH}:refs/remotes/mirror/${TARGET_BRANCH}" 2>/dev/null; then
+            lease=$(git rev-parse "refs/remotes/mirror/${TARGET_BRANCH}")
+            echo "目标分支当前 HEAD：$lease，使用 --force-with-lease"
+            push_args=(--force-with-lease="refs/heads/${TARGET_BRANCH}:${lease}")
+          else
+            echo "目标分支不存在，将直接创建"
+            push_args=()
+          fi
+
+          git -c "http.https://github.com/.extraheader=$auth_header" \
+              push "${push_args[@]}" mirror "HEAD:refs/heads/${TARGET_BRANCH}"
+          echo "已覆盖同步到 ${TARGET_REPO}@${TARGET_BRANCH}"
+
+      - name: 输出同步摘要
+        if: always() && steps.cfg.outputs.skip == 'false'
+        env:
+          SOURCE_REPO: ${{ steps.cfg.outputs.source_repo }}
+          TARGET_REPO: ${{ steps.cfg.outputs.target_repo }}
+          TARGET_BRANCH: ${{ steps.cfg.outputs.target_branch }}
+        run: |
+          {
+            echo "### 上游镜像同步"
+            echo ""
+            echo "- 源：\`${SOURCE_REPO}@main\`（$(cat upstream_sha 2>/dev/null || echo '未执行')）"
+            echo "- 目标：\`${TARGET_REPO}@${TARGET_BRANCH}\`（force push）"
+          } >> "$GITHUB_STEP_SUMMARY"
