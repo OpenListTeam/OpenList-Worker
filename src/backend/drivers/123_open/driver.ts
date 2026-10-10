@@ -58,7 +58,10 @@ export class Driver123Open implements StorageDriver {
         const item = this.fileToItem(file)
         if (!item.is_dir) {
           try {
-            item.raw_url = await this.client.getDownloadUrl(file.fileId)
+            const link = await this.client.getDownloadUrl(file.fileId)
+            item.raw_url = link.url
+            // CDN 直链需带 Referer + UA
+            item.raw_url_headers = link.headers
           } catch (e: any) {
             item.raw_url_error = e.message
           }
