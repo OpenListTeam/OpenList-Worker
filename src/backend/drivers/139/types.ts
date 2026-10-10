@@ -1,3 +1,13 @@
+export interface Yun139TokenRefreshResp {
+  success: boolean
+  code: string
+  message?: string
+  data?: {
+    token?: string
+    expireTime?: number
+  }
+}
+
 export interface Yun139Addition {
   authorization: string
   username?: string
