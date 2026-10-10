@@ -130,8 +130,81 @@ function replaceDist(src) {
   console.log(`  Copying frontend dist: ${src} -> ${DEST}`)
   fs.rmSync(DEST, { recursive: true, force: true })
   fs.cpSync(src, DEST, { recursive: true })
+  copyManifestToRoot()
   stampFrontendVersion(src)
+  patchManifestCredentials()
   console.log(`✓ Frontend dist ready (${DEST})`)
+}
+
+/**
+ * 把 dist/static/manifest.json 复制到 dist/manifest.json。
+ *
+ * 为什么：官方前端 #162（2025-08-08）把 index.html 的 manifest 引用从
+ * /static/manifest.json 改成 /manifest.json —— 这是配合 Go 版后端的改动
+ * （OpenList server/router.go:36 用动态路由 g.GET("/manifest.json", ...)
+ * 生成 manifest），但 dist 里文件仍停留在 /static/manifest.json。纯静态
+ * /Worker 部署没有这条路由，/manifest.json 要么落到 SPA 兜底（返回 text/html，
+ * PWA 解析失败），要么在 EdgeOne 预览域这类平台鉴权后面直接 401。
+ * 运行期 assetsRouter 的 /manifest.json -> /static/manifest.json 302 只是
+ * Worker 场景的兜底；静态直出（EdgeOne Pages）根本不经过 Worker，必须在
+ * 构建期把文件补到链接指向的位置。
+ */
+function copyManifestToRoot() {
+  const src = path.join(DEST, "static", "manifest.json")
+  const dest = path.join(DEST, "manifest.json")
+  try {
+    if (!fs.existsSync(src) || fs.existsSync(dest)) return
+    fs.copyFileSync(src, dest)
+    console.log("  Copied static/manifest.json -> manifest.json (frontend #162)")
+  } catch (err) {
+    console.warn(
+      `  [fetch-frontend] copy manifest.json skipped: ${err?.message || err}`,
+    )
+  }
+}
+
+/**
+ * 给 dist/index.html 的 <link rel="manifest"> 补 crossorigin="use-credentials"。
+ *
+ * 为什么：Chromium 对 PWA manifest 的请求默认【不带任何凭证】——同域 Cookie
+ * 也不带（Google Web Fundamentals 明确记载）。EdgeOne Pages 预览域名
+ * （*.edgeone.cool）等平台的访问控制依赖 Cookie 鉴权（eo_time），于是出现
+ * 「站点其它资源全部正常，唯独 /manifest.json 401 Authorization Required」。
+ * 补上该属性让浏览器以 include 模式携带 Cookie；同源请求没有 CORS 副作用，
+ * 在无需鉴权的平台上也无害。
+ */
+function patchManifestCredentials() {
+  const idx = path.join(DEST, "index.html")
+  try {
+    if (!fs.existsSync(idx)) return
+    let html = fs.readFileSync(idx, "utf-8")
+    if (!/rel=["']manifest["']/i.test(html)) return
+    let changed = false
+    html = html.replace(
+      /<link\b([^>]*)>/gi,
+      (full, attrs) => {
+        if (!/rel=["']manifest["']/i.test(attrs)) return full
+        if (/\bcrossorigin\b/i.test(attrs)) return full
+        changed = true
+        // 自闭合 /> 的斜杠不属于属性，摘出来还原到闭合符
+        const selfClose = /\/\s*$/.test(attrs)
+        const clean = attrs
+        .replace(/\/\s*$/, "")
+        .replace(/\s+$/, "")
+        return `<link${clean} crossorigin="use-credentials"${selfClose ? " />" : ">"}`
+      },
+    )
+    if (changed) {
+      fs.writeFileSync(idx, html)
+      console.log(
+        "  Patched manifest link with crossorigin=use-credentials in dist/index.html",
+      )
+    }
+  } catch (err) {
+    console.warn(
+      `  [fetch-frontend] patch manifest credentials skipped: ${err?.message || err}`,
+    )
+  }
 }
 
 /**
