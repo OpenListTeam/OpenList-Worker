@@ -20,6 +20,7 @@ import { DriverKodbox } from "../../drivers/kodbox/driver"
 import { DriverIpfs } from "../../drivers/ipfs_api/driver"
 import { DriverLenovoNasShare } from "../../drivers/lenovonas_share/driver"
 import { DriverMisskey } from "../../drivers/misskey/driver"
+import { DriverTelegram } from "../../drivers/telegram/driver"
 import { DriverDoubao } from "../../drivers/doubao/driver"
 import { DriverQuarkOpen } from "../../drivers/quark_open/driver"
 import { DriverQuarkUcTv } from "../../drivers/quark_uc_tv/driver"
@@ -362,6 +363,9 @@ async function createDriver(
     await driver.init?.()
   } else if (normDriver === "misskey") {
     driver = new DriverMisskey(parseAddition(storageConfig))
+    await driver.init?.()
+  } else if (normDriver === "telegram" || normDriver === "tg") {
+    driver = new DriverTelegram(parseAddition(storageConfig))
     await driver.init?.()
   } else if (
     normDriver === "doubao" ||
