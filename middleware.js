@@ -12,6 +12,13 @@
 // request / next / redirect / rewrite / geo / clientIp，**没有 env**，
 // 因此无法访问 KV 或环境变量。KV 代理请使用 functions/ 目录下的
 // Edge Functions（见 functions/kv-get 等），那里才具备 KV 能力。
+// EdgeOne 约定 middleware.js 需显式导出 config 声明匹配范围；缺失时 CLI
+// 报「Could not find config in middleware file, using defaults」并回退
+// 默认 matcher。这里显式声明与默认值一致的 /:path*，消除警告并锁定行为。
+export const config = {
+  matcher: [{ source: "/:path*" }],
+}
+
 export function middleware(context) {
   const { request, next, rewrite } = context
   const { pathname } = new URL(request.url)

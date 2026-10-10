@@ -5,6 +5,7 @@ import {
   resolveCdnUrl,
   injectCdnIntoHtml,
   getIndexHtmlWithCdn,
+  ensureManifestCredentials,
   parseFrontendVersion,
   extractEntryAsset,
   cdnAssetRedirect,
@@ -243,6 +244,58 @@ test("injectCdnIntoHtml: CDN URL 中的引号 / 反斜杠被转义", () => {
   // 只考察字面量本身的语义：按 JS 转义规则还原后必须等于原始 URL
   const decoded = literal.slice(1, -1).replace(/\\(.)/g, "$1")
   assert.equal(decoded, cdn, "字面量必须还原成原始 URL")
+})
+
+// --------------------------------------------------- ensureManifestCredentials
+
+const HTML_WITH_MANIFEST = `<!doctype html>
+<html>
+  <head>
+    <link href="/manifest.json" rel="manifest" />
+    <title>Loading...</title>
+  </head>
+  <body><div id="root"></div></body>
+</html>`
+
+test("ensureManifestCredentials: 给 manifest link 补 crossorigin=use-credentials", () => {
+  const out = ensureManifestCredentials(HTML_WITH_MANIFEST)
+  assert.match(
+    out,
+    /<link href="\/manifest\.json" rel="manifest" crossorigin="use-credentials" \/>/,
+  )
+})
+
+test("ensureManifestCredentials: 已有 crossorigin 属性时不重复添加", () => {
+  const html = HTML_WITH_MANIFEST.replace(
+    'rel="manifest" />',
+    'rel="manifest" crossorigin="anonymous" />',
+  )
+  assert.equal(ensureManifestCredentials(html), html)
+})
+
+test("ensureManifestCredentials: 无 manifest 引用的 HTML 原样返回", () => {
+  const plain = "<html><body>no manifest</body></html>"
+  assert.equal(ensureManifestCredentials(plain), plain)
+})
+
+test("ensureManifestCredentials: 属性顺序在前（rel 后置）也能匹配", () => {
+  const html = HTML_WITH_MANIFEST.replace(
+    '<link href="/manifest.json" rel="manifest" />',
+    '<link rel="manifest" href="/manifest.json">',
+  )
+  const out = ensureManifestCredentials(html)
+  assert.match(out, /crossorigin="use-credentials">/)
+})
+
+test("getIndexHtmlWithCdn: CDN 的 index.html（路径 B）也被补上 use-credentials", async () => {
+  // CDN HTML 来自上游产物，构建期补丁覆盖不到，运行期必须兜底
+  await withFetch(async () => {
+    const out = await getIndexHtmlWithCdn(
+      { ASSET_URLS: "https://cdn-b.example.com/dist" },
+      LOCAL_HTML,
+    )
+    assert.match(out, /rel="manifest" crossorigin="use-credentials"/)
+  }, cdnImpl({ asset: false, html: HTML_WITH_MANIFEST }))
 })
 
 // ------------------------------------------------------------ getIndexHtmlWithCdn
