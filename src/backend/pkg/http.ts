@@ -157,15 +157,114 @@ export async function download(
 }
 
 /**
+ * 判断一个 IPv4 点分十进制地址是否属于「不可出网」区间。
+ *
+ * 与 isSafeUrl 的内联判定保持同一套规则，抽出成函数是为了让 IPv4-mapped IPv6
+ * （::ffff:a.b.c.d）复用同一份规则，避免两处判定随时间漂移。
+ *
+ * 返回 true 表示【安全】（可出网）；false 表示应被拦截。
+ */
+function isSafeIpv4(a: number, b: number, c: number, d: number): boolean {
+  if (a > 255 || b > 255 || c > 255 || d > 255) return false
+  if (a === 0) return false // 0.0.0.0/8 (This network)
+  if (a === 127) return false // 127.0.0.0/8 (Loopback)
+  if (a === 10) return false // 10.0.0.0/8 (Private)
+  if (a === 172 && b >= 16 && b <= 31) return false // 172.16.0.0/12 (Private)
+  if (a === 192 && b === 168) return false // 192.168.0.0/16 (Private)
+  if (a === 169 && b === 254) return false // 169.254.0.0/16 (Link-local + metadata)
+  if (a === 100 && b >= 64 && b <= 127) return false // 100.64.0.0/10 (CGNAT)
+  if (a === 100 && b === 100) return false // Aliyun metadata 100.100.100.200
+  if (a === 224 && b === 0 && c === 0) return false // 224.0.0.0/24 (Multicast)
+  if (a >= 240) return false // 240.0.0.0/4 (Reserved)
+  return true
+}
+
+/**
+ * 把 IPv6 字面量展开成 8 个 16 位分组；不是合法 IPv6 则返回 null。
+ *
+ * 为什么需要展开：WHATWG URL 会把 IPv6 字面量归一化并保留十六进制形式，
+ * 例如 `http://[::ffff:169.254.169.254]/` 的 hostname 是 `[::ffff:a9fe:a9fe]`。
+ * 因此对 hostname 做子串匹配（`includes("::ffff:169.254.")`）永远命中不到 ——
+ * 这是 SSRF 黑名单被绕过的根因。只有先归一化成数值分组，才能可靠判断
+ * loopback / link-local / ULA 以及 IPv4-mapped 里嵌入的 IPv4。
+ */
+function parseIpv6Groups(host: string): number[] | null {
+  // 去掉 WHATWG URL 保留的方括号
+  let s = host
+  if (s.startsWith("[") && s.endsWith("]")) s = s.slice(1, -1)
+  if (!s.includes(":") || s.includes("%")) return null // 排除 zone id（本就不该放行）
+
+  // 尾部内嵌 IPv4（::ffff:169.254.169.254）先折成两个十六进制分组
+  const lastColon = s.lastIndexOf(":")
+  const tail = s.slice(lastColon + 1)
+  if (tail.includes(".")) {
+    const m = tail.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+    if (!m) return null
+    const parts = m.slice(1).map((x) => parseInt(x, 10))
+    if (parts.some((n) => n > 255)) return null
+    const hi = ((parts[0] << 8) | parts[1]).toString(16)
+    const lo = ((parts[2] << 8) | parts[3]).toString(16)
+    s = `${s.slice(0, lastColon + 1)}${hi}:${lo}`
+  }
+
+  const [head, tailPart] = s.includes("::") ? s.split("::") : [s, null]
+  const headParts = head ? head.split(":") : []
+  const tailParts = tailPart === null ? [] : tailPart === "" ? [] : tailPart.split(":")
+  if (tailPart === null && headParts.length !== 8) return null
+  if (headParts.length + tailParts.length > 7) return null
+
+  const groups = [
+    ...headParts,
+    ...new Array(8 - headParts.length - tailParts.length).fill("0"),
+    ...tailParts,
+  ].map((g) => (/^[0-9a-fA-F]{1,4}$/.test(g) ? parseInt(g, 16) : NaN))
+  if (groups.length !== 8 || groups.some((n) => Number.isNaN(n))) return null
+  return groups
+}
+
+/** IPv6 字面量是否可出网。host 需带方括号（WHATWG URL 的 hostname 形态）。 */
+function isSafeIpv6Literal(host: string): boolean {
+  const g = parseIpv6Groups(host)
+  if (!g) return false
+
+  const isZeroPrefix = g.slice(0, 5).every((n) => n === 0)
+  // ::1 (loopback) 与 :: (unspecified / 0.0.0.0)
+  if (isZeroPrefix && g[5] === 0 && g[6] === 0) {
+    if (g[7] <= 1) return false
+  }
+  // fe80::/10 (link-local)
+  if ((g[0] & 0xffc0) === 0xfe80) return false
+  // fc00::/7 (unique local)
+  if ((g[0] & 0xfe00) === 0xfc00) return false
+  // IPv4-mapped (::ffff:a.b.c.d) / IPv4-compatible：取低 32 位按 IPv4 规则判
+  if (isZeroPrefix && g[5] === 0xffff) {
+    const a = g[6] >> 8
+    const b = g[6] & 0xff
+    const c = g[7] >> 8
+    const d = g[7] & 0xff
+    return isSafeIpv4(a, b, c, d)
+  }
+  if (isZeroPrefix && g[5] === 0) return isSafeIpv4(g[6] >> 8, g[6] & 0xff, g[7] >> 8, g[7] & 0xff)
+  return true
+}
+
+/**
  * Validate that a target URL is safe against SSRF attacks:
  * 1. Protocol must be http: or https:
  * 2. Hostname/IP must not point to loopback, private RFC 1918 networks, link-local, or cloud metadata endpoints.
- * 
+ *
  * 2026-09-08 安全增强：
  * - 扩展 IPv6 检测（包括 IPv4-mapped IPv6）
  * - 检测 DNS 重绑定特征
  * - 阻止整数/十六进制 IP 表示
  * - 检测混淆 IP 格式
+ *
+ * 2026-10-02 修复：IPv6 判定改为数值分组（见上方 isSafeIpv6Literal）。
+ * 原实现对 hostname 做 `includes("::ffff:169.254.")` 之类子串匹配，但
+ * WHATWG URL 会把 IPv4-mapped IPv6 归一化成十六进制（`[::ffff:a9fe:a9fe]`），
+ * 匹配永远落空，导致 `http://[::ffff:169.254.169.254]/` 这类目标可直达
+ * 云元数据 / loopback / 私网；同一处子串匹配还会把尾段形如 ::1 的合法公网
+ * IPv6（如 1.1.1.1 的 [2606:4700:4700::1111]）误判为 loopback。
  */
 export function isSafeUrl(
   urlStr: string,
@@ -206,26 +305,15 @@ export function isSafeUrl(
       }
     }
 
-    // 2. 扩展 IPv6 检测（包括 IPv4-mapped IPv6）
-    const ipv6Patterns = [
-      "::1", // loopback
-      "[::1]",
-      "::ffff:127.", // IPv4-mapped IPv6 loopback
-      "::ffff:10.", // IPv4-mapped IPv6 private
-      "::ffff:172.", // IPv4-mapped IPv6 private
-      "::ffff:192.168.", // IPv4-mapped IPv6 private
-      "::ffff:169.254.", // IPv4-mapped IPv6 link-local
-      "fe80:", // link-local
-      "fc00:", // unique local
-      "fd00:", // unique local
-      "[fe80:",
-      "[fc",
-      "[fd",
-    ]
-    for (const pattern of ipv6Patterns) {
-      if (host.includes(pattern)) {
-        return false
-      }
+    // 2. IPv6 字面量检测
+    //
+    // 必须走数值分组判定，不能对 hostname 做子串匹配：WHATWG URL 会把 IPv6
+    // 字面量归一化成十六进制并保留方括号，`http://[::ffff:169.254.169.254]/`
+    // 的 hostname 是 `[::ffff:a9fe:a9fe]`，因此 `includes("::ffff:169.254.")`
+    // 这类黑名单永远命中不到 —— 攻击者据此可访问 loopback / 私网 / 云元数据。
+    if (host.startsWith("[")) {
+      if (!host.endsWith("]")) return false
+      return isSafeIpv6Literal(host)
     }
 
     // 3. 检测前导零八进制绕过（0177.0.0.1 = 127.0.0.1）
