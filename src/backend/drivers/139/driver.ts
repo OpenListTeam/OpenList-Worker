@@ -50,7 +50,9 @@ export class Yun139Driver implements StorageDriver {
       if (foundFolder) {
         currentCatalogId = foundFolder.catalogID
       } else {
-        break
+        throw new Error(
+          `[139] folder not found: "${part}" in path "${physicalPath}"`,
+        )
       }
     }
 
