@@ -28,6 +28,15 @@ assetsRouter.get("/favicon.svg", redirectToLogo)
 assetsRouter.get("/favicon.png", redirectToLogo)
 assetsRouter.get("/favicon.ico", redirectToLogo)
 
+// 对齐 Go 版 server/router.go:36 的 g.GET("/manifest.json", static.ManifestJSON)：
+// 官方前端 #162（2025-08-08）起 index.html 引用 /manifest.json，但 dist 里文件
+// 仍在 /static/manifest.json（Go 版由该动态路由生成，静态部署没有对应文件）。
+// 不处理时 /manifest.json 会落到 SPA 兜底：CF 上返回 text/html（PWA 解析失败），
+// EdgeOne 预览域这类平台鉴权后面则表现为 manifest 请求 401。这里 302 到真实
+// 静态文件；构建期（fetch-frontend.mjs）同时会把文件复制到根，正常情况下
+// 静态层直接命中、根本不会走到这条路由。
+assetsRouter.get("/manifest.json", (c) => c.redirect("/static/manifest.json", 302))
+
 /**
  * 前端静态资源 CDN 注入。
  *
@@ -135,6 +144,39 @@ export async function resolveCdnUrl(env: any, html?: string): Promise<string> {
 }
 
 /**
+ * 确保 index.html 中 <link rel="manifest"> 带 crossorigin="use-credentials"。
+ *
+ * 为什么：Chromium 对 PWA manifest 的请求默认【不带任何凭证】——同域 Cookie
+ * 也不带（Google Web Fundamentals 明确记载，需用 crossorigin="use-credentials"
+ * 才会携带）。在 EdgeOne Pages 预览域名（*.edgeone.cool）这类「平台级 Cookie
+ * 鉴权」后面，JS/CSS/API 等其它请求都带 Cookie 正常返回，唯独 manifest.json
+ * 裸奔得到 401 Authorization Required，表现为 PWA 安装失败 / DevTools 里孤立
+ * 的 manifest 401。补上该属性让浏览器以 include 模式携带 Cookie；同源请求
+ * 没有 CORS 副作用，在无需鉴权的平台上也无害。
+ *
+ * 双保险：scripts/fetch-frontend.mjs 在构建期已对 dist/index.html 打过同样的
+ * 补丁（EdgeOne 静态直出走的正是那份文件）；这里覆盖运行时从 CDN 拉取
+ * index.html（路径 B）等绕过构建补丁的 HTML 来源。
+ */
+export function ensureManifestCredentials(html: string): string {
+  // 没有 manifest 引用时原样返回，避免无谓的字符串拷贝
+  if (!/rel=["']manifest["']/i.test(html)) return html
+  return html.replace(
+    /<link\b([^>]*)>/gi,
+    (full, attrs: string) => {
+      if (!/rel=["']manifest["']/i.test(attrs)) return full
+      if (/\bcrossorigin\b/i.test(attrs)) return full
+      // 自闭合 /> 的斜杠不属于属性，摘出来还原到闭合符，避免产出 " / crossorigin=..."
+      const selfClose = /\/\s*$/.test(attrs)
+      const clean = attrs
+        .replace(/\/\s*$/, "")
+        .replace(/\s+$/, "")
+      return `<link${clean} crossorigin="use-credentials"${selfClose ? " />" : ">"}`
+    },
+  )
+}
+
+/**
  * 把已解析的 CDN 地址注入 HTML 的 window.OPENLIST_CONFIG.cdn。
  * 前端 vite-plugin-dynamic-base 读取 window.__dynamic_base__（= cdn），
  * 据此前缀所有静态资源 URL，实现从 CDN 加载。
@@ -235,9 +277,10 @@ export async function getIndexHtmlWithCdn(
   localHtml: string,
 ): Promise<string> {
   const cdn = await resolveCdnUrl(env, localHtml)
-  if (!cdn) return localHtml
+  if (!cdn) return ensureManifestCredentials(localHtml)
   // 仅允许 http(s)，防止 ASSET_URLS 被配置成其它 scheme
-  if (!/^https?:\/\//i.test(cdn)) return localHtml
+  if (!/^https?:\/\//i.test(cdn))
+    return ensureManifestCredentials(localHtml)
   // 供静态资源缺失时的 302 复用同一地址（见 cdnAssetRedirect）
   resolvedCdnCache.set(rawAssetUrls(env), cdn)
   const hit = cdnHtmlCache.get(cdn)
@@ -247,7 +290,7 @@ export async function getIndexHtmlWithCdn(
   //    时把浏览器引到 404 上（那会比不注入更糟）。
   const entry = extractEntryAsset(localHtml)
   if (entry && (await cdnHasAsset(cdn, entry))) {
-    const html = injectCdnIntoHtml(localHtml, cdn)
+    const html = ensureManifestCredentials(injectCdnIntoHtml(localHtml, cdn))
     cdnHtmlCache.set(cdn, { html, ts: Date.now() })
     return html
   }
@@ -262,7 +305,7 @@ export async function getIndexHtmlWithCdn(
       let html = await res.text()
       // 校验确实是 HTML，而非 CDN 的 JSON 错误页（如 npmmirror 的 451 blocked）
       if (/<html/i.test(html)) {
-        html = injectCdnIntoHtml(html, cdn)
+        html = ensureManifestCredentials(injectCdnIntoHtml(html, cdn))
         cdnHtmlCache.set(cdn, { html, ts: Date.now() })
         return html
       }
@@ -272,7 +315,7 @@ export async function getIndexHtmlWithCdn(
   }
 
   // C. 降级：不注入
-  return localHtml
+  return ensureManifestCredentials(localHtml)
 }
 
 for (const folder of CDN_REDIRECT_FOLDERS) {

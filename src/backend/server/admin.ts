@@ -169,7 +169,10 @@ export const normalizeDriver = (driverName: string): string => {
     ].includes(norm)
   )
     return "S3"
-  if (norm.startsWith("github")) return "Github"
+  // releases 别名必须在通用 github 别名之前，否则会被归一到 GitHub API
+  if (norm.startsWith("githubrelease")) return "GitHub Releases"
+  if (norm.startsWith("cnbrelease")) return "CNB Releases"
+  if (norm.startsWith("github")) return "GitHub API"
   if (norm === "local") return "Local"
   if (norm.includes("pikpak")) return "PikPak"
   if (norm.includes("seafile")) return "Seafile"
@@ -537,6 +540,8 @@ adminRouter.get("/driver/names", (c) => {
       "GuangYaPan",
       "AutoIndex",
       "ProtonDrive",
+      "GitHub Releases",
+      "CNB Releases",
     ],
   })
 })
@@ -1495,6 +1500,141 @@ const driverConfigs: Record<string, any> = {
       no_upload: false,
       need_ms: false,
       default_root: "/",
+    },
+  },
+  // Issue #107：驱动已实现（internal/op/storage.ts）但此处漏配，前端存储列表
+  // 因此看不到「GitHub Releases」；字段对齐 Go meta 与前端 i18n。
+  "GitHub Releases": {
+    name: "GitHub Releases",
+    default_mount_path: "/github_releases",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "root_folder_path",
+        type: "string",
+        default: "/",
+        required: false,
+      },
+      {
+        name: "repo_structure",
+        type: "text",
+        default: "OpenListTeam/OpenList",
+        required: true,
+        help: "structure:[path:]org/repo",
+      },
+      {
+        name: "show_readme",
+        type: "bool",
+        default: "true",
+        required: false,
+        help: "show README、LICENSE file",
+      },
+      {
+        name: "token",
+        type: "string",
+        default: "",
+        required: false,
+        help: "GitHub token, if you want to access private repositories or increase the rate limit",
+      },
+      {
+        name: "show_source_code",
+        type: "bool",
+        default: "false",
+        required: false,
+        help: "show Source code (zip/tar.gz)",
+      },
+      {
+        name: "show_all_version",
+        type: "bool",
+        default: "false",
+        required: false,
+        help: "show all versions",
+      },
+      {
+        name: "per_page",
+        type: "number",
+        default: "30",
+        required: false,
+        help: "releases per page (max 100), only works when show all versions",
+      },
+      {
+        name: "max_page",
+        type: "number",
+        default: "0",
+        required: false,
+        help: "max pages to fetch (0 = unlimited), only works when show all versions",
+      },
+      {
+        name: "gh_proxy",
+        type: "string",
+        default: "",
+        required: false,
+        help: "GitHub proxy, e.g. https://ghproxy.net/https://github.com",
+      },
+    ],
+    config: {
+      name: "GitHub Releases",
+      // 对齐 Go：只读发布源（NoUpload）
+      local_sort: false,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: true,
+      need_ms: false,
+      default_root: "",
+    },
+  },
+  // 同一处遗漏：CNB Releases 驱动同样未登记。
+  "CNB Releases": {
+    name: "CNB Releases",
+    default_mount_path: "/cnb_releases",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "root_folder_id",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "repo",
+        type: "string",
+        default: "",
+        required: true,
+        help: "CNB 仓库，形如 org/repo",
+      },
+      {
+        name: "token",
+        type: "string",
+        default: "",
+        required: true,
+        help: "CNB 访问令牌",
+      },
+      {
+        name: "use_tag_name",
+        type: "bool",
+        default: "false",
+        required: false,
+        help: "Use tag name instead of release name",
+      },
+      {
+        name: "default_branch",
+        type: "string",
+        default: "main",
+        required: false,
+        help: "Default branch for new releases",
+      },
+    ],
+    config: {
+      name: "CNB Releases",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      // Go 版支持上传；TS 无状态实现 put 直接报错，隐藏上传入口
+      no_upload: true,
+      need_ms: false,
+      default_root: "",
     },
   },
   Thunder: {
@@ -4263,7 +4403,11 @@ adminRouter.get("/driver/list", (c) => {
 
 adminRouter.get("/driver/info", (c) => {
   const driverName = c.req.query("driver") || ""
-  const info = driverConfigs[driverName] || driverConfigs["AliyundriveOpen"]
+  // 兼容 Go 导入名（如 GithubReleases）：精确未命中时按别名归一化再回退
+  const info =
+    driverConfigs[driverName] ||
+    driverConfigs[normalizeDriver(driverName)] ||
+    driverConfigs["AliyundriveOpen"]
   return c.json({
     code: 200,
     message: "success",
