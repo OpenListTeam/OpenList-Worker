@@ -71,11 +71,32 @@ async function webdavAuth(c: any): Promise<any> {
   return null
 }
 
-/** 从 URL pathname 中剥离 /dav 前缀，得到虚拟文件路径 */
+/** WebDAV 挂载前缀。必须与 index.ts 里 `app.route("/dav", webdavRouter)` 一致。 */
+const DAV_MOUNT = "/dav"
+
+/**
+ * 取请求路径（已百分号编码），作为 href 的基准。
+ *
+ * RFC 4918 §8.3：href 要么是相对引用（客户端按 Request-URI 解析），要么是完整
+ * URI；§8.3.1 的示例里两者都合法。用相对引用时 href 必须与 Request-URI 前缀
+ * 一致，因此基准取真实请求路径而非硬编码的挂载前缀 —— 挂在子路径下
+ * （/list/dav）时也自动正确，且不回显 Host 头。
+ */
+function davRequestPath(c: any): string {
+  return new URL(c.req.url).pathname
+}
+
+/** 从 URL pathname 中剥离挂载前缀，得到虚拟文件路径（仅用于存储层寻址） */
 function davPathOf(c: any): string {
-  const pathname = new URL(c.req.url).pathname
-  let p = pathname.replace(/^\/dav/, "")
+  const pathname = davRequestPath(c)
+  let p = pathname
+  // 只在前缀真正匹配时才剥离：不能像 slice(DAV_MOUNT.length) 那样无条件截断，
+  // 否则挂在子路径下会把 /list/dav/x 截成 /t/dav/x。
+  if (p === DAV_MOUNT || p.startsWith(DAV_MOUNT + "/")) {
+    p = p.slice(DAV_MOUNT.length)
+  }
   if (!p) p = "/"
+  if (!p.startsWith("/")) p = "/" + p
   try {
     return decodeURIComponent(p)
   } catch {
@@ -131,13 +152,10 @@ webdavRouter.all("/*", async (c) => {
           isFolder: !!it.is_dir,
           modified: it.modified || new Date().toISOString(),
         }))
-        const href =
-          davPath === "/"
-            ? "/"
-            : davPath.endsWith("/")
-              ? davPath
-              : davPath + "/"
-        const xml = buildWebDavPropfindResponse(href, items)
+        // davPathOf 已剥掉挂载前缀，那是给存储层寻址用的；href 必须反映真实请求
+        // 路径。少了挂载前缀，rclone / Windows 资源管理器会因「返回的 href 与请求
+        // 路径对不上」丢弃全部记录（能下载但列不出目录）。见 Issue #104。
+        const xml = buildWebDavPropfindResponse(davRequestPath(c), items)
         return c.body(xml, depth === "0" ? 207 : 207, {
           "Content-Type": "application/xml; charset=utf-8",
         })
@@ -186,9 +204,13 @@ webdavRouter.all("/*", async (c) => {
         const destRaw = c.req.header("Destination") || ""
         let dest = destRaw
         try {
-          dest = decodeURIComponent(
-            new URL(destRaw, c.req.url).pathname,
-          ).replace(/^\/dav/, "")
+          // 与 davPathOf 同样的前缀守卫：Destination 未挂载在 DAV_MOUNT 下时
+          // 原样保留，不做无意义的前缀改写
+          dest = decodeURIComponent(new URL(destRaw, c.req.url).pathname)
+          if (dest === DAV_MOUNT || dest.startsWith(DAV_MOUNT + "/")) {
+            dest = dest.slice(DAV_MOUNT.length) || "/"
+          }
+          if (!dest.startsWith("/")) dest = "/" + dest
         } catch {}
         const src = splitPath(davPath)
         const dst = splitPath(dest)
@@ -201,9 +223,13 @@ webdavRouter.all("/*", async (c) => {
         const destRaw = c.req.header("Destination") || ""
         let dest = destRaw
         try {
-          dest = decodeURIComponent(
-            new URL(destRaw, c.req.url).pathname,
-          ).replace(/^\/dav/, "")
+          // 与 davPathOf 同样的前缀守卫：Destination 未挂载在 DAV_MOUNT 下时
+          // 原样保留，不做无意义的前缀改写
+          dest = decodeURIComponent(new URL(destRaw, c.req.url).pathname)
+          if (dest === DAV_MOUNT || dest.startsWith(DAV_MOUNT + "/")) {
+            dest = dest.slice(DAV_MOUNT.length) || "/"
+          }
+          if (!dest.startsWith("/")) dest = "/" + dest
         } catch {}
         const src = splitPath(davPath)
         const dst = splitPath(dest)

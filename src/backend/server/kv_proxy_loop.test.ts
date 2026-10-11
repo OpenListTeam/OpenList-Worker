@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import app from "../index"
+import { kvDriver } from "../internal/model/store/driver/kv"
 
 /**
  * KV 代理端点的「自调用环」回归测试。
@@ -40,6 +41,55 @@ const kvEnv = (): any => ({
   DB_FORMAT: "map",
   JWT_SECRET: JWT,
   __requestOrigin: "https://example.workers.dev",
+})
+
+test("KV proxy health accepts a valid key listing", async () => {
+  const originalFetch = globalThis.fetch
+  ;(globalThis as any).fetch = async () =>
+    new Response(JSON.stringify({ keys: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })
+  try {
+    assert.equal(await kvDriver.isAvailable(kvEnv()), true)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("KV proxy health rejects an HTML 200 response", async () => {
+  const originalFetch = globalThis.fetch
+  ;(globalThis as any).fetch = async () =>
+    new Response("<!doctype html><html></html>", { status: 200 })
+  try {
+    assert.equal(await kvDriver.isAvailable(kvEnv()), false)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("KV proxy health rejects a malformed key listing", async () => {
+  const originalFetch = globalThis.fetch
+  ;(globalThis as any).fetch = async () =>
+    new Response(JSON.stringify({ keys: {} }), { status: 200 })
+  try {
+    assert.equal(await kvDriver.isAvailable(kvEnv()), false)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("KV proxy keeps 401 available for diagnostics but unhealthy", async () => {
+  const originalFetch = globalThis.fetch
+  ;(globalThis as any).fetch = async () =>
+    new Response("unauthorized", { status: 401 })
+  try {
+    assert.equal(await kvDriver.isAvailable(kvEnv()), true)
+    const health = await kvDriver.health(kvEnv())
+    assert.equal(health.available, false)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
 
 test("KV 代理端点：本部署不提供 → 410，且处理它绝不再发起探测", async () => {
