@@ -34,9 +34,9 @@ export class DriverCnbReleases implements StorageDriver {
         raw_url: "",
       }))
     }
-    // release 目录：assets
-    const releaseId = clean.split("/")[0]
-    const release = await this.client.getRelease(releaseId)
+    // release 目录：先按名称解析出 ID
+    const release = await this.client.findRelease(clean.split("/")[0])
+    if (!release) return []
     return release.assets.map((a) => ({
       name: a.name,
       size: a.size,
@@ -55,29 +55,33 @@ export class DriverCnbReleases implements StorageDriver {
 
     // release 目录
     if (parts.length === 1) {
-      try {
-        const release = await this.client.getRelease(parts[0])
+      const release = await this.client.findRelease(parts[0])
+      if (release) {
         return {
           name: this.client.releaseName(release),
           size: release.assets.reduce((s, a) => s + a.size, 0),
           is_dir: true,
-          modified: release.updated_at || release.created_at || new Date().toISOString(),
+          modified:
+            release.updated_at ||
+            release.created_at ||
+            new Date().toISOString(),
           sign: release.id,
           type: 1,
           raw_url: "",
         }
-      } catch {}
+      }
     }
     // asset 文件
     if (parts.length === 2) {
-      const release = await this.client.getRelease(parts[0])
-      const asset = release.assets.find((a) => a.name === parts[1])
-      if (asset) {
+      const release = await this.client.findRelease(parts[0])
+      const asset = release ? this.client.findAsset(release, parts[1]) : null
+      if (release && asset) {
         return {
           name: asset.name,
           size: asset.size,
           is_dir: false,
-          modified: asset.updated_at || asset.created_at || new Date().toISOString(),
+          modified:
+            asset.updated_at || asset.created_at || new Date().toISOString(),
           sign: asset.id,
           type: calcFileType(asset.name, false),
           raw_url: this.client.assetDownloadUrl(asset),
@@ -98,7 +102,10 @@ export class DriverCnbReleases implements StorageDriver {
   async mkdir(_virtualPath: string, physicalPath: string): Promise<void> {
     const parts = physicalPath.split("/").filter(Boolean)
     if (parts.length === 1) {
-      await this.client.createRelease(parts[0], this.addition.default_branch || "main")
+      await this.client.createRelease(
+        parts[0],
+        this.addition.default_branch || "main",
+      )
       return
     }
     throw new Error("[CNB Releases] only supports creating releases at root")
@@ -111,8 +118,11 @@ export class DriverCnbReleases implements StorageDriver {
   ): Promise<void> {
     const parts = physicalPath.split("/").filter(Boolean)
     if (parts.length === 1 && !this.addition.use_tag_name) {
-      await this.client.renameRelease(parts[0], newName)
-      return
+      const release = await this.client.findRelease(parts[0])
+      if (release) {
+        await this.client.renameRelease(release.id, newName)
+        return
+      }
     }
     throw new Error("[CNB Releases] only release name can be renamed")
   }
@@ -124,12 +134,19 @@ export class DriverCnbReleases implements StorageDriver {
   ): Promise<void> {
     const parts = physicalPath.split("/").filter(Boolean)
     if (parts.length === 1) {
-      await this.client.deleteRelease(parts[0])
-      return
+      const release = await this.client.findRelease(parts[0])
+      if (release) {
+        await this.client.deleteRelease(release.id)
+        return
+      }
     }
     if (parts.length === 2) {
-      await this.client.deleteAsset(parts[0], parts[1])
-      return
+      const release = await this.client.findRelease(parts[0])
+      const asset = release ? this.client.findAsset(release, parts[1]) : null
+      if (release && asset) {
+        await this.client.deleteAsset(release.id, asset.id)
+        return
+      }
     }
     throw new Error("[CNB Releases] invalid path")
   }
@@ -143,6 +160,8 @@ export class DriverCnbReleases implements StorageDriver {
   }
 
   async put(): Promise<void> {
-    throw new Error("[CNB Releases] asset upload not supported in stateless environment")
+    throw new Error(
+      "[CNB Releases] asset upload not supported in stateless environment",
+    )
   }
 }
