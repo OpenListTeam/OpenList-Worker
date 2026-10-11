@@ -113,6 +113,21 @@ function splitPath(p: string): { dir: string; name: string } {
   return { dir, name }
 }
 
+/**
+ * 推导本次请求实际使用的挂载前缀（正规挂载为 `/dav`）。
+ *
+ * 不能直接硬编码 `/dav`：index.ts 会把**任意路径上**的 WebDAV 方法都交给本 router
+ * （为兼容把用户填写的地址当 WebDAV 根、对 `/` 发 PROPFIND 的客户端），此时前缀为空。
+ * PROPFIND 返回的 href 必须与本请求的 URL 结构一致，客户端才能匹配上。
+ */
+function davPrefixOf(c: any, davPath: string): string {
+  const pathname = new URL(c.req.url).pathname
+  const stripped = davPath === "/" ? "" : davPath
+  return pathname.endsWith(stripped)
+    ? pathname.slice(0, pathname.length - stripped.length)
+    : ""
+}
+
 webdavRouter.all("/*", async (c) => {
   const user = await webdavAuth(c)
   if (!user) {

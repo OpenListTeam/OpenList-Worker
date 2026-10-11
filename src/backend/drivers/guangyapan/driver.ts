@@ -313,12 +313,20 @@ export class GuangYaPanDriver implements StorageDriver {
       return
     }
 
+    // 实时接口把 OSS 临时凭据嵌套在 data.creds 下，而不是平铺在 data 上。
+    // 早期实现按平铺读取，导致 accessKeyID/secretAccessKey 恒为 undefined，
+    // 上传一律抛 "upload token is incomplete"。这里优先取 creds，并保留平铺回退。
+    const creds = token?.creds || ({} as any)
+    const accessKeyID = creds.accessKeyID || token?.accessKeyID || ""
+    const secretAccessKey = creds.secretAccessKey || token?.secretAccessKey || ""
+    const sessionToken = creds.sessionToken || token?.sessionToken || ""
+
     if (
       !token.objectPath ||
       !token.bucketName ||
       !token.endPoint ||
-      !token.accessKeyID ||
-      !token.secretAccessKey
+      !accessKeyID ||
+      !secretAccessKey
     ) {
       throw new Error("upload token is incomplete")
     }
@@ -329,22 +337,22 @@ export class GuangYaPanDriver implements StorageDriver {
 
     const dateStr = new Date().toUTCString()
     const contentType = "application/octet-stream"
-    const ossHeaders = token.sessionToken
-      ? `x-oss-security-token:${token.sessionToken}\n`
+    const ossHeaders = sessionToken
+      ? `x-oss-security-token:${sessionToken}\n`
       : ""
     const canonicalizedResource = `/${token.bucketName}/${token.objectPath.replace(/^\/+/, "")}`
     const stringToSign =
       `PUT\n\n${contentType}\n${dateStr}\n${ossHeaders}${canonicalizedResource}`
-    const signature = await hmacSha1Base64(stringToSign, token.secretAccessKey)
-    const authorization = `OSS ${token.accessKeyID}:${signature}`
+    const signature = await hmacSha1Base64(stringToSign, secretAccessKey)
+    const authorization = `OSS ${accessKeyID}:${signature}`
 
     const headers: Record<string, string> = {
       "Content-Type": contentType,
       Date: dateStr,
       Authorization: authorization,
     }
-    if (token.sessionToken) {
-      headers["x-oss-security-token"] = token.sessionToken
+    if (sessionToken) {
+      headers["x-oss-security-token"] = sessionToken
     }
 
     const res = await fetch(uploadURL, {
