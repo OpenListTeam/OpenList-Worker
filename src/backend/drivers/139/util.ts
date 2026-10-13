@@ -334,7 +334,15 @@ export class Yun139ApiClient {
 
         const items = res.data?.items || []
         allItems.push(...items)
-        nextPageCursor = res.data?.nextPageCursor || ""
+        // 新版个人云的翻页游标嵌在 data.pageInfo 里（社区实现
+        // gaozhangmin/boxplayer 实测），旧形态 data.nextPageCursor 作兼容回退；
+        // 游标与上一轮相同时终止，防止服务端回显同一游标导致死循环。
+        const nextCursor =
+          res.data?.pageInfo?.nextPageCursor || res.data?.nextPageCursor || ""
+        if (nextCursor === nextPageCursor) {
+          break
+        }
+        nextPageCursor = nextCursor
       } while (nextPageCursor)
 
       const folders = allItems

@@ -122,6 +122,11 @@ export interface PersonalListResp {
   data?: {
     items?: PersonalFileItem[]
     nextPageCursor?: string
+    pageInfo?: {
+      pageCursor?: string
+      pageSize?: number
+      nextPageCursor?: string
+    }
   }
 }
 
