@@ -68,6 +68,15 @@ export class Yun139Driver implements StorageDriver {
       if (!foundFolder) {
         throw new Error(`Path not found: ${clean}`)
       }
+      // 目录项缺 id 时（部分 /file/list 响应以 catalogId/catalogID 携带，
+      // 已在 util 映射处并集回退），仍拿不到 id 就必须报错：继续往下传会让
+      // listFiles(undefined) 回退 parentFileId="/"，静默列出根目录内容
+      // （issue #112 的症状1，按名解析成功、任何“找不到目录”的报错都不会触发）。
+      if (!foundFolder.catalogID) {
+        throw new Error(
+          `[139] folder "${part}" has no catalog id in listing: ${clean}`,
+        )
+      }
       currentCatalogId = foundFolder.catalogID
     }
 
