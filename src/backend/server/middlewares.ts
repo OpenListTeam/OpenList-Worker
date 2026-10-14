@@ -2,6 +2,7 @@ import { Context } from "hono"
 import { verify } from "hono/jwt"
 import { checkAdminAuth, isStaticApiToken } from "../pkg/utils"
 import { getDb, readPersistedSecret, ENCRYPTION_SECRET_KV_KEY } from "../internal/model/db"
+import { isPasswordStampValid } from "../pkg/password"
 
 // 不再硬编码 JWT 密钥。优先使用环境变量 JWT_SECRET（推荐在生产配置），
 // 否则从持久化后端读取一个随机密钥（首次生成后复用，重启不失效），
@@ -530,6 +531,8 @@ export async function getUserFromContext(c: Context): Promise<{
       (u: any) => u.id === payload.id || u.username === payload.username,
     )
     if (!user || user.disabled) return null
+    // 密码指纹：改密后旧令牌立即失效（对齐 Go middlewares.Auth 的 PwdTS 比对）
+    if (!isPasswordStampValid(payload, user)) return null
     return {
       id: user.id,
       role: user.role,

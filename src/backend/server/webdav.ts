@@ -1,11 +1,32 @@
 import { Hono } from "hono"
-import { authUserFromReq, getOrInitUsers, verifyUserPassword } from "./auth"
+import {
+  authUserFromReq,
+  clearLoginFailures,
+  getOrInitUsers,
+  isLoginLocked,
+  recordLoginFailure,
+  verifyUserPassword,
+} from "./auth"
 import {
   can,
+  canCopy,
+  canMove,
+  canRename,
+  canWrite,
   getActualPath,
+  isAdmin,
+  isGuest,
   isWithinUserRoot,
   PermissionBit,
 } from "../pkg/permission"
+import {
+  canAccess,
+  canRead as canReadMeta,
+  canWrite as canWriteMeta,
+  canWriteContentBypassUserPerms,
+  getNearestMeta,
+} from "../pkg/meta"
+import type { Meta } from "../pkg/meta"
 import {
   listItems,
   getItem,
@@ -44,8 +65,18 @@ const getStorageRequestContext = (c: any) => {
   }
 }
 
-/** Basic Auth 或 Bearer token 认证，返回用户对象（未认证返回 null） */
-async function webdavAuth(c: any): Promise<any> {
+/**
+ * Basic Auth 或 Bearer token 认证。
+ *
+ * 返回 `{ user, metaPassword }`；未认证返回 null。
+ *
+ * `metaPassword` 对齐 Go WebDAVAuth：只有 guest 账号才会把 Basic 密码继续
+ * 当作 meta 访问密码（Go: `if user.IsGuest() { MetaPassKey = password }`），
+ * 普通用户一律为空 —— 目录级密码不能靠账号密码顺带绕过。
+ */
+async function webdavAuth(
+  c: any,
+): Promise<{ user: any; metaPassword: string } | null> {
   const authHeader = c.req.header("Authorization") || ""
   if (authHeader.startsWith("Basic ")) {
     try {
@@ -61,9 +92,12 @@ async function webdavAuth(c: any): Promise<any> {
       if (!user) return null
       // 空密码用户（guest）：Basic Auth 下若未提供密码则允许（与 AList 一致）
       if (!user.password) {
-        return password === "" ? user : null
+        if (password !== "") return null
+        return { user, metaPassword: isGuest(user) ? password : "" }
       }
-      if (await verifyUserPassword(user, password)) return user
+      if (await verifyUserPassword(user, password)) {
+        return { user, metaPassword: isGuest(user) ? password : "" }
+      }
       return null
     } catch {
       return null
@@ -71,7 +105,7 @@ async function webdavAuth(c: any): Promise<any> {
   }
   if (authHeader.startsWith("Bearer ")) {
     const auth = await authUserFromReq(c)
-    return auth ? auth.user : null
+    return auth ? { user: auth.user, metaPassword: "" } : null
   }
   return null
 }
@@ -133,20 +167,110 @@ function destinationPath(c: any, user: any): string | null {
   return scopedDavPath(user, dest.startsWith("/") ? dest : `/${dest}`)
 }
 
+/**
+ * 读操作的 meta 判定（对齐 Go webdav.go 各 handler 的 CanAccess 调用）：
+ * 密码保护 + read_users 白名单。返回 true 表示拒绝。
+ *
+ * 安全不变量：WebDAV 与 /api/fs/* 必须共享同一套目录级访问控制，否则
+ * 「站内被密码保护」的目录可以经 /dav 直接读走（跨协议权限旁路）。
+ */
+async function deniedByMetaRead(
+  c: any,
+  user: any,
+  path: string,
+  metaPassword: string,
+): Promise<boolean> {
+  let meta: Meta | null = null
+  try {
+    meta = await getNearestMeta(path, c.env)
+  } catch {
+    meta = null
+  }
+  if (!meta) return false
+  return !canAccess(user, meta, path, metaPassword || "")
+}
+
+/**
+ * 写操作的 meta 判定（对齐 Go webdav.go / file.go 的 CanWrite 调用）：
+ *  - meta.write_users 白名单；
+ *  - requireContentPerm 时还要求 WRITE_CONTENT 权限位，除非目标目录通过
+ *    meta.write 强制开放（CanWriteContentBypassUserPerms）。
+ * 返回 true 表示拒绝。
+ */
+async function deniedByMetaWrite(
+  c: any,
+  user: any,
+  path: string,
+  requireContentPerm: boolean,
+): Promise<boolean> {
+  let meta: Meta | null = null
+  try {
+    meta = await getNearestMeta(path, c.env)
+  } catch {
+    meta = null
+  }
+  if (!meta) return false
+  if (isAdmin(user)) return false
+  if (
+    requireContentPerm &&
+    !canWrite(user) &&
+    !canWriteContentBypassUserPerms(meta, path)
+  ) {
+    return true
+  }
+  return !canWriteMeta(user, meta, path)
+}
+
 webdavRouter.all("/*", async (c) => {
-  const user = await webdavAuth(c)
-  if (!user) {
+  const method = c.req.method.toUpperCase()
+
+  // OPTIONS 匿名放行（对齐 Go WebDAVAuth）：客户端需要先探测 DAV 能力，
+  // 此时通常还没有可用凭据。
+  if (method === "OPTIONS") {
+    c.header("DAV", "1, 2")
+    c.header(
+      "Allow",
+      "OPTIONS, PROPFIND, GET, HEAD, PUT, MKCOL, DELETE, MOVE, COPY",
+    )
+    c.header("MS-Author-Via", "DAV")
+    return c.body(null, 200)
+  }
+
+  // 防爆破：与 /api/auth/login 共用同一套失败计数与锁定机制。
+  // 对齐 Go：model.LoginCache 在 WebDAV 与登录接口之间共用（失败累加、
+  // 达到阈值锁定）。历史缺陷：/dav 的 Basic Auth 可以无限次尝试密码。
+  const authHeader = c.req.header("Authorization") || ""
+  let basicUsername = ""
+  if (authHeader.startsWith("Basic ")) {
+    try {
+      basicUsername = atob(authHeader.substring(6).trim()).split(":")[0] || ""
+    } catch {
+      basicUsername = ""
+    }
+    if (await isLoginLocked(c, basicUsername, c.env)) {
+      return c.text("Too Many Requests", 429)
+    }
+  }
+
+  const auth = await webdavAuth(c)
+  if (!auth) {
+    if (authHeader.startsWith("Basic ")) {
+      await recordLoginFailure(c, basicUsername, c.env)
+    }
     return c.text("Unauthorized", 401, {
       "WWW-Authenticate": 'Basic realm="OpenList"',
     })
   }
+  if (authHeader.startsWith("Basic ")) {
+    await clearLoginFailures(c, basicUsername, c.env)
+  }
+  const { user, metaPassword } = auth
   const canRead = can(user, PermissionBit.WEBDAV_READ)
   const canManage = can(user, PermissionBit.WEBDAV_MANAGE)
   if (!canRead && !canManage) {
     return c.text("Forbidden", 403)
   }
 
-  const method = c.req.method.toUpperCase()
   // davPath 是**客户端可见**路径（用于 href，不能把实际存储路径回显给客户端）；
   // actualPath 才是交给存储层的路径（已套用该用户的根目录）。
   const davPath = davPathOf(c)
@@ -156,18 +280,12 @@ webdavRouter.all("/*", async (c) => {
 
   try {
     switch (method) {
-      case "OPTIONS": {
-        c.header("DAV", "1, 2")
-        c.header(
-          "Allow",
-          "OPTIONS, PROPFIND, GET, HEAD, PUT, MKCOL, DELETE, MOVE, COPY",
-        )
-        c.header("MS-Author-Via", "DAV")
-        return c.body(null, 200)
-      }
-
       case "PROPFIND": {
         if (!canRead) return c.text("Forbidden", 403)
+        // 目录级访问控制（与 /api/fs/list 同一套判定）
+        if (await deniedByMetaRead(c, user, actualPath, metaPassword)) {
+          return c.text("Forbidden", 403)
+        }
         const depth = c.req.header("Depth") || "1"
         const res = await listItems(actualPath, ctx)
         const items = (res.content || []).map((it: any) => ({
@@ -191,6 +309,10 @@ webdavRouter.all("/*", async (c) => {
       case "GET":
       case "HEAD": {
         if (!canRead) return c.text("Forbidden", 403)
+        // 目录级访问控制（与 /api/fs/get 同一套判定）
+        if (await deniedByMetaRead(c, user, actualPath, metaPassword)) {
+          return c.text("Forbidden", 403)
+        }
         const { item, rawUrl } = await getItem(actualPath, ctx)
         if (!item) return c.text("Not found", 404)
         if (item.is_dir) return c.text("Is a directory", 400)
@@ -208,6 +330,11 @@ webdavRouter.all("/*", async (c) => {
 
       case "PUT": {
         if (!canManage) return c.text("Forbidden", 403)
+        // 对齐 Go webdav.go handlePut：目标所在目录需通过「写内容权限位或
+        // meta.write 强制开放」+ meta.write_users 白名单
+        if (await deniedByMetaWrite(c, user, splitPath(actualPath).dir, true)) {
+          return c.text("Forbidden", 403)
+        }
         const buffer = Buffer.from(await c.req.arrayBuffer())
         await putItem(actualPath, buffer, ctx)
         return c.body(null, 201)
@@ -215,12 +342,20 @@ webdavRouter.all("/*", async (c) => {
 
       case "MKCOL": {
         if (!canManage) return c.text("Forbidden", 403)
+        // 对齐 Go webdav.go handleMkcol（与 PUT 同一套校验）
+        if (await deniedByMetaWrite(c, user, splitPath(actualPath).dir, true)) {
+          return c.text("Forbidden", 403)
+        }
         await makeDirectory(actualPath, ctx)
         return c.body(null, 201)
       }
 
       case "DELETE": {
         if (!canManage) return c.text("Forbidden", 403)
+        // 对齐 Go webdav.go handleDelete：目标自身的 meta.write_users 白名单
+        if (await deniedByMetaWrite(c, user, actualPath, false)) {
+          return c.text("Forbidden", 403)
+        }
         const { dir, name } = splitPath(actualPath)
         await removeItems(dir, [name], ctx)
         return c.body(null, 204)
@@ -235,6 +370,20 @@ webdavRouter.all("/*", async (c) => {
         }
         const src = splitPath(actualPath)
         const dst = splitPath(dest)
+        // 对齐 Go webdav/file.go moveFiles：跨目录需要 MOVE 权限位、
+        // 改名需要 RENAME 权限位；源/目标目录均需通过 meta 写判定
+        if (src.dir !== dst.dir && !canMove(user)) {
+          return c.text("Forbidden", 403)
+        }
+        if (src.name !== dst.name && !canRename(user)) {
+          return c.text("Forbidden", 403)
+        }
+        if (
+          (await deniedByMetaWrite(c, user, src.dir, false)) ||
+          (await deniedByMetaWrite(c, user, dst.dir, false))
+        ) {
+          return c.text("Forbidden", 403)
+        }
         await moveItems(src.dir, dst.dir, [src.name], ctx)
         return c.body(null, 201)
       }
@@ -247,6 +396,21 @@ webdavRouter.all("/*", async (c) => {
         }
         const src = splitPath(actualPath)
         const dst = splitPath(dest)
+        // 对齐 Go webdav/file.go copyFiles：COPY 权限位 + 源目录可读
+        // （read_users 白名单）+ 目标目录 meta 写判定
+        if (!canCopy(user)) return c.text("Forbidden", 403)
+        let srcMeta: Meta | null = null
+        try {
+          srcMeta = await getNearestMeta(src.dir, c.env)
+        } catch {
+          srcMeta = null
+        }
+        if (!canReadMeta(user, srcMeta, src.dir)) {
+          return c.text("Forbidden", 403)
+        }
+        if (await deniedByMetaWrite(c, user, dst.dir, false)) {
+          return c.text("Forbidden", 403)
+        }
         await copyItems(src.dir, dst.dir, [src.name], ctx)
         return c.body(null, 201)
       }

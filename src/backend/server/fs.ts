@@ -262,8 +262,12 @@ fsRouter.post("/dirs", async (c) => {
     return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
   }
   const requestContext = getStorageRequestContext(c)
+  // 对齐 Go handles.FsDirs：force_root（以全局根为起点）只对管理员开放
+  if (body.force_root && !isAdmin(user)) {
+    return c.json({ code: 403, message: "Permission denied", data: null }, 403)
+  }
   let reqPath = rawPath
-  if (!body.force_root || !isAdmin(user)) {
+  if (!body.force_root) {
     reqPath = getActualPath(user, reqPath)
   }
   try {
@@ -301,6 +305,20 @@ fsRouter.post("/dirs", async (c) => {
       return c.json({ code: 200, message: "success", data: dirs })
     }
 
+    // 对齐 Go handles.FsDirs：目录树接口必须与 /fs/list 受同一套 meta 判定
+    // （密码保护 + read_users 白名单）。历史缺陷：只列目录不做任何校验，
+    // 任何登录用户都能直接枚举出受保护目录的结构。
+    const dirMeta = await getNearestMeta(reqPath, c.env)
+    if (!canAccess(user, dirMeta, reqPath, body.password || "")) {
+      return c.json(
+        {
+          code: 403,
+          message: "password is incorrect or you have no permission",
+          data: null,
+        },
+        403,
+      )
+    }
     const { content } = await listItems(reqPath, requestContext)
     const dirs = content
       .filter((item: any) => item.is_dir)
@@ -1010,7 +1028,7 @@ fsRouter.put("/form", async (c) => {
     }
     const buffer = Buffer.from(await (file as File).arrayBuffer())
     // multipart 的 Content-Length 只覆盖整个表单，仍需按文件实际字节复核
-    const max = getUploadSizeLimit(c)
+    const max = getUploadSizeLimit(c, false)
     if (buffer.length > max) return tooLargeResponse(c, max)
     await putItem(reqPath, buffer, requestContext)
     return c.json({ code: 200, message: "success", data: null })
@@ -1019,150 +1037,8 @@ fsRouter.put("/form", async (c) => {
   }
 })
 
-// ---- 分片会话上传：解决大文件整体缓冲导致的卡死/OOM ----
-// 流程：POST /fs/upload/create 建会话 → PUT /fs/upload/part 逐片上传
-//      → POST /fs/upload/complete 收尾。每片是独立 HTTP 请求，Worker
-//      内存占用恒定，不受 CF Workers 请求体/内存上限约束。
-
-fsRouter.post("/upload/create", async (c) => {
-  const user = await getUserFromContext(c)
-  if (!canWrite(user)) return permissionDenied(c)
-  const {
-    path: rawPath,
-    file_name,
-    size,
-    md5,
-  } = await c.req.json().catch(() => ({}))
-  // 根目录上传时调用方可能传 ""，归一化为 "/"
-  const dirPath = getActualPath(user, rawPath || "/")
-  const requestContext = getStorageRequestContext(c)
-  if (!file_name) {
-    return c.json({
-      code: 400,
-      message: "path and file_name are required",
-      data: null,
-    })
-  }
-  try {
-    const resolved = await resolvePath(dirPath)
-    if (resolved.isVirtual) {
-      throw new Error("failed get storage: storage not found")
-    }
-    const driver = await getDriver(resolved.storage!.driver, resolved.storage)
-    if (typeof (driver as any).createUploadSession !== "function") {
-      // 当前存储不支持分片会话上传：返回 null，前端自动回退到流式上传
-      return c.json({ code: 200, message: "success", data: null })
-    }
-    let info
-    try {
-      info = await (driver as any).createUploadSession(
-        dirPath,
-        resolved.physical!,
-        file_name,
-        Number(size) || 0,
-        md5 || "",
-      )
-    } finally {
-      await flushPendingDriverState(
-        resolved.storage!.driver,
-        resolved.storage,
-        driver,
-        requestContext,
-      )
-    }
-    return c.json({ code: 200, message: "success", data: info })
-  } catch (e: any) {
-    return c.json({ code: 500, message: safeErrorMessage(e), data: null })
-  }
-})
-
-fsRouter.put("/upload/part", async (c) => {
-  const user = await getUserFromContext(c)
-  if (!canWrite(user)) return permissionDenied(c)
-  const session = c.req.header("X-Upload-Session") || ""
-  const partNumber = parseInt(c.req.header("X-Part-Number") || "0", 10)
-  const rawDirPath = decodeURIComponent(c.req.header("Upload-Path") || "")
-  const dirPath = getActualPath(user, rawDirPath)
-  if (await deniedByMetaWriteAcl(c, user, [dirPath])) return permissionDenied(c)
-  const requestContext = getStorageRequestContext(c)
-  if (!session || !(partNumber >= 1) || !dirPath) {
-    return c.json({
-      code: 400,
-      message: "missing X-Upload-Session / X-Part-Number / Upload-Path",
-      data: null,
-    })
-  }
-  try {
-    const resolved = await resolvePath(dirPath)
-    if (resolved.isVirtual) {
-      throw new Error("failed get storage: storage not found")
-    }
-    const driver = await getDriver(resolved.storage!.driver, resolved.storage)
-    if (typeof (driver as any).uploadPart !== "function") {
-      throw new Error("storage does not support chunked upload")
-    }
-    const body = await readBodyWithinLimit(c, true)
-    if (!body.ok) return tooLargeResponse(c, body.limit, "Part")
-    const buffer = body.buffer
-    let result
-    try {
-      result = await (driver as any).uploadPart(session, partNumber, buffer)
-    } finally {
-      await flushPendingDriverState(
-        resolved.storage!.driver,
-        resolved.storage,
-        driver,
-        requestContext,
-      )
-    }
-    return c.json({ code: 200, message: "success", data: result ?? null })
-  } catch (e: any) {
-    return c.json({ code: 500, message: safeErrorMessage(e), data: null })
-  }
-})
-
-fsRouter.post("/upload/complete", async (c) => {
-  const user = await getUserFromContext(c)
-  if (!canWrite(user)) return permissionDenied(c)
-  const {
-    path: rawPath,
-    session,
-    partMd5s,
-  } = await c.req.json().catch(() => ({}))
-  // 根目录上传时调用方可能传 ""，归一化为 "/"
-  const dirPath = getActualPath(user, rawPath || "/")
-  const requestContext = getStorageRequestContext(c)
-  if (!session) {
-    return c.json({
-      code: 400,
-      message: "path and session are required",
-      data: null,
-    })
-  }
-  try {
-    const resolved = await resolvePath(dirPath)
-    if (resolved.isVirtual) {
-      throw new Error("failed get storage: storage not found")
-    }
-    const driver = await getDriver(resolved.storage!.driver, resolved.storage)
-    if (typeof (driver as any).completeUploadSession !== "function") {
-      throw new Error("storage does not support chunked upload")
-    }
-    try {
-      await (driver as any).completeUploadSession(session, partMd5s)
-    } finally {
-      await flushPendingDriverState(
-        resolved.storage!.driver,
-        resolved.storage,
-        driver,
-        requestContext,
-      )
-    }
-    return c.json({ code: 200, message: "success", data: null })
-  } catch (e: any) {
-    return c.json({ code: 500, message: safeErrorMessage(e), data: null })
-  }
-})
+// 说明：TS 专有的 /fs/upload/{create,part,complete} 会话式上传端点已移除，
+// 分片上传对齐 Go 只保留官方的 /fs/multipart/* 系列。
 
 fsRouter.post("/add_offline_download", async (c) => {
   const user = await getUserFromContext(c)
@@ -1201,6 +1077,10 @@ fsRouter.post("/search", async (c) => {
         scope: body.scope !== undefined ? parseInt(body.scope, 10) : 0,
         page: body.page ? parseInt(body.page, 10) : 1,
         per_page: body.per_page ? parseInt(body.per_page, 10) : 30,
+        // 与 /fs/list 同一套 meta 判定（密码 + read_users），
+        // 对齐 Go handles.Search 里 SearchFiltered 的 filter 闭包
+        user,
+        password: body.password || "",
       },
       c.env,
     )
@@ -1476,9 +1356,54 @@ fsRouter.post("/get_direct_upload_info", async (c) => {
   const user = await getUserFromContext(c)
   if (!canWrite(user)) return permissionDenied(c)
   const { path, file_name, file_size } = await c.req.json().catch(() => ({}))
-  const reqPath = getActualPath(user, path || "/")
+  // 对齐 Go FsGetDirectUploadInfo 的四重校验：
+  //  1) file_name 必须是单层相对文件名（拒绝 / \ .. 与空值），否则可能签发
+  //     指向目标目录之外的直传凭证；
+  //  2) 目标目录需通过用户权限位，或 meta.write 强制开放（write_content_bypass）；
+  //  3) 目标目录需通过 meta.write_users 白名单；
+  //  4) 目标不得跨越存储挂载边界（单段文件名也可能命中嵌套挂载点）。
+  let cleanName: string
   try {
-    const resolved = await resolvePath(reqPath)
+    cleanName = validateFileName(file_name)
+  } catch (e: any) {
+    return c.json({ code: 403, message: safeErrorMessage(e), data: null }, 403)
+  }
+  const dirPath = getActualPath(user, path || "/")
+  const dstPath = dirPath === "/" ? `/${cleanName}` : `${dirPath}/${cleanName}`
+  const parentMeta = await getNearestMeta(dirPath, c.env)
+  if (!canWrite(user) && !canWriteContentBypassUserPerms(parentMeta, dirPath)) {
+    return permissionDenied(c)
+  }
+  if (await deniedByMetaWriteAcl(c, user, [dirPath])) return permissionDenied(c)
+  // 挂载边界：目标文件与所在目录必须落在同一个存储挂载点内
+  const normMount = (s: any) =>
+    "/" + String(s?.mount_path || "").split("/").filter(Boolean).join("/")
+  try {
+    const [parentResolved, targetResolved] = await Promise.all([
+      resolvePath(dirPath),
+      resolvePath(dstPath),
+    ])
+    if (
+      normMount(parentResolved.storage) !== normMount(targetResolved.storage)
+    ) {
+      return permissionDenied(c)
+    }
+  } catch {
+    return permissionDenied(c)
+  }
+  // Overwrite:false 时目标已存在则拒绝签发（对齐 Go）
+  if (c.req.header("Overwrite") === "false") {
+    try {
+      const { item } = await getItem(dstPath, getStorageRequestContext(c))
+      if (item) {
+        return c.json({ code: 403, message: "file exists", data: null }, 403)
+      }
+    } catch {
+      // 目标不存在 / 无法读取：继续签发流程
+    }
+  }
+  try {
+    const resolved = await resolvePath(dirPath)
     if (resolved.isVirtual || !resolved.storage) {
       return c.json({ code: 200, message: "success", data: null })
     }
@@ -1488,7 +1413,7 @@ fsRouter.post("/get_direct_upload_info", async (c) => {
     if (typeof d.getDirectUploadInfo === "function") {
       const info = await d.getDirectUploadInfo(
         resolved.relative,
-        file_name,
+        cleanName,
         file_size,
       )
       return c.json({ code: 200, message: "success", data: info })
@@ -1498,7 +1423,7 @@ fsRouter.post("/get_direct_upload_info", async (c) => {
       for (const m of ["direct_upload", "get_direct_upload_info"]) {
         try {
           const info = await d.other(m, resolved.relative, {
-            file_name,
+            file_name: cleanName,
             file_size,
           })
           if (info) return c.json({ code: 200, message: "success", data: info })
@@ -1538,7 +1463,7 @@ function sessionOwnedBy(session: any, user: any): boolean {
 
 fsRouter.post("/multipart/init", async (c) => {
   const user = await getUserFromContext(c)
-  if (!canWrite(user)) return permissionDenied(c)
+  if (!user || !canWrite(user)) return permissionDenied(c)
 
   const rawPath = decodeURIComponent(c.req.header("File-Path") || "")
   const size = parseInt(c.req.header("X-File-Size") || "0", 10)

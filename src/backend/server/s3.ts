@@ -7,7 +7,20 @@ import {
   removeItems,
 } from "../internal/op/storage"
 import { safeErrorMessage } from "../pkg/errs"
-import { canRemove, canWrite, getActualPath, isWithinUserRoot } from "../pkg/permission"
+import {
+  canRemove,
+  canWrite,
+  getActualPath,
+  isAdmin,
+  isWithinUserRoot,
+} from "../pkg/permission"
+import {
+  canAccess,
+  canWrite as canWriteMeta,
+  canWriteContentBypassUserPerms,
+  getNearestMeta,
+} from "../pkg/meta"
+import type { Meta } from "../pkg/meta"
 
 /**
  * S3 网关（简化版，挂载于 /s3/*）。
@@ -99,6 +112,55 @@ async function authUser(c: any): Promise<any | null> {
   return auth ? auth.user : null
 }
 
+/**
+ * 目录级（meta）访问控制——与 /api/fs/* 共用同一套判定。
+ *
+ * 安全不变量：S3 网关不得成为「绕过目录密码 / read_users / write_users」的
+ * 第二条通道，否则站内被保护的路径可以经 /s3 直接读写。
+ *
+ * S3 协议没有传递目录密码的标准位置，这里接受 `?pwd=` 查询参数或
+ * `x-meta-password` 请求头作为 meta 密码来源。
+ */
+const metaPasswordOf = (c: any): string =>
+  c.req.query("pwd") || c.req.header("x-meta-password") || ""
+
+async function loadMeta(c: any, path: string): Promise<Meta | null> {
+  try {
+    return await getNearestMeta(path, c.env)
+  } catch {
+    return null
+  }
+}
+
+/** 读路径的 meta 判定：密码保护 + read_users 白名单。返回 true 表示拒绝。 */
+async function metaReadDenied(
+  c: any,
+  user: any,
+  path: string,
+): Promise<boolean> {
+  const meta = await loadMeta(c, path)
+  if (!meta) return false
+  return !canAccess(user, meta, path, metaPasswordOf(c))
+}
+
+/**
+ * 写路径的 meta 判定：WRITE_CONTENT 权限位（或 meta.write 强制开放）
+ * + meta.write_users 白名单。返回 true 表示拒绝。
+ */
+async function metaWriteDenied(
+  c: any,
+  user: any,
+  path: string,
+): Promise<boolean> {
+  const meta = await loadMeta(c, path)
+  if (!meta) return false
+  if (isAdmin(user)) return false
+  if (!canWrite(user) && !canWriteContentBypassUserPerms(meta, path)) {
+    return true
+  }
+  return !canWriteMeta(user, meta, path)
+}
+
 const getCtx = (c: any) => {
   try {
     const ec = c.executionCtx
@@ -150,6 +212,9 @@ s3Router.get("/*", async (c) => {
   }
   const virtualPath = s3VirtualPath(user, bucket, key)
   if (!isWithinUserRoot(user, virtualPath)) return outOfScope(c)
+  if (await metaReadDenied(c, user, virtualPath)) {
+    return s3Error("AccessDenied", "Password required for this path", 403)
+  }
   try {
     const { item, rawUrl } = await getItem(virtualPath, getCtx(c))
     if (!item) return s3Error("NoSuchKey", "NoSuchKey", 404)
@@ -173,6 +238,9 @@ s3Router.on("HEAD", "/*", async (c) => {
   }
   const virtualPath = s3VirtualPath(user, bucket, key)
   if (!isWithinUserRoot(user, virtualPath)) return outOfScope(c)
+  if (await metaReadDenied(c, user, virtualPath)) {
+    return s3Error("AccessDenied", "Password required for this path", 403)
+  }
   try {
     const { item } = await getItem(virtualPath, getCtx(c))
     if (!item || item.is_dir) return s3Error("NoSuchKey", "NoSuchKey", 404)
@@ -202,6 +270,14 @@ s3Router.put("/*", async (c) => {
   }
   const virtualPath = s3VirtualPath(user, bucket, key)
   if (!isWithinUserRoot(user, virtualPath)) return outOfScope(c)
+  // 目录级写判定（对齐 /api/fs/put 的 meta.write_users 与 write_content_bypass）
+  const parentDir =
+    virtualPath.lastIndexOf("/") > 0
+      ? virtualPath.slice(0, virtualPath.lastIndexOf("/"))
+      : "/"
+  if (await metaWriteDenied(c, user, parentDir)) {
+    return s3Error("AccessDenied", "Write permission denied for this path", 403)
+  }
   try {
     const buffer = Buffer.from(await c.req.arrayBuffer())
     await putItem(virtualPath, buffer, getCtx(c))
@@ -228,6 +304,10 @@ s3Router.delete("/*", async (c) => {
   }
   const virtualPath = s3VirtualPath(user, bucket, key)
   if (!isWithinUserRoot(user, virtualPath)) return outOfScope(c)
+  // 目录级写判定（对齐 /api/fs/remove 的 meta.write_users）
+  if (await metaWriteDenied(c, user, virtualPath)) {
+    return s3Error("AccessDenied", "Write permission denied for this path", 403)
+  }
   // 以目标对象自身的虚拟路径为基准拆出父目录与文件名，避免 bucket 边界下的错位
   const slash = virtualPath.lastIndexOf("/")
   const dir = slash > 0 ? virtualPath.slice(0, slash) : "/"

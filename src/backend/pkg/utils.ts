@@ -64,6 +64,9 @@ export async function checkAdminAuth(c: Context): Promise<boolean> {
       (u: any) => u.id === payload.id || u.username === payload.username,
     )
     if (!user || user.disabled) return false
+    // 密码指纹：改密后旧令牌立即失效（对齐 Go middlewares.Auth 的 PwdTS 比对）
+    const { isPasswordStampValid } = await import("./password")
+    if (!isPasswordStampValid(payload, user)) return false
     return user.role === 2
   } catch {}
   return false

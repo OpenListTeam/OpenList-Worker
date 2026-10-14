@@ -1,6 +1,6 @@
 import { Hono } from "hono"
 import { getDb, saveDb } from "../internal/model/db"
-import { generateRandomPassword, verifyUserPassword } from "./auth"
+import { verifyUserPassword } from "./auth"
 import { setUserPassword } from "../pkg/password"
 import { verify } from "hono/jwt"
 import { getJwtSecret } from "./middlewares"
@@ -89,26 +89,33 @@ userRouter.post("/create", async (c) => {
     )
   }
 
+  // 对齐 Go handles.CreateUser：admin / guest 不能通过 create 接口创建。
+  // 管理员账号由安装向导（或 ADMIN_PASS）创建、guest 全局唯一，两者都不应
+  // 经由此接口产生 —— 否则后台可被批量制造出多个管理员。
+  const role = body.role !== undefined ? parseInt(body.role, 10) : 0
+  if (role === 1 || role === 2) {
+    return c.json(
+      {
+        code: 400,
+        message: "admin or guest user can not be created",
+        data: null,
+      },
+      400,
+    )
+  }
+
   const maxId = db.users.reduce(
     (max: number, u: any) => Math.max(max, u.id || 0),
     0,
   )
   const newId = maxId + 1
 
-  // FIX(F-11): "123456" as a silent fallback meant every user created without
-  // an explicit password shipped with a guessable one. When no password is
-  // given, generate a random one and hand it back to the admin caller once —
-  // it is never stored or logged in plaintext.
-  let plainPassword: string = body.password || ""
-  let generatedPassword: string | null = null
-  if (!plainPassword) {
-    generatedPassword = generateRandomPassword()
-    plainPassword = generatedPassword
-  }
+  // 密码直接采用调用方传入值（对齐 Go：不传入即为空密码；不再自动生成随机
+  // 密码并回显）。
   const newUser: any = {
     id: newId,
     username: body.username,
-    role: body.role !== undefined ? parseInt(body.role, 10) : 0,
+    role,
     permission:
       body.permission !== undefined ? parseInt(body.permission, 10) : 0,
     base_path: body.base_path || "/",
@@ -118,17 +125,11 @@ userRouter.post("/create", async (c) => {
     pwd_update_at: new Date().toISOString(),
   }
 
-  await setUserPassword(newUser, plainPassword)
+  await setUserPassword(newUser, body.password || "")
   db.users.push(newUser)
   await saveDb(db, c.env)
 
-  return c.json({
-    code: 200,
-    message: generatedPassword
-      ? "success (a random password was generated — pass one explicitly to choose your own)"
-      : "success",
-    data: generatedPassword ? { password: generatedPassword } : null,
-  })
+  return c.json({ code: 200, message: "success", data: null })
 })
 
 // POST /api/admin/user/update
@@ -165,11 +166,26 @@ userRouter.post("/update", async (c) => {
     user.username = body.username
   }
 
+  // 对齐 Go handles.UpdateUser：
+  //  1) role 不可通过 update 修改（防止把普通用户提升为管理员 / 使既有管理员降级）；
+  //  2) 管理员账号不可被禁用（避免唯一管理员把自己锁在后台之外）。
+  if (body.role !== undefined && parseInt(body.role, 10) !== user.role) {
+    return c.json(
+      { code: 400, message: "role can not be changed", data: null },
+      400,
+    )
+  }
+  if (body.disabled !== undefined && !!body.disabled && user.role === 2) {
+    return c.json(
+      { code: 400, message: "admin user can not be disabled", data: null },
+      400,
+    )
+  }
+
   if (body.password && body.password.trim() !== "") {
     await setUserPassword(user, body.password.trim())
   }
 
-  if (body.role !== undefined) user.role = parseInt(body.role, 10)
   if (body.permission !== undefined)
     user.permission = parseInt(body.permission, 10)
   if (body.base_path !== undefined) user.base_path = body.base_path
@@ -193,15 +209,23 @@ const deleteUserHandler = async (c: any) => {
     )
   }
   const id = parseInt(idQuery, 10)
-  if (id === 1) {
-    return c.json(
-      { code: 400, message: "Cannot delete primary admin user", data: null },
-      400,
-    )
-  }
 
   const db = await getDb(c.env)
   if (!db.users) db.users = []
+
+  // 对齐 Go op.DeleteUserById：按**角色**保护 admin/guest，而不是硬编码 id。
+  // 历史缺陷：只拦 id===1 —— guest（通常 id=2）可被删除，导致匿名访问失去
+  // 后备身份；若存在 id≠1 的管理员（迁移/多管理员场景）也完全不受保护。
+  const target = db.users.find((u: any) => u.id === id)
+  if (!target) {
+    return c.json({ code: 404, message: "User not found", data: null }, 404)
+  }
+  if (target.role === 2 || target.role === 1) {
+    return c.json(
+      { code: 400, message: "cannot delete admin or guest", data: null },
+      400,
+    )
+  }
 
   db.users = db.users.filter((u: any) => u.id !== id)
   await saveDb(db, c.env)

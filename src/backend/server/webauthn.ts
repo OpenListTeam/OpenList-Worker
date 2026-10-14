@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { sign } from "hono/jwt"
 import { getDb, saveDb } from "../internal/model/db"
 import { getJwtSecret, getUserFromContext } from "./middlewares"
+import { passwordStampOf } from "../pkg/password"
 
 /**
  * WebAuthn / Passkey 登录。
@@ -358,6 +359,8 @@ async function generateToken(user: any, c: any): Promise<string> {
     id: user.id,
     username: user.username,
     role: user.role,
+    // 密码指纹（对齐 Go PwdTS）：改密后旧令牌立即失效
+    pwd_ts: passwordStampOf(user),
     exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
     jti: typeof crypto.randomUUID === "function" ? crypto.randomUUID() : b64urlEncode(newChallenge()),
   }
