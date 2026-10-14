@@ -46,6 +46,9 @@
       },
       "CACHE_PREFIX": {
         "description": "Optional. Key prefix used to isolate cache entries from business data. Defaults to `openlist_cache`. Only [A-Za-z0-9_] (max 64 chars) are allowed; invalid values fall back to the default."
+      },
+      "SINGLEFLIGHT": {
+        "description": "Dedup of concurrent identical calls (singleflight). `auto` (default) uses the `x_singleflight` table when a SQL backend (d1/mysql/do) is available, otherwise falls back to in-process merging. `db` forces table coordination, `memory` keeps it per-isolate, `off` disables dedup."
       }
     }
   },
@@ -80,10 +83,11 @@
     "test:store": "tsx --test src/backend/internal/model/store/store.test.ts",
     "test:model": "tsx --test \"src/backend/internal/model/*.test.ts\"",
     "test:cache": "tsx --test \"src/backend/internal/cache/*.test.ts\"",
+    "test:pkg": "tsx --test \"src/backend/pkg/*.test.ts\"",
     "test:regress": "tsx scripts/_regress.mjs",
     "test:deploy": "node scripts/test-deploy.js",
     "env:check": "tsx scripts/env-check.mjs",
-    "test:all": "npm run test:189 && npm run test:drivers && npm run test:server && npm run test:store && npm run test:model && npm run test:cache && npm run test:regress",
+    "test:all": "npm run test:189 && npm run test:drivers && npm run test:server && npm run test:store && npm run test:model && npm run test:cache && npm run test:pkg && npm run test:regress",
     "sls:deploy": "serverless deploy",
     "sls:package": "serverless package",
     "sls:info": "serverless info",

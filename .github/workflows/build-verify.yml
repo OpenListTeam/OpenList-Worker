@@ -1,16 +1,16 @@
 name: Build Verify
 
-# dist/、dist-server/、cloud-functions/[[default]].js 全部是构建产物，一律不入库：
+# dist/、dist-server/ 是构建产物，一律不入库；cloud-functions/[[default]].js 与
+# node-functions/[[default]].js 是「EdgeOne server-handler 检测占位」（几行的小文件，
+# 入库且基本不变），部署构建时由 scripts/build-edge.mjs 在同一路径生成完整产物覆盖：
 #   - EdgeOne Makers：edgeone.json 的 buildCommand（pnpm run build）在部署时生成
-#     dist/ 与 cloud-functions/[[default]].js
+#     dist/ 与两处完整产物
 #   - Cloudflare Workers：wrangler deploy 从 src/backend/worker.ts 打包，并用 dist/ 作静态资源
 #   - 自托管 Node：node dist-server/api/[...route].js 由 pnpm run build 产出
 #
 # 因此"部署用的后端代码"完全取决于构建链路能否跑通，本工作流就是这条链路的看门人：
-# 按平台一致的顺序安装、拉取前端、构建，并校验产物确实生成。任一步失败即失败。
-#
-# 注意：产物按设计不提交（见 .gitignore），所以这里只校验"能否构建出来"，
-# 不再像已移除的 edgeone-artifact-guard.yml 那样比对已提交产物是否新鲜。
+# 按平台一致的顺序安装、拉取前端、构建，并校验产物确实生成；同时断言入库的
+# 两处入口仍是占位文件（防止误提交 2MB 构建产物）。任一步失败即失败。
 
 on:
   push:
@@ -82,10 +82,19 @@ jobs:
           test -f "cloud-functions/[[default]].js"
           echo "OK: dist/index.html、dist-server/api/[...route].js、cloud-functions/[[default]].js 均已生成"
 
-      - name: Assert the EdgeOne artifact is not tracked
+      # 入库的 cloud-functions/[[default]].js 与 node-functions/[[default]].js 是
+      # EdgeOne server-handler 检测占位（见文件头注释）——平台按 Git 仓库内容
+      # 判断项目是否含 Node 后端，真实产物由部署构建在同一路径生成并覆盖。
+      # 这里断言仓库里跟踪的仍是占位文件：若有人把本地构建出的 2MB 完整产物
+      # 提交进来，本检查会失败并提示还原为占位内容。
+      - name: Assert tracked handler entries are the placeholder
         run: |
-          if git ls-files --error-unmatch "cloud-functions/[[default]].js" > /dev/null 2>&1; then
-            echo "::error::cloud-functions/[[default]].js 是构建产物，不应提交进仓库（见 .gitignore）。"
-            exit 1
-          fi
-          echo "OK: cloud-functions/[[default]].js 未被 git 跟踪"
+          fail=0
+          for f in "cloud-functions/[[default]].js" "node-functions/[[default]].js"; do
+            if ! git show "HEAD:$f" | head -1 | grep -q "PLACEHOLDER"; then
+              echo "::error::$f 在仓库里不是占位文件 —— 疑似误提交了构建产物。请还原为占位内容（产物由部署构建生成，不入库）。"
+              fail=1
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then exit 1; fi
+          echo "OK: 两处 server-handler 入口均为占位文件"

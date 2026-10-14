@@ -186,6 +186,19 @@ async function build() {
     plugins: [emptyNodeDriverPlugin, normalizeHtmlEolPlugin],
   })
 
+  // EdgeOne Pages 官方约定的 Node Functions 目录是 node-functions/（平台
+  // 文档的项目结构：node-functions/[[default]].js → catch-all，Node.js
+  // 运行时）。cloud-functions/ 是本项目沿用的历史目录名，部分 CLI 版本
+  // 不扫描它 —— 日志表现为「No server-handler detected, generating
+  // routes.json for pure project」，整个项目被当成纯静态：/api/* 被
+  // edgeone.json 的 rewrites 吞掉、返回 index.html。这里把产物复制一份
+  // 到官方约定目录，两个位置并存，新旧识别逻辑都能命中。
+  fs.mkdirSync("node-functions", { recursive: true })
+  fs.copyFileSync(
+    "cloud-functions/[[default]].js",
+    "node-functions/[[default]].js",
+  )
+
   // 阿里云 ESA（边缘安全加速）边缘函数入口（仅在源文件存在时构建）
   if (fs.existsSync("esa-entry.ts")) {
     await esbuild.build({
