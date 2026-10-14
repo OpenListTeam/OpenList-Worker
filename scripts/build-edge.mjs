@@ -169,6 +169,9 @@ async function build() {
     plugins: [emptyNodeDriverPlugin],
   })
 
+  // EdgeOne Makers 的 Node 云函数入口。产物按平台约定落在项目根
+  // cloud-functions/[[default]].js，但它**不入库**：EdgeOne 的构建命令
+  // （edgeone.json -> pnpm run build）会在部署时执行本脚本重新生成。
   await esbuild.build({
     entryPoints: ["api/_makers.ts"],
     bundle: true,
