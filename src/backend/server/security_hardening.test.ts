@@ -5,6 +5,12 @@ import { sign } from "hono/jwt"
 import { getDb, saveDb } from "../internal/model/db"
 import { meHandler } from "./auth"
 import { passwordStampOf, setUserPassword } from "../pkg/password"
+import {
+  getActualPath,
+  isWithinUserRoot,
+  normalizeSegments,
+} from "../pkg/permission"
+import { readBodyWithinLimit } from "../pkg/upload-limit"
 import { userRouter } from "./user"
 
 /**
@@ -244,4 +250,76 @@ test("password change invalidates previously issued tokens (Go PwdTS parity)", a
     env,
   )
   assert.equal(fresh.status, 200, "a fresh token must work")
+})
+
+test("normalizeSegments / getActualPath / isWithinUserRoot 钳制越根遍历", () => {
+  // 显式锁定越根钳制语义（评审建议补的用例）
+  assert.equal(normalizeSegments("/a/../../b"), "/b")
+  assert.equal(normalizeSegments("/a/b/../c"), "/a/c")
+  assert.equal(normalizeSegments("../../etc/passwd"), "/etc/passwd")
+  assert.equal(normalizeSegments("//a///b/./c"), "/a/b/c")
+  assert.equal(normalizeSegments(""), "/")
+
+  // base_path 受限：先折叠 reqPath 再拼接，`..` 不得越过用户根
+  const user = { id: 9, role: 0, permission: 0, base_path: "/photos/alice" }
+  assert.equal(getActualPath(user, "/"), "/photos/alice")
+  assert.equal(getActualPath(user, "/sub/x"), "/photos/alice/sub/x")
+  assert.equal(getActualPath(user, "/../bob/x"), "/photos/alice/bob/x")
+  assert.equal(getActualPath(user, "/sub/../../bob"), "/photos/alice/bob")
+
+  // 范围复核：等于根本身或位于其下为真，越过为假
+  assert.equal(isWithinUserRoot(user, "/photos/alice"), true)
+  assert.equal(isWithinUserRoot(user, "/photos/alice/a/b"), true)
+  assert.equal(isWithinUserRoot(user, "/photos/bob"), false)
+  assert.equal(isWithinUserRoot(user, "/photos/alice/../bob"), false)
+  // base_path 为根的用户不受限制
+  assert.equal(isWithinUserRoot({ id: 1, role: 2, permission: 0, base_path: "/" }, "/any"), true)
+})
+
+test("readBodyWithinLimit 按实际字节数生效（省略 Content-Length 也不例外）", async () => {
+  const env: any = { MAX_UPLOAD: "8" }
+  const fakeCtx = (body: string, headers: Record<string, string> = {}) => ({
+    env,
+    req: {
+      header: (k: string) =>
+        headers[k] ?? headers[k.toLowerCase()] ?? headers[k.toUpperCase()],
+      arrayBuffer: async () => new TextEncoder().encode(body).buffer,
+    },
+  })
+
+  // 声明超限：预检即拒绝
+  const declared = await readBodyWithinLimit(
+    fakeCtx("123456789", { "Content-Length": "9" }),
+    false,
+  )
+  assert.equal(declared.ok, false)
+
+  // 省略 Content-Length：必须按实际字节数拒绝（历史缺陷：直接放行）
+  const omitted = await readBodyWithinLimit(fakeCtx("123456789"), false)
+  assert.equal(omitted.ok, false)
+  if (!omitted.ok) assert.equal(omitted.limit, 8)
+
+  // 未超限：放行且内容完整
+  const ok = await readBodyWithinLimit(
+    fakeCtx("1234", { "Content-Length": "4" }),
+    false,
+  )
+  assert.equal(ok.ok, true)
+  if (ok.ok) assert.equal(ok.buffer.length, 4)
+
+  // 分片上限（MAX_UPPART）独立于整体上限：未配置时用默认 16MB
+  const part = await readBodyWithinLimit(fakeCtx("123456789"), true)
+  assert.equal(part.ok, true)
+
+  // 显式配置分片上限同样按实际字节数判定
+  const partEnv: any = { MAX_UPPART: "2" }
+  const partCtx = {
+    env: partEnv,
+    req: {
+      header: () => undefined,
+      arrayBuffer: async () => new TextEncoder().encode("123").buffer,
+    },
+  }
+  const partTooLarge = await readBodyWithinLimit(partCtx, true)
+  assert.equal(partTooLarge.ok, false)
 })

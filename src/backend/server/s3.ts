@@ -7,6 +7,7 @@ import {
   removeItems,
 } from "../internal/op/storage"
 import { safeErrorMessage } from "../pkg/errs"
+import { readBodyWithinLimit } from "../pkg/upload-limit"
 import {
   canRemove,
   canWrite,
@@ -279,12 +280,27 @@ s3Router.put("/*", async (c) => {
     return s3Error("AccessDenied", "Write permission denied for this path", 403)
   }
   try {
-    const buffer = Buffer.from(await c.req.arrayBuffer())
-    await putItem(virtualPath, buffer, getCtx(c))
-    return new Response(null, {
-      status: 200,
-      headers: { ETag: `"${Date.now().toString(16)}"` },
-    })
+    // 体积上限按**实际收到的字节数**判定（与 /fs/put 共用 pkg/upload-limit）。
+    // 历史缺陷：PutObject 完全没有大小限制，MAX_UPLOAD/MAX_UPPART 都不生效，
+    // 超大请求体会被整包读入内存——与 /fs/put 的防护形成明显不对称。
+    const body = await readBodyWithinLimit(c, false)
+    if (!body.ok) {
+      return s3Error(
+        "EntityTooLarge",
+        `Object exceeds the ${body.limit} byte limit`,
+        400,
+      )
+    }
+    await putItem(virtualPath, body.buffer, getCtx(c))
+    // 不再返回伪造的 ETag。
+    //
+    // 历史实现返回 `Date.now().toString(16)`，不是内容摘要：依赖 ETag 做幂等/
+    // 续传/校验的客户端（rclone、aws-cli 等）会记录一个永不对应的值。真实 S3
+    // 对单次 PUT 返回内容 MD5，但本运行时没有便宜的 MD5 通道（WebCrypto 不提供
+    // MD5；纯 JS 实现要整包多扫一遍；hash-wasm 的 WASM 在边缘运行时可能被禁止，
+    // 见 internal/seed/hashers.ts），因此这里选择**不返回 ETag**——宁可缺失，
+    // 也不给出错误的摘要；真实摘要（含分片 ETag 语义）留作后续跟进。
+    return new Response(null, { status: 200 })
   } catch (e: any) {
     return s3Error("InternalError", safeErrorMessage(e), 500)
   }

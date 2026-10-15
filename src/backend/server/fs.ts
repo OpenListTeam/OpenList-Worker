@@ -180,61 +180,13 @@ function safeArchiveEntryPath(rel: string): string | null {
   return parts.join("/")
 }
 
-// ---- 上传大小限制（M-5：防止超大请求体被整体读入内存导致 Worker OOM）----
-// 单次整体上传（/put /form）与分片单片（/upload/part）分开设限，
-// 均可通过环境变量 MAX_UPLOAD / MAX_UPPART 覆盖。
-const DEFAULT_MAX_UPLOAD = 25 * 1024 * 1024 // 25MB
-const DEFAULT_MAX_UPPART = 16 * 1024 * 1024 // 16MB
-
-function getUploadSizeLimit(c: any, part: boolean): number {
-  const env = c.env || {}
-  const key = part ? "MAX_UPPART" : "MAX_UPLOAD"
-  const raw =
-    env[key] || (typeof process !== "undefined" ? process.env?.[key] : "")
-  if (raw) {
-    const n = parseInt(String(raw), 10)
-    if (Number.isFinite(n) && n > 0) return n
-  }
-  return part ? DEFAULT_MAX_UPPART : DEFAULT_MAX_UPLOAD
-}
-
-/** 返回超限时的上限字节数；未超限或无法判断（无 Content-Length）返回 null */
-function exceedsUploadLimit(c: any, part = false): number | null {
-  const contentLength = parseInt(c.req.header("Content-Length") || "0", 10)
-  if (!contentLength) return null
-  const max = getUploadSizeLimit(c, part)
-  return contentLength > max ? max : null
-}
-
-const tooLargeResponse = (c: any, limit: number, label = "File") =>
-  c.json(
-    { code: 413, message: `${label} too large (max ${limit} bytes)`, data: null },
-    413,
-  )
-
-/**
- * 读取请求体，并按**实际字节数**复核上传上限。
- *
- * 安全不变量：体积上限必须按实际收到的字节数判定，不能只信 `Content-Length`。
- * 该头由客户端提供，可以省略、伪造或与真实 body 不一致。
- *
- * 历史缺陷：只做 Content-Length 预检，**省略该头即完全不拦截**——实测在
- * `MAX_UPLOAD=4` 时，不带 Content-Length 的 5 字节请求写入成功。这使上限形同
- * 虚设，超大请求体可被整体读入内存（Worker OOM 风险）。
- *
- * 仍保留 Content-Length 预检：能在读入内存**之前**就拒绝超大请求，省一次拷贝。
- */
-async function readBodyWithinLimit(
-  c: any,
-  part = false,
-): Promise<{ ok: true; buffer: Buffer } | { ok: false; limit: number }> {
-  const pre = exceedsUploadLimit(c, part)
-  if (pre !== null) return { ok: false, limit: pre }
-  const buffer = Buffer.from(await c.req.arrayBuffer())
-  const max = getUploadSizeLimit(c, part)
-  if (buffer.length > max) return { ok: false, limit: max }
-  return { ok: true, buffer }
-}
+// 上传大小限制统一实现在 pkg/upload-limit.ts（S3 网关复用同一份，
+// 避免出现「/fs/put 有上限、S3 PutObject 无上限」的不对称）。
+import {
+  getUploadSizeLimit,
+  readBodyWithinLimit,
+  tooLargeResponse,
+} from "../pkg/upload-limit"
 
 // 分享请求错误统一出口：
 // - 密码错误 → 403，前端据此弹出提取码输入框（State.NeedPassword）
@@ -1108,6 +1060,9 @@ fsRouter.post("/other", async (c) => {
   // to mint presigned direct-upload URLs (s3/driver.ts:371-378), which is a
   // write — it must obey the same gate as /fs/put. Without this, a guest could
   // obtain a direct-upload URL and bypass the upload permission check.
+  //
+  // 体积边界说明：这里签发的直传 URL 由客户端直接写对象存储，数据不经过本站，
+  // 因此 MAX_UPLOAD / MAX_UPPART 覆盖不到该路径——上限由下游存储自行约束。
   if (!canWrite(user)) return permissionDenied(c)
   try {
     const resolved = await resolvePath(reqPath)
@@ -1577,14 +1532,6 @@ fsRouter.put("/multipart/chunk", async (c) => {
     return c.json({ code: 200, message: "success", data: mpSnapshot(session) })
   }
 
-  const tooLarge = exceedsUploadLimit(c, true)
-  if (tooLarge !== null) {
-    return c.json(
-      { code: 413, message: `Part too large (max ${tooLarge} bytes)`, data: null },
-      413,
-    )
-  }
-
   const requestContext = getStorageRequestContext(c)
   try {
     const resolved = await resolvePath(
@@ -1595,7 +1542,12 @@ fsRouter.put("/multipart/chunk", async (c) => {
     if (typeof (driver as any).uploadPart !== "function") {
       throw new Error("storage does not support chunked upload")
     }
-    const buffer = Buffer.from(await c.req.arrayBuffer())
+    // 单片上限必须按**实际收到的字节数**判定：Content-Length 可被省略或伪造。
+    // 历史缺陷：此处只做 Content-Length 预检，省略该头即可绕过单片上限并把
+    // 整片内容读入内存。
+    const body = await readBodyWithinLimit(c, true)
+    if (!body.ok) return tooLargeResponse(c, body.limit, "Part")
+    const buffer = body.buffer
     let result
     try {
       result = await (driver as any).uploadPart(
