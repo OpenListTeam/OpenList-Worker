@@ -2,7 +2,9 @@
 // API reference: Go drivers/github_releases
 
 export interface DriverGithubReleasesAddition {
-  /** 仓库结构：[path:]org/repo，多个用分号分隔 */
+  /** 根文件夹路径（由 resolvePath 通用处理，默认 "/"） */
+  root_folder_path?: string
+  /** 仓库结构：[path:]org/repo，每行一个（兼容分号分隔） */
   repo_structure?: string
   /** 显示 README/LICENSE */
   show_readme?: boolean
@@ -12,6 +14,10 @@ export interface DriverGithubReleasesAddition {
   show_source_code?: boolean
   /** 显示所有版本 */
   show_all_version?: boolean
+  /** show_all_version 时每页拉取的 releases 数（默认 30，最大 100） */
+  per_page?: number | string
+  /** show_all_version 时最多拉取的页数（0 = 不限制） */
+  max_page?: number | string
   /** GitHub 代理前缀 */
   gh_proxy?: string
 }

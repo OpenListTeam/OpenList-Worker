@@ -9,6 +9,7 @@ import {
   PersonalListResp,
   PersonalDownloadResp,
   PersonalFileItem,
+  Yun139TokenRefreshResp,
 } from "./types"
 
 export function encodeURIComponentCustom(str: string): string {
@@ -55,9 +56,14 @@ export class Yun139ApiClient {
   public familyHost = "https://yun.139.com"
   public groupHost = "https://yun.139.com"
   public account = ""
+  private onAuthorizationRefresh?: (authorization: string) => Promise<void>
 
-  constructor(addition: Yun139Addition) {
+  constructor(
+    addition: Yun139Addition,
+    onAuthorizationRefresh?: (authorization: string) => Promise<void>,
+  ) {
     this.addition = addition
+    this.onAuthorizationRefresh = onAuthorizationRefresh
     this.extractAccount()
   }
 
@@ -104,6 +110,10 @@ export class Yun139ApiClient {
   }
 
   async request<T = any>(uriOrUrl: string, body: any): Promise<T> {
+    // Worker driver instances are cached; check at request time as well as init
+    // so a long-lived isolate cannot miss the refresh window.
+    await this.refreshAuthorizationIfNeeded()
+
     const ts = formatTime(new Date())
     const randStr = randomString(16)
     const bodyStr = JSON.stringify(body || {})
@@ -169,10 +179,101 @@ export class Yun139ApiClient {
     return json as T
   }
 
+  /**
+   * Refresh before the token enters its final 15 days. Called during init and
+   * before each API request because Worker driver instances may stay cached.
+   */
+  private async refreshAuthorizationIfNeeded(): Promise<void> {
+    const auth = this.getAuthString()
+    let decoded: string
+    try {
+      decoded = CryptoJS.enc.Base64.parse(auth).toString(CryptoJS.enc.Utf8)
+    } catch {
+      // Keep the previous behavior for non-standard authorization values.
+      return
+    }
+
+    const pieces = decoded.split(":")
+    if (pieces.length < 3) return
+
+    const token = pieces.slice(2).join(":")
+    const tokenFields = token.split("|")
+    const expiresAt = Number(tokenFields[3])
+    if (!Number.isFinite(expiresAt) || expiresAt <= 0) return
+
+    const refreshWindowMs = 15 * 24 * 60 * 60 * 1000
+    if (expiresAt - Date.now() > refreshWindowMs) return
+
+    const userDomainId = (this.addition.user_domain_id || "").trim()
+    if (!userDomainId) {
+      throw new Error(
+        "139 Cloud token is near expiry; configure user_domain_id to use the PC refreshToken API",
+      )
+    }
+
+    const authHeader = `Basic ${auth}`
+
+    // Match the minimal header set from the successful PowerShell request.
+    // Do not send Cookie or unverified synthetic PC/device headers.
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      "Content-Type": "application/json; charset=utf-8",
+      app_auth: authHeader,
+      app_cp: "1",
+      authorization: authHeader,
+      cp_version: "8.9.1.20260929",
+      "x-yun-api-version": "v1",
+      "x-yun-app-channel": "10200153",
+      "x-yun-op-type": "1",
+      "x-yun-svc-type": "1",
+      "x-yun-module-type": "1",
+      "x-yun-market-source": "1",
+      "x-yun-client-info": "PC",
+    }
+
+    const response = await fetch(
+      "https://user-njs.yun.139.com/user/auth/refreshToken",
+      {
+        method: "POST",
+        // Omit captured cookies (mc_at, mc_bt, mc_pat, mc_pbt, mc_pac):
+        // refresh succeeded without them in our test; other sessions remain unverified.
+        credentials: "omit",
+        headers,
+        body: JSON.stringify({ userDomainId }),
+      },
+    )
+
+    if (!response.ok) {
+      const body = await response.text()
+      throw new Error(
+        `139 Cloud PC token refresh failed (${response.status}): ${body}`,
+      )
+    }
+
+    const result = (await response.json()) as Yun139TokenRefreshResp
+    const newToken = result.data?.token?.trim()
+    if (!result.success || result.code !== "0000" || !newToken) {
+      throw new Error(
+        `139 Cloud PC token refresh failed: code=${result.code || "unknown"}, message=${result.message || "empty token"}`,
+      )
+    }
+    const newExpiresAt = Number(newToken.split("|")[3])
+    if (!Number.isFinite(newExpiresAt) || newExpiresAt <= Date.now()) {
+      throw new Error("139 Cloud PC refresh returned a token without a valid future expiry")
+    }
+
+    this.addition.authorization = CryptoJS.enc.Base64.stringify(
+      CryptoJS.enc.Utf8.parse(`${pieces[0]}:${this.account}:${newToken}`),
+    )
+    await this.onAuthorizationRefresh?.(this.addition.authorization)
+  }
+
   async init(): Promise<void> {
     if (!this.addition.authorization) {
       throw new Error("139 Cloud Authorization is required")
     }
+
+    await this.refreshAuthorizationIfNeeded()
 
     try {
       const routeRes = await this.request<QueryRoutePolicyResp>(

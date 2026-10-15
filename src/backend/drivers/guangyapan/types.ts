@@ -66,15 +66,28 @@ export interface GypTokenResp {
   error_description: string
 }
 
+/** get_res_center_token 返回的 OSS 临时凭据（嵌套在 data.creds 下） */
+export interface GypUploadCreds {
+  accessKeyID: string
+  secretAccessKey: string
+  sessionToken: string
+  expiration: string
+}
+
 export interface GypUploadTokenData {
   taskId: string
   objectPath: string
   bucketName: string
   endPoint: string
   fullEndPoint: string
-  accessKeyID: string
-  secretAccessKey: string
-  sessionToken: string
+  /**
+   * 实时接口把 OSS 凭据嵌套在 creds 下，而不是平铺在 data 上。
+   * 平铺字段保留为可选，仅用于兼容旧版响应。
+   */
+  creds?: GypUploadCreds
+  accessKeyID?: string
+  secretAccessKey?: string
+  sessionToken?: string
 }
 
 export interface GypUploadTokenResp {
