@@ -30,8 +30,17 @@ export function getUploadSizeLimit(c: any, part = false): number {
   return part ? DEFAULT_MAX_UPPART : DEFAULT_MAX_UPLOAD
 }
 
-/** 返回超限时的上限字节数；未超限或无法判断（无 Content-Length）返回 null */
-export function exceedsUploadLimit(c: any, part = false): number | null {
+/**
+ * 只做 `Content-Length` 预检：超限时返回该上限值，否则返回 null。
+ *
+ * ⚠️ 本函数**不是完整保护**。`Content-Length` 可被省略或伪造，缺失时它直接
+ * 返回 null（即放行）——任何**只**调用本函数的路径都会重新引入「省略该头即可
+ * 绕过上限」的历史缺陷。需要完整保护时必须使用 `readBodyWithinLimit`
+ * （它内部先调用本函数做预检，再按实际字节数复核）。
+ *
+ * 正因如此这里**刻意不导出**，避免日后被独立误用。
+ */
+function exceedsUploadLimit(c: any, part = false): number | null {
   const contentLength = parseInt(c.req.header("Content-Length") || "0", 10)
   if (!contentLength) return null
   const max = getUploadSizeLimit(c, part)

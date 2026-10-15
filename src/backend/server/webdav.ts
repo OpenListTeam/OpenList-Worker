@@ -245,6 +245,24 @@ async function deniedByMetaWrite(
 }
 
 /**
+ * meta 判定失败时的统一响应（403 + 一句指引）。
+ *
+ * WebDAV 没有传递「目录密码」的标准位置：与 Go 一致，只有 guest 账号会把
+ * Basic 密码透传为 meta 密码，普通用户一律为空。因此普通用户访问密码保护的
+ * 目录只会得到裸 403，容易被误判成账号权限问题而反复重试；这里补一句说明。
+ *
+ * 措辞刻意不区分「密码错误 / read_users / write_users」——不向调用方泄露
+ * 具体是哪一类限制。
+ */
+const metaForbidden = (c: any) =>
+  c.text(
+    "Forbidden: directory-level access control denied this request " +
+      "(meta password, read_users or write_users). WebDAV cannot carry a meta " +
+      "password — open the path in the web UI, or use /api/fs/* with a password.",
+    403,
+  )
+
+/**
  * 推导本次请求实际使用的挂载前缀（正规挂载为 `/dav`）。
  *
  * 不能直接硬编码 `/dav`：index.ts 会把**任意路径上**的 WebDAV 方法都交给本 router
@@ -322,7 +340,7 @@ webdavRouter.all("/*", async (c) => {
         if (!canRead) return c.text("Forbidden", 403)
         // 目录级访问控制（与 /api/fs/list 同一套判定）
         if (await deniedByMetaRead(c, user, actualPath, metaPassword)) {
-          return c.text("Forbidden", 403)
+          return metaForbidden(c)
         }
         const depth = c.req.header("Depth") || "1"
         const res = await listItems(actualPath, ctx)
@@ -346,7 +364,7 @@ webdavRouter.all("/*", async (c) => {
         if (!canRead) return c.text("Forbidden", 403)
         // 目录级访问控制（与 /api/fs/get 同一套判定）
         if (await deniedByMetaRead(c, user, actualPath, metaPassword)) {
-          return c.text("Forbidden", 403)
+          return metaForbidden(c)
         }
         const { item, rawUrl } = await getItem(actualPath, ctx)
         if (!item) return c.text("Not found", 404)
@@ -368,7 +386,7 @@ webdavRouter.all("/*", async (c) => {
         // 对齐 Go webdav.go handlePut：目标所在目录需通过「写内容权限位或
         // meta.write 强制开放」+ meta.write_users 白名单
         if (await deniedByMetaWrite(c, user, splitPath(actualPath).dir, true)) {
-          return c.text("Forbidden", 403)
+          return metaForbidden(c)
         }
         const buffer = Buffer.from(await c.req.arrayBuffer())
         await putItem(actualPath, buffer, ctx)
@@ -379,7 +397,7 @@ webdavRouter.all("/*", async (c) => {
         if (!canManage) return c.text("Forbidden", 403)
         // 对齐 Go webdav.go handleMkcol（与 PUT 同一套校验）
         if (await deniedByMetaWrite(c, user, splitPath(actualPath).dir, true)) {
-          return c.text("Forbidden", 403)
+          return metaForbidden(c)
         }
         await makeDirectory(actualPath, ctx)
         return c.body(null, 201)
@@ -389,7 +407,7 @@ webdavRouter.all("/*", async (c) => {
         if (!canManage) return c.text("Forbidden", 403)
         // 对齐 Go webdav.go handleDelete：目标自身的 meta.write_users 白名单
         if (await deniedByMetaWrite(c, user, actualPath, false)) {
-          return c.text("Forbidden", 403)
+          return metaForbidden(c)
         }
         const { dir, name } = splitPath(actualPath)
         await removeItems(dir, [name], ctx)
@@ -417,7 +435,7 @@ webdavRouter.all("/*", async (c) => {
           (await deniedByMetaWrite(c, user, src.dir, false)) ||
           (await deniedByMetaWrite(c, user, dst.dir, false))
         ) {
-          return c.text("Forbidden", 403)
+          return metaForbidden(c)
         }
         await moveItems(src.dir, dst.dir, [src.name], ctx)
         return c.body(null, 201)
@@ -441,10 +459,10 @@ webdavRouter.all("/*", async (c) => {
           srcMeta = null
         }
         if (!canReadMeta(user, srcMeta, src.dir)) {
-          return c.text("Forbidden", 403)
+          return metaForbidden(c)
         }
         if (await deniedByMetaWrite(c, user, dst.dir, false)) {
-          return c.text("Forbidden", 403)
+          return metaForbidden(c)
         }
         await copyItems(src.dir, dst.dir, [src.name], ctx)
         return c.body(null, 201)

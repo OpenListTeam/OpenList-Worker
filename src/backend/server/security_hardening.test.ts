@@ -12,6 +12,7 @@ import {
 } from "../pkg/permission"
 import { readBodyWithinLimit } from "../pkg/upload-limit"
 import { userRouter } from "./user"
+import { webdavRouter } from "./webdav"
 
 /**
  * 本轮安全加固的回归测试：
@@ -322,4 +323,66 @@ test("readBodyWithinLimit 按实际字节数生效（省略 Content-Length 也�
   }
   const partTooLarge = await readBodyWithinLimit(partCtx, true)
   assert.equal(partTooLarge.ok, false)
+})
+
+test("WebDAV: 受 meta 保护的路径返回带指引的 403（而不是裸 403）", async () => {
+  const env: any = { JWT_SECRET: "test-only-jwt-secret-for-hardening" }
+  const davUser: any = {
+    id: 11,
+    username: "dav-user",
+    role: 0,
+    permission: 1 << 8, // WEBDAV_READ
+    base_path: "/",
+    disabled: false,
+    pwd_update_at: new Date().toISOString(),
+  }
+  await setUserPassword(davUser, "dav-pass")
+  await saveDb(
+    {
+      settings: [],
+      users: [davUser],
+      storages: [],
+      shares: [],
+      metas: [
+        {
+          id: 1,
+          path: "/secret",
+          password: "meta-pass",
+          p_sub: true,
+          read_users: [],
+          read_users_sub: false,
+          write_users: [],
+          write_users_sub: false,
+          write: false,
+          w_sub: false,
+          hide: "",
+          h_sub: false,
+          readme: "",
+          r_sub: false,
+          header: "",
+          header_sub: false,
+        },
+      ],
+    },
+    env,
+    { force: true },
+  )
+
+  const app = new Hono()
+  app.route("/dav", webdavRouter)
+  const basic =
+    "Basic " + Buffer.from("dav-user:dav-pass").toString("base64")
+
+  // 账号本身有 WEBDAV_READ，但该路径带目录密码 → 元信息 ACL 拦截
+  const res = await app.request(
+    "/dav/secret",
+    { method: "PROPFIND", headers: { Authorization: basic, Depth: "1" } },
+    env,
+  )
+  assert.equal(res.status, 403)
+  const body = await res.text()
+  // 附带给用户可操作的指引（评审建议），且不指明具体是哪一类限制
+  assert.match(body, /directory-level access control/)
+  assert.match(body, /meta password/)
+  assert.match(body, /web UI|api\/fs/)
 })
