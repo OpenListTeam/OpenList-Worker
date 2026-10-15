@@ -51,6 +51,7 @@ import {
 } from "../internal/driver/storageopts"
 import { parseZip, extractZipEntry, ZipArchive } from "../internal/archive/zip"
 import { assertSafeUrl, getTrustedHosts } from "../pkg/http"
+import { invalidatePaths } from "../internal/cache"
 import { seedRouter } from "./seed"
 
 /**
@@ -81,19 +82,43 @@ import {
 export const fsRouter = new Hono()
 fsRouter.route("/seed", seedRouter)
 
+/**
+ * 请求级存储上下文（`env` + `waitUntil`）。
+ *
+ * 关键约定：**`env` 必须始终传递**，与 executionCtx 是否可用无关。
+ *
+ * 缓存（`CACHE_DRIVER=db`）与 singleflight（`SINGLEFLIGHT=db`）都依赖它来解析
+ * 后端：拿不到 `env` 时 `getStorageBackend(undefined)` 会解析成**内存驱动**，
+ * 而业务数据仍走全局 env ctx 的持久化后端 —— 缓存与数据库被静默拆到两个后端，
+ * 表现为「列表看似命中缓存（内容陈旧），但持久层里一条缓存键都没有、
+ * `/cache/status` 计数恒为 0、`/cache/clear` 永远 removed=0」。
+ *
+ * 真正依赖 executionCtx 的只有 `waitUntil`；缺失时降级为同步等待
+ * （见 `scheduleStoragePersistence`），业务语义不变。
+ */
+let warnedMissingExecutionCtx = false
 const getStorageRequestContext = (c: any) => {
+  const env = c?.env
+  let waitUntil: ((promise: Promise<unknown>) => void) | undefined
   try {
-    const executionCtx = c.executionCtx
-    if (!executionCtx || typeof executionCtx.waitUntil !== "function") {
-      return undefined
-    }
-    return {
-      waitUntil: (promise: Promise<unknown>) => executionCtx.waitUntil(promise),
-      env: c.env, // 传递 env 用于请求级 KV 缓存复用
+    const executionCtx = c?.executionCtx
+    if (executionCtx && typeof executionCtx.waitUntil === "function") {
+      waitUntil = (promise: Promise<unknown>) => executionCtx.waitUntil(promise)
     }
   } catch {
-    return undefined
+    // executionCtx 可能是访问即抛错的对象：按「不可用」处理，但 env 照常传递
+    waitUntil = undefined
   }
+  if (!waitUntil && !warnedMissingExecutionCtx) {
+    warnedMissingExecutionCtx = true
+    console.warn(
+      "[fs] executionCtx.waitUntil is unavailable in this runtime; deferred " +
+        "storage persistence will be awaited inline instead of being scheduled " +
+        "in the background.",
+    )
+  }
+  if (!env && !waitUntil) return undefined
+  return { ...(waitUntil ? { waitUntil } : {}), env }
 }
 
 // ---- 写操作权限校验 ----
@@ -1072,6 +1097,14 @@ fsRouter.post("/other", async (c) => {
     const driver = await getDriver(resolved.storage.driver, resolved.storage)
     if (typeof (driver as any).other === "function") {
       const data = await (driver as any).other(method, resolved.relative, body)
+      // other() 可能触发落盘（如 S3 直传 URL 的签发流程）：按已知路径失效缓存。
+      // 直传的实际写入发生在客户端，无法精确感知完成时机，这里失效目标目录
+      // 及（若给定）文件路径，将陈旧窗口压到最小；失效失败不影响响应。
+      const targets = [reqPath]
+      if (typeof body?.file_name === "string" && body.file_name) {
+        targets.push(`${reqPath === "/" ? "" : reqPath}/${body.file_name}`)
+      }
+      await invalidatePaths(targets, c.env)
       return c.json({ code: 200, message: "success", data })
     }
     return c.json(
@@ -1371,6 +1404,9 @@ fsRouter.post("/get_direct_upload_info", async (c) => {
         cleanName,
         file_size,
       )
+      // 直传 URL 签发后客户端会向该路径写入新文件：预失效目录与目标路径
+      // （本分支已把校验后的目录/文件名归一化为 dirPath / dstPath）
+      await invalidatePaths([dirPath, dstPath], c.env)
       return c.json({ code: 200, message: "success", data: info })
     }
     // 回退到 other("direct_upload") / other("get_direct_upload_info")
@@ -1381,7 +1417,11 @@ fsRouter.post("/get_direct_upload_info", async (c) => {
             file_name: cleanName,
             file_size,
           })
-          if (info) return c.json({ code: 200, message: "success", data: info })
+          if (info) {
+            // 同上：直传 URL 签发后预失效目录与目标路径
+            await invalidatePaths([dirPath, dstPath], c.env)
+            return c.json({ code: 200, message: "success", data: info })
+          }
         } catch {
           // 尝试下一个 method
         }
@@ -1614,6 +1654,15 @@ fsRouter.post("/multipart/complete", async (c) => {
     session.state = "completed"
     putSession(session)
     deleteSession(session.upload_id)
+    // 分片收尾：失效上传文件及其目录的缓存（对齐 op 层 put 的失效范围）
+    {
+      const { dir, name } = splitUploadPath(session.path)
+      const actualDir = getActualPath(user, dir)
+      await invalidatePaths(
+        [actualDir, `${actualDir === "/" ? "" : actualDir}/${name}`],
+        c.env,
+      )
+    }
     return c.json({ code: 200, message: "success", data: mpSnapshot(session) })
   } catch (e: any) {
     session.state = "failed_permanent"
