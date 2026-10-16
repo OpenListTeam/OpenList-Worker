@@ -129,6 +129,8 @@ adminRouter.get("/storage/get", async (c) => {
 
 export const normalizeDriver = (driverName: string): string => {
   const norm = (driverName || "").toLowerCase().replace(/[^a-z0-9]/g, "")
+  // 纯中文驱动名无法归一化为 a-z0-9，先做中文别名匹配
+  if ((driverName || "").includes("城通")) return "CtFile"
   if (!norm) return ""
   const available = Object.keys(driverConfigs)
   const matched = available.find(
@@ -138,6 +140,7 @@ export const normalizeDriver = (driverName: string): string => {
   )
   if (matched) return matched
   // Common OpenList aliases
+  if (norm.includes("ctfile") || norm === "400gb") return "CtFile"
   if (norm.startsWith("115")) return "115Open"
   if (norm.startsWith("123")) return "123Pan"
   if (norm.includes("aliyun")) return "AliyundriveOpen"
@@ -2015,6 +2018,67 @@ const driverConfigs: Record<string, any> = {
       no_upload: false,
       need_ms: false,
       default_root: "-1",
+    },
+  },
+  CtFile: {
+    name: "CtFile",
+    default_mount_path: "/ctfile",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "session",
+        type: "text",
+        default: "",
+        required: true,
+        help: "开放接口 Session：登录城通网盘管理后台 →「开放接口登录密钥管理」生成；也可参考 openapi.ctfile.com 通过登录接口获取",
+      },
+      {
+        name: "cloud_type",
+        type: "select",
+        options: "public,private",
+        default: "public",
+        required: false,
+        help: "挂载的云类型：public=公有云（默认）、private=私有云",
+      },
+      {
+        name: "base_url",
+        type: "string",
+        default: "https://rest.ctfile.com/v1",
+        required: false,
+        help: "OpenAPI 基础地址",
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "name,size,time",
+        default: "name",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "asc,desc",
+        default: "asc",
+        required: false,
+      },
+      {
+        name: "user_agent",
+        type: "string",
+        default:
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+        required: true,
+        help: "请求城通网盘 API 与下载直链时携带的 User-Agent",
+      },
+    ],
+    config: {
+      name: "CtFile",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "",
     },
   },
   WebDav: {

@@ -53,6 +53,7 @@ import {
   ThunderExpertDriver,
 } from "../../drivers/thunder/driver"
 import { LanzouDriver } from "../../drivers/lanzou/driver"
+import { CtFileDriver } from "../../drivers/ctfile/driver"
 import { Cloud189Driver } from "../../drivers/189/driver"
 import { Driver189TV } from "../../drivers/189_tv/driver"
 import { WebdavDriver } from "../../drivers/webdav/driver"
@@ -718,6 +719,16 @@ async function createDriver(
         console.warn("[Lanzou] failed to persist cookie:", e)
       }
     })
+    await driver.init?.()
+  } else if (
+    normDriver === "ctfile" ||
+    normDriver === "ctfilepan" ||
+    normDriver === "ctfiledriver" ||
+    normDriver === "400gb" ||
+    normDriver.includes("ctfile")
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new CtFileDriver(addition)
     await driver.init?.()
   } else if (
     normDriver === "189tv" ||
