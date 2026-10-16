@@ -59,6 +59,7 @@ import { WebdavDriver } from "../../drivers/webdav/driver"
 import { WoPanDriver, normalizeWoPanAddition } from "../../drivers/wopan/driver"
 import { MoPanDriver } from "../../drivers/mopan/driver"
 import { S3Driver, normalizeS3Addition } from "../../drivers/s3/driver"
+import { R2Driver } from "../../drivers/r2/driver"
 import {
   WeiyunDriver,
   normalizeWeiyunAddition,
@@ -762,6 +763,15 @@ async function createDriver(
   } else if (normDriver === "webdav" || normDriver === "webdavdriver") {
     const addition = parseAddition(storageConfig)
     driver = new WebdavDriver(addition)
+    await driver.init?.()
+  } else if (
+    normDriver === "r2" ||
+    normDriver === "cloudflarer2" ||
+    normDriver === "cfr2" ||
+    normDriver === "r2native"
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new R2Driver(addition)
     await driver.init?.()
   } else if (
     normDriver === "s3" ||
