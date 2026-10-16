@@ -1,0 +1,220 @@
+name: 部署到阿里云 ESA
+
+# 把本仓库部署到阿里云 ESA（边缘安全加速）的「函数和 Pages」。
+#
+# 构建契约由 esa.jsonc 声明：
+#   name            : openlist
+#   entry           : ./dist/esa-entry.js（边缘函数入口）
+#   installCommand  : pnpm install --no-frozen-lockfile
+#   buildCommand    : pnpm run build
+#   assets.directory: ./dist
+#
+# ⚠️ 与 EdgeOne 的关键差异：esa.jsonc 里的 installCommand / buildCommand
+#   【只对「控制台导入 Git 仓库」生效，使用 CLI 部署时不生效】。
+#   因此 CI 必须自己跑一遍安装与构建，再让 esa-cli 只负责打包上传。
+#   不能照抄 deploy-edgeone.yml 里「把构建交给 CLI」的写法。
+#   而 CLI 会自动读取 esa.jsonc 的 entry 与 assets.directory，无需重复传参。
+#
+# 构建产物对应关系（由 pnpm run build = fetch-frontend + build-edge 生成）：
+#   dist/index.html     前端页面壳
+#   dist/esa-entry.js   ESA 边缘函数入口（build-edge.mjs 以 platform: browser 构建，
+#                       因为 ESA 边缘运行时不支持 Node 内置模块）
+#
+# 必需的仓库 secret（Settings → Secrets and variables → Actions）：
+#   ESA_ACCESS_KEY_ID      阿里云 AccessKey ID
+#   ESA_ACCESS_KEY_SECRET  阿里云 AccessKey Secret
+#
+#   ⚠️ 建议为 CI 单独建一个 RAM 用户，只授予 AliyunESAFullAccess，
+#      不要使用主账号 AccessKey。
+#   本 workflow 使用 ESA_ACCESS_KEY_ID / ESA_ACCESS_KEY_SECRET 环境变量注入凭据，
+#   而不是 `esa-cli login --ak ... --sk ...`：
+#   esa-cli 官方文档明确指出「--sk 传入的值会进入 shell history 并暴露在进程参数中，
+#   应优先通过环境变量注入」，而 CLI 的凭据优先级里 ESA_* 组仅次于显式参数，
+#   因此无需 login 步骤即可非交互鉴权。
+#
+#   运行时环境变量与加密密钥（JWT_SECRET / ADMIN_PASS / DB_* 等）请在 ESA 控制台
+#   的函数和 Pages 项目里配置，或用 `esa-cli env set` / `esa-cli secret put`。
+#   本 workflow 【不】代为写入：避免每次推送静默覆盖线上密钥。
+#
+# 可选的 repository variable：
+#   ESA_PROJECT_NAME   项目名；【留空则由 esa-cli 读取 esa.jsonc 的 name】
+#   ESA_DEPLOY_ENV     部署环境，production（默认） / staging
+#   ESA_CLI_VERSION    CLI 版本，默认 latest（锁定可获得可复现的部署）
+#
+# 未配置 ESA_ACCESS_KEY_ID / ESA_ACCESS_KEY_SECRET 时本 workflow 跳过并给出警告
+# （而不是失败），因此合并到上游后不会产生红色的失败运行。
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "scripts/**"
+      - "esa.jsonc"
+      - "esa-entry.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/deploy-esa.yml"
+  workflow_dispatch:
+    inputs:
+      env:
+        description: "部署环境"
+        required: false
+        default: production
+        type: choice
+        options:
+          - production
+          - staging
+      project_name:
+        description: "ESA 项目名（留空则用 esa.jsonc 里的 name）"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# 同一 ref 的部署串行化，避免两次 deploy 抢同一个项目。
+concurrency:
+  group: deploy-esa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: 构建并部署到阿里云 ESA
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+
+      # esa.jsonc 的 installCommand 是 pnpm install，pnpm 必须先就位
+      - name: 配置 Node 运行时
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # 与 esa.jsonc 的 installCommand 保持一致（该字段在 CLI 模式下不生效，
+      # 所以这里必须显式执行）。--no-frozen-lockfile 是 esa.jsonc 的既定选择。
+      - name: 安装依赖
+        run: pnpm install --no-frozen-lockfile
+
+      # 与 esa.jsonc 的 buildCommand 保持一致：先拉官方前端 dist，再生成
+      # dist/esa-entry.js（见 scripts/build-edge.mjs）。
+      - name: 构建前端与边缘函数产物
+        run: pnpm run build
+
+      - name: 校验构建产物
+        run: |
+          set -euo pipefail
+          missing=0
+          # entry 与 assets.directory 都取自 esa.jsonc，缺任何一个 esa-cli 都无法部署
+          for f in dist/esa-entry.js dist/index.html; do
+            if [ -f "$f" ]; then
+              echo "OK: $f（$(wc -c < "$f") bytes）"
+            else
+              echo "::error::缺少构建产物 $f —— 请检查 esa.jsonc 的 entry / assets.directory 与 pnpm run build 是否一致。"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
+
+      - name: 解析部署配置
+        id: cfg
+        env:
+          ESA_ACCESS_KEY_ID: ${{ secrets.ESA_ACCESS_KEY_ID }}
+          ESA_ACCESS_KEY_SECRET: ${{ secrets.ESA_ACCESS_KEY_SECRET }}
+          DEPLOY_ENV: ${{ inputs.env || vars.ESA_DEPLOY_ENV }}
+          PROJECT_NAME: ${{ inputs.project_name || vars.ESA_PROJECT_NAME }}
+          CLI_VERSION: ${{ vars.ESA_CLI_VERSION }}
+        run: |
+          set -euo pipefail
+
+          project_name="${PROJECT_NAME:-}"
+          deploy_env="${DEPLOY_ENV:-production}"
+          # CLI 版本默认跟随 latest；需要可复现构建时可锁定具体版本号
+          cli_version="${CLI_VERSION:-latest}"
+
+          case "$deploy_env" in
+            production|staging) ;;
+            *)
+              echo "::error::非法的部署环境 '$deploy_env'，只能是 production 或 staging。"
+              exit 1
+              ;;
+          esac
+
+          {
+            echo "project_name=${project_name}"
+            echo "deploy_env=${deploy_env}"
+            echo "cli_version=${cli_version}"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ -z "${ESA_ACCESS_KEY_ID:-}" ] || [ -z "${ESA_ACCESS_KEY_SECRET:-}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            # 用 warning 而非 error：合并到上游后此处没有 AccessKey 属于正常情况，
+            # 不应让维护者看到红色失败。
+            echo "::warning::未配置 ESA_ACCESS_KEY_ID / ESA_ACCESS_KEY_SECRET，跳过 ESA 部署。配置入口：Settings → Secrets and variables → Actions。"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: 部署到阿里云 ESA
+        if: steps.cfg.outputs.skip == 'false'
+        env:
+          # 官方推荐的 CI 凭据注入方式：不进命令行、不进 shell history
+          ESA_ACCESS_KEY_ID: ${{ secrets.ESA_ACCESS_KEY_ID }}
+          ESA_ACCESS_KEY_SECRET: ${{ secrets.ESA_ACCESS_KEY_SECRET }}
+          PROJECT_NAME: ${{ steps.cfg.outputs.project_name }}
+          DEPLOY_ENV: ${{ steps.cfg.outputs.deploy_env }}
+          # 必须用上一步的 output（已含 latest 默认值），不能直接读 vars：
+          # 变量未配置时 vars 为空，会拼出非法的包规格。
+          CLI_VERSION: ${{ steps.cfg.outputs.cli_version }}
+        run: |
+          set -euo pipefail
+
+          # entry 与 assets.directory 由 esa-cli 自动读取 esa.jsonc。
+          # 项目名同理：默认【不传 --name】，让 esa-cli 用 esa.jsonc 里的 name，
+          # 避免 CI 与平台出现两个数据源。只有显式覆盖时才传。
+          args=()
+          [ -n "$PROJECT_NAME" ] && args+=(--name "$PROJECT_NAME")
+
+          # --description : 非交互环境下跳过版本描述的交互输入
+          # --no-preview  : 隐藏预览 URL、访问令牌与有效期提示。
+          #                 预览令牌本身是访问凭据，写进仓库可见的 Actions 日志
+          #                 等于泄露，因此 CI 下必须关闭；验证请到 ESA 控制台查看。
+          npx --yes "esa-cli@${CLI_VERSION}" deploy \
+            "${args[@]}" \
+            --environment "$DEPLOY_ENV" \
+            --description "Deploy ${GITHUB_SHA} from ${GITHUB_REF_NAME}" \
+            --no-preview 2>&1 | tee esa-deploy.log
+
+          # 刻意【不】从日志里正则提取部署 ID / 预览地址：
+          # esa-cli 的输出文案不在稳定契约内（--no-preview 已隐藏预览令牌），
+          # 猜格式解析容易把 "deployment status: ok" 之类的行误当成 ID，
+          # 给出比没有更糟的误导信息。部署详情请到 ESA 控制台查看。
+
+      - name: 输出部署摘要
+        if: always()
+        env:
+          PROJECT_NAME: ${{ steps.cfg.outputs.project_name }}
+          DEPLOY_ENV: ${{ steps.cfg.outputs.deploy_env }}
+          SKIP: ${{ steps.cfg.outputs.skip }}
+        run: |
+          {
+            echo "### 阿里云 ESA 部署结果"
+            echo ""
+            if [ "${SKIP}" = "true" ]; then
+              echo "- 状态：已跳过（未配置 ESA_ACCESS_KEY_ID / ESA_ACCESS_KEY_SECRET）"
+            else
+              echo "- 项目名：${PROJECT_NAME:-取自 esa.jsonc 的 name}"
+              echo "- 环境：\`${DEPLOY_ENV}\`"
+              echo "- 提交：\`${GITHUB_SHA}\`"
+              echo ""
+              echo "> 构建在本workflow 内执行（esa.jsonc 的 buildCommand 在 CLI 模式下不生效）；"
+              echo "> entry、assets.directory 与 name 均由 esa-cli 读取 \`esa.jsonc\` 得到，未硬编码。"
+              echo "> 已用 --no-preview 隐藏预览令牌，部署详情与预览地址请到 ESA 控制台查看。"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
