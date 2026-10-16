@@ -106,7 +106,12 @@ export interface PersonalThumbnail {
 }
 
 export interface PersonalFileItem {
-  fileId: string
+  // 部分账号的 /file/list 响应里目录项没有 fileId，而是以 catalogId/catalogID
+  // 携带 id（社区实现 gaozhangmin/boxplayer 对四种键名做了并集回退）；
+  // 缺 id 的目录项若只读 fileId，解析会拿到 undefined 并静默回退列根目录（#112）。
+  fileId?: string
+  catalogId?: string
+  catalogID?: string
   name: string
   size?: number | string
   type: "folder" | "file" | string
@@ -122,6 +127,11 @@ export interface PersonalListResp {
   data?: {
     items?: PersonalFileItem[]
     nextPageCursor?: string
+    pageInfo?: {
+      pageCursor?: string
+      pageSize?: number
+      nextPageCursor?: string
+    }
   }
 }
 

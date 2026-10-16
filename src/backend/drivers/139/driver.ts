@@ -35,6 +35,17 @@ export class Yun139Driver implements StorageDriver {
     return this.client.isPersonalNew() ? "/" : ""
   }
 
+  /**
+   * 目录名比较：去首尾空白并按 NFC 归一化。
+   * 移动云盘返回的名称与前端传入的路径分片可能分属不同 Unicode 归一化形态
+   * （尤其中文），严格 === 会把同名目录判为找不到。
+   */
+  private nameEquals(a: string | undefined, b: string | undefined): boolean {
+    const na = (a || "").trim().normalize("NFC")
+    const nb = (b || "").trim().normalize("NFC")
+    return na === nb
+  }
+
   private async resolveCatalogId(physicalPath: string): Promise<string> {
     const clean = this.cleanPath(physicalPath)
     if (clean === "/") {
@@ -46,12 +57,27 @@ export class Yun139Driver implements StorageDriver {
 
     for (const part of parts) {
       const disk = await this.client.listFiles(currentCatalogId)
-      const foundFolder = disk.folders.find((f) => f.catalogName === part)
-      if (foundFolder) {
-        currentCatalogId = foundFolder.catalogID
-      } else {
-        break
+      const foundFolder = disk.folders.find((f) =>
+        this.nameEquals(f.catalogName, part),
+      )
+      // 解析失败的层级必须显式抛出，不能静默回退到最近一个已解析的父目录：
+      // - 路径末段是文件时（如 /手机软件/阅读.apk），回退会让 list() 列出父目录
+      //   内容，前端把文件路径渲染成目录，出现 /手机软件/阅读.apk/阅读.apk 套娃；
+      // - 首段就解析失败时（列表瞬时缺失/缓存不一致），回退会列出根目录内容，
+      //   表现为访问子目录却看到根目录的全部文件夹（issue #112）。
+      if (!foundFolder) {
+        throw new Error(`Path not found: ${clean}`)
       }
+      // 目录项缺 id 时（部分 /file/list 响应以 catalogId/catalogID 携带，
+      // 已在 util 映射处并集回退），仍拿不到 id 就必须报错：继续往下传会让
+      // listFiles(undefined) 回退 parentFileId="/"，静默列出根目录内容
+      // （issue #112 的症状1，按名解析成功、任何“找不到目录”的报错都不会触发）。
+      if (!foundFolder.catalogID) {
+        throw new Error(
+          `[139] folder "${part}" has no catalog id in listing: ${clean}`,
+        )
+      }
+      currentCatalogId = foundFolder.catalogID
     }
 
     return currentCatalogId
@@ -118,7 +144,9 @@ export class Yun139Driver implements StorageDriver {
     const parentCatalogId = await this.resolveCatalogId(parentPath)
     const disk = await this.client.listFiles(parentCatalogId)
 
-    const foundFolder = disk.folders.find((f) => f.catalogName === name)
+    const foundFolder = disk.folders.find((f) =>
+      this.nameEquals(f.catalogName, name),
+    )
     if (foundFolder) {
       return {
         name: foundFolder.catalogName,
@@ -131,7 +159,9 @@ export class Yun139Driver implements StorageDriver {
       }
     }
 
-    const foundFile = disk.files.find((f) => f.contentName === name)
+    const foundFile = disk.files.find((f) =>
+      this.nameEquals(f.contentName, name),
+    )
     if (foundFile) {
       const sizeNum =
         typeof foundFile.contentSize === "number"
@@ -216,11 +246,13 @@ export class Yun139Driver implements StorageDriver {
     const catalogId = await this.resolveCatalogId(dirPath)
     const disk = await this.client.listFiles(catalogId)
 
-    const folder = disk.folders.find((f) => f.catalogName === name)
+    const folder = disk.folders.find((f) =>
+      this.nameEquals(f.catalogName, name),
+    )
     if (folder) {
       await this.client.deleteCatalog(folder.catalogID)
     } else {
-      const file = disk.files.find((f) => f.contentName === name)
+      const file = disk.files.find((f) => this.nameEquals(f.contentName, name))
       if (file && file.contentID) {
         await this.client.deleteFile(file.contentID)
       }
