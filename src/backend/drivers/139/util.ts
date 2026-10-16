@@ -50,11 +50,19 @@ export function formatTime(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
+// personal_new（新版个人云）的 /file/list 等端点只存在于 queryRoutePolicy
+// 下发的路由 host（如 xxx/hcy）上；向这个默认域发请求会命中旧版 legacy 端点，
+// 该端点会**静默忽略 parentFileId、恒返回根目录内容**（HTTP 200 + success:true，
+// 不会抛错，因此此前任何“校验 success/code 再决定是否报错”的防御都拦不住）。
+// 对齐 AlistGo/alist 官方 Go 驱动 ensurePersonalCloudHost 的做法：拿不到路由
+// host 就是硬失败，绝不允许静默回退到这个占位域名。
+const YUN139_DEFAULT_HOST = "https://yun.139.com"
+
 export class Yun139ApiClient {
   private addition: Yun139Addition
-  public personalHost = "https://yun.139.com"
-  public familyHost = "https://yun.139.com"
-  public groupHost = "https://yun.139.com"
+  public personalHost = YUN139_DEFAULT_HOST
+  public familyHost = YUN139_DEFAULT_HOST
+  public groupHost = YUN139_DEFAULT_HOST
   public account = ""
   private onAuthorizationRefresh?: (authorization: string) => Promise<void>
 
@@ -119,15 +127,9 @@ export class Yun139ApiClient {
     const bodyStr = JSON.stringify(body || {})
     const sign = calSign(bodyStr, ts, randStr)
 
-    let url: string
-    if (uriOrUrl.startsWith("http://") || uriOrUrl.startsWith("https://")) {
-      url = uriOrUrl
-    } else if (uriOrUrl.startsWith("/orchestration/")) {
-      // Orchestration APIs are strictly hosted on yun.139.com
-      url = `https://yun.139.com${uriOrUrl}`
-    } else {
-      url = `${this.getHost()}${uriOrUrl}`
-    }
+    // 候选 URL 顺序即优先级；仅在"路由不存在"时才回退下一候选
+    // （见 buildRequestUrls 的具体判断依据）
+    const urls = this.buildRequestUrls(uriOrUrl)
 
     const svcType = this.isFamily() ? "2" : "1"
     const headers: Record<string, string> = {
@@ -161,22 +163,113 @@ export class Yun139ApiClient {
       "X-Yun-Svc-Type": "1",
     }
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: bodyStr,
-    })
-
-    if (!res.ok) {
-      const text = await res.text()
-      throw new Error(`139 Cloud API error (${res.status}): ${text}`)
+    let res: Response | undefined
+    let lastStatus = 0
+    let lastBody = ""
+    let lastUrl = urls[0] || uriOrUrl
+    for (let i = 0; i < urls.length; i++) {
+      const candidate = urls[i]
+      lastUrl = candidate
+      const r = await fetch(candidate, {
+        method: "POST",
+        headers,
+        body: bodyStr,
+      })
+      if (r.ok) {
+        res = r
+        break
+      }
+      lastStatus = r.status
+      lastBody = await r.text()
+      // 只有"路由不存在"才尝试下一候选；校验/权限/签名错误必须原样抛出，
+      // 不能被后续候选的错误掩盖（对齐社区实现 gaozhangmin/boxplayer 的
+      // cloud139Request 重试语义：仅 404 / "route not found" 才回退）。
+      const routeMissing = r.status === 404 || /route not found/i.test(lastBody)
+      if (!routeMissing || i === urls.length - 1) {
+        throw new Error(
+          `139 Cloud API error (${r.status}) [${candidate}]: ${lastBody}`,
+        )
+      }
+    }
+    if (!res) {
+      throw new Error(
+        `139 Cloud API error (${lastStatus}) [${lastUrl}]: ${lastBody}`,
+      )
     }
 
-    const json = (await res.json()) as any
+    let json: any
+    try {
+      json = (await res.json()) as any
+    } catch {
+      // 非 JSON（如被重定向到网页）时给出请求 URL，方便定位打错的 host
+      throw new Error(`139 Cloud returned a non-JSON response [${lastUrl}]`)
+    }
     if (json.success === false && json.message) {
       throw new Error(`139 Cloud API error: ${json.message}`)
     }
     return json as T
+  }
+
+  /**
+   * 计算请求候选 URL（顺序即优先级），对齐 AlistGo/alist 官方 Go 驱动与
+   * 社区实现 gaozhangmin/boxplayer 的 cloud139PersonalUrls：
+   * - 完整 URL 与 /orchestration 路径：单一候选，保持既有行为；
+   * - 走路由 host 的业务端点：首选 host 直拼（现网常见形态，如
+   *   xxx/hcy/file/list）；404 / route not found 时回退 orchestration
+   *   形态——路由下发的 host 可能是 xxx/hcy，也可能只暴露
+   *   /orchestration，裸 host 则需要补 /orchestration 前缀。
+   * - personal_new 禁止落到默认域：默认域的 /file/list 是旧版 legacy 端点，
+   *   会忽略 parentFileId 恒返回根目录内容（issue #112）；init() 已经
+   *   硬失败，这里是防御性兜底（例如长生命周期 isolate 中残留的陈旧实例）。
+   */
+  private buildRequestUrls(uriOrUrl: string): string[] {
+    if (uriOrUrl.startsWith("http://") || uriOrUrl.startsWith("https://")) {
+      return [uriOrUrl]
+    }
+    if (uriOrUrl.startsWith("/orchestration/")) {
+      // Orchestration APIs are strictly hosted on yun.139.com
+      return [`https://yun.139.com${uriOrUrl}`]
+    }
+
+    const host = this.getHost()
+    if (this.isPersonalNew() && (!host || host === YUN139_DEFAULT_HOST)) {
+      throw new Error(
+        `[139] routed personal host unavailable, refusing to call ${uriOrUrl} on the default host`,
+      )
+    }
+
+    const hasPath = (value: string): boolean => {
+      try {
+        const p = new URL(value).pathname.replace(/\/+$/, "")
+        return Boolean(p) && p !== "/"
+      } catch {
+        return false
+      }
+    }
+    const toUrl = (base: string): string => {
+      const b = (base || "").replace(/\/+$/, "")
+      if (b.endsWith("/orchestration") || b.includes("/orchestration/")) {
+        return `${b}${uriOrUrl}`
+      }
+      // 带非空路径段的 host（如 .../hcy）直接拼接；裸 host 才补
+      // /orchestration 前缀（新版个人云应用 boxplayer 的既有规则）。
+      if (hasPath(b)) {
+        return `${b}${uriOrUrl}`
+      }
+      return `${b}/orchestration${uriOrUrl}`
+    }
+
+    const primary = toUrl(host)
+    const urls = [primary]
+    const withoutHcy = (host || "")
+      .replace(/\/+$/, "")
+      .replace(/\/hcy\/orchestration\/?$/i, "/orchestration")
+      .replace(/\/hcy\/?$/i, "")
+    const alt = toUrl(withoutHcy)
+    if (alt !== primary) {
+      urls.push(alt)
+    }
+    return urls
   }
 
   /**
@@ -259,7 +352,9 @@ export class Yun139ApiClient {
     }
     const newExpiresAt = Number(newToken.split("|")[3])
     if (!Number.isFinite(newExpiresAt) || newExpiresAt <= Date.now()) {
-      throw new Error("139 Cloud PC refresh returned a token without a valid future expiry")
+      throw new Error(
+        "139 Cloud PC refresh returned a token without a valid future expiry",
+      )
     }
 
     this.addition.authorization = CryptoJS.enc.Base64.stringify(
@@ -275,6 +370,7 @@ export class Yun139ApiClient {
 
     await this.refreshAuthorizationIfNeeded()
 
+    let routeError: unknown = null
     try {
       const routeRes = await this.request<QueryRoutePolicyResp>(
         "https://user-njs.yun.139.com/user/route/qryRoutePolicy",
@@ -300,9 +396,36 @@ export class Yun139ApiClient {
         }
       }
     } catch (e) {
+      routeError = e
+    }
+
+    // 新版个人云必须拿到路由下发的 personal host 才能工作：静默回退默认域
+    // 会让 /file/list 命中忽略 parentFileId 的旧版端点——按名解析目录仍然
+    // "成功"（因为该端点恒返回根目录内容，根目录下确有同名文件夹时查找不会
+    // 落空），resolveCatalogId 的任何 throw 都不会被触发，表现为访问子目录
+    // 却看到根目录的全部文件夹，点击文件又出现路径自我嵌套（issue #112）。
+    // Go 官方驱动 ensurePersonalCloudHost 同样是硬失败；旧版个人云
+    // （isPersonalNew()===false）走 /orchestration 硬编码路径，不依赖路由，
+    // 保留告警即可，不强制失败。
+    if (
+      this.isPersonalNew() &&
+      (!this.personalHost || this.personalHost === YUN139_DEFAULT_HOST)
+    ) {
+      const detail = routeError
+        ? routeError instanceof Error
+          ? routeError.message
+          : String(routeError)
+        : "queryRoutePolicy returned no personal host"
+      throw new Error(
+        `[139] failed to resolve personal cloud host via queryRoutePolicy (${detail}); ` +
+          "refusing to fall back to the default host, which silently ignores " +
+          "parentFileId and always returns the root directory",
+      )
+    }
+    if (routeError) {
       console.warn(
         "[139] queryRoutePolicy warning, fallback to default host:",
-        e,
+        routeError,
       )
     }
   }
@@ -334,13 +457,22 @@ export class Yun139ApiClient {
 
         const items = res.data?.items || []
         allItems.push(...items)
-        nextPageCursor = res.data?.nextPageCursor || ""
+        // data.nextPageCursor 是 Go 官方驱动（drivers/139/util.go）确认的权威
+        // 字段；额外防御游标与上一轮相同时终止，避免服务端重复回显同一游标
+        // 导致死循环。
+        const nextCursor = res.data?.nextPageCursor || ""
+        if (nextCursor === nextPageCursor) break
+        nextPageCursor = nextCursor
       } while (nextPageCursor)
 
       const folders = allItems
         .filter((i) => i.type === "folder")
         .map((i) => ({
-          catalogID: i.fileId,
+          // 与社区实现 gaozhangmin/boxplayer 的 mapCloud139FileToAliModel
+          // 字段映射比对一致：部分条目以 catalogId/catalogID 携带 id 而非
+          // fileId。只读 fileId 会拿到 undefined，随后 listFiles(undefined)
+          // 回退 parentFileId="/" 静默列出根目录（issue #112 症状1）。
+          catalogID: i.fileId || i.catalogId || i.catalogID || "",
           catalogName: i.name,
           updateTime: i.updatedAt,
         }))
@@ -348,7 +480,7 @@ export class Yun139ApiClient {
       const files: Yun139FileItem[] = allItems
         .filter((i) => i.type !== "folder")
         .map((i) => ({
-          contentID: i.fileId,
+          contentID: i.fileId || i.catalogId || i.catalogID || "",
           contentName: i.name,
           contentSize: i.size,
           updateTime: i.updatedAt,
