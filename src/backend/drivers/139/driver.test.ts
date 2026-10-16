@@ -483,17 +483,21 @@ test("Yun139 request URL candidates and route-not-found retry semantics", async 
       /routed personal host unavailable/,
     )
 
-    // /hcy host：首选直拼，回退 orchestration 形态
+    // /hcy host：顺序 = 现网已工作的直拼形态 → /hcy+/orchestration →
+    // 去掉 /hcy 的 orchestration 形态 → 去掉 /hcy 的直拼形态
     client.personalHost = "https://personal-kd-njs.yun.139.com/hcy"
     assert.deepEqual((client as any).buildRequestUrls("/file/list"), [
       "https://personal-kd-njs.yun.139.com/hcy/file/list",
+      "https://personal-kd-njs.yun.139.com/hcy/orchestration/file/list",
       "https://personal-kd-njs.yun.139.com/orchestration/file/list",
+      "https://personal-kd-njs.yun.139.com/file/list",
     ])
 
-    // 裸 host：补 /orchestration 前缀
+    // 裸 host：先补 /orchestration 前缀（社区实现规则），再尝试直拼
     client.personalHost = "https://example.com"
     assert.deepEqual((client as any).buildRequestUrls("/file/list"), [
       "https://example.com/orchestration/file/list",
+      "https://example.com/file/list",
     ])
 
     // 已带 /orchestration：单候选，不重复拼接
@@ -527,7 +531,7 @@ test("Yun139 request URL candidates and route-not-found retry semantics", async 
     await client.request("/file/list", { parentFileId: "/" })
     assert.deepEqual(urls, [
       "https://personal-kd-njs.yun.139.com/hcy/file/list",
-      "https://personal-kd-njs.yun.139.com/orchestration/file/list",
+      "https://personal-kd-njs.yun.139.com/hcy/orchestration/file/list",
     ])
 
     // 非路由类错误（500）不触发回退，错误信息带上请求 URL
@@ -538,6 +542,160 @@ test("Yun139 request URL candidates and route-not-found retry semantics", async 
       /139 Cloud API error \(500\) \[https:\/\/personal-kd-njs\.yun\.139\.com\/hcy\/file\/list\]/,
     )
     assert.equal(urls.length, 1)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("Yun139 retries the next candidate URL when the server ignores parentFileId (#112)", async () => {
+  const addition: Yun139Addition = {
+    authorization: Buffer.from(
+      "Basic:13800138000:token123|1|1|99999999999999",
+    ).toString("base64"),
+    type: "personal_new",
+  }
+  const originalFetch = globalThis.fetch
+  const calls: string[] = []
+  const rootItems = [
+    {
+      fileId: "d_backup",
+      name: "手机备份",
+      type: "folder",
+      updatedAt: "2026-10-15T00:00:00.000+08:00",
+    },
+  ]
+  const childItems = [
+    { fileId: "f_1", name: "photo.jpg", type: "file", size: 10 },
+  ]
+
+  globalThis.fetch = (async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    const url = String(input)
+    calls.push(url)
+    const body = JSON.parse(String(init?.body))
+    const parent = String(body.parentFileId || "")
+    // 只有 host 直拼形态（/hcy/file/list）会忽略 parentFileId 恒返回根内容
+    const ignoresParent = url.endsWith("/hcy/file/list")
+    const items =
+      ignoresParent && parent !== "/"
+        ? rootItems
+        : parent === "/"
+          ? rootItems
+          : childItems
+    return new Response(
+      JSON.stringify({ success: true, code: "0000", data: { items } }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )
+  }) as typeof fetch
+
+  try {
+    const driver = new Yun139Driver(addition)
+    ;(driver as any).client.personalHost =
+      "https://personal-kd-njs.yun.139.com/hcy"
+
+    const items = await driver.list("/手机备份", "/手机备份")
+    assert.deepEqual(
+      items.map((i) => i.name),
+      ["photo.jpg"],
+    )
+    // 先打了会忽略 parentFileId 的候选，再自动换到下一个候选
+    assert.ok(
+      calls.some((u) => u.endsWith("/hcy/file/list")),
+      calls.join(", "),
+    )
+    assert.ok(
+      calls.some((u) => u.endsWith("/hcy/orchestration/file/list")),
+      calls.join(", "),
+    )
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("Yun139 fails loudly with every candidate URL when all of them ignore parentFileId (#112)", async () => {
+  const addition: Yun139Addition = {
+    authorization: Buffer.from(
+      "Basic:13800138000:token123|1|1|99999999999999",
+    ).toString("base64"),
+    type: "personal_new",
+  }
+  const originalFetch = globalThis.fetch
+  const rootItems = [{ fileId: "d_backup", name: "手机备份", type: "folder" }]
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        success: true,
+        code: "0000",
+        data: { items: rootItems },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof fetch
+
+  try {
+    const driver = new Yun139Driver(addition)
+    ;(driver as any).client.personalHost =
+      "https://personal-kd-njs.yun.139.com/hcy"
+
+    await assert.rejects(
+      () => driver.list("/手机备份", "/手机备份"),
+      (err: any) => {
+        const msg = String(err?.message || err)
+        assert.match(msg, /contains the requested folder itself/)
+        assert.match(msg, /tried: .*\/hcy\/file\/list/)
+        assert.match(msg, /\/hcy\/orchestration\/file\/list/)
+        assert.match(msg, /\/orchestration\/file\/list/)
+        return true
+      },
+    )
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("Yun139 keeps using only the first candidate URL when the listing is plausible", async () => {
+  const addition: Yun139Addition = {
+    authorization: Buffer.from(
+      "Basic:13800138000:token123|1|1|99999999999999",
+    ).toString("base64"),
+    type: "personal_new",
+  }
+  const originalFetch = globalThis.fetch
+  const calls: string[] = []
+  globalThis.fetch = (async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    const url = String(input)
+    calls.push(url)
+    const body = JSON.parse(String(init?.body))
+    const parent = String(body.parentFileId || "")
+    const items =
+      parent === "/"
+        ? [{ fileId: "d_backup", name: "手机备份", type: "folder" }]
+        : [{ fileId: "f_1", name: "photo.jpg", type: "file", size: 10 }]
+    return new Response(
+      JSON.stringify({ success: true, code: "0000", data: { items } }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )
+  }) as typeof fetch
+
+  try {
+    const driver = new Yun139Driver(addition)
+    ;(driver as any).client.personalHost =
+      "https://personal-kd-njs.yun.139.com/hcy"
+
+    const items = await driver.list("/手机备份", "/手机备份")
+    assert.deepEqual(
+      items.map((i) => i.name),
+      ["photo.jpg"],
+    )
+    // 健康账号不应产生额外候选请求（避免回归成"每次都打好几个 URL"）
+    assert.deepEqual(calls, [
+      "https://personal-kd-njs.yun.139.com/hcy/file/list",
+      "https://personal-kd-njs.yun.139.com/hcy/file/list",
+    ])
   } finally {
     globalThis.fetch = originalFetch
   }
