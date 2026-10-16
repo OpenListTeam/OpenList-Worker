@@ -33,6 +33,33 @@ function fullKeyOf(table: string, id: string): string {
   return entityKeyOf(table, id)
 }
 
+/**
+ * 将一次全局 list 的结果按表前缀分组。
+ *
+ * key 格式的键名统一为 `<table>_<id>`（见 keycodec），因此一次空前缀
+ * list 即可取回全部表的键，再按前缀分拣 —— 结果与逐表 list 完全一致，
+ * 但把 load/save 各自的 list 消耗从「每表 1 次（6 张表 = 6 次）」降为
+ * 1 次。Cloudflare 免费版 list 配额仅 1000 次/天（issue #125），
+ * key + kv 组合下这是可持续性的关键；对配额无限的平台也无害（省 5 次
+ * 往返）。
+ *
+ * 命名空间中不属于任何表前缀的键（如 INIT_MARK、其他应用的键）会被
+ * 忽略，与旧实现「逐表前缀 list 天然排除它们」的行为一致。
+ */
+function groupKeysByTable(allKeys: string[]): Record<TableName, string[]> {
+  const out = {} as Record<TableName, string[]>
+  for (const table of TABLE_NAMES) out[table] = []
+  for (const key of allKeys) {
+    for (const table of TABLE_NAMES) {
+      if (key.startsWith(tablePrefix(table))) {
+        out[table].push(key)
+        break
+      }
+    }
+  }
+  return out
+}
+
 export const keyFormat: FormatAdapter = {
   name: "key",
 
@@ -41,14 +68,14 @@ export const keyFormat: FormatAdapter = {
     const mark = await driver.get(INIT_MARK, env)
     if (!mark) return null
 
+    // 一次全局 list 代替逐表 list（6 张表 = 6 次），见 groupKeysByTable
+    const grouped = groupKeysByTable(await driver.list("", env))
+
     const out: Record<string, any> = {}
 
     for (const table of TABLE_NAMES) {
-      const prefix = tablePrefix(table)
-      const keys = await driver.list(prefix, env)
-
       const records = []
-      for (const key of keys) {
+      for (const key of grouped[table]) {
         const raw = await driver.get(key, env)
         if (raw) {
           try {
@@ -92,10 +119,10 @@ export const keyFormat: FormatAdapter = {
     }
 
     // 清理本快照中已不存在的键（删除的实体 / 改名的键）
+    // 一次全局 list 代替逐表 list（6 张表 = 6 次），见 groupKeysByTable
+    const grouped = groupKeysByTable(await driver.list("", env))
     for (const table of TABLE_NAMES) {
-      const prefix = tablePrefix(table)
-      const keys = await driver.list(prefix, env)
-      for (const key of keys) {
+      for (const key of grouped[table]) {
         if (liveKeys.has(key)) continue
         await driver.delete(key, env)
       }
@@ -105,7 +132,7 @@ export const keyFormat: FormatAdapter = {
     await driver.put(INIT_MARK, String(Date.now()), env)
     return true
   },
-
+  
   async getTable(table: string, driver: Driver, env?: any): Promise<any[]> {
     const prefix = tablePrefix(table)
     const keys = await driver.list(prefix, env)
