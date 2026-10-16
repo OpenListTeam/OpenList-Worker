@@ -17,6 +17,7 @@ public_data
 .idea
 .test
 .codebuddy
+.workbuddy-ai
 .vscode
 .env
 .env.local
@@ -35,6 +36,7 @@ public_data
 # local-only dev config (may contain real secrets; never commit)
 wrangler.d1.toml
 wrangler.local.jsonc
+wrangler.ui.jsonc
 
 # OS files
 Thumbs.db

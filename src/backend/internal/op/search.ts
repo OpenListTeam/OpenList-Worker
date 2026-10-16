@@ -1,5 +1,8 @@
 import { listItems } from "./storage"
 import { FileItem } from "../driver/base"
+import { canAccess, getNearestMeta } from "../../pkg/meta"
+import type { Meta } from "../../pkg/meta"
+import type { UserPermissionObj } from "../../pkg/permission"
 
 export interface SearchOptions {
   parent?: string
@@ -12,6 +15,14 @@ export interface SearchOptions {
   max_depth?: number
   /** Max items to collect before truncating (default 500) */
   max_results?: number
+  /**
+   * 访问者。提供时对每个结果做 meta 判定过滤（密码保护 + read_users 白名单），
+   * 对齐 Go handles.Search 传给 SearchFiltered 的 filter 闭包；不提供时
+   * （内部调用 / 管理员构建索引）不做过滤，与历史行为一致。
+   */
+  user?: UserPermissionObj | null
+  /** 目录访问密码（meta.password） */
+  password?: string
 }
 
 export interface SearchResultItem extends FileItem {
@@ -43,6 +54,7 @@ export async function search(
   const maxResults = Math.min(2000, Math.max(1, opts.max_results ?? 500))
 
   const matches: SearchResultItem[] = []
+  const enforceAcl = opts.user !== undefined
 
   async function walk(dirPath: string, depth: number) {
     if (depth > maxDepth || matches.length >= maxResults) return
@@ -56,8 +68,31 @@ export async function search(
       return
     }
 
+    // 与 Go 一致：meta 取「父目录」的最近 meta，再对子项自身路径做判定
+    let dirMeta: Meta | null = null
+    if (enforceAcl) {
+      try {
+        dirMeta = await getNearestMeta(dirPath, env)
+      } catch {
+        dirMeta = null
+      }
+    }
+
     for (const item of items) {
       if (matches.length >= maxResults) break
+
+      const subPath =
+        dirPath === "/" ? `/${item.name}` : `${dirPath}/${item.name}`
+
+      // meta 访问控制：密码保护 / read_users 白名单覆盖的内容不出现在搜索
+      // 结果里。历史缺陷：搜索完全跳过 meta 判定——实测直连被密码保护而
+      // 被拒的目录，其文件名/大小仍能被搜出来（信息泄露）。
+      if (
+        enforceAcl &&
+        !canAccess(opts.user!, dirMeta, subPath, opts.password || "")
+      ) {
+        continue
+      }
 
       const nameMatch = !keyword || item.name.toLowerCase().includes(keyword)
       const isDir = !!item.is_dir
@@ -81,8 +116,6 @@ export async function search(
       }
 
       if (isDir) {
-        const subPath =
-          dirPath === "/" ? `/${item.name}` : `${dirPath}/${item.name}`
         await walk(subPath, depth + 1)
       }
     }

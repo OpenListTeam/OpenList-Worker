@@ -934,6 +934,17 @@ export function setEnvCtx(env: any) {
   }
 }
 
+/**
+ * 读取请求级 env 上下文（由 setEnvCtx 写入）。
+ *
+ * 供**驱动层**解析平台绑定（如 R2 bucket binding）：驱动的 list/get/put
+ * 签名里没有 env 参数，而 Workers 只会把绑定放进请求的 env，因此必须经这里
+ * 回取。拿不到时返回 null（非 Workers 运行时 / 单元测试），由调用方决定回退。
+ */
+export function getEnvCtx(): any | null {
+  return globalEnvCtx || null
+}
+
 // 已知的旧默认值 → 当前默认值迁移表。
 // 修复「开发环境(无 KV，用新默认值)与生产环境(KV 里保存了旧默认值)不一致」：
 // 早期默认 logo/favicon 为空或 res.oplist.org 旧地址，已写入 KV 的旧值不会被
@@ -2066,6 +2077,15 @@ export const saveDb = async (
     return false
   }
 
+  // 记录写入前的内存状态，供持久化失败时回滚。
+  //
+  // 稳定性不变量：**持久化失败后，失败的修改不得在内存/请求缓存中生效**。
+  // 历史实现先更新 memoryDb 与 dbCache、再尝试落盘，失败只抛错不回滚。
+  // 结果是「接口报 500，但当前实例的角色/权限/设置已按未保存的内容生效」——
+  // 调用方以为失败、系统却按新值运行（实测：保存失败后 getDb() 仍读到新 role）。
+  const previousDb = memoryDb
+  const previousTrusted = dbTrusted
+
   memoryDb = data
   dbWriteBlocked = false
   // Refresh the request cache so any getDb() later in this request observes
@@ -2112,6 +2132,14 @@ export const saveDb = async (
     )
     await backend.save(sealed, activeEnv)
   } catch (err: any) {
+    // 回滚内存与请求缓存：持久化没成功，就不能让本次修改在本实例内可见，
+    // 否则会出现「报错但已生效」的不一致状态。
+    memoryDb = previousDb
+    dbTrusted = previousTrusted
+    if (cacheKey) {
+      if (previousDb) dbCache.set(cacheKey, { ts: Date.now(), db: previousDb })
+      else dbCache.delete(cacheKey)
+    }
     console.error(
       `[DB] saveDb FAILED: backend=${backend.name}, error=${err?.message || err}`,
       `stack=${err?.stack?.substring(0, 500) || ""}`,

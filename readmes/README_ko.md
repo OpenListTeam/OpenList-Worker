@@ -43,10 +43,9 @@
 
 > [!IMPORTANT]
 > - Cloudflare에서 `저장소 콘텐츠를 가져올 수 없습니다`라고 표시되면, 먼저 이 프로젝트를 [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork)한 다음 Github 저장소 연결 기능으로 배포하세요
-> - 배포 후 환경 변수를 설정합니다： **EdgeOne**：[국제 콘솔](https://console.edgeone.ai/makers) · [중국 콘솔](https://console.cloud.tencent.com/edgeone/makers)；**Cloudflare**：[Worker 대시보드](https://dash.cloudflare.com/)。환경 변수：
->   - `DB_FORMAT`: 데이터 저장 형식: `map` (기본값, 전체 객체 JSON) / `key` (키별 저장) / `sql` (관계형 테이블, Go 백엔드 호환)
->   - `DB_DRIVER`: 데이터베이스 드라이버: `auto` (기본값, 자동 감지) / `blob` / `cfkv` / `kv` / `d1` / `mysql`
->   - 나머지 선택 변수는 **상세 배포 가이드**를 참조하세요：[Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
+> - 배포 시 `JWT_SECRET`(16자 이상의 임의 문자열, 예: `openssl rand -hex 32`)을 입력하세요. JWT 서명과 데이터 암호화에 사용되며, 미설정 시 초기화 단계에서 자동 생성·영구 저장됩니다
+> - 데이터 저장은 플랫폼 내장 영구 저장소를 자동으로 선택합니다(`DB_DRIVER=auto`) — 대부분 설정이 필요 없으며, 나머지 변수는 [환경 변수](https://doc.oplist.org/ecosystem/official_worker/guide_env)를 참고하세요
+> - 배포 후 첫 방문 시 **설치 마법사**가 열립니다. 브라우저에서 관리자 계정과 비밀번호를 설정하면 초기화가 완료됩니다(`ADMIN_PASS`를 설정하면 마법사를 건너뜁니다)
 
 
 ## 기능 소개
@@ -61,7 +60,7 @@ OpenList-Worker는 공식 [OpenListTeam/OpenList](https://github.com/OpenListTea
 
 - **국내 클라우드 드라이브**：Aliyundrive（오픈 플랫폼/공유）、Quark（오픈 플랫폼/UC TV）、Baidu Netdisk（앨범）、115（오픈 플랫폼/공유）、123 Pan（오픈 플랫폼/공유）、Tianyi Cloud（189/PC/TV）、China Mobile Cloud（139/Hecaiyun）、Wopan、Thunder、Tencent Weiyun、Lanzou、PikPak（공유）、Doubao、Guangyapan、Chaoxing Group、Lenovo NAS 공유、Teambition、WPS Cloud、Alibaba Docs、HalalCloud、MediaTrack 등
 - **국제 클라우드 드라이브**：Google Drive（앨범）、OneDrive（앱/공유 링크）、Dropbox、MEGA、MediaFire、Proton Drive、Yandex Disk、Degoo、Bunny Storage、TeraBox 등
-- **오브젝트 스토리지**：S3 호환（AWS/OSS/COS/MinIO 등）、UpYun USS、Azure Blob、WebDAV、FTP、SFTP、SMB、IPFS 등
+- **오브젝트 스토리지**：S3 호환（AWS/OSS/COS/MinIO 등）、Cloudflare R2（Workers 바인딩 또는 S3 API）、UpYun USS、Azure Blob、WebDAV、FTP、SFTP、SMB、IPFS 등
 - **코드 호스팅**：GitHub、GitHub Releases、CNB Releases
 - **클라우드 드라이브 프로그램**：OpenList（공유）、AList V3、Cloudreve V3/V4、Kodbox、Seafile、Teldrive、Febbox 등
 - **기타 드라이버**：Netease Music、Misskey、Emby、Cloudflare 이미지 호스팅 등

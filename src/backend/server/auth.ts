@@ -23,9 +23,10 @@ import {
 import {
   staticHash,
   saltedHash,
-  generateSalt,
   setUserPassword,
   isHex64,
+  passwordStampOf,
+  isPasswordStampValid,
 } from "../pkg/password"
 import { setCSRFToken, clearCSRFToken } from "../pkg/csrf"
 import { getAuditLogger } from "../pkg/audit"
@@ -147,7 +148,7 @@ async function bumpLoginFailure(
   }
 }
 
-async function isLoginLocked(
+export async function isLoginLocked(
   c: Context,
   username: string,
   env: any,
@@ -206,7 +207,7 @@ async function isLoginLocked(
   return false
 }
 
-async function recordLoginFailure(
+export async function recordLoginFailure(
   c: Context,
   username: string,
   env: any,
@@ -219,7 +220,7 @@ async function recordLoginFailure(
   )
 }
 
-async function clearLoginFailures(
+export async function clearLoginFailures(
   c: Context,
   username: string,
   env: any,
@@ -257,10 +258,12 @@ export async function hashPasswordSHA256(
 
 /**
  * 校验前端提交的静态哈希是否匹配该用户（等价 Go User.ValidatePwdStaticHash）。
- * 兼容的存储格式：
- *   - Go 双层（user.salt 存在）：password === saltedHash(inputStatic, salt)
- *   - 早期 TSWorker 单层（无 salt）：password === inputStatic
- *   - bcrypt 遗留：返回 false（无明文不可还原），仅明文 /login 可逃生
+ *
+ * 只接受 Go 双层格式：password === saltedHash(inputStatic, user.salt)。
+ *
+ * 历史遗留格式（bcrypt / 无 salt 的单层 SHA256）不再被支持，也不再在登录成功
+ * 后自动升级为双层格式 —— 与 Go 行为完全一致：没有 salt 的存储值一律不可验证。
+ * 遗留账号请通过 ADMIN_PASS 显式重置，或由管理员在后台改密。
  */
 export async function verifyUserStaticHash(
   user: any,
@@ -272,12 +275,9 @@ export async function verifyUserStaticHash(
   const input = String(inputStatic || "")
     .trim()
     .toLowerCase()
-  if (!stored || !isHex64(input) || !isHex64(stored)) return false
-  if (user?.salt) {
-    const expect = (await saltedHash(input, String(user.salt))).toLowerCase()
-    return stored === expect
-  }
-  return stored === input
+  if (!stored || !user?.salt || !isHex64(input) || !isHex64(stored)) return false
+  const expect = (await saltedHash(input, String(user.salt))).toLowerCase()
+  return stored === expect
 }
 
 /**
@@ -428,7 +428,16 @@ export async function authUserFromReq(
     const user = db.users.find(
       (u: any) => u.id === payload.id || u.username === payload.username,
     )
-    if (!user) return null
+    // 禁用/已删除用户一律视为未认证。
+    //
+    // 安全不变量：身份解析必须复检「当前是否仍被允许」。JWT 只证明「签发时刻
+    // 身份合法」，不证明「现在仍然合法」。历史上这里缺少 disabled 判断，导致
+    // 管理员禁用某用户后，其既有令牌在 S3 网关等直接复用本函数的入口仍然可用
+    // （核心 API 走 getUserFromContext 有该检查，网关入口没有）。
+    if (!user || user.disabled) return null
+    // 密码指纹：改密后旧令牌立即失效（对齐 Go middlewares.Auth 的 PwdTS 比对）。
+    // 历史缺陷：JWT 只携带 {id, username, role}，改密不使既有令牌失效。
+    if (!isPasswordStampValid(payload, user)) return null
     return { db, user }
   } catch {
     return null
@@ -479,29 +488,26 @@ authRouter.post("/login", async (c) => {
     )
   }
 
-  const { users, db } = await getOrInitUsers(c.env)
+  const { users } = await getOrInitUsers(c.env)
 
   const matchedUser = users.find(
     (u: any) => u.username === username && !u.disabled,
   )
 
   if (matchedUser) {
-    // 明文登录：服务端先 StaticHash，再比对存储哈希（兼容单层/双层/bcrypt 遗留）
+    // 明文登录：服务端先 StaticHash，再比对存储哈希（仅 Go 双层格式）
     const isPasswordValid = await verifyUserPassword(matchedUser, rawPassword)
 
     if (isPasswordValid) {
-      // 遗留格式（bcrypt / 无盐单层 SHA256）登录成功后自动升级为 Go 双层哈希
-      const stored = String(matchedUser.password || "").trim()
-      const needsMigrate =
-        /^\$2[aby]\$/.test(stored) || (!matchedUser.salt && isHex64(stored))
-      if (needsMigrate) {
-        console.log(`[Auth] Upgrading password hash for user: ${username}`)
-        await setUserPassword(matchedUser, rawPassword)
-        await saveDb(db, c.env)
-      }
-
       const otpCheck = await checkUserOtp(matchedUser, body)
       if (!otpCheck.ok) {
+        // OTP 失败必须计入防爆破计数。
+        //
+        // 安全不变量：任何「口令学验证失败」都应当累加失败次数。历史缺陷是
+        // OTP 分支直接 return，不调用 recordLoginFailure —— 攻击者只要先拿到
+        // 正确密码，就能以「无限次猜测」的方式爆破 6 位 TOTP，而账号永远不会
+        // 被锁定（实测：连续 7 次错误 OTP 后仍可继续提交）。
+        await recordLoginFailure(c, username, c.env)
         return c.json(
           { code: otpCheck.code, message: otpCheck.message, data: null },
           otpCheck.httpStatus,
@@ -514,6 +520,8 @@ authRouter.post("/login", async (c) => {
         id: matchedUser.id,
         username: matchedUser.username,
         role: matchedUser.role,
+        // 密码指纹（对齐 Go common.UserClaims.PwdTS）：改密后旧令牌立即失效
+        pwd_ts: passwordStampOf(matchedUser),
         exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
         jti: generateJti(),
       }
@@ -564,7 +572,7 @@ authRouter.post("/login/hash", async (c) => {
     )
   }
 
-  const { users, db } = await getOrInitUsers(c.env)
+  const { users } = await getOrInitUsers(c.env)
 
   const matchedUser = users.find(
     (u: any) => u.username === username && !u.disabled,
@@ -574,17 +582,15 @@ authRouter.post("/login/hash", async (c) => {
     const isHashValid = await verifyUserStaticHash(matchedUser, inputHash)
 
     if (isHashValid) {
-      // 无盐单层 SHA256 旧数据 -> 升级为 Go 双层哈希（无需明文）
-      if (!matchedUser.salt) {
-        console.log(`[Auth] Upgrading password hash for user: ${username}`)
-        matchedUser.salt = generateSalt()
-        matchedUser.password = await saltedHash(inputHash, matchedUser.salt)
-        matchedUser.pwd_update_at = new Date().toISOString()
-        await saveDb(db, c.env)
-      }
-
       const otpCheck = await checkUserOtp(matchedUser, body)
       if (!otpCheck.ok) {
+        // OTP 失败必须计入防爆破计数。
+        //
+        // 安全不变量：任何「口令学验证失败」都应当累加失败次数。历史缺陷是
+        // OTP 分支直接 return，不调用 recordLoginFailure —— 攻击者只要先拿到
+        // 正确密码，就能以「无限次猜测」的方式爆破 6 位 TOTP，而账号永远不会
+        // 被锁定（实测：连续 7 次错误 OTP 后仍可继续提交）。
+        await recordLoginFailure(c, username, c.env)
         return c.json(
           { code: otpCheck.code, message: otpCheck.message, data: null },
           otpCheck.httpStatus,
@@ -597,6 +603,8 @@ authRouter.post("/login/hash", async (c) => {
         id: matchedUser.id,
         username: matchedUser.username,
         role: matchedUser.role,
+        // 密码指纹（对齐 Go common.UserClaims.PwdTS）：改密后旧令牌立即失效
+        pwd_ts: passwordStampOf(matchedUser),
         exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
         jti: generateJti(),
       }

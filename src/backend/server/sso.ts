@@ -3,7 +3,7 @@ import { sign } from "hono/jwt"
 import { getDb, saveDb } from "../internal/model/db"
 import { getJwtSecret } from "./middlewares"
 import { generateRandomPassword } from "./auth"
-import { setUserPassword } from "../pkg/password"
+import { setUserPassword, passwordStampOf } from "../pkg/password"
 
 /**
  * SSO 登录（OAuth2 授权码流 + OIDC）。
@@ -174,6 +174,8 @@ async function generateToken(user: any, c: any): Promise<string> {
     id: user.id,
     username: user.username,
     role: user.role,
+    // 密码指纹（对齐 Go PwdTS）：改密后旧令牌立即失效
+    pwd_ts: passwordStampOf(user),
     exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
     jti:
       typeof crypto.randomUUID === "function"
