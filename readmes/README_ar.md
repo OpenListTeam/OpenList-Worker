@@ -61,7 +61,7 @@ OpenList-Worker هو المنفذ الرسمي TypeScript + Serverless لمشر�
 
 - **الأقراص السحابية المحلية**: Aliyundrive (Open/Share)، Quark (Open/UC TV)، Baidu Netdisk (الألبوم)، 115 (Open/Share)، 123 Pan (Open/Share)، Tianyi Cloud (189/PC/TV)، China Mobile Cloud (139/Hecaiyun)، Wopan، Thunder، Tencent Weiyun، Lanzou، PikPak (Share)، Doubao، Guangyapan، Chaoxing Group، Lenovo NAS Share، Teambition، WPS Cloud، Alibaba Docs، HalalCloud، MediaTrack وغيرها
 - **الأقراص السحابية الدولية**: Google Drive (الألبوم)، OneDrive (App/ShareLink)، Dropbox، MEGA، MediaFire، Proton Drive، Yandex Disk، Degoo، Bunny Storage، TeraBox وغيرها
-- **تخزين الكائنات**: متوافق مع S3 (AWS/OSS/COS/MinIO وغيرها)، UpYun USS، Azure Blob، WebDAV، FTP، SFTP، SMB، IPFS وغيرها
+- **تخزين الكائنات**: متوافق مع S3 (AWS/OSS/COS/MinIO وغيرها)، Cloudflare R2 (ربط Workers أو S3 API)، UpYun USS، Azure Blob، WebDAV، FTP، SFTP، SMB، IPFS وغيرها
 - **استضافة الأكواد**: GitHub، GitHub Releases، CNB Releases
 - **برامج الأقراص السحابية**: OpenList (Share)، AList V3، Cloudreve V3/V4، Kodbox، Seafile، Teldrive، Febbox وغيرها
 - **برامج تشغيل أخرى**: Netease Music، Misskey، Emby، Cloudflare Image Hosting وغيرها

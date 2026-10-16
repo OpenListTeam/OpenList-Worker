@@ -61,7 +61,7 @@ OpenList-Worker는 공식 [OpenListTeam/OpenList](https://github.com/OpenListTea
 
 - **국내 클라우드 드라이브**：Aliyundrive（오픈 플랫폼/공유）、Quark（오픈 플랫폼/UC TV）、Baidu Netdisk（앨범）、115（오픈 플랫폼/공유）、123 Pan（오픈 플랫폼/공유）、Tianyi Cloud（189/PC/TV）、China Mobile Cloud（139/Hecaiyun）、Wopan、Thunder、Tencent Weiyun、Lanzou、PikPak（공유）、Doubao、Guangyapan、Chaoxing Group、Lenovo NAS 공유、Teambition、WPS Cloud、Alibaba Docs、HalalCloud、MediaTrack 등
 - **국제 클라우드 드라이브**：Google Drive（앨범）、OneDrive（앱/공유 링크）、Dropbox、MEGA、MediaFire、Proton Drive、Yandex Disk、Degoo、Bunny Storage、TeraBox 등
-- **오브젝트 스토리지**：S3 호환（AWS/OSS/COS/MinIO 등）、UpYun USS、Azure Blob、WebDAV、FTP、SFTP、SMB、IPFS 등
+- **오브젝트 스토리지**：S3 호환（AWS/OSS/COS/MinIO 등）、Cloudflare R2（Workers 바인딩 또는 S3 API）、UpYun USS、Azure Blob、WebDAV、FTP、SFTP、SMB、IPFS 등
 - **코드 호스팅**：GitHub、GitHub Releases、CNB Releases
 - **클라우드 드라이브 프로그램**：OpenList（공유）、AList V3、Cloudreve V3/V4、Kodbox、Seafile、Teldrive、Febbox 등
 - **기타 드라이버**：Netease Music、Misskey、Emby、Cloudflare 이미지 호스팅 등

@@ -61,7 +61,7 @@ Oltre **78 driver di storage** integrati, pronti a montare vari backend di stora
 
 - **Unità cloud domestiche**: Aliyundrive (Open/Share), Quark (Open/UC TV), Baidu Netdisk (Album), 115 (Open/Share), 123 Pan (Open/Share), Tianyi Cloud (189/PC/TV), China Mobile Cloud (139/Hecaiyun), Wopan, Thunder, Tencent Weiyun, Lanzou, PikPak (Share), Doubao, Guangyapan, Chaoxing Group, Lenovo NAS Share, Teambition, WPS Cloud, Alibaba Docs, HalalCloud, MediaTrack, ecc.
 - **Unità cloud internazionali**: Google Drive (Album), OneDrive (App/ShareLink), Dropbox, MEGA, MediaFire, Proton Drive, Yandex Disk, Degoo, Bunny Storage, TeraBox, ecc.
-- **Object storage**: Compatibile con S3 (AWS/OSS/COS/MinIO, ecc.), UpYun USS, Azure Blob, WebDAV, FTP, SFTP, SMB, IPFS, ecc.
+- **Object storage**: Compatibile con S3 (AWS/OSS/COS/MinIO, ecc.), Cloudflare R2 (binding Workers o API S3), UpYun USS, Azure Blob, WebDAV, FTP, SFTP, SMB, IPFS, ecc.
 - **Hosting del codice**: GitHub, GitHub Releases, CNB Releases
 - **Programmi di unità cloud**: OpenList (Share), AList V3, Cloudreve V3/V4, Kodbox, Seafile, Teldrive, Febbox, ecc.
 - **Altri driver**: Netease Music, Misskey, Emby, Cloudflare Image Hosting, ecc.

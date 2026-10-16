@@ -61,7 +61,7 @@ OpenList-Worker は公式 [OpenListTeam/OpenList](https://github.com/OpenListTea
 
 - **国内クラウドドライブ**：アリババクラウドディスク（オープンプラットフォーム/共有）、Quark（オープンプラットフォーム/UC TV 版）、Baidu 網盤（アルバム）、115（オープンプラットフォーム/共有）、123 Pan（オープンプラットフォーム/共有）、天翼クラウドディスク（189/PC/TV）、中国移動クラウドディスク（139/和彩雲）、沃家クラウドディスク、迅雷クラウドディスク、Tencent Weiyun、Lanzou、PikPak（共有）、豆包、光亜盤、超星グループ、Lenovo NAS 共有、Teambition、WPS クラウド、アリババドキュメント、HalalCloud、MediaTrack など
 - **海外クラウドドライブ**：Google Drive（アルバム）、OneDrive（アプリ/共有リンク）、Dropbox、MEGA、MediaFire、Proton Drive、Yandex Disk、Degoo、Bunny Storage、TeraBox など
-- **オブジェクトストレージ**：S3 互換（AWS/OSS/COS/MinIO など）、UpYun USS、Azure Blob、WebDAV、FTP、SFTP、SMB、IPFS など
+- **オブジェクトストレージ**：S3 互換（AWS/OSS/COS/MinIO など）、Cloudflare R2（Workers バインディングまたは S3 API）、UpYun USS、Azure Blob、WebDAV、FTP、SFTP、SMB、IPFS など
 - **コードホスティング**：GitHub、GitHub Releases、CNB Releases
 - **クラウドドライブプログラム**：OpenList（共有）、AList V3、Cloudreve V3/V4、Kodbox、Seafile、Teldrive、Febbox など
 - **その他のドライバー**：Netease Music、Misskey、Emby、Cloudflare 画像ホスティングなど

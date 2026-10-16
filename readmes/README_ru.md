@@ -61,7 +61,7 @@ OpenList-Worker — это официальный порт проекта [OpenL
 
 - **Отечественные облачные диски**: Aliyundrive (Open/Share), Quark (Open/UC TV), Baidu Netdisk (Альбом), 115 (Open/Share), 123 Pan (Open/Share), Tianyi Cloud (189/PC/TV), China Mobile Cloud (139/Hecaiyun), Wopan, Thunder, Tencent Weiyun, Lanzou, PikPak (Share), Doubao, Guangyapan, Chaoxing Group, Lenovo NAS Share, Teambition, WPS Cloud, Alibaba Docs, HalalCloud, MediaTrack и др.
 - **Международные облачные диски**: Google Drive (Альбом), OneDrive (App/ShareLink), Dropbox, MEGA, MediaFire, Proton Drive, Yandex Disk, Degoo, Bunny Storage, TeraBox и др.
-- **Объектные хранилища**: S3-совместимые (AWS/OSS/COS/MinIO и др.), UpYun USS, Azure Blob, WebDAV, FTP, SFTP, SMB, IPFS и др.
+- **Объектные хранилища**: S3-совместимые (AWS/OSS/COS/MinIO и др.), Cloudflare R2 (привязка Workers или S3 API), UpYun USS, Azure Blob, WebDAV, FTP, SFTP, SMB, IPFS и др.
 - **Хостинг кода**: GitHub, GitHub Releases, CNB Releases
 - **Программы облачных дисков**: OpenList (Share), AList V3, Cloudreve V3/V4, Kodbox, Seafile, Teldrive, Febbox и др.
 - **Прочие драйверы**: Netease Music, Misskey, Emby, Cloudflare Image Hosting и др.

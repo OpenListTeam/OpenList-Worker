@@ -61,7 +61,7 @@ OpenList-Worker es el puerto oficial TypeScript + Serverless del proyecto [OpenL
 
 - **Unidades en la nube domésticas**: Aliyundrive (Open/Share), Quark (Open/UC TV), Baidu Netdisk (Álbum), 115 (Open/Share), 123 Pan (Open/Share), Tianyi Cloud (189/PC/TV), China Mobile Cloud (139/Hecaiyun), Wopan, Thunder, Tencent Weiyun, Lanzou, PikPak (Share), Doubao, Guangyapan, Chaoxing Group, Lenovo NAS Share, Teambition, WPS Cloud, Alibaba Docs, HalalCloud, MediaTrack, etc.
 - **Unidades en la nube internacionales**: Google Drive (Álbum), OneDrive (App/ShareLink), Dropbox, MEGA, MediaFire, Proton Drive, Yandex Disk, Degoo, Bunny Storage, TeraBox, etc.
-- **Almacenamiento de objetos**: Compatible con S3 (AWS/OSS/COS/MinIO, etc.), UpYun USS, Azure Blob, WebDAV, FTP, SFTP, SMB, IPFS, etc.
+- **Almacenamiento de objetos**: Compatible con S3 (AWS/OSS/COS/MinIO, etc.), Cloudflare R2 (Workers binding o API S3), UpYun USS, Azure Blob, WebDAV, FTP, SFTP, SMB, IPFS, etc.
 - **Alojamiento de código**: GitHub, GitHub Releases, CNB Releases
 - **Programas de unidad en la nube**: OpenList (Share), AList V3, Cloudreve V3/V4, Kodbox, Seafile, Teldrive, Febbox, etc.
 - **Otros controladores**: Netease Music, Misskey, Emby, Cloudflare Image Hosting, etc.

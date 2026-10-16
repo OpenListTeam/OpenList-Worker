@@ -61,7 +61,7 @@ OpenList-Worker आधिकारिक [OpenListTeam/OpenList](https://github.
 
 - **घरेलू क्लाउड ड्राइव**: Aliyundrive（ओपन प्लेटफ़ॉर्म/शेयर）、Quark（ओपन प्लेटफ़ॉर्म/UC TV）、Baidu Netdisk（एल्बम）、115（ओपन प्लेटफ़ॉर्म/शेयर）、123 Pan（ओपन प्लेटफ़ॉर्म/शेयर）、Tianyi Cloud（189/PC/TV）、China Mobile Cloud（139/Hecaiyun）、Wopan、Thunder、Tencent Weiyun、Lanzou、PikPak（शेयर）、Doubao、Guangyapan、Chaoxing Group、Lenovo NAS शेयर、Teambition、WPS Cloud、Alibaba Docs、HalalCloud、MediaTrack आदि
 - **अंतर्राष्ट्रीय क्लाउड ड्राइव**: Google Drive（एल्बम）、OneDrive（ऐप/शेयर लिंक）、Dropbox、MEGA、MediaFire、Proton Drive、Yandex Disk、Degoo、Bunny Storage、TeraBox आदि
-- **ऑब्जेक्ट स्टोरेज**: S3-संगत（AWS/OSS/COS/MinIO आदि）、UpYun USS、Azure Blob、WebDAV、FTP、SFTP、SMB、IPFS आदि
+- **ऑब्जेक्ट स्टोरेज**: S3-संगत（AWS/OSS/COS/MinIO आदि）、Cloudflare R2（Workers binding या S3 API）、UpYun USS、Azure Blob、WebDAV、FTP、SFTP、SMB、IPFS आदि
 - **कोड होस्टिंग**: GitHub、GitHub Releases、CNB Releases
 - **क्लाउड ड्राइव प्रोग्राम**: OpenList（शेयर）、AList V3、Cloudreve V3/V4、Kodbox、Seafile、Teldrive、Febbox आदि
 - **अन्य ड्राइवर**: Netease Music、Misskey、Emby、Cloudflare इमेज होस्टिंग आदि
