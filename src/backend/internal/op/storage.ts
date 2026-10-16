@@ -765,6 +765,8 @@ async function createDriver(
     driver = new WebdavDriver(addition)
     await driver.init?.()
   } else if (
+    // Cloudflare R2 独立驱动（"Cloudflare R2" / "r2" / "cloudflare_r2" / "cfr2"
+    // 归一化后都会落到这里）。必须在下面的 S3 分支之前匹配。
     normDriver === "r2" ||
     normDriver === "cloudflarer2" ||
     normDriver === "cfr2" ||
@@ -774,13 +776,14 @@ async function createDriver(
     driver = new R2Driver(addition)
     await driver.init?.()
   } else if (
+    // S3 兼容家族。注意：`r2` 已由上一分支接管，这里不能再列它
+    // （会被上方分支拦截成死代码，且让「r2 走哪条路」变得难读）。
     normDriver === "s3" ||
     normDriver === "doge" ||
     normDriver === "dogecloud" ||
     normDriver === "minio" ||
     normDriver === "ceph" ||
     normDriver === "aws" ||
-    normDriver === "r2" ||
     normDriver === "b2" ||
     normDriver === "cos" ||
     normDriver === "oss" ||

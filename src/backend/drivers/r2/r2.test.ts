@@ -1,12 +1,18 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { R2Driver, normalizeR2Addition, resolveR2Bucket } from "./driver"
+import {
+  R2Driver,
+  normalizeR2Addition,
+  r2CanSignDirectUpload,
+  resolveR2Bucket,
+} from "./driver"
 import { R2BucketLike, R2ObjectLike } from "./types"
 import {
   __resetDbCacheForTest as resetEnv,
   setEnvCtx,
 } from "../../internal/model/db"
 import { getDriver } from "../../internal/op/storage"
+import { normalizeDriver } from "../../server/admin"
 
 /**
  * R2 binding 模式的端到端驱动测试（内存版 R2Bucket）。
@@ -432,17 +438,17 @@ test("binding 缺失：mode=auto 回退 api（不再抛绑定错误）；mode=bi
   }
 })
 
-test("getDriver 路由：R2 / r2 / CloudflareR2 均命中 R2Driver", async () => {
+test("getDriver 路由：Cloudflare R2 与各别名均命中 R2Driver（S3 不受影响）", async () => {
   const storageConfig = {
     id: 901,
-    driver: "R2",
+    driver: "Cloudflare R2",
     modified: new Date().toISOString(),
     addition: JSON.stringify({ mode: "auto" }),
   }
   resetEnv()
-  const driver = await getDriver("R2", storageConfig)
-  assert.ok(driver instanceof R2Driver, "'R2' 应命中 R2Driver")
-  for (const alias of ["r2", "CloudflareR2", "cfr2"]) {
+  const driver = await getDriver("Cloudflare R2", storageConfig)
+  assert.ok(driver instanceof R2Driver, "'Cloudflare R2' 应命中 R2Driver")
+  for (const alias of ["cloudflare_r2", "CloudflareR2", "cfr2", "r2", "R2"]) {
     const d = await getDriver(alias, {
       ...storageConfig,
       id: 901 + Math.floor(Math.random() * 1000),
@@ -451,5 +457,66 @@ test("getDriver 路由：R2 / r2 / CloudflareR2 均命中 R2Driver", async () =>
     })
     assert.ok(d instanceof R2Driver, `别名 ${alias} 应命中 R2Driver`)
   }
+  // 回归护栏：S3 家族不能被 R2 分支吃掉（此前 `r2` 就在 S3 分支的名单里）
+  const s3 = await getDriver("S3", {
+    ...storageConfig,
+    id: 9500,
+    driver: "S3",
+    addition: JSON.stringify({
+      bucket: "b",
+      endpoint: "https://s3.example.com",
+      access_key_id: "k",
+      secret_access_key: "s",
+    }),
+  })
+  assert.ok(!(s3 instanceof R2Driver), "'S3' 必须仍然命中 S3Driver")
+  resetEnv()
+})
+
+test("驱动名归一：Cloudflare R2 的写法都指向它，S3 家族不受影响", () => {
+  // 与 server/admin.ts 的 normalizeDriver 保持一致（后台表单与存储保存都走它）
+  assert.equal(normalizeDriver("Cloudflare R2"), "Cloudflare R2")
+  assert.equal(normalizeDriver("cloudflare_r2"), "Cloudflare R2")
+  assert.equal(normalizeDriver("R2"), "Cloudflare R2")
+  assert.equal(normalizeDriver("r2"), "Cloudflare R2")
+  assert.equal(normalizeDriver("cfr2"), "Cloudflare R2")
+  // 回归护栏：S3 家族不能被 R2 的名字归一吞掉
+  assert.equal(normalizeDriver("S3"), "S3")
+  assert.equal(normalizeDriver("s3"), "S3")
+  assert.equal(normalizeDriver("minio"), "S3")
+})
+
+test("r2CanSignDirectUpload：只有 api 模式可签发预签名直传", () => {
+  resetEnv()
+  const bucket = new MockR2Bucket()
+
+  // 无绑定（走 S3 兼容 api）→ 可签发
+  assert.equal(
+    r2CanSignDirectUpload({
+      bucket: "b",
+      access_key_id: "k",
+      secret_access_key: "s",
+    }),
+    true,
+  )
+
+  // 能解析到绑定 → binding 模式（即使同时配了密钥，binding 也优先）→ 不可签发
+  setEnvCtx({ R2: bucket })
+  assert.equal(
+    r2CanSignDirectUpload({
+      bucket_binding: "R2",
+      bucket: "b",
+      access_key_id: "k",
+      secret_access_key: "s",
+    }),
+    false,
+  )
+
+  // 显式 mode=binding 且解析不到绑定 → 仍不可签发（与 resolveMode 判定一致）
+  resetEnv()
+  assert.equal(
+    r2CanSignDirectUpload({ mode: "binding", bucket_binding: "R2" }),
+    false,
+  )
   resetEnv()
 })

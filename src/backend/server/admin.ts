@@ -176,10 +176,13 @@ export const normalizeDriver = (driverName: string): string => {
     ].includes(norm)
   )
     return "S3"
-  // R2 是独立驱动（支持 Workers bucket binding 直连），不再归一到 S3；
+  // Cloudflare R2 是独立驱动（支持 Workers bucket binding 直连），不再归一到 S3；
   // 历史配置里 driver=S3 且 endpoint 指向 R2 的记录仍走 S3 驱动，不受影响。
-  if (norm === "r2" || norm === "cloudflarer2" || norm === "cfr2")
-    return "R2"
+  //
+  // 注意：上面的精确匹配已能命中 "Cloudflare R2"（norm 后会得到 cloudflarer2），
+  // 这里兜底的是它的各种简写/旧写法，避免落到 "S3" 或原样返回。
+  if (norm === "r2" || norm === "cfr2" || norm === "cloudflarer2")
+    return "Cloudflare R2"
   // releases 别名必须在通用 github 别名之前，否则会被归一到 GitHub API
   if (norm.startsWith("githubrelease")) return "GitHub Releases"
   if (norm.startsWith("cnbrelease")) return "CNB Releases"
@@ -2163,8 +2166,8 @@ const driverConfigs: Record<string, any> = {
       no_overwrite_upload: true,
     },
   },
-  R2: {
-    name: "R2",
+  "Cloudflare R2": {
+    name: "Cloudflare R2",
     default_mount_path: "/r2",
     common: COMMON_FIELDS,
     additional: [
@@ -2278,7 +2281,7 @@ const driverConfigs: Record<string, any> = {
       },
     ],
     config: {
-      name: "R2",
+      name: "Cloudflare R2",
       local_sort: true,
       only_local: false,
       only_proxy: false,

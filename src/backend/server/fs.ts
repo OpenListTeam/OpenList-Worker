@@ -53,6 +53,7 @@ import { parseZip, extractZipEntry, ZipArchive } from "../internal/archive/zip"
 import { assertSafeUrl, getTrustedHosts } from "../pkg/http"
 import { invalidatePaths } from "../internal/cache"
 import { seedRouter } from "./seed"
+import { r2CanSignDirectUpload } from "../drivers/r2/driver"
 
 /**
  * 该路径所属存储是否禁止目录列表（对齐 Go handles.FsList 的 DisableIndex 判断）。
@@ -535,9 +536,28 @@ fsRouter.post("/list", async (c) => {
       if (!storage) return []
       const tools: string[] = []
       const driver = (storage as any)
-      // S3 系列驱动支持 s3_presigned 直传
-      if (/^(s3|minio|cos|oss|r2|b2|cloudflare_r2)/i.test(driver.driver || "")) {
-        tools.push("s3_presigned")
+      // S3 系列驱动支持 s3_presigned 直传。
+      // 必须按「归一化后的驱动名」判断（小写 + 去非字母数字）：驱动名里可能含
+      // 空格（如 "Cloudflare R2"），拿原始字符串做 `^` 锚定正则会漏判。
+      const normDriverName = String(driver.driver || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "")
+      if (
+        /^(s3|minio|cos|oss|r2|b2|cfr2|cloudflarer2)/.test(normDriverName)
+      ) {
+        // Cloudflare R2 的例外：binding 模式没有预签名能力，直传必然失败，
+        // 因此只在解析不到绑定（即实际会走 S3 兼容 API）时才宣告该工具。
+        let canSignDirectUpload = true
+        if (/^(r2|cfr2|cloudflarer2)$/.test(normDriverName)) {
+          let addition: any = driver.addition
+          try {
+            if (typeof addition === "string") addition = JSON.parse(addition)
+          } catch {
+            addition = {}
+          }
+          canSignDirectUpload = r2CanSignDirectUpload(addition, c.env)
+        }
+        if (canSignDirectUpload) tools.push("s3_presigned")
       }
       // 驱动自声明的 direct_upload_tools 字段（驱动扩展点）
       if (Array.isArray(driver.direct_upload_tools)) {

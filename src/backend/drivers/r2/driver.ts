@@ -121,6 +121,20 @@ export function normalizeR2Addition(a: any): R2Addition {
   return norm as R2Addition
 }
 
+/**
+ * 该存储当前能否签发预签名「直传」URL（供 server 层计算 `direct_upload_tools`）。
+ *
+ * 只有 api 模式可以：Workers 的 R2 绑定不提供预签名能力，binding 模式下
+ * `getDirectUploadInfo()` 会明确报错。判定必须与 `R2Driver.resolveMode()`
+ * 一致（能解析到绑定 → binding；否则显式 mode=binding 仍算 binding；其余 → api），
+ * 否则前端会拿到一个必然失败的直传入口。
+ */
+export function r2CanSignDirectUpload(addition: any, env?: any): boolean {
+  const norm = normalizeR2Addition(addition)
+  if (resolveR2Bucket(norm.bucket_binding || "", env).bucket) return false
+  return String(norm.mode || "auto").toLowerCase() !== "binding"
+}
+
 export class R2Driver implements StorageDriver {
   private addition: R2Addition
   /** binding 不可用时的 S3 兼容回退实现 */
@@ -193,7 +207,7 @@ export class R2Driver implements StorageDriver {
           list_object_version: "v2",
           // 目录占位与 root_folder_path 语义与 S3 完全一致
         }),
-        "R2",
+        "Cloudflare R2",
       )
     }
     return this.apiFallback
