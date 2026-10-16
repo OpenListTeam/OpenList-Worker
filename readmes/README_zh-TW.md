@@ -43,10 +43,9 @@
 
 > [!IMPORTANT]
 > - 若 Cloudflare 提示`無法取得儲存庫內容`，則您需要先 [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork) 本專案，再透過連接到 Github 倉庫功能部署
-> - 部署完成後配置環境變數： **EdgeOne**：[國際站](https://console.edgeone.ai/makers) · [中國站](https://console.cloud.tencent.com/edgeone/makers)；**Cloudflare**：[Worker 後台](https://dash.cloudflare.com/)，環境變數：
->   - `DB_FORMAT`: 資料儲存格式：`map` (預設，整物件 JSON) / `key` (分 key 儲存) / `sql` (關聯表，與 Go 後端一致)
->   - `DB_DRIVER`: 資料庫驅動：`auto` (預設，自動偵測) / `blob` / `cfkv` / `kv` / `d1` / `mysql`
->   - 其餘可選變數參考**詳細部署指南**：[Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
+> - 部署時請填寫 `JWT_SECRET`（≥16 字元的隨機字串，可用 `openssl rand -hex 32` 產生）：用於 JWT 簽章與資料加密；未設定時會在初始化時自動產生並持久化
+> - 資料儲存預設自動選擇平台內建的持久化後端（`DB_DRIVER=auto`），無需設定；其餘變數見 [設定變數](https://doc.oplist.org/ecosystem/official_worker/guide_env)
+> - 部署完成後首次造訪站點，依**安裝精靈**在瀏覽器中設定管理員帳號與密碼即可完成初始化；如需跳過精靈，可設定 `ADMIN_PASS`
 
 
 ## 功能簡介

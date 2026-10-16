@@ -43,10 +43,9 @@ Cliquez sur le bouton ci-dessous pour déployer ce projet sur la plateforme corr
 
 > [!IMPORTANT]
 > - Si Cloudflare affiche `impossible de récupérer le contenu du dépôt`, [forkez](https://github.com/OpenListTeam/OpenList-Worker/fork) d'abord ce projet puis déployez en vous connectant au dépôt Github
-> - Après le déploiement, configurez les variables d'environnement : **EdgeOne** : [Console internationale](https://console.edgeone.ai/makers) · [Console Chine](https://console.cloud.tencent.com/edgeone/makers) ; **Cloudflare** : [Tableau de bord Worker](https://dash.cloudflare.com/). Variables d'environnement :
->   - `DB_FORMAT` : format de stockage des données : `map` (défaut, JSON d'objet complet) / `key` (stockage par clé) / `sql` (tables relationnelles, compatible avec le backend Go)
->   - `DB_DRIVER` : pilote de base de données : `auto` (défaut, détection automatique) / `blob` / `cfkv` / `kv` / `d1` / `mysql`
->   - Pour les autres variables optionnelles, voir le **guide de déploiement détaillé** : [Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
+> - Lors du déploiement, renseignez `JWT_SECRET` (chaîne aléatoire de 16+ caractères, par ex. `openssl rand -hex 32`) : elle signe les JWT et chiffre les données ; si elle n'est pas définie, elle est générée et persistée pendant l'initialisation
+> - Le stockage utilise automatiquement le backend persistant de la plateforme (`DB_DRIVER=auto`) — aucune configuration requise ; pour les autres variables, voir [Variables d'environnement](https://doc.oplist.org/ecosystem/official_worker/guide_env)
+> - Après le déploiement, la première visite ouvre l'**assistant d'installation** : définissez le compte et le mot de passe administrateur dans le navigateur pour terminer l'initialisation (définissez `ADMIN_PASS` pour l'ignorer)
 
 
 ## Fonctionnalités

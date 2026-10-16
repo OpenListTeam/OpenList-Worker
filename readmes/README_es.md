@@ -43,10 +43,9 @@ Haz clic en el botón de abajo para desplegar este proyecto en la plataforma cor
 
 > [!IMPORTANT]
 > - Si Cloudflare muestra `no se puede obtener el contenido del repositorio`, [bifurca](https://github.com/OpenListTeam/OpenList-Worker/fork) este proyecto primero y luego despliega conectándote al repositorio de Github
-> - Después del despliegue, configura las variables de entorno: **EdgeOne**: [Consola internacional](https://console.edgeone.ai/makers) · [Consola China](https://console.cloud.tencent.com/edgeone/makers); **Cloudflare**: [Panel de Worker](https://dash.cloudflare.com/). Variables de entorno:
->   - `DB_FORMAT`: formato de almacenamiento de datos: `map` (por defecto, JSON de objeto completo) / `key` (almacenamiento por clave) / `sql` (tablas relacionales, compatible con el backend Go)
->   - `DB_DRIVER`: controlador de base de datos: `auto` (por defecto, detección automática) / `blob` / `cfkv` / `kv` / `d1` / `mysql`
->   - Para otras variables opcionales, consulta la **guía de despliegue detallada**: [Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
+> - Durante el despliegue, rellena `JWT_SECRET` (cadena aleatoria de 16+ caracteres, por ejemplo `openssl rand -hex 32`): firma los JWT y cifra datos; si no se define, se genera y persiste durante la inicialización
+> - El almacenamiento usa automáticamente el backend persistente de la plataforma (`DB_DRIVER=auto`) — sin configuración adicional; para el resto de variables consulta [Variables de entorno](https://doc.oplist.org/ecosystem/official_worker/guide_env)
+> - Tras el despliegue, la primera visita abre el **asistente de instalación**: define la cuenta y la contraseña del administrador en el navegador para completar la inicialización (define `ADMIN_PASS` para omitirlo)
 
 
 ## Funciones

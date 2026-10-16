@@ -43,10 +43,9 @@
 
 > [!IMPORTANT]
 > - إذا عرض Cloudflare رسالة `تعذّر جلب محتوى المستودع`، [قم بعمل fork](https://github.com/OpenListTeam/OpenList-Worker/fork) لهذا المشروع أولاً ثم انشر من خلال الاتصال بمستودع Github
-> - بعد النشر، قم بتكوين متغيرات البيئة: **EdgeOne**: [الكونسول الدولي](https://console.edgeone.ai/makers) · [كونسول الصين](https://console.cloud.tencent.com/edgeone/makers); **Cloudflare**: [لوحة تحكم Worker](https://dash.cloudflare.com/). متغيرات البيئة:
->   - `DB_FORMAT`: تنسيق تخزين البيانات: `map` (افتراضي، JSON الكائن الكامل) / `key` (تخزين لكل مفتاح) / `sql` (جداول علائقية، متوافقة مع خلفية Go)
->   - `DB_DRIVER`: مشغل قاعدة البيانات: `auto` (افتراضي، اكتشاف تلقائي) / `blob` / `cfkv` / `kv` / `d1` / `mysql`
->   - لبقية المتغيرات الاختيارية، راجع **دليل النشر التفصيلي**: [Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
+> - عند النشر، املأ `JWT_SECRET` (سلسلة عشوائية من 16 حرفًا أو أكثر، مثل `openssl rand -hex 32`): تُستخدم لتوقيع JWT وتشفير البيانات؛ وإن لم تُضبط فسيتم توليدها وحفظها أثناء التهيئة
+> - يستخدم تخزين البيانات تلقائيًا الواجهة الخلفية الدائمة للمنصة (`DB_DRIVER=auto`) — لا حاجة لأي إعداد؛ ولمتغيرات أخرى راجع [متغيرات البيئة](https://doc.oplist.org/ecosystem/official_worker/guide_env)
+> - بعد النشر، يظهر **معالج التثبيت** عند أول زيارة: عيّن حساب المسؤول وكلمة المرور في المتصفح لإكمال التهيئة (اضبط `ADMIN_PASS` لتخطي المعالج)
 
 
 ## الميزات
