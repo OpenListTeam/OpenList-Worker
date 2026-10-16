@@ -172,7 +172,6 @@ export const normalizeDriver = (driverName: string): string => {
       "minio",
       "ceph",
       "aws",
-      "r2",
       "b2",
       "cos",
       "oss",
@@ -180,6 +179,13 @@ export const normalizeDriver = (driverName: string): string => {
     ].includes(norm)
   )
     return "S3"
+  // Cloudflare R2 是独立驱动（支持 Workers bucket binding 直连），不再归一到 S3；
+  // 历史配置里 driver=S3 且 endpoint 指向 R2 的记录仍走 S3 驱动，不受影响。
+  //
+  // 注意：上面的精确匹配已能命中 "Cloudflare R2"（norm 后会得到 cloudflarer2），
+  // 这里兜底的是它的各种简写/旧写法，避免落到 "S3" 或原样返回。
+  if (norm === "r2" || norm === "cfr2" || norm === "cloudflarer2")
+    return "Cloudflare R2"
   // releases 别名必须在通用 github 别名之前，否则会被归一到 GitHub API
   if (norm.startsWith("githubrelease")) return "GitHub Releases"
   if (norm.startsWith("cnbrelease")) return "CNB Releases"
@@ -2222,6 +2228,132 @@ const driverConfigs: Record<string, any> = {
       need_ms: false,
       default_root: "0",
       no_overwrite_upload: true,
+    },
+  },
+  "Cloudflare R2": {
+    name: "Cloudflare R2",
+    default_mount_path: "/r2",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "bucket_binding",
+        type: "string",
+        default: "",
+        required: false,
+        help: "wrangler.jsonc 中 r2_buckets 的 binding 名（如 R2）。填写后优先走 Workers 原生绑定直连，无需 API Token。",
+      },
+      {
+        name: "mode",
+        type: "select",
+        options: "auto,binding",
+        default: "auto",
+        required: false,
+        help: "auto=有绑定用绑定、否则走 S3 兼容 API；binding=只用绑定（缺绑定直接报错，不静默回退）。",
+      },
+      {
+        name: "account_id",
+        type: "string",
+        default: "",
+        required: false,
+        help: "Cloudflare 账号 ID，用于自动推导 endpoint（https://<account>.r2.cloudflarestorage.com）。",
+      },
+      {
+        name: "bucket",
+        type: "string",
+        default: "",
+        required: false,
+        help: "桶名。binding 模式仅用于展示与自定义域名去前缀；api 模式必填。",
+      },
+      {
+        name: "endpoint",
+        type: "string",
+        default: "",
+        required: false,
+        help: "留空则由 account_id 推导；也可填自定义 S3 兼容网关地址。",
+      },
+      {
+        name: "region",
+        type: "string",
+        default: "auto",
+        required: false,
+      },
+      {
+        name: "access_key_id",
+        type: "string",
+        default: "",
+        required: false,
+        help: "api 模式必填（R2 → Manage R2 API Tokens）",
+      },
+      {
+        name: "secret_access_key",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "session_token",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "root_folder_path",
+        type: "string",
+        default: "/",
+        required: false,
+      },
+      {
+        name: "custom_host",
+        type: "string",
+        default: "",
+        required: false,
+        help: "R2 公开域名（r2.dev）或自定义域名；填写后直链走该域名（需桶已开启公开访问）。",
+      },
+      {
+        name: "sign_url_expire",
+        type: "number",
+        default: "4",
+        required: false,
+        help: "api 模式预签名直链有效期（小时，R2 上限 7 天）",
+      },
+      {
+        name: "placeholder",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "remove_bucket",
+        type: "bool",
+        default: "false",
+        required: false,
+        help: "true",
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "name,size,modified",
+        default: "name",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "asc,desc",
+        default: "asc",
+        required: false,
+      },
+    ],
+    config: {
+      name: "Cloudflare R2",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "/",
+      check_status: true,
     },
   },
   S3: {

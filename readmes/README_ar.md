@@ -43,10 +43,9 @@
 
 > [!IMPORTANT]
 > - إذا عرض Cloudflare رسالة `تعذّر جلب محتوى المستودع`، [قم بعمل fork](https://github.com/OpenListTeam/OpenList-Worker/fork) لهذا المشروع أولاً ثم انشر من خلال الاتصال بمستودع Github
-> - بعد النشر، قم بتكوين متغيرات البيئة: **EdgeOne**: [الكونسول الدولي](https://console.edgeone.ai/makers) · [كونسول الصين](https://console.cloud.tencent.com/edgeone/makers); **Cloudflare**: [لوحة تحكم Worker](https://dash.cloudflare.com/). متغيرات البيئة:
->   - `DB_FORMAT`: تنسيق تخزين البيانات: `map` (افتراضي، JSON الكائن الكامل) / `key` (تخزين لكل مفتاح) / `sql` (جداول علائقية، متوافقة مع خلفية Go)
->   - `DB_DRIVER`: مشغل قاعدة البيانات: `auto` (افتراضي، اكتشاف تلقائي) / `blob` / `cfkv` / `kv` / `d1` / `mysql`
->   - لبقية المتغيرات الاختيارية، راجع **دليل النشر التفصيلي**: [Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
+> - عند النشر، املأ `JWT_SECRET` (سلسلة عشوائية من 16 حرفًا أو أكثر، مثل `openssl rand -hex 32`): تُستخدم لتوقيع JWT وتشفير البيانات؛ وإن لم تُضبط فسيتم توليدها وحفظها أثناء التهيئة
+> - يستخدم تخزين البيانات تلقائيًا الواجهة الخلفية الدائمة للمنصة (`DB_DRIVER=auto`) — لا حاجة لأي إعداد؛ ولمتغيرات أخرى راجع [متغيرات البيئة](https://doc.oplist.org/ecosystem/official_worker/guide_env)
+> - بعد النشر، يظهر **معالج التثبيت** عند أول زيارة: عيّن حساب المسؤول وكلمة المرور في المتصفح لإكمال التهيئة (اضبط `ADMIN_PASS` لتخطي المعالج)
 
 
 ## الميزات
@@ -61,7 +60,7 @@ OpenList-Worker هو المنفذ الرسمي TypeScript + Serverless لمشر�
 
 - **الأقراص السحابية المحلية**: Aliyundrive (Open/Share)، Quark (Open/UC TV)، Baidu Netdisk (الألبوم)، 115 (Open/Share)، 123 Pan (Open/Share)، Tianyi Cloud (189/PC/TV)، China Mobile Cloud (139/Hecaiyun)، Wopan، Thunder، Tencent Weiyun، Lanzou، PikPak (Share)، Doubao، Guangyapan، Chaoxing Group، Lenovo NAS Share، Teambition، WPS Cloud، Alibaba Docs، HalalCloud، MediaTrack وغيرها
 - **الأقراص السحابية الدولية**: Google Drive (الألبوم)، OneDrive (App/ShareLink)، Dropbox، MEGA، MediaFire، Proton Drive، Yandex Disk، Degoo، Bunny Storage، TeraBox وغيرها
-- **تخزين الكائنات**: متوافق مع S3 (AWS/OSS/COS/MinIO وغيرها)، UpYun USS، Azure Blob، WebDAV، FTP، SFTP، SMB، IPFS وغيرها
+- **تخزين الكائنات**: متوافق مع S3 (AWS/OSS/COS/MinIO وغيرها)، Cloudflare R2 (ربط Workers أو S3 API)، UpYun USS، Azure Blob، WebDAV، FTP، SFTP، SMB، IPFS وغيرها
 - **استضافة الأكواد**: GitHub، GitHub Releases، CNB Releases
 - **برامج الأقراص السحابية**: OpenList (Share)، AList V3، Cloudreve V3/V4، Kodbox، Seafile، Teldrive، Febbox وغيرها
 - **برامج تشغيل أخرى**: Netease Music، Misskey، Emby، Cloudflare Image Hosting وغيرها

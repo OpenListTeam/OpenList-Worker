@@ -934,6 +934,17 @@ export function setEnvCtx(env: any) {
   }
 }
 
+/**
+ * 读取请求级 env 上下文（由 setEnvCtx 写入）。
+ *
+ * 供**驱动层**解析平台绑定（如 R2 bucket binding）：驱动的 list/get/put
+ * 签名里没有 env 参数，而 Workers 只会把绑定放进请求的 env，因此必须经这里
+ * 回取。拿不到时返回 null（非 Workers 运行时 / 单元测试），由调用方决定回退。
+ */
+export function getEnvCtx(): any | null {
+  return globalEnvCtx || null
+}
+
 // 已知的旧默认值 → 当前默认值迁移表。
 // 修复「开发环境(无 KV，用新默认值)与生产环境(KV 里保存了旧默认值)不一致」：
 // 早期默认 logo/favicon 为空或 res.oplist.org 旧地址，已写入 KV 的旧值不会被

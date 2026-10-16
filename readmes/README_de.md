@@ -43,10 +43,9 @@ Klicken Sie auf die Schaltfläche unten, um dieses Projekt mit einem Klick auf d
 
 > [!IMPORTANT]
 > - Wenn Cloudflare `Repository-Inhalt kann nicht abgerufen werden` anzeigt, [forken](https://github.com/OpenListTeam/OpenList-Worker/fork) Sie dieses Projekt zuerst und stellen Sie es dann über die Verbindung zum Github-Repository bereit
-> - Konfigurieren Sie nach der Bereitstellung die Umgebungsvariablen: **EdgeOne**: [Internationale Konsole](https://console.edgeone.ai/makers) · [China-Konsole](https://console.cloud.tencent.com/edgeone/makers); **Cloudflare**: [Worker-Dashboard](https://dash.cloudflare.com/). Umgebungsvariablen:
->   - `DB_FORMAT`: Datenspeicherformat: `map` (Standard, JSON des gesamten Objekts) / `key` (schlüsselbasierte Speicherung) / `sql` (relationale Tabellen, kompatibel mit dem Go-Backend)
->   - `DB_DRIVER`: Datenbanktreiber: `auto` (Standard, automatische Erkennung) / `blob` / `cfkv` / `kv` / `d1` / `mysql`
->   - Weitere optionale Variablen finden Sie im **detaillierten Bereitstellungsleitfaden**: [Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
+> - Tragen Sie bei der Bereitstellung `JWT_SECRET` ein (Zufallszeichenfolge mit 16+ Zeichen, z. B. `openssl rand -hex 32`): Sie signiert JWTs und verschlüsselt Daten; ohne Angabe wird sie bei der Initialisierung erzeugt und gespeichert
+> - Der Datenspeicher verwendet automatisch das plattformeigene persistente Backend (`DB_DRIVER=auto`) — keine Konfiguration nötig; weitere Variablen siehe [Umgebungsvariablen](https://doc.oplist.org/ecosystem/official_worker/guide_env)
+> - Beim ersten Besuch nach der Bereitstellung öffnet sich der **Installationsassistent**: Legen Sie Admin-Konto und Passwort im Browser fest, um die Initialisierung abzuschließen (mit `ADMIN_PASS` überspringen Sie den Assistenten)
 
 
 ## Funktionen
@@ -61,7 +60,7 @@ OpenList-Worker ist der offizielle TypeScript + Serverless-Port des Projekts [Op
 
 - **Inländische Cloud-Laufwerke**: Aliyundrive (Open/Share), Quark (Open/UC TV), Baidu Netdisk (Album), 115 (Open/Share), 123 Pan (Open/Share), Tianyi Cloud (189/PC/TV), China Mobile Cloud (139/Hecaiyun), Wopan, Thunder, Tencent Weiyun, Lanzou, PikPak (Share), Doubao, Guangyapan, Chaoxing Group, Lenovo NAS Share, Teambition, WPS Cloud, Alibaba Docs, HalalCloud, MediaTrack usw.
 - **Internationale Cloud-Laufwerke**: Google Drive (Album), OneDrive (App/ShareLink), Dropbox, MEGA, MediaFire, Proton Drive, Yandex Disk, Degoo, Bunny Storage, TeraBox usw.
-- **Objektspeicher**: S3-kompatibel (AWS/OSS/COS/MinIO usw.), UpYun USS, Azure Blob, WebDAV, FTP, SFTP, SMB, IPFS usw.
+- **Objektspeicher**: S3-kompatibel (AWS/OSS/COS/MinIO usw.), Cloudflare R2 (Workers-Binding oder S3-API), UpYun USS, Azure Blob, WebDAV, FTP, SFTP, SMB, IPFS usw.
 - **Code-Hosting**: GitHub, GitHub Releases, CNB Releases
 - **Cloud-Laufwerk-Programme**: OpenList (Share), AList V3, Cloudreve V3/V4, Kodbox, Seafile, Teldrive, Febbox usw.
 - **Weitere Treiber**: Netease Music, Misskey, Emby, Cloudflare Image Hosting usw.

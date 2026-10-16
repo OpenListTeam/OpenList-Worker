@@ -43,10 +43,9 @@ Click the button below to deploy this project to the corresponding platform with
 
 > [!IMPORTANT]
 > - If Cloudflare prompts `cannot fetch repository content`, [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork) this project first, then deploy by connecting to the GitHub repository
-> - After deployment, configure environment variables: **EdgeOne**: [International console](https://console.edgeone.ai/makers) · [China console](https://console.cloud.tencent.com/edgeone/makers); **Cloudflare**: [Worker dashboard](https://dash.cloudflare.com/). Environment variables:
->   - `DB_FORMAT`: data storage format: `map` (default, whole object JSON) / `key` (per-key storage) / `sql` (relational tables, compatible with Go backend)
->   - `DB_DRIVER`: database driver: `auto` (default, auto-detect) / `blob` (EdgeOne Blob) / `cfkv` (CF KV API) / `kv` (KV binding) / `d1` (Cloudflare D1) / `mysql`
->   - For other optional variables, see the **detailed deployment guide**: [Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
+> - Set `JWT_SECRET` during deployment (a random string of ≥16 chars, e.g. `openssl rand -hex 32`): it signs JWTs and encrypts data; if unset, it is generated and persisted during initialization
+> - Storage automatically uses the platform's built-in persistent backend (`DB_DRIVER=auto`) — no configuration needed; for other variables see [Environment Variables](https://doc.oplist.org/ecosystem/official_worker/guide_env)
+> - After deployment, the first visit opens the **install wizard**: set the admin account and password in the browser to finish initialization; set `ADMIN_PASS` to skip the wizard
 
 
 ## Features
@@ -61,7 +60,7 @@ Built-in **78 storage drivers**, ready to mount various storage backends out of 
 
 - **Domestic cloud drives**: Aliyundrive (Open/Share), Quark (Open/UC TV), Baidu Netdisk (Album), 115 (Open/Share), 123 Pan (Open/Share), Tianyi Cloud (189/PC/TV), China Mobile Cloud (139/Hecaiyun), Wopan, Thunder, Tencent Weiyun, Lanzou, PikPak (Share), Doubao, Guangyapan, Chaoxing Group, Lenovo NAS Share, Teambition, WPS Cloud, Alibaba Docs, HalalCloud, MediaTrack, etc.
 - **International cloud drives**: Google Drive (Album), OneDrive (App/ShareLink), Dropbox, MEGA, MediaFire, Proton Drive, Yandex Disk, Degoo, Bunny Storage, TeraBox, etc.
-- **Object storage**: S3-compatible (AWS/OSS/COS/MinIO, etc.), UpYun USS, Azure Blob, WebDAV, FTP, SFTP, SMB, IPFS, etc.
+- **Object storage**: S3-compatible (AWS/OSS/COS/MinIO, etc.), Cloudflare R2 (Workers binding or S3 API), UpYun USS, Azure Blob, WebDAV, FTP, SFTP, SMB, IPFS, etc.
 - **Code hosting**: GitHub, GitHub Releases, CNB Releases
 - **Cloud drive programs**: OpenList (Share), AList V3, Cloudreve V3/V4, Kodbox, Seafile, Teldrive, Febbox, etc.
 - **Other drivers**: Netease Music, Misskey, Emby, Cloudflare Image Hosting, etc.
@@ -132,17 +131,16 @@ pnpm run deploy:worker
 
 ### Backend
 
-- **Runtime**: Cloudflare Workers (Edge Computing)
+- **Runtime**: Cloudflare Workers / EdgeOne Functions / Alibaba Cloud ESA (Edge Computing)
 - **Web framework**: Hono.js
-- **Database**: Cloudflare D1 (SQLite) / supports MySQL, MariaDB, PostgreSQL, SQL Server
-- **Cache**: Cloudflare KV (optional)
+- **Database**: Cloudflare D1 (SQLite) / KV / Blob / Durable Objects, or external MySQL / MariaDB
 - **Language**: TypeScript
 - **Build tools**: Wrangler, esbuild
 
 ### Frontend
 
-- **Framework**: React 19 + TypeScript
-- **UI libraries**: Ant Design / Material-UI
+- **Framework**: SolidJS + TypeScript (official [OpenList-Frontend](https://github.com/OpenListTeam/OpenList-Frontend))
+- **UI library**: Hope UI
 - **Build tool**: Vite
 
 ---
@@ -150,82 +148,34 @@ pnpm run deploy:worker
 
 ## Configuration
 
-### Environment Variables
+The **install wizard** appears automatically on the first visit — set the admin account and password in the browser to finish initialization. To skip the wizard, set `ADMIN_PASS` and the admin is initialized automatically.
 
-#### Database Configuration
+Most deployments need **no extra configuration**: storage defaults to `DB_DRIVER=auto`, which picks an available persistent backend (Cloudflare Workers → KV / D1 / DO, EdgeOne / ESA → Blob). The only variable worth setting explicitly is:
 
-**DB_FORMAT** (Data Storage Format)
-- `map` (default): Whole object JSON format, suitable for KV/Blob simple storage
-- `key`: Per-key storage format, each entity as a separate record (e.g., `users_1`), avoids large JSON
-- `sql`: Relational database table format, fully compatible with Go backend, suitable for D1/MySQL
+| Variable | Description |
+| :--- | :--- |
+| `JWT_SECRET` | JWT signing key (≥16 chars, e.g. `openssl rand -hex 32`), also used for cron task auth. Auto-generated and persisted during initialization when unset |
 
-**DB_DRIVER** (Database Driver)
-- `auto` (default): Auto-detect available drivers (priority: mysql → d1 → kv → cfkv → blob → do)
-- `blob`: Tencent EdgeOne Blob / Alibaba ESA Blob
-- `cfkv`: Cloudflare KV REST API (requires `CF_ACCOUNT`, `CF_KV_UUID`, `CF_API_KEY`)
-- `kv`: Cloudflare KV binding (binding name is fixed to `KV`)
-- `d1`: Cloudflare D1 (SQLite)
-- `do`: Cloudflare Durable Objects (SQLite)
-- `mysql`: MySQL (Node.js container only)
+> Configure `JWT_SECRET` as a **Secret** (not a plain variable): plain variables can be overwritten by the repository config on redeploy, secrets are not.
 
-**Recommended Configurations:**
-```bash
-# Cloudflare Workers + D1 (recommended)
-DB_FORMAT=sql
-DB_DRIVER=d1
+All other variables have sensible defaults:
 
-# EdgeOne + Blob
-DB_FORMAT=map
-DB_DRIVER=blob
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `ADMIN_PASS` | — | Skip the install wizard and auto-initialize the admin |
+| `DB_FORMAT` | `map` | Storage format: `map` (whole JSON) / `key` (per-key) / `sql` (relational, Go-compatible) |
+| `DB_DRIVER` | `auto` | Storage driver: `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql`; an explicit driver is never replaced automatically |
+| `DB_CIPHER` | `none` | At-rest cipher for sensitive fields (no encryption by default), e.g. `aes-256-gcm` |
+| `CACHE_ENABLED` / `CACHE_DRIVER` | `true` / `db` | File-tree & download-link caches, reusing the data backend by default |
+| `ALLOW_URLS` | — | Comma-separated CORS allowlist (same-origin only when unset) |
+| `MAX_UPLOAD` / `MAX_UPPART` | 26214400 / 16777216 | Max size (bytes) for a whole upload / a multipart chunk |
+| `ASSET_URLS` | — | Frontend asset CDN base URL, supports the `$version` placeholder |
 
-# Cloudflare KV (high-frequency read/write)
-DB_FORMAT=key
-DB_DRIVER=kv
+For the full variable list (cache `CACHE_*`, field encryption `DB_CIPHER`, concurrency dedup `SINGLEFLIGHT`, `cfkv` / MySQL settings, …) and per-platform deployment steps, see the documentation site:
 
-# Remote Cloudflare KV access
-DB_FORMAT=key
-DB_DRIVER=cfkv
-CF_ACCOUNT=your_account_id
-CF_KV_UUID=your_namespace_id
-CF_API_KEY=your_api_token
-```
-
-> An explicitly configured driver is **never replaced automatically**. If it is
-> unavailable the request is rejected with an actionable reason (including which
-> driver auto-detection would have picked); `/api/public/env_check` and
-> `/api/public/init_status` report the same reason plus a one-line fix. This
-> prevents "I thought it was KV, but writes went to another backend".
-> Invalid driver/format pairs (e.g. `DB_FORMAT=sql` + `DB_DRIVER=kv`) are
-> reported the same way — the app never rewrites your configuration.
-
-**Backward Compatibility:**
-- `DB_DRIVER=json` auto-converts to `DB_FORMAT=map` + auto-detect driver
-
-**Table Naming (SQL format only):**
-The `sql` format uses columnar tables with the same naming strategy as the Go backend's GORM (snake_case + pluralized names + prefix):
-
-| Go struct     | Table name         |
-| :------------ | :----------------- |
-| `SettingItem` | `x_setting_items`  |
-| `SharingDB`   | `x_sharing_dbs`    |
-| `Storage`     | `x_storages`       |
-| `User`        | `x_users`          |
-| `Meta`        | `x_metas`          |
-| (TS only)     | `x_plugins`        |
-
-The prefix is fixed to `x_` (matching the Go backend default), so no extra configuration is needed to share the same physical database with the Go backend.
-
-#### Security Configuration
-
-- `JWT_SECRET`: JWT signing key (required), also used for data encryption and cron task authentication
-- `ADMIN_PASS`: Initial admin password (optional, skips the setup wizard and auto-initializes admin)
-
-#### Other Configuration
-
-For detailed configuration, please refer to the [official documentation](https://doc.oplist.org/guide/configuration)
-
----
-
+- [Environment Variables](https://doc.oplist.org/ecosystem/official_worker/guide_env)
+- [Deployment](https://doc.oplist.org/ecosystem/official_worker/guide)
+- [FAQ](https://doc.oplist.org/ecosystem/official_worker/about)
 
 ## Support
 
