@@ -1,0 +1,66 @@
+name: Deploy to Cloudflare Workers
+
+# 构建并部署到 Cloudflare Workers：
+#   1. 拉取官方前端 dist（scripts/fetch-frontend.mjs）
+#   2. 构建产物（scripts/build-edge.mjs 生成 dist/ 静态资源）
+#   3. wrangler deploy 从 src/backend/worker.ts 打包，并用 dist/ 作静态资源
+#
+# 需要在仓库 Settings → Secrets and variables → Actions 中配置：
+#   CLOUDFLARE_API_TOKEN ——具有「Workers Scripts:Edit」权限的 API Token
+#   （创建地址：https://dash.cloudflare.com/profile/api-tokens，可用
+#    "Edit Cloudflare Workers" 模板，若使用自动预配的 KV / D1 建议再追加
+#    Account: KV Storage:Edit / D1:Edit 权限）
+#   CLOUDFLARE_ACCOUNT_ID —— Cloudflare 账户 ID（可选，Token 有对应账户权限时可不填）
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "scripts/**"
+      - "wrangler.jsonc"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/deploy-cf.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-cf-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Build and deploy to Cloudflare Workers
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Verify dist exists
+        run: test -f dist/index.html
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --yes
