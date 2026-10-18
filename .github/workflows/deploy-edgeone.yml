@@ -73,16 +73,16 @@ jobs:
     name: 构建并部署到 EdgeOne Makers
     steps:
       - name: 检出代码
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: 安装 pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
       # edgeone.json 里写的是 22.21.1；官方建议使用预装版本，
       # 这里用 22 系列以拿到与 edgeone.json 同代的运行时。
       # pnpm 必须装好 —— edgeone.json 的 installCommand 是 pnpm install。
       - name: 配置 Node 运行时
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: pnpm
@@ -162,6 +162,13 @@ jobs:
 
           deploy_url=$(grep -o 'EDGEONE_DEPLOY_URL=.*' edgeone-deploy.log | tail -n 1 | cut -d= -f2- | tr -d '\r')
           project_id=$(grep -o 'EDGEONE_PROJECT_ID=.*' edgeone-deploy.log | tail -n 1 | cut -d= -f2- | tr -d '\r')
+
+          # 提取为「尽力而为」：CLI 输出格式变化或不再打印这些字段时，
+          # 这里只会得到空串，不会让部署失败 —— 仅输出 GitHub 告警，
+          # 提示人工从上方完整部署日志中找回 URL / 项目 ID。
+          if [ -z "$deploy_url" ] || [ -z "$project_id" ]; then
+            echo "::warning::未能从部署日志提取 EDGEONE_DEPLOY_URL / EDGEONE_PROJECT_ID（CLI 输出格式可能已变化），请查看完整部署日志人工获取。"
+          fi
 
           {
             echo "deploy_url=${deploy_url}"
