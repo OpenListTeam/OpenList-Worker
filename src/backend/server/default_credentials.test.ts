@@ -95,7 +95,7 @@ test("Security(F-11): ADMIN_PASS still forces an explicit reset (to salted doubl
   )
 })
 
-test("Security(F-11): user/create without a password gets a random one, not 123456", async () => {
+test("user/create follows Go: no silent default password and no echoed password", async () => {
   await seed(
     [
       adminUser(
@@ -116,20 +116,17 @@ test("Security(F-11): user/create without a password gets a random one, not 1234
   })
   assert.equal(res.status, 200)
   const json: any = await res.json()
-  assert.ok(
-    json.data?.password,
-    "the generated password must be returned to the admin caller once",
-  )
-  assert.notEqual(json.data.password, "123456")
+  // 对齐 Go：不再自动生成随机密码，也不会把密码回显给调用方
+  assert.equal(json.data, null)
 
   const db: any = await getDb(env)
   const created = db.users.find((u: any) => u.username === "newuser")
   assert.ok(isHex64(created.password), "stored value must be a 64-hex hash")
   assert.ok(created.salt, "stored user must carry a per-user salt")
   assert.equal(
-    await verifyUserPassword(created, json.data.password),
+    await verifyUserPassword(created, ""),
     true,
-    "the returned random password must actually log the user in",
+    'an empty password matches Go\'s SetPassword("") semantics',
   )
   assert.equal(
     await verifyUserPassword(created, "123456"),

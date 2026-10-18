@@ -157,95 +157,92 @@ export async function download(
 }
 
 /**
- * 判断一个 IPv4 点分十进制地址是否属于「不可出网」区间。
+ * IPv4 是否属于「不得访问」的网段（RFC1918 私有、回环、链路本地、CGNAT、
+ * 组播、保留段、云元数据）。
  *
- * 与 isSafeUrl 的内联判定保持同一套规则，抽出成函数是为了让 IPv4-mapped IPv6
- * （::ffff:a.b.c.d）复用同一份规则，避免两处判定随时间漂移。
- *
- * 返回 true 表示【安全】（可出网）；false 表示应被拦截。
+ * 抽成独立函数的原因：IPv6 字面量里可能**内嵌** IPv4（`::ffff:127.0.0.1`、
+ * 6to4、NAT64），需要把内嵌地址还原后复用同一套判定，避免两处规则漂移。
  */
-function isSafeIpv4(a: number, b: number, c: number, d: number): boolean {
-  if (a > 255 || b > 255 || c > 255 || d > 255) return false
-  if (a === 0) return false // 0.0.0.0/8 (This network)
-  if (a === 127) return false // 127.0.0.0/8 (Loopback)
-  if (a === 10) return false // 10.0.0.0/8 (Private)
-  if (a === 172 && b >= 16 && b <= 31) return false // 172.16.0.0/12 (Private)
-  if (a === 192 && b === 168) return false // 192.168.0.0/16 (Private)
-  if (a === 169 && b === 254) return false // 169.254.0.0/16 (Link-local + metadata)
-  if (a === 100 && b >= 64 && b <= 127) return false // 100.64.0.0/10 (CGNAT)
-  if (a === 100 && b === 100) return false // Aliyun metadata 100.100.100.200
-  if (a === 224 && b === 0 && c === 0) return false // 224.0.0.0/24 (Multicast)
-  if (a >= 240) return false // 240.0.0.0/4 (Reserved)
-  return true
+function isRestrictedIpv4(octets: number[]): boolean {
+  const [a, b, c] = octets
+  if (octets.some((n) => !Number.isFinite(n) || n < 0 || n > 255)) return true
+  if (a === 0) return true // 0.0.0.0/8 (This network)
+  if (a === 127) return true // 127.0.0.0/8 (Loopback)
+  if (a === 10) return true // 10.0.0.0/8 (Private)
+  if (a === 172 && b >= 16 && b <= 31) return true // 172.16.0.0/12 (Private)
+  if (a === 192 && b === 168) return true // 192.168.0.0/16 (Private)
+  if (a === 169 && b === 254) return true // 169.254.0.0/16 (Link-local + metadata)
+  if (a === 100 && b >= 64 && b <= 127) return true // 100.64.0.0/10 (CGNAT)
+  if (a === 100 && b === 100) return true // Aliyun metadata 100.100.100.200
+  if (a === 224 && b === 0 && c === 0) return true // 224.0.0.0/24 (Multicast)
+  if (a >= 240) return true // 240.0.0.0/4 (Reserved)
+  return false
 }
 
 /**
- * 把 IPv6 字面量展开成 8 个 16 位分组；不是合法 IPv6 则返回 null。
+ * 解析 IPv6 字面量（可含方括号/zone id/内嵌 IPv4）为 8 组 16 位整数。
+ * 解析失败返回 null（调用方按「不安全」处理）。
  *
- * 为什么需要展开：WHATWG URL 会把 IPv6 字面量归一化并保留十六进制形式，
- * 例如 `http://[::ffff:169.254.169.254]/` 的 hostname 是 `[::ffff:a9fe:a9fe]`。
- * 因此对 hostname 做子串匹配（`includes("::ffff:169.254.")`）永远命中不到 ——
- * 这是 SSRF 黑名单被绕过的根因。只有先归一化成数值分组，才能可靠判断
- * loopback / link-local / ULA 以及 IPv4-mapped 里嵌入的 IPv4。
+ * 为什么不能继续用字符串 `includes` 前缀匹配：
+ * WHATWG URL 会把 IPv6 规范化（`::ffff:127.0.0.1` -> `::ffff:7f00:1`），
+ * 于是 `host.includes("::ffff:127.")` 之类的模式永远匹配不到，私网判定被绕过。
+ * 必须先解析成数值再按网段判断。
  */
-function parseIpv6Groups(host: string): number[] | null {
-  // 去掉 WHATWG URL 保留的方括号
-  let s = host
-  if (s.startsWith("[") && s.endsWith("]")) s = s.slice(1, -1)
-  if (!s.includes(":") || s.includes("%")) return null // 排除 zone id（本就不该放行）
+function parseIpv6Groups(input: string): number[] | null {
+  let s = String(input || "")
+    .trim()
+    .replace(/^\[/, "")
+    .replace(/\]$/, "")
+  const zone = s.indexOf("%")
+  if (zone >= 0) s = s.slice(0, zone)
+  if (!s.includes(":")) return null
 
-  // 尾部内嵌 IPv4（::ffff:169.254.169.254）先折成两个十六进制分组
+  // 内嵌 IPv4 尾部（::ffff:127.0.0.1）统一改写为两个十六进制组，后续只需一套解析
   const lastColon = s.lastIndexOf(":")
-  const tail = s.slice(lastColon + 1)
-  if (tail.includes(".")) {
-    const m = tail.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
-    if (!m) return null
-    const parts = m.slice(1).map((x) => parseInt(x, 10))
-    if (parts.some((n) => n > 255)) return null
-    const hi = ((parts[0] << 8) | parts[1]).toString(16)
-    const lo = ((parts[2] << 8) | parts[3]).toString(16)
-    s = `${s.slice(0, lastColon + 1)}${hi}:${lo}`
+  const maybeV4 = s.slice(lastColon + 1)
+  if (maybeV4.includes(".")) {
+    const octets = maybeV4.split(".")
+    if (octets.length !== 4) return null
+    const nums = octets.map((o) =>
+      /^\d{1,3}$/.test(o) ? parseInt(o, 10) : NaN,
+    )
+    if (nums.some((n) => !Number.isFinite(n) || n > 255)) return null
+    const g1 = ((nums[0] << 8) | nums[1]).toString(16)
+    const g2 = ((nums[2] << 8) | nums[3]).toString(16)
+    s = s.slice(0, lastColon + 1) + g1 + ":" + g2
   }
 
-  const [head, tailPart] = s.includes("::") ? s.split("::") : [s, null]
-  const headParts = head ? head.split(":") : []
-  const tailParts = tailPart === null ? [] : tailPart === "" ? [] : tailPart.split(":")
-  if (tailPart === null && headParts.length !== 8) return null
-  if (headParts.length + tailParts.length > 7) return null
+  const halves = s.split("::")
+  if (halves.length > 2) return null
 
-  const groups = [
-    ...headParts,
-    ...new Array(8 - headParts.length - tailParts.length).fill("0"),
-    ...tailParts,
-  ].map((g) => (/^[0-9a-fA-F]{1,4}$/.test(g) ? parseInt(g, 16) : NaN))
-  if (groups.length !== 8 || groups.some((n) => Number.isNaN(n))) return null
-  return groups
+  const toGroups = (str: string): number[] | null => {
+    if (!str) return []
+    const out: number[] = []
+    for (const g of str.split(":")) {
+      if (!/^[0-9a-fA-F]{1,4}$/.test(g)) return null
+      out.push(parseInt(g, 16))
+    }
+    return out
+  }
+
+  const head = toGroups(halves[0])
+  const tail = halves.length === 2 ? toGroups(halves[1] ?? "") : []
+  if (!head || !tail) return null
+
+  let groups: number[]
+  if (halves.length === 2) {
+    const fill = 8 - head.length - tail.length
+    if (fill < 1) return null
+    groups = [...head, ...new Array(fill).fill(0), ...tail]
+  } else {
+    groups = head
+  }
+  return groups.length === 8 ? groups : null
 }
 
-/** IPv6 字面量是否可出网。host 需带方括号（WHATWG URL 的 hostname 形态）。 */
-function isSafeIpv6Literal(host: string): boolean {
-  const g = parseIpv6Groups(host)
-  if (!g) return false
-
-  const isZeroPrefix = g.slice(0, 5).every((n) => n === 0)
-  // ::1 (loopback) 与 :: (unspecified / 0.0.0.0)
-  if (isZeroPrefix && g[5] === 0 && g[6] === 0) {
-    if (g[7] <= 1) return false
-  }
-  // fe80::/10 (link-local)
-  if ((g[0] & 0xffc0) === 0xfe80) return false
-  // fc00::/7 (unique local)
-  if ((g[0] & 0xfe00) === 0xfc00) return false
-  // IPv4-mapped (::ffff:a.b.c.d) / IPv4-compatible：取低 32 位按 IPv4 规则判
-  if (isZeroPrefix && g[5] === 0xffff) {
-    const a = g[6] >> 8
-    const b = g[6] & 0xff
-    const c = g[7] >> 8
-    const d = g[7] & 0xff
-    return isSafeIpv4(a, b, c, d)
-  }
-  if (isZeroPrefix && g[5] === 0) return isSafeIpv4(g[6] >> 8, g[6] & 0xff, g[7] >> 8, g[7] & 0xff)
-  return true
+/** 从 16 位组中取出后 32 位，还原为 4 段 IPv4 */
+function embeddedIpv4(high: number, low: number): number[] {
+  return [high >> 8, high & 0xff, low >> 8, low & 0xff]
 }
 
 /**
@@ -258,13 +255,6 @@ function isSafeIpv6Literal(host: string): boolean {
  * - 检测 DNS 重绑定特征
  * - 阻止整数/十六进制 IP 表示
  * - 检测混淆 IP 格式
- *
- * 2026-10-02 修复：IPv6 判定改为数值分组（见上方 isSafeIpv6Literal）。
- * 原实现对 hostname 做 `includes("::ffff:169.254.")` 之类子串匹配，但
- * WHATWG URL 会把 IPv4-mapped IPv6 归一化成十六进制（`[::ffff:a9fe:a9fe]`），
- * 匹配永远落空，导致 `http://[::ffff:169.254.169.254]/` 这类目标可直达
- * 云元数据 / loopback / 私网；同一处子串匹配还会把尾段形如 ::1 的合法公网
- * IPv6（如 1.1.1.1 的 [2606:4700:4700::1111]）误判为 loopback。
  */
 export function isSafeUrl(
   urlStr: string,
@@ -305,22 +295,49 @@ export function isSafeUrl(
       }
     }
 
-    // 2. IPv6 字面量检测
+    // 2. IPv6 字面量：解析为数值后按网段判定。
     //
-    // 必须走数值分组判定，不能对 hostname 做子串匹配：WHATWG URL 会把 IPv6
-    // 字面量归一化成十六进制并保留方括号，`http://[::ffff:169.254.169.254]/`
-    // 的 hostname 是 `[::ffff:a9fe:a9fe]`，因此 `includes("::ffff:169.254.")`
-    // 这类黑名单永远命中不到 —— 攻击者据此可访问 loopback / 私网 / 云元数据。
-    if (host.startsWith("[")) {
-      if (!host.endsWith("]")) return false
-      return isSafeIpv6Literal(host)
+    // 历史缺陷：这里用 `host.includes("::ffff:127.")` 之类**字符串前缀**匹配。
+    // 但 WHATWG URL 会把 IPv6 规范化（`::ffff:127.0.0.1` -> `::ffff:7f00:1`），
+    // 使这些模式永远匹配不到 —— 实测 `http://[::ffff:127.0.0.1]/` 与
+    // `http://[::ffff:10.0.0.1]/` 都被判为「安全」。IPv4 那套判定明明存在，
+    // 却因为「表达形式变了」而失效。
+    //
+    // 现在改为：解析成 8 组 16 位整数，按位判定；遇到内嵌 IPv4 的形态
+    // （IPv4-mapped / 6to4 / NAT64）则还原后复用 isRestrictedIpv4()。
+    const bareHost = host.replace(/^\[/, "").replace(/\]$/, "")
+    if (bareHost.includes(":")) {
+      const g = parseIpv6Groups(bareHost)
+      // 解析不出来时按不安全处理（fail-closed），避免畸形字面量绕过
+      if (!g) return false
+
+      const isZero = (from: number, to: number) =>
+        g.slice(from, to).every((x) => x === 0)
+
+      // :: 未指定地址 / ::1 回环
+      if (isZero(0, 7) && (g[7] === 0 || g[7] === 1)) return false
+      // fe80::/10 链路本地
+      if ((g[0] & 0xffc0) === 0xfe80) return false
+      // fc00::/7 唯一本地地址
+      if ((g[0] & 0xfe00) === 0xfc00) return false
+      // ff00::/8 组播
+      if ((g[0] & 0xff00) === 0xff00) return false
+      // ::ffff:0:0/96 IPv4-mapped IPv6
+      if (isZero(0, 5) && g[5] === 0xffff) {
+        if (isRestrictedIpv4(embeddedIpv4(g[6], g[7]))) return false
+      }
+      // 2002::/16 6to4：内嵌 IPv4 位于第 2、3 组
+      if (g[0] === 0x2002) {
+        if (isRestrictedIpv4(embeddedIpv4(g[1], g[2]))) return false
+      }
+      // 64:ff9b::/96 NAT64
+      if (g[0] === 0x64 && g[1] === 0xff9b && isZero(2, 6)) {
+        if (isRestrictedIpv4(embeddedIpv4(g[6], g[7]))) return false
+      }
     }
 
     // 3. 检测前导零八进制绕过（0177.0.0.1 = 127.0.0.1）
-    if (
-      /^\d{1,3}(\.\d{1,3}){1,3}$/.test(host) &&
-      /(^|\.)0\d+/.test(host)
-    ) {
+    if (/^\d{1,3}(\.\d{1,3}){1,3}$/.test(host) && /(^|\.)0\d+/.test(host)) {
       return false
     }
 
@@ -329,23 +346,10 @@ export function isSafeUrl(
     const match = host.match(ipv4Regex)
     if (match) {
       const [, aStr, bStr, cStr, dStr] = match
-      const a = parseInt(aStr, 10)
-      const b = parseInt(bStr, 10)
-      const c = parseInt(cStr, 10)
-      const d = parseInt(dStr, 10)
-      if (a > 255 || b > 255 || c > 255 || d > 255) return false
-
-      // RFC 1918 私有网络和特殊用途地址
-      if (a === 0) return false // 0.0.0.0/8 (This network)
-      if (a === 127) return false // 127.0.0.0/8 (Loopback)
-      if (a === 10) return false // 10.0.0.0/8 (Private)
-      if (a === 172 && b >= 16 && b <= 31) return false // 172.16.0.0/12 (Private)
-      if (a === 192 && b === 168) return false // 192.168.0.0/16 (Private)
-      if (a === 169 && b === 254) return false // 169.254.0.0/16 (Link-local + metadata)
-      if (a === 100 && b >= 64 && b <= 127) return false // 100.64.0.0/10 (CGNAT)
-      if (a === 100 && b === 100) return false // Aliyun metadata 100.100.100.200
-      if (a === 224 && b === 0 && c === 0) return false // 224.0.0.0/24 (Multicast)
-      if (a >= 240) return false // 240.0.0.0/4 (Reserved)
+      const octets = [aStr, bStr, cStr, dStr].map((s) => parseInt(s, 10))
+      if (octets.some((n) => n > 255)) return false
+      // RFC 1918 私有网络和特殊用途地址（与 IPv6 内嵌地址共用同一套判定）
+      if (isRestrictedIpv4(octets)) return false
     }
 
     // 5. 阻止整数/十六进制 IP 表示（2130706433 = 127.0.0.1, 0x7f000001 = 127.0.0.1）

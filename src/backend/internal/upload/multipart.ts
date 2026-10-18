@@ -36,6 +36,17 @@ export interface MultipartSession {
   partMd5s: (string | undefined)[]
   /** 驱动名 + 存储引用，用于 chunk/complete 时重新 resolve 驱动 */
   storage_driver: string
+  /**
+   * 会话所有者的用户 id。
+   *
+   * 安全不变量：分片会话是**用户私有状态**，续传/完成/查询都必须校验所有者。
+   * 历史缺陷：会话只按 `path + size` 复用，不含用户维度，导致不同用户（即使
+   * base_path 不同）会命中同一个会话并互相续传（实测：两个不同根目录的用户
+   * 拿到同一个 upload_id，且 resumed=true）。
+   */
+  owner_id?: number
+  /** 创建会话时的用户根目录，用于校验会话未被跨根复用 */
+  owner_root?: string
   created_at: number
   error?: string
 }
@@ -119,12 +130,20 @@ export function getSession(uploadId: string): MultipartSession | undefined {
   return sessions.get(uploadId)
 }
 
-/** 查找同 path+size 的未完成会话（用于断点续传） */
+/**
+ * 查找同 owner + path + size 的未完成会话（用于断点续传）。
+ *
+ * `ownerId` 必填：会话必须按所有者隔离，否则不同用户会共享同一上传会话。
+ * 未绑定所有者的历史会话（本改动之前创建的）不再被复用，避免跨用户命中。
+ */
 export function findReceivingSession(
   path: string,
   size: number,
+  ownerId?: number,
 ): MultipartSession | undefined {
+  if (ownerId === undefined) return undefined
   for (const s of sessions.values()) {
+    if (s.owner_id !== ownerId) continue
     if (
       s.path === path &&
       s.size === size &&

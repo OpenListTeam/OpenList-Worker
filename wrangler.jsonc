@@ -82,6 +82,66 @@
     //       自动生成并持久化共享密钥（JWT 签名需要）。
     "DB_CIPHER": "none",
 
+    // ── 缓存（文件树缓存 / 下载链接缓存）─────────────────────────────────
+    // 参考 OpenList.ts 的两级持久缓存：
+    //   文件树缓存   - /api/fs/list|get|dirs 优先读缓存，未命中才请求网盘
+    //   下载链接缓存 - /d、/p 复用驱动换取的直链，避免重复换链/签名
+    //
+    // 默认【只向数据库启用】：缓存与业务数据走同一条存储链路（DB_DRIVER
+    // 解析出的 D1/KV/Blob/MySQL/DO）。想要改用或额外启用 KV、Blob 等专用
+    // 后端，必须显式配置 CACHE_DRIVER（不会自动探测、不会自动回退）。
+    //
+    // 总开关（默认 true）
+    "CACHE_ENABLED": "true",
+    //
+    // 缓存后端（默认 db = 与业务数据同后端）：
+    //   db          - 数据库（DB_DRIVER 解析结果）★默认
+    //   kv          - KV binding（名固定为 KV）
+    //   blob        - EdgeOne Blob SDK / ESA Blob
+    //   cfkv        - Cloudflare KV REST API（需 CF_* 三项）
+    //   do          - Durable Objects
+    //   memory      - 进程内存（仅本地调试）
+    //   none        - 关闭缓存
+    // 支持逗号分隔多后端（读按顺序命中、写全部铺开），如 "db,kv"
+    "CACHE_DRIVER": "db",
+    //
+    // 分级开关：文件树缓存默认 true；下载链接缓存默认 false（部分网盘直链
+    // TTL 很短，缓存复用可能把已失效的直链发给用户，确认后再显式开启）
+    "CACHE_FILE_TREE": "true",
+    "CACHE_DOWNLOAD_LINK": "false",
+    //
+    // 文件树缓存时长（分钟）。0 = 跟随存储级 cache_expiration（默认 30 分钟，
+    // 可被该存储的 custom_cache_policies 按路径覆盖；命中 0 表示不缓存）
+    "CACHE_TTL": "0",
+    //
+    // 下载链接缓存时长（分钟）。直链通常自带有效期，取值需保守（默认 5）
+    "CACHE_LINK_TTL": "5",
+    //
+    // 不参与缓存的驱动（纯本地计算型，缓存只会变陈旧）
+    "CACHE_EXCLUDE_DRIVERS": "virtual,alias,url_tree,strm,chunk",
+    // ── singleflight（并发相同调用去重）──────────────────────────────────
+    //
+    // 一个部署会同时存在多个 isolate，进程内去重无法跨实例生效，因此当存在
+    // SQL 库（d1 / mysql / do）时用表 `x_singleflight` 做跨实例协调。
+    //   auto（默认）- 有 SQL 库用表，否则退回进程内（memory）
+    //   db          - 强制用表协调；协调层出错时自动降级，不影响业务
+    //   memory      - 仅进程内合并（等价 Go 的进程内 singleflight）
+    //   off         - 关闭去重，每次调用都直接执行
+    "SINGLEFLIGHT": "auto",
+
+    // 执行完成后结果在表中保留多久（ms），供**正在等待的**并发实例读取。
+    // 它不是结果缓存：新到达的调用会回收旧记录并重新执行，不会读到过期数据。
+    // "SINGLEFLIGHT_HANDOFF_MS": "1000",
+    //
+    // 执行者持锁上限（ms）；期间按 1/3 周期续租，执行者崩溃后到期可被接管。
+    // "SINGLEFLIGHT_LOCK_TTL_MS": "30000",
+    //
+    // 等待方轮询间隔（ms）
+    // "SINGLEFLIGHT_POLL_MS": "200",
+    //
+    // 等待方最长等待（ms）；超时后自行执行，避免被慢请求拖死
+    // "SINGLEFLIGHT_WAIT_MS": "15000",
+
     // ── 安全鉴权（推荐以 Secret 类型配置，见 .dev.vars.example）──────────
     //
     // JWT 签名密钥（>=16 字符，兼作可选的字段加密密钥与定时任务鉴权）
@@ -178,4 +238,19 @@
   // ▶ 方案 D：Blob / MySQL
   //   Blob 由 EdgeOne / ESA 自动注入，无需配置；
   //   MySQL 通过 Secret 配置 MYSQL_URLS（或 MYSQL_HOST 等分项）。
+  //
+  // ▶ 方案 E：R2 对象存储（作为「存储驱动」，与上面的 DB 绑定无关）
+  //   后台「存储 → 新增 → R2」里把 bucket_binding 填成与下面 binding 相同的名字，
+  //   即可走 Workers 原生绑定读写（无需 API Token，推荐）。
+  //   不配 binding 时该驱动自动回退 S3 兼容 API：在存储配置里填
+  //   account_id + access_key_id / secret_access_key 即可（R2 控制台 →
+  //   Manage R2 API Tokens）。两者共用同一套目录语义。
+  //   绑定名可自定义，未在表单填写时按 R2 → R2_BUCKET → CF_R2 → OPENLIST_R2 顺序探测。
+  //
+  //   注意：binding 模式下载走 Worker 流式转发（R2 绑定不提供预签名 URL）；
+  //   想让浏览器直连，可在存储配置里填 custom_host（r2.dev 公开域名或自定义域名）。
+  //
+  // "r2_buckets": [
+  //   { "binding": "R2", "bucket_name": "your-bucket" }
+  // ],
 }

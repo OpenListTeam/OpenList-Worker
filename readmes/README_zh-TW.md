@@ -43,10 +43,9 @@
 
 > [!IMPORTANT]
 > - 若 Cloudflare 提示`無法取得儲存庫內容`，則您需要先 [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork) 本專案，再透過連接到 Github 倉庫功能部署
-> - 部署完成後配置環境變數： **EdgeOne**：[國際站](https://console.edgeone.ai/makers) · [中國站](https://console.cloud.tencent.com/edgeone/makers)；**Cloudflare**：[Worker 後台](https://dash.cloudflare.com/)，環境變數：
->   - `DB_FORMAT`: 資料儲存格式：`map` (預設，整物件 JSON) / `key` (分 key 儲存) / `sql` (關聯表，與 Go 後端一致)
->   - `DB_DRIVER`: 資料庫驅動：`auto` (預設，自動偵測) / `blob` / `cfkv` / `kv` / `d1` / `mysql`
->   - 其餘可選變數參考**詳細部署指南**：[Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
+> - 部署時請填寫 `JWT_SECRET`（≥16 字元的隨機字串，可用 `openssl rand -hex 32` 產生）：用於 JWT 簽章與資料加密；未設定時會在初始化時自動產生並持久化
+> - 資料儲存預設自動選擇平台內建的持久化後端（`DB_DRIVER=auto`），無需設定；其餘變數見 [設定變數](https://doc.oplist.org/ecosystem/official_worker/guide_env)
+> - 部署完成後首次造訪站點，依**安裝精靈**在瀏覽器中設定管理員帳號與密碼即可完成初始化；如需跳過精靈，可設定 `ADMIN_PASS`
 
 
 ## 功能簡介
@@ -61,7 +60,7 @@ OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTea
 
 - **國內網盤**：阿里雲盤（開放平台/分享）、夸克網盤（開放平台/UC TV 版）、百度網盤（相簿）、115 網盤（開放平台/分享）、123 雲盤（開放平台/分享）、天翼雲盤（189/PC/TV）、中國移動雲盤（139/和彩雲）、沃家雲盤、迅雷雲盤、騰訊微雲、藍奏雲、PikPak（分享）、豆包網盤、光亞盤、超星小組網盤、聯想 NAS 分享、Teambition 網盤、WPS 網盤、阿里文件、HalalCloud、MediaTrack 等
 - **國際網盤**：Google Drive（相簿）、OneDrive（應用/分享連結）、Dropbox、MEGA、MediaFire、Proton Drive、Yandex Disk、Degoo、Bunny Storage、TeraBox 等
-- **物件儲存**：S3 相容（AWS/OSS/COS/MinIO 等）、又拍雲 USS、Azure Blob、WebDAV、FTP、SFTP、SMB、IPFS 等
+- **物件儲存**：S3 相容（AWS/OSS/COS/MinIO 等）、Cloudflare R2（Workers Binding 直連或 S3 API）、又拍雲 USS、Azure Blob、WebDAV、FTP、SFTP、SMB、IPFS 等
 - **程式碼託管**：GitHub、GitHub Releases、CNB Releases
 - **網盤程式**：OpenList（分享）、AList V3、Cloudreve V3/V4、Kodbox（可道雲）、Seafile、Teldrive、Febbox 等
 - **其他驅動**：網易雲音樂、Misskey、Emby、Cloudflare 圖床等

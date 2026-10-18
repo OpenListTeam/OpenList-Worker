@@ -75,25 +75,22 @@ export async function setUserPassword(
 }
 
 /**
- * 验证密码（兼容历史单层 sha256，推荐存储为双层）
- * @param plain 明文密码（或经过 staticHash 的前端哈希值）
- * @param user  含 password + salt 字段的用户对象
+ * 密码时间戳指纹（对齐 Go common.UserClaims.PwdTS 及其比对逻辑）。
+ *
+ * 安全不变量：JWT 只证明「签发那一刻身份合法」，不证明「现在仍然合法」。
+ * 密码一旦被修改，所有既有令牌必须立即失效 —— Go 在每次请求里都拿令牌中的
+ * PwdTS 与数据库当前值比对。历史缺陷：TS 的 JWT 只携带 {id, username, role}，
+ * 改密后旧令牌在有效期内（7 天）继续可用，除非用户显式登出。
+ *
+ * 取值为空字符串（旧数据/未设置）时两侧一致，视为相等，不影响历史账号。
  */
-export async function verifyUserPassword(
-  plain: string,
-  user: { password: string; salt?: string },
-): Promise<boolean> {
-  if (!user.password) return false
-  if (user.salt) {
-    // 双层：先判断 plain 是否已经是 staticHash（前端哈希登录），
-    // 再判断是否是明文（直接登录）。
-    const staticHex = isHex64(plain) ? plain : await staticHash(plain)
-    const expected = await saltedHash(staticHex, user.salt)
-    return expected === user.password
-  }
-  // 历史单层：password == staticHash(plain)
-  const staticHex = isHex64(plain) ? plain : await staticHash(plain)
-  return staticHex === user.password
+export function passwordStampOf(user: any): string {
+  return String(user?.pwd_update_at ?? "")
+}
+
+/** 校验令牌内的密码指纹是否与数据库当前值一致 */
+export function isPasswordStampValid(payload: any, user: any): boolean {
+  return String(payload?.pwd_ts ?? "") === passwordStampOf(user)
 }
 
 // ---- 工具函数（与存储无关） ----

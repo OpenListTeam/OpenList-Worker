@@ -5,10 +5,11 @@ import { isSafeUrl } from "./http"
 /**
  * isSafeUrl 的 SSRF 回归测试。
  *
- * 重点覆盖 IPv4-mapped IPv6：WHATWG URL 会把 `http://[::ffff:169.254.169.254]/`
- * 的 hostname 归一化成 `[::ffff:a9fe:a9fe]`，因此对 hostname 做
- * `includes("::ffff:169.254.")` 这类子串匹配永远命中不到 —— 攻击者据此可
- * 直达云元数据 / loopback / 私网。判定必须走数值分组。
+ * 背景：WHATWG URL 会把 `http://[::ffff:169.254.169.254]/` 的 hostname 归一化成
+ * `[::ffff:a9fe:a9fe]`，对 hostname 做 `includes("::ffff:169.254.")` 这类子串
+ * 匹配永远命中不到 —— 攻击者据此可直达云元数据 / loopback / 私网。
+ * 修复（数值分组判定）已随 #92 合入主干；本文件作为回归测试锁住这些行为，
+ * 防止未来重构时又退化成字符串匹配。
  */
 
 test("blocks IPv4-mapped IPv6 in every textual form", () => {
@@ -41,6 +42,28 @@ test("blocks native IPv6 loopback, link-local and unique-local", () => {
     "http://[fdff::1]/", // unique local 上界
   ]) {
     assert.equal(isSafeUrl(url), false, `must block ${url}`)
+  }
+})
+
+test("blocks IPv6 embedding restricted IPv4 (6to4 / NAT64) and multicast", () => {
+  // 6to4 (2002::/16) 与 NAT64 (64:ff9b::/96) 会把 IPv4 埋进 IPv6 分组，
+  // 数值判定后必须还原并复用 IPv4 规则；组播 ff00::/8 同样不可出网
+  for (const url of [
+    "http://[2002:7f00:1::]/", // 6to4 内嵌 127.0.0.1
+    "http://[2002:a9fe:a9fe::]/", // 6to4 内嵌 169.254.169.254（元数据）
+    "http://[64:ff9b::7f00:1]/", // NAT64 内嵌 127.0.0.1
+    "http://[64:ff9b::a9fe:a9fe]/", // NAT64 内嵌 169.254.169.254
+    "http://[ff02::1]/", // 链路本地组播
+    "http://[ff0e::1]/", // 全域组播
+  ]) {
+    assert.equal(isSafeUrl(url), false, `must block ${url}`)
+  }
+  // 同形态但内嵌公网 IPv4 的不能误杀
+  for (const url of [
+    "http://[2002:808:808::]/", // 6to4 内嵌 8.8.8.8
+    "http://[64:ff9b::808:808]/", // NAT64 内嵌 8.8.8.8
+  ]) {
+    assert.equal(isSafeUrl(url), true, `must allow ${url}`)
   }
 })
 
@@ -115,7 +138,10 @@ test("allowHosts only exempts exact host matches", () => {
 
   // 白名单不得「传染」：未列出的危险 host 仍必须被拦
   assert.equal(isSafeUrl("http://127.0.0.1/x", allow), false)
-  assert.equal(isSafeUrl("http://169.254.169.254/latest/meta-data/", allow), false)
+  assert.equal(
+    isSafeUrl("http://169.254.169.254/latest/meta-data/", allow),
+    false,
+  )
   assert.equal(isSafeUrl("http://[::ffff:7f00:1]/", allow), false)
   // 子域精确匹配之外的 host 不会因父域在白名单而被放行到内网语义上
   assert.equal(isSafeUrl("https://other.example.com/x", allow), true)

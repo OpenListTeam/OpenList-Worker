@@ -43,10 +43,9 @@
 
 > [!IMPORTANT]
 > - यदि Cloudflare `रिपॉजिटरी सामग्री प्राप्त नहीं कर सकता` दिखाता है, तो पहले इस परियोजना को [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork) करें, फिर Github रिपॉजिटरी से कनेक्ट करके तैनात करें
-> - तैनाती के बाद पर्यावरण चर कॉन्फ़िगर करें: **EdgeOne**: [अंतर्राष्ट्रीय कंसोल](https://console.edgeone.ai/makers) · [चीन कंसोल](https://console.cloud.tencent.com/edgeone/makers); **Cloudflare**: [Worker डैशबोर्ड](https://dash.cloudflare.com/)। पर्यावरण चर:
->   - `DB_FORMAT`: डेटा संग्रहण प्रारूप: `map` (डिफ़ॉल्ट, संपूर्ण ऑब्जेक्ट JSON) / `key` (कुंजी-आधारित संग्रहण) / `sql` (रिलेशनल टेबल, Go बैकएंड संगत)
->   - `DB_DRIVER`: डेटाबेस ड्राइवर: `auto` (डिफ़ॉल्ट, स्वतः पहचान) / `blob` / `cfkv` / `kv` / `d1` / `mysql`
->   - शेष वैकल्पिक चरों के लिए **विस्तृत तैनाती मार्गदर्शिका** देखें: [Cloudflare](https://doc.oplist.org/guide/installation/worker#deploy-to-cloudflare-workers) · [EdgeOne](https://doc.oplist.org/guide/installation/worker#deploy-to-edgeone) · [ESA](https://doc.oplist.org/guide/installation/worker#deploy-to-alibaba-cloud-esa)
+> - तैनाती के समय `JWT_SECRET` भरें (16+ वर्णों की यादृच्छिक स्ट्रिंग, उदा. `openssl rand -hex 32`): यह JWT पर हस्ताक्षर और डेटा एन्क्रिप्शन के लिए उपयोग होता है; न दिया जाए तो इनिशियलाइज़ेशन के दौरान स्वतः बनाकर सहेजा जाता है
+> - डेटा संग्रहण स्वतः प्लेटफ़ॉर्म के स्थायी बैकएंड का चयन करता है (`DB_DRIVER=auto`) — कोई कॉन्फ़िगरेशन आवश्यक नहीं; शेष चरों के लिए [पर्यावरण चर](https://doc.oplist.org/ecosystem/official_worker/guide_env) देखें
+> - तैनाती के बाद पहली विज़िट पर **इंस्टॉल विज़ार्ड** खुलता है: इनिशियलाइज़ेशन पूरा करने के लिए ब्राउज़र में एडमिन खाता और पासवर्ड सेट करें (`ADMIN_PASS` सेट करने पर विज़ार्ड छूट जाता है)
 
 
 ## विशेषताएँ
@@ -61,7 +60,7 @@ OpenList-Worker आधिकारिक [OpenListTeam/OpenList](https://github.
 
 - **घरेलू क्लाउड ड्राइव**: Aliyundrive（ओपन प्लेटफ़ॉर्म/शेयर）、Quark（ओपन प्लेटफ़ॉर्म/UC TV）、Baidu Netdisk（एल्बम）、115（ओपन प्लेटफ़ॉर्म/शेयर）、123 Pan（ओपन प्लेटफ़ॉर्म/शेयर）、Tianyi Cloud（189/PC/TV）、China Mobile Cloud（139/Hecaiyun）、Wopan、Thunder、Tencent Weiyun、Lanzou、PikPak（शेयर）、Doubao、Guangyapan、Chaoxing Group、Lenovo NAS शेयर、Teambition、WPS Cloud、Alibaba Docs、HalalCloud、MediaTrack आदि
 - **अंतर्राष्ट्रीय क्लाउड ड्राइव**: Google Drive（एल्बम）、OneDrive（ऐप/शेयर लिंक）、Dropbox、MEGA、MediaFire、Proton Drive、Yandex Disk、Degoo、Bunny Storage、TeraBox आदि
-- **ऑब्जेक्ट स्टोरेज**: S3-संगत（AWS/OSS/COS/MinIO आदि）、UpYun USS、Azure Blob、WebDAV、FTP、SFTP、SMB、IPFS आदि
+- **ऑब्जेक्ट स्टोरेज**: S3-संगत（AWS/OSS/COS/MinIO आदि）、Cloudflare R2（Workers binding या S3 API）、UpYun USS、Azure Blob、WebDAV、FTP、SFTP、SMB、IPFS आदि
 - **कोड होस्टिंग**: GitHub、GitHub Releases、CNB Releases
 - **क्लाउड ड्राइव प्रोग्राम**: OpenList（शेयर）、AList V3、Cloudreve V3/V4、Kodbox、Seafile、Teldrive、Febbox आदि
 - **अन्य ड्राइवर**: Netease Music、Misskey、Emby、Cloudflare इमेज होस्टिंग आदि

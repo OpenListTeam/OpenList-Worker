@@ -17,6 +17,14 @@ import {
   driverPreferProxy,
   normalizeDriverName,
 } from "../internal/driver/proxy"
+import {
+  cacheKindPrefix,
+  cacheListKeys,
+  clearCache,
+  clearStorageCache,
+  getCacheRuntimeStatus,
+  type CacheKind,
+} from "../internal/cache"
 
 export const adminRouter = new Hono()
 
@@ -121,6 +129,8 @@ adminRouter.get("/storage/get", async (c) => {
 
 export const normalizeDriver = (driverName: string): string => {
   const norm = (driverName || "").toLowerCase().replace(/[^a-z0-9]/g, "")
+  // 纯中文驱动名无法归一化为 a-z0-9，先做中文别名匹配
+  if ((driverName || "").includes("城通")) return "CtFile"
   if (!norm) return ""
   const available = Object.keys(driverConfigs)
   const matched = available.find(
@@ -130,6 +140,7 @@ export const normalizeDriver = (driverName: string): string => {
   )
   if (matched) return matched
   // Common OpenList aliases
+  if (norm.includes("ctfile") || norm === "400gb") return "CtFile"
   if (norm.startsWith("115")) return "115Open"
   if (norm.startsWith("123")) return "123Pan"
   if (norm.includes("aliyun")) return "AliyundriveOpen"
@@ -161,7 +172,6 @@ export const normalizeDriver = (driverName: string): string => {
       "minio",
       "ceph",
       "aws",
-      "r2",
       "b2",
       "cos",
       "oss",
@@ -169,7 +179,17 @@ export const normalizeDriver = (driverName: string): string => {
     ].includes(norm)
   )
     return "S3"
-  if (norm.startsWith("github")) return "Github"
+  // Cloudflare R2 是独立驱动（支持 Workers bucket binding 直连），不再归一到 S3；
+  // 历史配置里 driver=S3 且 endpoint 指向 R2 的记录仍走 S3 驱动，不受影响。
+  //
+  // 注意：上面的精确匹配已能命中 "Cloudflare R2"（norm 后会得到 cloudflarer2），
+  // 这里兜底的是它的各种简写/旧写法，避免落到 "S3" 或原样返回。
+  if (norm === "r2" || norm === "cfr2" || norm === "cloudflarer2")
+    return "Cloudflare R2"
+  // releases 别名必须在通用 github 别名之前，否则会被归一到 GitHub API
+  if (norm.startsWith("githubrelease")) return "GitHub Releases"
+  if (norm.startsWith("cnbrelease")) return "CNB Releases"
+  if (norm.startsWith("github")) return "GitHub API"
   if (norm === "local") return "Local"
   if (norm.includes("pikpak")) return "PikPak"
   if (norm.includes("seafile")) return "Seafile"
@@ -428,6 +448,9 @@ adminRouter.post("/storage/update", async (c) => {
     }
     db.storages[idx] = updatedStorage
     await saveDb(db, c.env)
+    // 存储配置已变更（挂载路径 / root_folder_path / addition / 缓存策略等），
+    // 既有缓存全部失效，避免继续返回旧挂载点或旧凭据下的结果。
+    await clearStorageCache(updatedStorage.id, c.env)
   }
   return c.json({ code: 200, message: "success", data: null })
 })
@@ -437,6 +460,9 @@ adminRouter.post("/storage/delete", async (c) => {
   const db = await getDb(c.env)
   db.storages = db.storages.filter((s: any) => s.id !== id)
   await saveDb(db, c.env)
+  // 存储已删除：其文件树 / 下载链接缓存必须一并清理，否则 id 复用时
+  // 新存储会读到旧存储的缓存内容。
+  await clearStorageCache(id, c.env)
   return c.json({ code: 200, message: "success", data: null })
 })
 
@@ -448,6 +474,7 @@ adminRouter.post("/storage/enable", async (c) => {
     s.disabled = false
     s.modified = new Date().toISOString()
     await saveDb(db, c.env)
+    await clearStorageCache(id, c.env)
     // 异步初始化驱动（不阻塞响应）：启用多个云盘时立即返回，
     // 初始化完成后更新状态；失败时把错误写入 status，下次访问或
     // 重新加载时会再次尝试。
@@ -481,6 +508,7 @@ adminRouter.post("/storage/disable", async (c) => {
   if (s) {
     s.disabled = true
     await saveDb(db, c.env)
+    await clearStorageCache(id, c.env)
   }
   return c.json({ code: 200, message: "success", data: null })
 })
@@ -537,6 +565,8 @@ adminRouter.get("/driver/names", (c) => {
       "GuangYaPan",
       "AutoIndex",
       "ProtonDrive",
+      "GitHub Releases",
+      "CNB Releases",
     ],
   })
 })
@@ -1497,6 +1527,141 @@ const driverConfigs: Record<string, any> = {
       default_root: "/",
     },
   },
+  // Issue #107：驱动已实现（internal/op/storage.ts）但此处漏配，前端存储列表
+  // 因此看不到「GitHub Releases」；字段对齐 Go meta 与前端 i18n。
+  "GitHub Releases": {
+    name: "GitHub Releases",
+    default_mount_path: "/github_releases",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "root_folder_path",
+        type: "string",
+        default: "/",
+        required: false,
+      },
+      {
+        name: "repo_structure",
+        type: "text",
+        default: "OpenListTeam/OpenList",
+        required: true,
+        help: "structure:[path:]org/repo",
+      },
+      {
+        name: "show_readme",
+        type: "bool",
+        default: "true",
+        required: false,
+        help: "show README、LICENSE file",
+      },
+      {
+        name: "token",
+        type: "string",
+        default: "",
+        required: false,
+        help: "GitHub token, if you want to access private repositories or increase the rate limit",
+      },
+      {
+        name: "show_source_code",
+        type: "bool",
+        default: "false",
+        required: false,
+        help: "show Source code (zip/tar.gz)",
+      },
+      {
+        name: "show_all_version",
+        type: "bool",
+        default: "false",
+        required: false,
+        help: "show all versions",
+      },
+      {
+        name: "per_page",
+        type: "number",
+        default: "30",
+        required: false,
+        help: "releases per page (max 100), only works when show all versions",
+      },
+      {
+        name: "max_page",
+        type: "number",
+        default: "0",
+        required: false,
+        help: "max pages to fetch (0 = unlimited), only works when show all versions",
+      },
+      {
+        name: "gh_proxy",
+        type: "string",
+        default: "",
+        required: false,
+        help: "GitHub proxy, e.g. https://ghproxy.net/https://github.com",
+      },
+    ],
+    config: {
+      name: "GitHub Releases",
+      // 对齐 Go：只读发布源（NoUpload）
+      local_sort: false,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: true,
+      need_ms: false,
+      default_root: "",
+    },
+  },
+  // 同一处遗漏：CNB Releases 驱动同样未登记。
+  "CNB Releases": {
+    name: "CNB Releases",
+    default_mount_path: "/cnb_releases",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "root_folder_id",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "repo",
+        type: "string",
+        default: "",
+        required: true,
+        help: "CNB 仓库，形如 org/repo",
+      },
+      {
+        name: "token",
+        type: "string",
+        default: "",
+        required: true,
+        help: "CNB 访问令牌",
+      },
+      {
+        name: "use_tag_name",
+        type: "bool",
+        default: "false",
+        required: false,
+        help: "Use tag name instead of release name",
+      },
+      {
+        name: "default_branch",
+        type: "string",
+        default: "main",
+        required: false,
+        help: "Default branch for new releases",
+      },
+    ],
+    config: {
+      name: "CNB Releases",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      // Go 版支持上传；TS 无状态实现 put 直接报错，隐藏上传入口
+      no_upload: true,
+      need_ms: false,
+      default_root: "",
+    },
+  },
   Thunder: {
     name: "Thunder",
     default_mount_path: "/thunder",
@@ -1861,6 +2026,67 @@ const driverConfigs: Record<string, any> = {
       default_root: "-1",
     },
   },
+  CtFile: {
+    name: "CtFile",
+    default_mount_path: "/ctfile",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "session",
+        type: "text",
+        default: "",
+        required: true,
+        help: "开放接口 Session：登录城通网盘管理后台 →「开放接口登录密钥管理」生成；也可参考 openapi.ctfile.com 通过登录接口获取",
+      },
+      {
+        name: "cloud_type",
+        type: "select",
+        options: "public,private",
+        default: "public",
+        required: false,
+        help: "挂载的云类型：public=公有云（默认）、private=私有云",
+      },
+      {
+        name: "base_url",
+        type: "string",
+        default: "https://rest.ctfile.com/v1",
+        required: false,
+        help: "OpenAPI 基础地址",
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "name,size,time",
+        default: "name",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "asc,desc",
+        default: "asc",
+        required: false,
+      },
+      {
+        name: "user_agent",
+        type: "string",
+        default:
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+        required: true,
+        help: "请求城通网盘 API 与下载直链时携带的 User-Agent",
+      },
+    ],
+    config: {
+      name: "CtFile",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "",
+    },
+  },
   WebDav: {
     name: "WebDav",
     default_mount_path: "/webdav",
@@ -2002,6 +2228,132 @@ const driverConfigs: Record<string, any> = {
       need_ms: false,
       default_root: "0",
       no_overwrite_upload: true,
+    },
+  },
+  "Cloudflare R2": {
+    name: "Cloudflare R2",
+    default_mount_path: "/r2",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "bucket_binding",
+        type: "string",
+        default: "",
+        required: false,
+        help: "wrangler.jsonc 中 r2_buckets 的 binding 名（如 R2）。填写后优先走 Workers 原生绑定直连，无需 API Token。",
+      },
+      {
+        name: "mode",
+        type: "select",
+        options: "auto,binding",
+        default: "auto",
+        required: false,
+        help: "auto=有绑定用绑定、否则走 S3 兼容 API；binding=只用绑定（缺绑定直接报错，不静默回退）。",
+      },
+      {
+        name: "account_id",
+        type: "string",
+        default: "",
+        required: false,
+        help: "Cloudflare 账号 ID，用于自动推导 endpoint（https://<account>.r2.cloudflarestorage.com）。",
+      },
+      {
+        name: "bucket",
+        type: "string",
+        default: "",
+        required: false,
+        help: "桶名。binding 模式仅用于展示与自定义域名去前缀；api 模式必填。",
+      },
+      {
+        name: "endpoint",
+        type: "string",
+        default: "",
+        required: false,
+        help: "留空则由 account_id 推导；也可填自定义 S3 兼容网关地址。",
+      },
+      {
+        name: "region",
+        type: "string",
+        default: "auto",
+        required: false,
+      },
+      {
+        name: "access_key_id",
+        type: "string",
+        default: "",
+        required: false,
+        help: "api 模式必填（R2 → Manage R2 API Tokens）",
+      },
+      {
+        name: "secret_access_key",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "session_token",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "root_folder_path",
+        type: "string",
+        default: "/",
+        required: false,
+      },
+      {
+        name: "custom_host",
+        type: "string",
+        default: "",
+        required: false,
+        help: "R2 公开域名（r2.dev）或自定义域名；填写后直链走该域名（需桶已开启公开访问）。",
+      },
+      {
+        name: "sign_url_expire",
+        type: "number",
+        default: "4",
+        required: false,
+        help: "api 模式预签名直链有效期（小时，R2 上限 7 天）",
+      },
+      {
+        name: "placeholder",
+        type: "string",
+        default: "",
+        required: false,
+      },
+      {
+        name: "remove_bucket",
+        type: "bool",
+        default: "false",
+        required: false,
+        help: "true",
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "name,size,modified",
+        default: "name",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "asc,desc",
+        default: "asc",
+        required: false,
+      },
+    ],
+    config: {
+      name: "Cloudflare R2",
+      local_sort: true,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      no_upload: false,
+      need_ms: false,
+      default_root: "/",
+      check_status: true,
     },
   },
   S3: {
@@ -4263,7 +4615,11 @@ adminRouter.get("/driver/list", (c) => {
 
 adminRouter.get("/driver/info", (c) => {
   const driverName = c.req.query("driver") || ""
-  const info = driverConfigs[driverName] || driverConfigs["AliyundriveOpen"]
+  // 兼容 Go 导入名（如 GithubReleases）：精确未命中时按别名归一化再回退
+  const info =
+    driverConfigs[driverName] ||
+    driverConfigs[normalizeDriver(driverName)] ||
+    driverConfigs["AliyundriveOpen"]
   return c.json({
     code: 200,
     message: "success",
@@ -4459,12 +4815,21 @@ adminRouter.post("/setting/set_thunderx", async (c) => {
 adminRouter.post("/setting/reset_token", async (c) => {
   const newToken = generateSecureToken(32)
   await updateSettingValue(c.env, { token: newToken })
-  // `token` 设置是链接/下载签名密钥（对应 Go 的 sign.Instance()），
-  // 变更后旧的下载链接签名立即失效——与 Go ResetToken 行为一致。
+  // 本接口轮换的是 `token` 设置，即**静态 API Token**
+  // （pkg/utils.isStaticApiToken 用它比对 `Authorization: Bearer <token>`）。
   //
-  // 注意：JWT 密钥来自 env.JWT_SECRET / 持久化的 openlist_jwt_secret，与这里的
-  // `token` 设置无关，所以清 JWT 缓存**不会**让已签发的 JWT 失效；这里调用只是
-  // 让进程内缓存与最新的 env/持久化值保持一致。
+  // 关于下载链接（重要，勿再写成「旧链接立即失效」）：
+  //   下载签名由 pkg/sign 用 getJwtSecret() 计算，密钥来源是
+  //   env.JWT_SECRET 或持久化的 openlist_jwt_secret，**与 `token` 设置无关**。
+  //   因此轮换本设置**不会**让已签发的下载链接失效。
+  //   历史注释声称「与 Go ResetToken 行为一致、旧链接立即失效」，与实现不符，
+  //   会让人误以为已经撤销了旧链接。
+  //
+  // 若确实要让旧下载链接失效：需要轮换 JWT_SECRET（注意这同时会使所有已登录
+  // 会话失效）；把它做成独立开关属于后续工作，不能靠本接口悄悄生效。
+  //
+  // 这里的 resetJwtSecretCache() 只是让进程内缓存与最新 env/持久化值对齐，
+  // 并不会更换密钥，因此不会使已签发的 JWT 失效。
   const { resetJwtSecretCache } = await import("./middlewares")
   resetJwtSecretCache()
   return c.json({ code: 200, message: "success", data: newToken })
@@ -4640,6 +5005,117 @@ adminRouter.get("/kv/status", async (c) => {
     code: 200,
     message: "success",
     data: { ...statusData, store: storeStatus },
+  })
+})
+
+// --- 缓存管理（文件树缓存 / 下载链接缓存）---
+//
+// 默认只向数据库启用（CACHE_DRIVER=db）；想要改用 / 额外启用 KV、Blob 等
+// 专用后端，需显式配置 CACHE_DRIVER（如 `kv`、`db,kv`、`blob`）。
+// 这里的接口只做「查看状态 / 清空」，不改变后端选择（后端只认环境变量）。
+
+/** 缓存状态：生效配置 + 实际后端 + 当前条目数。 */
+adminRouter.get("/cache/status", async (c) => {
+  const runtime = await getCacheRuntimeStatus(c.env)
+  let fileTree = 0
+  let downloadLink = 0
+  try {
+    const [ftKeys, lnKeys] = await Promise.all([
+      cacheListKeys(cacheKindPrefix("ft", runtime.config.prefix), c.env),
+      cacheListKeys(cacheKindPrefix("ln", runtime.config.prefix), c.env),
+    ])
+    fileTree = ftKeys.length
+    downloadLink = lnKeys.length
+  } catch (err: any) {
+    return c.json({
+      code: 200,
+      message: "success",
+      data: {
+        ...runtime,
+        entries: null,
+        entries_error: safeErrorMessage(err),
+      },
+    })
+  }
+  return c.json({
+    code: 200,
+    message: "success",
+    data: {
+      ...runtime,
+      entries: {
+        file_tree: fileTree,
+        download_link: downloadLink,
+        total: fileTree + downloadLink,
+      },
+    },
+  })
+})
+
+/**
+ * 清空缓存。
+ * body: { type?: "file_tree" | "download_link" | "all", storage_id?: number }
+ * 省略 type 表示两级缓存全清；省略 storage_id 表示所有存储。
+ */
+adminRouter.post("/cache/clear", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const rawType = String(body.type ?? c.req.query("type") ?? "")
+    .trim()
+    .toLowerCase()
+  const kind: CacheKind | undefined =
+    rawType === "file_tree" || rawType === "ft" || rawType === "tree"
+      ? "ft"
+      : rawType === "download_link" || rawType === "link" || rawType === "ln"
+        ? "ln"
+        : undefined
+
+  const idRaw = body.storage_id ?? c.req.query("storage_id")
+  const hasId = idRaw !== undefined && idRaw !== null && String(idRaw) !== ""
+
+  const removed = await clearCache(c.env, {
+    ...(kind ? { kind } : {}),
+    ...(hasId ? { storageId: idRaw } : {}),
+  })
+  return c.json({
+    code: 200,
+    message: "success",
+    data: { removed, type: kind ?? "all", storage_id: hasId ? idRaw : null },
+  })
+})
+
+/**
+ * 刷新文件树缓存（对齐参考实现 OpenList.ts 的 POST /api/admin/storage/refresh）。
+ * body/query 可选 `id`：只刷新该存储。
+ */
+adminRouter.post("/storage/refresh", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const idRaw = body.id ?? c.req.query("id")
+  const hasId = idRaw !== undefined && idRaw !== null && String(idRaw) !== ""
+  const removed = await clearCache(c.env, {
+    kind: "ft",
+    ...(hasId ? { storageId: idRaw } : {}),
+  })
+  return c.json({
+    code: 200,
+    message: "success",
+    data: { removed, storage_id: hasId ? idRaw : null },
+  })
+})
+
+/**
+ * 刷新单个存储的文件树缓存
+ * （对齐参考实现 OpenList.ts 的 POST /api/admin/storage/refresh_one?id=）。
+ */
+adminRouter.post("/storage/refresh_one", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const idRaw = c.req.query("id") ?? body.id
+  if (idRaw === undefined || idRaw === null || String(idRaw) === "") {
+    return c.json({ code: 400, message: "id is required", data: null }, 400)
+  }
+  const removed = await clearCache(c.env, { kind: "ft", storageId: idRaw })
+  return c.json({
+    code: 200,
+    message: "success",
+    data: { removed, storage_id: idRaw },
   })
 })
 

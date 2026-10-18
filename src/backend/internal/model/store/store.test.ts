@@ -261,6 +261,33 @@ test("key format: roundtrip via mock KV driver (per-table keys)", async () => {
   assert.deepEqual(await keyFormat.load(driver), SAMPLE_DB)
 })
 
+test("key format: load/save issue one global list each (issue #125 quota)", async () => {
+  // 回归防护：key 格式有 6 张表，旧实现 load/save 各逐表 list（6 次）。
+  // Cloudflare 免费版 list 配额仅 1000 次/天，必须收敛为每次 1 次全局 list。
+  const base = createMockKvDriver()
+  let listCalls = 0
+  const driver: Driver = {
+    name: "mock-kv-counting",
+    isAvailable: base.isAvailable,
+    init: base.init,
+    get: base.get,
+    put: base.put,
+    delete: base.delete,
+    list: async (prefix: string) => {
+      listCalls += 1
+      return await base.list(prefix)
+    },
+    health: base.health,
+  }
+
+  assert.equal(await keyFormat.save(SAMPLE_DB, driver), true)
+  assert.equal(listCalls, 1) // save：清空旧数据只 1 次全局 list
+
+  const loaded = await keyFormat.load(driver)
+  assert.deepEqual(loaded, SAMPLE_DB)
+  assert.equal(listCalls, 2) // load：再 1 次全局 list（行为与逐表一致）
+})
+
 test("sql format: roundtrip via mock SQL driver (columnar)", async () => {
   const driver = createMockSqlDriver()
   assert.equal(await sqlFormat.save(SAMPLE_DB, driver), true)
