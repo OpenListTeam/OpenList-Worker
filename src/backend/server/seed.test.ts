@@ -164,3 +164,92 @@ test("seed routes expose capabilities and reject an unapproved source", async ()
   }, env)
   assert.equal(update.status, 400)
 })
+
+test("seed diagnose reports per-format conversion requirements", async () => {
+  await saveDb({
+    settings: [{ key: "token", value: ADMIN_TOKEN }],
+    users: [],
+    storages: [],
+    shares: [],
+  }, env)
+  const app = new Hono()
+  app.route("/api/fs", fsRouter)
+  const response = await app.request("/api/fs/seed/diagnose", {
+    method: "POST",
+    headers: { Authorization: ADMIN_TOKEN, "Content-Type": "application/json" },
+    body: JSON.stringify({ seed: sampleSeed() }),
+  }, env)
+  assert.equal(response.status, 200)
+  const data = await response.json() as any
+  assert.deepEqual(Object.keys(data.data).sort(), ["cas", "oss", "torrent"])
+  assert.ok(Array.isArray(data.data.cas))
+})
+
+test("seed upload_parse accepts multipart seed uploads", async () => {
+  await saveDb({
+    settings: [{ key: "token", value: ADMIN_TOKEN }],
+    users: [],
+    storages: [],
+    shares: [],
+  }, env)
+  const app = new Hono()
+  app.route("/api/fs", fsRouter)
+  const form = new FormData()
+  form.set(
+    "seed",
+    new Blob([Buffer.from(encodeOss(sampleSeed()))]),
+    "hello.seed",
+  )
+  const response = await app.request("/api/fs/seed/upload_parse", {
+    method: "POST",
+    headers: { Authorization: ADMIN_TOKEN },
+    body: form,
+  }, env)
+  assert.equal(response.status, 200)
+  const data = await response.json() as any
+  assert.equal(data.data.format, "oss")
+  assert.ok(data.data.seed_data.length > 0)
+  assert.deepEqual(Object.keys(data.data.diagnostics).sort(), [
+    "cas",
+    "oss",
+    "torrent",
+  ])
+})
+
+test("seed update_channels shares the update handler", async () => {
+  await saveDb({
+    settings: [{ key: "token", value: ADMIN_TOKEN }],
+    users: [],
+    storages: [],
+    shares: [],
+  }, env)
+  env.SEED_SOURCE_ALLOWED_HOSTS = "files.example"
+  const app = new Hono()
+  app.route("/api/fs", fsRouter)
+  const response = await app.request("/api/fs/seed/update_channels", {
+    method: "POST",
+    headers: { Authorization: ADMIN_TOKEN, "Content-Type": "application/json" },
+    body: JSON.stringify({ seed: sampleSeed() }),
+  }, env)
+  assert.equal(response.status, 200)
+  const data = await response.json() as any
+  assert.equal(data.data.format, "oss")
+  delete env.SEED_SOURCE_ALLOWED_HOSTS
+})
+
+test("seed quick_save route accepts the unified transfer body", async () => {
+  await saveDb({
+    settings: [{ key: "token", value: ADMIN_TOKEN }],
+    users: [],
+    storages: [],
+    shares: [],
+  }, env)
+  const app = new Hono()
+  app.route("/api/fs", fsRouter)
+  const response = await app.request("/api/fs/seed/quick_save", {
+    method: "POST",
+    headers: { Authorization: ADMIN_TOKEN, "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  }, env)
+  assert.equal(response.status, 400)
+})

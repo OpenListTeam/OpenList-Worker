@@ -191,9 +191,10 @@ function encodedResult(
 
 function allowedHosts(c: any): string[] {
   const raw =
+    c.env?.SEED_SOURCE_ALLOWED_HOSTS ??
     c.env?.ALLOW_SEED ??
     (typeof process !== "undefined"
-      ? process.env?.ALLOW_SEED
+      ? (process.env?.SEED_SOURCE_ALLOWED_HOSTS ?? process.env?.ALLOW_SEED)
       : "")
   return String(raw || "")
     .split(/[\s,;]+/)
@@ -1060,6 +1061,10 @@ seedRouter.post("/parse", async (c) => {
     const hasRapidHashes = parsed.seed.files.some(
       (file) => !!file.hashes.md5 || !!file.hashes.sha1 || !!file.hashes.sha256,
     )
+    const settings = await getSettings()
+    const directPreview =
+      parsed.seed.files.length === 1 &&
+      String(settings["seed_single_direct_preview"] ?? "false") === "true"
     return c.json({
       code: 200,
       message: "success",
@@ -1078,7 +1083,55 @@ seedRouter.post("/parse", async (c) => {
           edit: true,
           recalculate: true,
         },
-        direct_preview: false,
+        direct_preview: directPreview,
+        ...(parsed.info_hash ? { info_hash: parsed.info_hash } : {}),
+      },
+    })
+  } catch (error) {
+    return errorResponse(c, 400, safeErrorMessage(error))
+  }
+})
+
+seedRouter.post("/diagnose", async (c) => {
+  const user = await getUserFromContext(c)
+  if (!user || user.disabled) return errorResponse(c, 401, "Unauthorized")
+  try {
+    const body = await readJson(c)
+    const parsed = await parseBodySeed(c, user, body)
+    return c.json({
+      code: 200,
+      message: "success",
+      data: seedDiagnostics(parsed.seed),
+    })
+  } catch (error) {
+    return errorResponse(c, 400, safeErrorMessage(error))
+  }
+})
+
+seedRouter.post("/upload_parse", async (c) => {
+  const user = await getUserFromContext(c)
+  if (!user || user.disabled) return errorResponse(c, 401, "Unauthorized")
+  try {
+    const max = envNumber(c, "SEED_MAX_METADATA_SIZE", DEFAULT_MAX_SEED_BYTES)
+    const form = await c.req.formData()
+    const upload = form.get("seed")
+    if (!upload || typeof upload === "string")
+      throw new Error("seed file is required")
+    if (upload.size > max)
+      return errorResponse(c, 413, `Seed file exceeds the ${max} byte limit`)
+    const bytes = new Uint8Array(await upload.arrayBuffer())
+    if (bytes.byteLength > max)
+      return errorResponse(c, 413, `Seed file exceeds the ${max} byte limit`)
+    if (!bytes.byteLength) throw new Error("seed file is empty")
+    const parsed = await parseSeed(bytes)
+    return c.json({
+      code: 200,
+      message: "success",
+      data: {
+        format: parsed.format,
+        seed: parsed.seed,
+        seed_data: Buffer.from(bytes).toString("base64"),
+        diagnostics: seedDiagnostics(parsed.seed),
         ...(parsed.info_hash ? { info_hash: parsed.info_hash } : {}),
       },
     })
@@ -1152,14 +1205,18 @@ function applySeedChannelUpdate(
   }
 }
 
-async function transferHandler(c: any, rapidOnly: boolean) {
+async function transferHandler(
+  c: any,
+  rapidOnly: boolean | ((body: any) => boolean),
+) {
   const user = await getUserFromContext(c)
   if (!canWrite(user)) return errorResponse(c, 403, "Permission denied")
-  if (!rapidOnly && !can(user, PermissionBit.OFFLINE_DOWNLOAD)) {
-    return errorResponse(c, 403, "Offline download permission is required")
-  }
   try {
     const body = await readJson(c)
+    const rapid = typeof rapidOnly === "function" ? rapidOnly(body) : rapidOnly
+    if (!rapid && !can(user, PermissionBit.OFFLINE_DOWNLOAD)) {
+      return errorResponse(c, 403, "Offline download permission is required")
+    }
     const parsed = await parseBodySeed(c, user, body)
     const targetRoot = normalizeVirtualPath(
       body.target_path || body.destination || body.path || "/",
@@ -1209,7 +1266,7 @@ async function transferHandler(c: any, rapidOnly: boolean) {
       const target = joinVirtualPath(targetRoot, file.path)
       const source = chooseSource(c, file)
       try {
-        if (!rapidOnly && !source) {
+        if (!rapid && !source) {
           throw new Error(
             "capability unavailable: offline download requires an approved source URL",
           )
@@ -1220,7 +1277,7 @@ async function transferHandler(c: any, rapidOnly: boolean) {
           file,
           target,
           source,
-          rapidOnly,
+          rapid,
         )
         saved++
         successByPath.set(file.path, true)
@@ -1239,7 +1296,7 @@ async function transferHandler(c: any, rapidOnly: boolean) {
       return c.json(
         {
           code: 501,
-          message: rapidOnly
+          message: rapid
             ? "capability unavailable: target driver cannot reuse hashes and no transferable source is available"
             : "capability unavailable: no approved source and streaming upload combination is available",
           data: { results },
@@ -1271,8 +1328,16 @@ async function transferHandler(c: any, rapidOnly: boolean) {
 
 seedRouter.post("/rapid_upload", (c) => transferHandler(c, true))
 seedRouter.post("/offline_download", (c) => transferHandler(c, false))
+seedRouter.post("/quick_save", (c) =>
+  transferHandler(c, (body) => {
+    const method = String(body.method || body.mode || "").toLowerCase()
+    return (
+      body.rapid_only === true || method === "rapid_upload" || method === "rapid"
+    )
+  }),
+)
 
-seedRouter.post("/update", async (c) => {
+const updateSeedHandler = async (c: any) => {
   const user = await getUserFromContext(c)
   if (!user || user.disabled) return errorResponse(c, 401, "Unauthorized")
   try {
@@ -1386,7 +1451,10 @@ seedRouter.post("/update", async (c) => {
   } catch (error) {
     return errorResponse(c, 400, safeErrorMessage(error))
   }
-})
+}
+
+seedRouter.post("/update", updateSeedHandler)
+seedRouter.post("/update_channels", updateSeedHandler)
 
 export const seedTestHelpers = {
   contentBytes,
