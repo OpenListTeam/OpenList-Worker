@@ -251,7 +251,12 @@ fsRouter.post("/dirs", async (c) => {
   if (body.refresh) {
     try {
       await invalidatePaths([reqPath], c.env)
-    } catch {}
+    } catch (err) {
+      console.warn(
+        `[fs/dirs] refresh: invalidating cache for "${reqPath}" failed:`,
+        err,
+      )
+    }
   }
   try {
     // Share path support for completeness
@@ -333,9 +338,13 @@ fsRouter.post("/list", async (c) => {
   if (body.refresh) {
     try {
       await invalidatePaths([reqPath], c.env)
-    } catch {}
+    } catch (err) {
+      console.warn(
+        `[fs] refresh: invalidating cache for "${reqPath}" failed:`,
+        err,
+      )
+    }
   }
-
   const paginateItems = <T>(items: T[]) => {
     const total = items.length
     if (perPage <= 0) {

@@ -141,6 +141,14 @@ async function jsonBodyGuard(
     .includes("application/json")
 
   if (isMutable && isJson && path.startsWith("/api")) {
+    // 显式跳过的路径：/api/task/*（EdgeOne Schedules 定时调度通道）。
+    // 其 payload 由平台注入、鉴权走 matchCronSecret，语义独立于业务
+    // 请求且历史上 body 可缺省；body 丢弃时也无需让调度通道可自愈，
+    // 保持宽松。其余端点一律校验。
+    if (path.startsWith("/api/task/")) {
+      return next()
+    }
+
     let text: string
     try {
       text = await c.req.text()
@@ -157,6 +165,13 @@ async function jsonBodyGuard(
         return c.json(
           { code: 400, message: "request body required", data: null },
           400,
+        )
+      }
+      // 空 body 放行（保持向后兼容），但管理端空 body 属于可疑行为
+      // （如 cache/clear 空 body 会清空全部缓存），显式记日志便于定位。
+      if (path.startsWith("/api/admin")) {
+        console.warn(
+          `[jsonBodyGuard] empty JSON body passed to ${method} ${path}`,
         )
       }
       return next()
