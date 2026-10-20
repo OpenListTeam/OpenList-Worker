@@ -1209,7 +1209,7 @@ async function createDriver(
     await driver.init?.()
   } else if (normDriver === "guangyapan" || normDriver === "guangya") {
     const addition = parseAddition(storageConfig)
-    driver = new GuangYaPanDriver(addition, async (accessToken, refreshToken) => {
+    driver = new GuangYaPanDriver(addition, async (changes) => {
       try {
         const db = await getDb()
         const st = (db.storages || []).find(
@@ -1220,12 +1220,13 @@ async function createDriver(
           typeof st.addition === "string"
             ? JSON.parse(st.addition || "{}")
             : st.addition || {}
-        stAddition.access_token = accessToken
-        if (refreshToken) stAddition.refresh_token = refreshToken
+        // 合并需要持久化的字段（access_token/refresh_token/verification_id/
+        // captcha_token/send_code 等），空串用于显式清除一次性字段
+        Object.assign(stAddition, changes)
         st.addition = JSON.stringify(stAddition)
         await saveDb(db)
       } catch (e) {
-        console.warn("[GuangYaPan] failed to persist tokens:", e)
+        console.warn("[GuangYaPan] failed to persist changes:", e)
       }
     })
     await driver.init?.()
