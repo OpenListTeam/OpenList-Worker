@@ -1,6 +1,7 @@
 // GuangYaPan (光亚盘) HTTP client + helpers
 import { hmacSha1Base64, md5 } from "../../pkg/crypto"
 import {
+  GuangYaPanStateChanges,
   GypListResp,
   GypUploadTokenData,
   GypUploadTokenResp,
@@ -69,7 +70,7 @@ export class GuangYaPanClient {
   private phoneNumber: string
   private captchaToken = ""
   /** 需要回写到存储配置的字段（token / captcha_token / verification_id 等） */
-  onStateChanged?: (changes: Record<string, any>) => Promise<void>
+  onStateChanged?: (changes: GuangYaPanStateChanges) => Promise<void>
 
   constructor(addition: any) {
     this.clientId = addition.client_id || ""
@@ -216,29 +217,31 @@ export class GuangYaPanClient {
     }
 
     let { res, out } = await doRequest()
-    if (
-      (res.ok && (out.verification_id || "").trim()) ||
-      !this.isCaptchaInvalid(out)
-    ) {
-      if (!res.ok || out.error || !(out.verification_id || "").trim()) {
+    // captcha 失效才触发刷新重试，重试上限 MAX_CAPTCHA_RETRIES 次
+    // （初次请求 + 最多 2 次刷新重试 = 最多 3 次发码请求）
+    const MAX_CAPTCHA_RETRIES = 2
+    for (let retries = 0; ; retries++) {
+      if (!this.isCaptchaInvalid(out)) {
+        if (!res.ok || out.error || !(out.verification_id || "").trim()) {
+          throw new Error(
+            "request verification failed: " +
+              GuangYaPanClient.accountErr(out, res.status),
+          )
+        }
+        return out.verification_id.trim()
+      }
+      if (retries >= MAX_CAPTCHA_RETRIES) {
         throw new Error(
-          "request verification failed: " +
+          "request verification failed after " +
+            MAX_CAPTCHA_RETRIES +
+            " captcha refreshes: " +
             GuangYaPanClient.accountErr(out, res.status),
         )
       }
-      return out.verification_id.trim()
+      // captcha token 过期/失效：刷新后重试
+      await this.ensureCaptchaToken(true)
+      ;({ res, out } = await doRequest())
     }
-
-    // captcha token 过期/失效：刷新一次再试
-    await this.ensureCaptchaToken(true)
-    ;({ res, out } = await doRequest())
-    if (!res.ok || out.error || !(out.verification_id || "").trim()) {
-      throw new Error(
-        "request verification failed: " +
-          GuangYaPanClient.accountErr(out, res.status),
-      )
-    }
-    return out.verification_id.trim()
   }
 
   private isCaptchaInvalid(out: any): boolean {

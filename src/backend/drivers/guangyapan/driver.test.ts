@@ -184,3 +184,98 @@ test("init: 缺 client_id 直接失败", async () => {
   const driver = new GuangYaPanDriver({ access_token: "at" })
   await assert.rejects(() => driver.init(), /client_id is required/)
 })
+
+test("init: verify_code 错误时抛 verify code failed 且不触发 signin", async () => {
+  const driver = new GuangYaPanDriver({
+    client_id: "cid",
+    device_id: "0123456789abcdef0123456789abcdef",
+    phone_number: "13800138000",
+    verify_code: "000000",
+    verification_id: "vid1",
+  })
+  await withMockFetch(
+    {
+      "POST /v1/auth/verification/verify": {
+        status: 400,
+        body: {
+          error: "verification_code_mismatch",
+          error_description: "短信验证码不正确或已过期",
+        },
+      },
+    },
+    async () => {
+      // signin 路由未注册：若错误路径继续调用 signin，withMockFetch 会抛
+      // unexpected fetch，断言会先于此失败
+      await assert.rejects(() => driver.init(), /verify code failed/)
+    },
+  )
+})
+
+test("init: 过期 verification_id 同样不触发 signin", async () => {
+  const driver = new GuangYaPanDriver({
+    client_id: "cid",
+    device_id: "0123456789abcdef0123456789abcdef",
+    phone_number: "13800138000",
+    verify_code: "123456",
+    verification_id: "vid-expired",
+  })
+  await withMockFetch(
+    {
+      "POST /v1/auth/verification/verify": {
+        status: 400,
+        body: {
+          error: "verification_id_expired",
+          error_description: "verification_id 已过期，请重新发送验证码",
+        },
+      },
+    },
+    async () => {
+      await assert.rejects(() => driver.init(), /verify code failed/)
+    },
+  )
+})
+
+test("init: captcha 持续失效达到重试上限后报错，重试次数封顶", async () => {
+  const driver = new GuangYaPanDriver({
+    client_id: "cid",
+    device_id: "0123456789abcdef0123456789abcdef",
+    phone_number: "13800138000",
+    send_code: true,
+  })
+  let captchaInits = 0
+  let verificationCalls = 0
+  const orig = globalThis.fetch
+  globalThis.fetch = (async (url: any, init?: any) => {
+    const u = new URL(String(url))
+    const key = `${init?.method || "GET"} ${u.pathname}`
+    if (key === "POST /v1/shield/captcha/init") {
+      captchaInits++
+      return new Response(
+        JSON.stringify({ captcha_token: "ct-" + captchaInits }),
+      )
+    }
+    if (key === "POST /v1/auth/verification") {
+      // 一直返回 captcha 失效
+      verificationCalls++
+      return new Response(
+        JSON.stringify({
+          error: "captcha_invalid",
+          error_description: "captcha_token expired",
+        }),
+        { status: 400 },
+      )
+    }
+    throw new Error(`unexpected fetch: ${key}`)
+  }) as any
+  try {
+    // 初次发码 + 2 次刷新重试共 3 次；之后停止，绝不无限循环
+    await assert.rejects(
+      () => driver.init(),
+      /after 2 captcha refreshes/,
+    )
+  } finally {
+    globalThis.fetch = orig
+  }
+  assert.equal(captchaInits, 3)
+  assert.equal(verificationCalls, 3)
+})

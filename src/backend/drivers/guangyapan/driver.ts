@@ -7,7 +7,11 @@ import {
 } from "../../internal/driver/base"
 import { sortFileItems } from "../../internal/driver/sort"
 import { hmacSha1Base64 } from "../../pkg/crypto"
-import { GuangYaPanAddition, GypFileItem } from "./types"
+import {
+  GuangYaPanAddition,
+  GuangYaPanStateChanges,
+  GypFileItem,
+} from "./types"
 import {
   GuangYaPanClient,
   normalizeDeviceID,
@@ -72,15 +76,16 @@ export class GuangYaPanDriver implements StorageDriver {
 
   constructor(
     addition: any,
-    onAdditionChanged?: (changes: Record<string, any>) => Promise<void>,
+    onStateChanged?: (changes: GuangYaPanStateChanges) => Promise<void>,
   ) {
     this.addition = normalizeGuangYaPanAddition(addition)
     this.client = new GuangYaPanClient(this.addition)
-    this.client.onStateChanged = onAdditionChanged
-    this.onAdditionChanged = onAdditionChanged
+    this.client.onStateChanged = onStateChanged
+    this.onStateChanged = onStateChanged
   }
 
-  private onAdditionChanged?: (changes: Record<string, any>) => Promise<void>
+  // 回写短信发送后暂存的 verification_id 等一次性字段
+  private onStateChanged?: (changes: GuangYaPanStateChanges) => Promise<void>
 
   async init(): Promise<void> {
     if (!this.addition.client_id) throw new Error("client_id is required")
@@ -122,7 +127,7 @@ export class GuangYaPanDriver implements StorageDriver {
         const verificationId = await this.client.requestVerificationID()
         this.addition.verification_id = verificationId
         this.addition.send_code = false
-        await this.onAdditionChanged?.({
+        await this.onStateChanged?.({
           verification_id: verificationId,
           send_code: false,
         })
