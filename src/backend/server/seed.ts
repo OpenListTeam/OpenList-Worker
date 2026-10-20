@@ -781,6 +781,17 @@ async function uploadStreamToDriver(
         return { status: "reused", method: "putRapid" }
     }
 
+    if (typeof dynamic.putUrl === "function" && source) {
+      const result = await dynamic.putUrl(
+        actualTarget,
+        resolved.physical,
+        source.url.toString(),
+        metadata,
+      )
+      if (result === true || result?.success || result?.reuse)
+        return { status: "saved", method: "putUrl" }
+    }
+
     let uploadSession: any
     if (typeof dynamic.createUploadSession === "function") {
       uploadSession = await dynamic.createUploadSession(
@@ -1038,6 +1049,19 @@ seedRouter.post("/capabilities", async (c) => {
           files,
           existing_hashes: existingHashes,
           missing_hashes: missingHashes,
+          conversion: {
+            oss: { feasible: formats.oss },
+            torrent: {
+              feasible: formats.torrent,
+              missing: formats.torrent ? [] : ["missing SHA-1 piece hashes"],
+            },
+            cas: {
+              feasible: formats.cas,
+              missing: formats.cas
+                ? []
+                : ["missing MD5 hash or 10 MiB MD5 pieces"],
+            },
+          },
           // The worker has no per-file hashing pipeline: it can only emit a
           // seed from hashes the storage driver already returned.
           hash_reuse_only: true,
@@ -1074,6 +1098,7 @@ seedRouter.post("/capabilities", async (c) => {
       (typeof dynamic.createUploadSession === "function" &&
         typeof dynamic.uploadPart === "function" &&
         typeof dynamic.completeUploadSession === "function")
+    const putUrl = typeof dynamic.putUrl === "function"
     const bufferedMax = envNumber(
       c,
       "SEED_BUFFERED_TRANSFER_MAX",
@@ -1092,6 +1117,7 @@ seedRouter.post("/capabilities", async (c) => {
       const hasSource = !!chooseSource(c, file)
       let method = "download_required"
       if (rapid && hasRapidHash) method = "rapid_upload"
+      else if (putUrl && hasSource) method = "put_url"
       else if (hasSource && streaming) method = "stream_upload"
       else if (hasSource && file.size <= bufferedMax) method = "bounded_upload"
       return {
@@ -1110,6 +1136,9 @@ seedRouter.post("/capabilities", async (c) => {
           cas_rapid: rapid,
           rapid_hash_algos: rapidAlgos,
           rapid_uses_pieces: rapidUsesPieces,
+          put_url: putUrl,
+          // The worker does not dispatch background offline-download tasks.
+          offline_download: false,
         },
         files,
       },
@@ -1280,7 +1309,7 @@ seedRouter.post("/convert", async (c) => {
   if (!user || user.disabled) return errorResponse(c, 401, "Unauthorized")
   try {
     const body = await readJson(c)
-    if (body.save_path && !canWrite(user))
+    if ((body.save_path || body.output_path) && !canWrite(user))
       return errorResponse(c, 403, "Permission denied")
     const target = detectFormat(
       body.to_format || body.target_format || body.output_format,
@@ -1448,11 +1477,17 @@ async function transferBody(
         )
         saved++
         successByPath.set(file.path, true)
-        results.push({ path: file.path, target, ...result })
+        results.push({
+          path: file.path,
+          name: file.path.split("/").pop() || file.path,
+          target,
+          ...result,
+        })
       } catch (error) {
         successByPath.set(file.path, false)
         results.push({
           path: file.path,
+          name: file.path.split("/").pop() || file.path,
           target,
           status: "unavailable",
           error: safeErrorMessage(error),
@@ -1519,6 +1554,7 @@ async function transferBody(
           relayedCount++
           relayed.push({
             path: filePath,
+            name: filePath.split("/").pop() || filePath,
             target: finalTarget,
             ...transferred,
             method: "transfer",
@@ -1526,6 +1562,7 @@ async function transferBody(
         } catch (error) {
           relayed.push({
             path: filePath,
+            name: filePath.split("/").pop() || filePath,
             target: finalTarget,
             status: "unavailable",
             method: "transfer",
