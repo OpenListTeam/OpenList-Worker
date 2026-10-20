@@ -573,7 +573,9 @@ fsRouter.post("/list", async (c) => {
     // 对齐 Go 的路径级缓存策略；前端/上层可据此决定该目录的列表缓存时长。
     const cacheExpiration = storage
       ? resolveCacheExpiration(storage, reqPath)
-      : undefined
+      : 0 // Virtual directories must not be cached; a cached Virtual result
+          // would persist after the real storage comes online, causing the
+          // 'always shows root / Virtual provider' symptom for subsequent requests.
     return c.json({
       code: 200,
       message: "success",
