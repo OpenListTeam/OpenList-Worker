@@ -13,16 +13,17 @@ test("displayname 中的 XML 实体被反转义 (#140)", () => {
   assert.equal(items[0].name, "One Hundred & Two.mp3")
 })
 
-test("href 中的 XML 实体被反转义（无 displayname 时回退 hrefBaseName）", () => {
+test("href 含 XML 实体时先 XML 解码再 URI 解码（无 displayname 时回退 hrefBaseName）", () => {
   const xml = `<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
-<d:response><d:href>/dav/It%27s%20a%20%26%20test.txt</d:href>
+<d:response><d:href>/dav/It%27s%20a%20&amp;%20test.txt</d:href>
 <d:propstat><d:prop><d:resourcetype/></d:prop>
 <d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
 </d:multistatus>`
   const { items } = parseMultistatusXml(xml, "/dav")
   assert.equal(items.length, 1)
-  // href 内 XML 实体 &amp; 先解码为 &，再 decodeURIComponent 得 "It's a & test.txt"
+  // href 内的 &amp; 先经 XML 解码为 &，再 decodeURIComponent 得 "It's a & test.txt"
   assert.equal(items[0].name, "It's a & test.txt")
+  assert.equal(items[0].path, "/dav/It's a & test.txt")
 })
 
 test("href 先 XML 解码再 URI 解码，不双重解码百分号编码的字面实体", () => {
@@ -36,6 +37,7 @@ test("href 先 XML 解码再 URI 解码，不双重解码百分号编码的字�
   const { items } = parseMultistatusXml(xml, "/dav")
   assert.equal(items.length, 1)
   assert.equal(items[0].name, "A&amp;B.txt")
+  assert.equal(items[0].path, "/dav/A&amp;B.txt")
 })
 
 test("未知实体与纯文本名不被误改", () => {
@@ -60,4 +62,16 @@ test("越界/代理区数字引用透传不崩溃（畸形上游防 DoS）", () 
   assert.equal(items.length, 1)
   // >0x10FFFF 与代理区透传原样（不抛 RangeError）；合法增补平面正常解码
   assert.equal(items[0].name, "edge &#x110000; &#xD800; \u{1F600}")
+})
+
+test("XML 1.0 非法码点透传原文，不进入解析后的 name", () => {
+  const xml = `<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
+<d:response><d:href>/dav/invalid.txt</d:href>
+<d:propstat><d:prop><d:displayname>invalid &#0; &#xFFFE; &#xFFFF; &#x1; &#x9;ok&#x9;</d:displayname></d:prop>
+<d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+</d:multistatus>`
+  const { items } = parseMultistatusXml(xml, "/dav")
+  assert.equal(items.length, 1)
+  // NUL、#xFFFE/#xFFFF 非字符、其它控制字符透传原文；#x9/#xA/#xD 是 XML 1.0 合法 Char，正常解码为 \t
+  assert.equal(items[0].name, "invalid &#0; &#xFFFE; &#xFFFF; &#x1; \tok\t")
 })

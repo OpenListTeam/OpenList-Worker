@@ -48,10 +48,19 @@ export function decodeXmlEntities(s: string): string {
       const hex = /^&#x/i.test(m)
       const num = hex ? m.slice(3, -1) : m.slice(2, -1)
       const code = hex ? parseInt(num, 16) : parseInt(num, 10)
-      // Guard against out-of-range / surrogate code points from a hostile or
-      // malformed upstream: pass the reference through instead of crashing
-      // the whole PROPFIND parse with a RangeError.
-      if (Number.isNaN(code) || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) {
+      // Keep the reference verbatim unless the code point is a valid XML 1.0
+      // Char (#x9/#xA/#xD, #x20-#xD7FF, #xE000-#xFFFD, #x10000-#x10FFFF).
+      // XML-invalid points (NUL, #xFFFF non-characters, surrogates, out of
+      // range) would otherwise poison the parsed name/path, and out-of-range
+      // values would crash the parse with a RangeError.
+      if (
+        Number.isNaN(code) ||
+        code > 0x10ffff ||
+        (code >= 0xd800 && code <= 0xdfff) ||
+        code === 0xfffe ||
+        code === 0xffff ||
+        (code < 0x20 && code !== 0x9 && code !== 0xa && code !== 0xd)
+      ) {
         return m
       }
       return String.fromCodePoint(code)
