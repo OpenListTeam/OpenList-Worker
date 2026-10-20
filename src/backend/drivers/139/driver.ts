@@ -50,7 +50,12 @@ export class Yun139Driver implements StorageDriver {
       if (foundFolder) {
         currentCatalogId = foundFolder.catalogID
       } else {
-        break
+        // 不再静默回退到上层/根目录（issue #112 的"套娃"放大器）：
+        // 找不到路径中的某一段时必须报错，否则会把错误的列表当成
+        // 请求路径的正确内容返回并写进缓存。
+        throw new Error(
+          `139: folder "${part}" not found in path "${clean}"`,
+        )
       }
     }
 
