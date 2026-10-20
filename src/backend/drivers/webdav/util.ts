@@ -32,6 +32,34 @@ export function pathEscape(p: string): string {
 }
 
 /**
+ * Decode XML predefined entities and numeric character references.
+ * Upstream PROPFIND responses escape `&` as `&amp;` etc.; leaving them
+ * undecoded poisons file names and makes later upstream requests 404 (#140).
+ */
+export function decodeXmlEntities(s: string): string {
+  return s.replace(
+    /&(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);/g,
+    (m) => {
+      if (m === "&amp;") return "&"
+      if (m === "&lt;") return "<"
+      if (m === "&gt;") return ">"
+      if (m === "&quot;") return '"'
+      if (m === "&apos;") return "'"
+      const hex = /^&#x/i.test(m)
+      const num = hex ? m.slice(3, -1) : m.slice(2, -1)
+      const code = hex ? parseInt(num, 16) : parseInt(num, 10)
+      // Guard against out-of-range / surrogate code points from a hostile or
+      // malformed upstream: pass the reference through instead of crashing
+      // the whole PROPFIND parse with a RangeError.
+      if (Number.isNaN(code) || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) {
+        return m
+      }
+      return String.fromCodePoint(code)
+    },
+  )
+}
+
+/**
  * Robust WebDAV XML Multistatus parser.
  * Handles diverse namespace prefixes (d:, D:, a:, xmlns="DAV:") and case variations.
  */
@@ -57,11 +85,16 @@ export function parseMultistatusXml(
       )
     if (!hrefMatch) continue
     const rawHref = hrefMatch[1].trim()
-    let decodedHref = rawHref
+    // XML-unescape first: the upstream XML-escapes the href text. Decoding XML
+    // entities before percent-decoding avoids double-decoding a percent-encoded
+    // literal entity (e.g. `%26amp%3B` must stay `&amp;`, not become `&`);
+    // XML decoding never produces `%`, so the order is safe.
+    const xmlDecodedHref = decodeXmlEntities(rawHref)
+    let decodedHref = xmlDecodedHref
     try {
-      decodedHref = decodeURIComponent(rawHref)
+      decodedHref = decodeURIComponent(xmlDecodedHref)
     } catch {
-      // ignore URI decode error
+      // ignore URI decode error; keep the XML-decoded text
     }
 
     // Extract propstat with 200 OK
@@ -105,7 +138,7 @@ export function parseMultistatusXml(
       /<(?:[a-zA-Z0-9_-]+:)?displayname\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?displayname>/i.exec(
         propContent,
       )
-    let displayName = dnMatch ? dnMatch[1].trim() : ""
+    let displayName = dnMatch ? decodeXmlEntities(dnMatch[1].trim()) : ""
 
     // Derive name from href if displayname is missing or is pure path
     const cleanHref = decodedHref.replace(/\/+$/, "")
