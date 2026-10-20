@@ -366,3 +366,27 @@ test("seed quick_save route accepts the unified transfer body", async () => {
   }, env)
   assert.equal(response.status, 400)
 })
+
+test("seed convert accepts target_format from the frontend contract", async () => {
+  await saveDb({
+    settings: [{ key: "token", value: ADMIN_TOKEN }],
+    users: [],
+    storages: [],
+    shares: [],
+  }, env)
+  const app = new Hono()
+  app.route("/api/fs", fsRouter)
+  const response = await app.request("/api/fs/seed/convert", {
+    method: "POST",
+    headers: { Authorization: ADMIN_TOKEN, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      seed_data: Buffer.from(encodeOss(sampleSeed())).toString("base64"),
+      file_name: "hello.oss",
+      target_format: "torrent",
+    }),
+  }, env)
+  assert.equal(response.status, 200)
+  const data = await response.json() as any
+  assert.equal(data.data.convertible, true)
+  assert.equal(data.data.format, "torrent")
+})
