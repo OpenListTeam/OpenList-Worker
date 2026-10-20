@@ -1,4 +1,5 @@
 import { Hono } from "hono"
+import type { Context } from "hono"
 import { cors } from "hono/cors"
 import { getDb, getKvStatus } from "../internal/model/db"
 import { isServerlessRuntime, NO_STORAGE_MESSAGE } from "../internal/model/store/backend"
@@ -116,7 +117,81 @@ async function rateLimitMiddleware(c: any, next: () => Promise<void>) {
   }
 }
 
+// JSON 请求体校验中间件 (添加日期: 2026-10-20)
+// 背景：EdgeOne Node 运行时偶发丢失/截断请求体，各 handler 的
+// `c.req.json().catch(() => ({}))` 会把解析失败静默吞掉，随后
+// `body.path || "/"` 降级为根目录，导致"访问子目录返回根目录内容"
+// （issue #112）。此处把空 body / 非法 JSON 显式转为 400，让前端
+// 立刻看到错误并可重试，而不是收到错误的成功响应。
+// - /api/fs/* 与 /api/share/*（POST/PUT/PATCH/DELETE）：
+//   空 body 或非法 JSON 一律 400（对齐 Go 版 OpenList 必填 path）；
+// - 其余 /api/*：空 body 放行（兼容无 body 调用），非空但非法 → 400；
+// - 跳过：非 JSON content-type（multipart 上传等）、/api/task/*
+//   （EdgeOne Schedules 定时调度）与非 /api 路径。
+// Hono 会缓存已读取的 body 文本（bodyCache.text），此处预读后
+// handler 里的 c.req.json() 复用缓存，不会二次消费请求流。
+async function jsonBodyGuard(c: Context, next: () => Promise<void>) {
+  const path = c.req.path
+  const method = c.req.method.toUpperCase()
+  const isMutable = !["GET", "HEAD", "OPTIONS"].includes(method)
+  const isJson = (c.req.header("content-type") || "")
+    .toLowerCase()
+    .includes("application/json")
+
+  if (isMutable && isJson && path.startsWith("/api")) {
+    // 显式跳过的路径：/api/task/*（EdgeOne Schedules 定时调度通道）。
+    // 其 payload 由平台注入、鉴权走 matchCronSecret，语义独立于业务
+    // 请求且历史上 body 可缺省；body 丢弃时也无需让调度通道可自愈，
+    // 保持宽松。其余端点一律校验。
+    if (path.startsWith("/api/task/")) {
+      return next()
+    }
+
+    let text: string
+    try {
+      text = await c.req.text()
+    } catch {
+      return c.json(
+        { code: 400, message: "failed to read request body", data: null },
+        400,
+      )
+    }
+
+    if (text.trim() === "") {
+      const strict = path.startsWith("/api/fs") || path.startsWith("/api/share")
+      if (strict) {
+        return c.json(
+          { code: 400, message: "request body required", data: null },
+          400,
+        )
+      }
+      // 空 body 放行（保持向后兼容），但管理端空 body 属于可疑行为
+      // （如 cache/clear 空 body 会清空全部缓存），显式记日志便于定位。
+      if (path.startsWith("/api/admin")) {
+        console.warn(
+          `[jsonBodyGuard] empty JSON body passed to ${method} ${path}`,
+        )
+      }
+      return next()
+    }
+
+    try {
+      JSON.parse(text)
+    } catch {
+      return c.json(
+        { code: 400, message: "invalid JSON request body", data: null },
+        400,
+      )
+    }
+  }
+
+  return next()
+}
+
 export function setupRouter(app: Hono) {
+  // JSON 请求体校验：在所有业务中间件之前，尽早拒绝空/损坏 body
+  app.use("*", jsonBodyGuard)
+
   // 限流：读取管理后台 ip_limit / traffic_limit 设置，尽力而为
   app.use("*", rateLimitMiddleware)
 
