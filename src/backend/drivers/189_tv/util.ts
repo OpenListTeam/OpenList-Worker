@@ -477,6 +477,49 @@ export class Client189TV {
     await this.waitBatchTask("DELETE", taskId)
   }
 
+  /** 仅创建上传会话，用于判断服务端是否已存在相同 MD5 的文件（秒传）。 */
+  async rapidUploadCreate(
+    parentId: string,
+    fileName: string,
+    fileSize: number,
+    fileMd5: string,
+    isFamily: boolean,
+  ): Promise<boolean> {
+    const base = isFamily ? ApiUrl + "/family/file" : ApiUrl
+    const createUrl =
+      base +
+      (isFamily ? "/createFamilyFile.action" : "/createUploadFile.action")
+    let createResp: CreateUploadFileResp
+    if (isFamily) {
+      createResp = (await this.request(createUrl, "POST", {
+        query: {
+          familyId: this.addition.family_id || "",
+          parentId,
+          fileMd5,
+          fileName,
+          fileSize: String(fileSize),
+          resumePolicy: "1",
+        },
+        isFamily,
+      })) as CreateUploadFileResp
+    } else {
+      createResp = (await this.request(createUrl, "POST", {
+        form: {
+          parentFolderId: parentId,
+          fileName,
+          size: String(fileSize),
+          md5: fileMd5,
+          opertype: "3",
+          flag: "1",
+          resumePolicy: "1",
+          isLog: "0",
+        },
+        isFamily,
+      })) as CreateUploadFileResp
+    }
+    return createResp.fileDataExists === 1
+  }
+
   /** 单片上传（Worker 的 put 接收完整 Buffer） */
   async upload(
     parentId: string,

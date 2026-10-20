@@ -6,6 +6,7 @@ import { hashReadableStream, TorrentPieceHasher } from "../internal/seed/hash"
 import { normalizeSeed } from "../internal/seed/types"
 import { saveDb } from "../internal/model/db"
 import { fsRouter } from "./fs"
+import { seedTestHelpers } from "./seed"
 
 const ADMIN_TOKEN = "SEED_ADMIN_TOKEN"
 const env: any = {}
@@ -235,6 +236,35 @@ test("seed update_channels shares the update handler", async () => {
   const data = await response.json() as any
   assert.equal(data.data.format, "oss")
   delete env.SEED_SOURCE_ALLOWED_HOSTS
+})
+
+test("seed capability formats follow driver-provided hashes", () => {
+  assert.deepEqual(
+    seedTestHelpers.seedFormatsForFiles([
+      { size: 1024, available_hashes: ["md5"], available_piece_hashes: [] },
+    ]),
+    { oss: true, torrent: false, cas: true },
+  )
+  assert.deepEqual(
+    seedTestHelpers.seedFormatsForFiles([
+      {
+        size: 20 * 1024 * 1024,
+        available_hashes: ["md5", "sha1"],
+        available_piece_hashes: [],
+      },
+    ]),
+    { oss: true, torrent: false, cas: false },
+  )
+  assert.deepEqual(
+    seedTestHelpers.seedFormatsForFiles([
+      {
+        size: 20 * 1024 * 1024,
+        available_hashes: ["md5", "sha1"],
+        available_piece_hashes: ["md5", "sha1"],
+      },
+    ]),
+    { oss: true, torrent: true, cas: true },
+  )
 })
 
 test("seed quick_save route accepts the unified transfer body", async () => {

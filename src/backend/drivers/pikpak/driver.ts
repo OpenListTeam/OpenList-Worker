@@ -355,6 +355,40 @@ export class PikPakDriver implements StorageDriver {
     )
   }
 
+  readonly rapidHashAlgos = ["sha1"]
+  readonly rapidHashNeedsPieces = false
+
+  async rapidUpload(
+    _virtualPath: string,
+    physicalPath: string,
+    metadata: { size: number; sha1?: string },
+  ): Promise<boolean> {
+    const sha1Hex = String(metadata.sha1 || "").toUpperCase()
+    if (!/^[0-9A-F]{40}$/.test(sha1Hex)) return false
+    const clean = this.cleanPath(physicalPath)
+    const parentPath = clean.split("/").slice(0, -1).join("/")
+    const fileName = clean.split("/").pop() || "upload"
+    const parentId = await this.resolveParentId(parentPath)
+    const taskResp: any = await this.client.request(
+      "https://api-drive.mypikpak.net/drive/v1/files",
+      {
+        method: "POST",
+        body: {
+          kind: "drive#file",
+          name: fileName,
+          size: String(metadata.size),
+          hash: sha1Hex,
+          upload_type: "UPLOAD_TYPE_RESUMABLE",
+          objProvider: { provider: "UPLOAD_TYPE_UNKNOWN" },
+          parent_id: parentId,
+          folder_type: "NORMAL",
+        },
+      },
+    )
+    // A successful rapid upload returns the file without a resumable session.
+    return !taskResp?.resumable
+  }
+
   async put(
     virtualPath: string,
     physicalPath: string,

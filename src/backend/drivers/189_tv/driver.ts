@@ -179,6 +179,31 @@ export class Driver189TV implements StorageDriver {
     this.pathCache.clear()
   }
 
+  readonly rapidHashAlgos = ["md5"]
+  readonly rapidHashNeedsPieces = false
+
+  async rapidUpload(
+    _virtualPath: string,
+    physicalPath: string,
+    metadata: { size: number; md5?: string },
+  ): Promise<boolean> {
+    const md5Hash = String(metadata.md5 || "").toLowerCase()
+    if (!/^[0-9a-f]{32}$/.test(md5Hash)) return false
+    const parts = physicalPath.split("/").filter(Boolean)
+    const name = parts.pop() || "file"
+    const parentPath = "/" + parts.join("/")
+    const parentId = await this.pathToId(parentPath)
+    const reused = await this.client.rapidUploadCreate(
+      parentId,
+      name,
+      metadata.size,
+      md5Hash,
+      this.isFamily(),
+    )
+    if (reused) this.pathCache.clear()
+    return reused
+  }
+
   async put(
     _virtualPath: string,
     physicalPath: string,

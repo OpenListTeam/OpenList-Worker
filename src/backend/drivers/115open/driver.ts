@@ -400,6 +400,65 @@ export class Pan115Driver implements StorageDriver {
 
   // ---- Upload（OSS 直传：秒传 → 二次校验 → PUT Object） ----
 
+  readonly rapidHashAlgos = ["sha1"]
+  readonly rapidHashNeedsPieces = false
+
+  async rapidUpload(
+    _virtualPath: string,
+    physicalPath: string,
+    metadata: {
+      size: number
+      sha1?: string
+      readRange?: (start: number, length: number) => Promise<Uint8Array>
+    },
+  ): Promise<boolean> {
+    const sha1Full = String(metadata.sha1 || "").toUpperCase()
+    if (!/^[0-9A-F]{40}$/.test(sha1Full) || !metadata.readRange) return false
+    const segs = String(physicalPath || "")
+      .split("/")
+      .filter(Boolean)
+    const fileName = segs.pop() || "file"
+    const parentPath = "/" + segs.join("/")
+    const parentId = await this.resolveFolderId(parentPath)
+    const fileSize = metadata.size
+    const preSize = Math.min(128 * 1024, fileSize)
+    const preId = (
+      await sha1(await metadata.readRange(0, preSize))
+    ).toUpperCase()
+    if (!this.reserve()) return false
+    let initResp = await this.client.uploadInit({
+      fileName,
+      fileSize,
+      target: parentId,
+      fileId: sha1Full,
+      preId,
+    })
+    if (initResp.status === 2) return true
+    // status 6/7/8 asks for a byte-range SHA1 proof before reusing the file.
+    if ([6, 7, 8].includes(initResp.status) && initResp.sign_check) {
+      const [start, end] = initResp.sign_check
+        .split("-")
+        .map((value) => parseInt(value, 10))
+      if (Number.isFinite(start) && Number.isFinite(end)) {
+        const signVal = (
+          await sha1(await metadata.readRange(start, end - start + 1))
+        ).toUpperCase()
+        if (!this.reserve()) return false
+        initResp = await this.client.uploadInit({
+          fileName,
+          fileSize,
+          target: parentId,
+          fileId: sha1Full,
+          preId,
+          signKey: initResp.sign_key,
+          signVal,
+        })
+        return initResp.status === 2
+      }
+    }
+    return false
+  }
+
   async put(
     _virtualPath: string,
     physicalPath: string,
