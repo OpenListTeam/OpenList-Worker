@@ -106,7 +106,14 @@ export interface PersonalThumbnail {
 }
 
 export interface PersonalFileItem {
-  fileId: string
+  // 部分账号 / 部分响应形态下，/file/list 的条目不携带 fileId，而是以
+  // catalogId / catalogID 携带 id（经与社区实现 gaozhangmin/boxplayer 的
+  // mapCloud139FileToAliModel 比对确认：139 新版个人云接口字段并不统一）。
+  // 只读 fileId 会在这些条目上拿到 undefined，继而 listFiles(undefined) 回退
+  // parentFileId="/" 静默列出根目录——这正是 issue #112 的症状1。
+  fileId?: string
+  catalogId?: string
+  catalogID?: string
   name: string
   size?: number | string
   type: "folder" | "file" | string

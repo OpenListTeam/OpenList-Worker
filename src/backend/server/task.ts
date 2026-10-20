@@ -27,11 +27,12 @@ taskRouter.all(
       try {
         const driver = await getDriver(s.driver, s)
         await driver.init?.()
-        // lanzou 驱动：主动校验 Cookie 是否过期（有效期约 15 天），
+        // lanzou / ctfile 驱动：主动校验凭证是否过期
+        // （lanzou Cookie 约 15 天；ctfile 开放接口 Session 失效返回 401），
         // 失效时标记 status=cookie_expired，管理后台可直接看到提示
         if (
           typeof (driver as any).checkCookieValid === "function" &&
-          /lanzou/i.test(String(s.driver))
+          /(lanzou|ctfile|400gb)/i.test(String(s.driver))
         ) {
           const check = await (driver as any).checkCookieValid()
           if (!check.valid) {

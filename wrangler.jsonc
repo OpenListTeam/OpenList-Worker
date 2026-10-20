@@ -238,4 +238,19 @@
   // ▶ 方案 D：Blob / MySQL
   //   Blob 由 EdgeOne / ESA 自动注入，无需配置；
   //   MySQL 通过 Secret 配置 MYSQL_URLS（或 MYSQL_HOST 等分项）。
+  //
+  // ▶ 方案 E：R2 对象存储（作为「存储驱动」，与上面的 DB 绑定无关）
+  //   后台「存储 → 新增 → R2」里把 bucket_binding 填成与下面 binding 相同的名字，
+  //   即可走 Workers 原生绑定读写（无需 API Token，推荐）。
+  //   不配 binding 时该驱动自动回退 S3 兼容 API：在存储配置里填
+  //   account_id + access_key_id / secret_access_key 即可（R2 控制台 →
+  //   Manage R2 API Tokens）。两者共用同一套目录语义。
+  //   绑定名可自定义，未在表单填写时按 R2 → R2_BUCKET → CF_R2 → OPENLIST_R2 顺序探测。
+  //
+  //   注意：binding 模式下载走 Worker 流式转发（R2 绑定不提供预签名 URL）；
+  //   想让浏览器直连，可在存储配置里填 custom_host（r2.dev 公开域名或自定义域名）。
+  //
+  // "r2_buckets": [
+  //   { "binding": "R2", "bucket_name": "your-bucket" }
+  // ],
 }

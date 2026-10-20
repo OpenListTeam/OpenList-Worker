@@ -53,12 +53,14 @@ import {
   ThunderExpertDriver,
 } from "../../drivers/thunder/driver"
 import { LanzouDriver } from "../../drivers/lanzou/driver"
+import { CtFileDriver } from "../../drivers/ctfile/driver"
 import { Cloud189Driver } from "../../drivers/189/driver"
 import { Driver189TV } from "../../drivers/189_tv/driver"
 import { WebdavDriver } from "../../drivers/webdav/driver"
 import { WoPanDriver, normalizeWoPanAddition } from "../../drivers/wopan/driver"
 import { MoPanDriver } from "../../drivers/mopan/driver"
 import { S3Driver, normalizeS3Addition } from "../../drivers/s3/driver"
+import { R2Driver } from "../../drivers/r2/driver"
 import {
   WeiyunDriver,
   normalizeWeiyunAddition,
@@ -720,6 +722,16 @@ async function createDriver(
     })
     await driver.init?.()
   } else if (
+    normDriver === "ctfile" ||
+    normDriver === "ctfilepan" ||
+    normDriver === "ctfiledriver" ||
+    normDriver === "400gb" ||
+    normDriver.includes("ctfile")
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new CtFileDriver(addition)
+    await driver.init?.()
+  } else if (
     normDriver === "189tv" ||
     normDriver === "cloud189tv" ||
     normDriver === "189tvcloud" ||
@@ -764,13 +776,25 @@ async function createDriver(
     driver = new WebdavDriver(addition)
     await driver.init?.()
   } else if (
+    // Cloudflare R2 独立驱动（"Cloudflare R2" / "r2" / "cloudflare_r2" / "cfr2"
+    // 归一化后都会落到这里）。必须在下面的 S3 分支之前匹配。
+    normDriver === "r2" ||
+    normDriver === "cloudflarer2" ||
+    normDriver === "cfr2" ||
+    normDriver === "r2native"
+  ) {
+    const addition = parseAddition(storageConfig)
+    driver = new R2Driver(addition)
+    await driver.init?.()
+  } else if (
+    // S3 兼容家族。注意：`r2` 已由上一分支接管，这里不能再列它
+    // （会被上方分支拦截成死代码，且让「r2 走哪条路」变得难读）。
     normDriver === "s3" ||
     normDriver === "doge" ||
     normDriver === "dogecloud" ||
     normDriver === "minio" ||
     normDriver === "ceph" ||
     normDriver === "aws" ||
-    normDriver === "r2" ||
     normDriver === "b2" ||
     normDriver === "cos" ||
     normDriver === "oss" ||
@@ -1185,7 +1209,7 @@ async function createDriver(
     await driver.init?.()
   } else if (normDriver === "guangyapan" || normDriver === "guangya") {
     const addition = parseAddition(storageConfig)
-    driver = new GuangYaPanDriver(addition, async (accessToken, refreshToken) => {
+    driver = new GuangYaPanDriver(addition, async (changes) => {
       try {
         const db = await getDb()
         const st = (db.storages || []).find(
@@ -1196,12 +1220,13 @@ async function createDriver(
           typeof st.addition === "string"
             ? JSON.parse(st.addition || "{}")
             : st.addition || {}
-        stAddition.access_token = accessToken
-        if (refreshToken) stAddition.refresh_token = refreshToken
+        // 合并需要持久化的字段（access_token/refresh_token/verification_id/
+        // captcha_token/send_code 等），空串用于显式清除一次性字段
+        Object.assign(stAddition, changes)
         st.addition = JSON.stringify(stAddition)
         await saveDb(db)
       } catch (e) {
-        console.warn("[GuangYaPan] failed to persist tokens:", e)
+        console.warn("[GuangYaPan] failed to persist changes:", e)
       }
     })
     await driver.init?.()

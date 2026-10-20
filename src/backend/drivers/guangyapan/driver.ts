@@ -7,7 +7,11 @@ import {
 } from "../../internal/driver/base"
 import { sortFileItems } from "../../internal/driver/sort"
 import { hmacSha1Base64 } from "../../pkg/crypto"
-import { GuangYaPanAddition, GypFileItem } from "./types"
+import {
+  GuangYaPanAddition,
+  GuangYaPanStateChanges,
+  GypFileItem,
+} from "./types"
 import {
   GuangYaPanClient,
   normalizeDeviceID,
@@ -29,6 +33,10 @@ export function normalizeGuangYaPanAddition(a: any): GuangYaPanAddition {
   norm.access_token = (norm.access_token || "").trim()
   norm.refresh_token = (norm.refresh_token || "").trim()
   norm.phone_number = normalizePhoneE164(norm.phone_number || "")
+  norm.verify_code = (norm.verify_code || "").trim()
+  norm.verification_id = (norm.verification_id || "").trim()
+  norm.captcha_token = (norm.captcha_token || "").trim()
+  norm.send_code = norm.send_code === true || norm.send_code === "true"
   return norm as GuangYaPanAddition
 }
 
@@ -66,15 +74,23 @@ export class GuangYaPanDriver implements StorageDriver {
   private client: GuangYaPanClient
   private idCache = new Map<string, string>()
 
-  constructor(addition: any, onTokensChanged?: (a: string, r: string) => Promise<void>) {
+  constructor(
+    addition: any,
+    onStateChanged?: (changes: GuangYaPanStateChanges) => Promise<void>,
+  ) {
     this.addition = normalizeGuangYaPanAddition(addition)
     this.client = new GuangYaPanClient(this.addition)
-    this.client.onTokensChanged = onTokensChanged
+    this.client.onStateChanged = onStateChanged
+    this.onStateChanged = onStateChanged
   }
+
+  // 回写短信发送后暂存的 verification_id 等一次性字段
+  private onStateChanged?: (changes: GuangYaPanStateChanges) => Promise<void>
 
   async init(): Promise<void> {
     if (!this.addition.client_id) throw new Error("client_id is required")
 
+    // 认证优先级与 Go 版一致：access_token -> refresh_token -> 短信登录
     if (this.addition.access_token) {
       try {
         await this.client.validateToken()
@@ -88,8 +104,41 @@ export class GuangYaPanDriver implements StorageDriver {
       await this.client.validateToken()
       return
     }
+
+    // 两阶段短信登录：
+    // 1) phone + verify_code 齐全：完成登录并保存 token
+    // 2) 仅 phone + send_code=true：发送验证码并暂存 verification_id，
+    //    init 成功返回，待用户填入 verify_code 后再次保存完成登录
+    if (this.addition.phone_number) {
+      if (this.addition.verify_code) {
+        await this.client.loginBySMSCode(
+          this.addition.verify_code,
+          this.addition.verification_id || "",
+        )
+        this.addition.verify_code = ""
+        this.addition.verification_id = ""
+        this.addition.send_code = false
+        await this.client.validateToken()
+        return
+      }
+      if (this.addition.send_code) {
+        // 显式发送动作总是重新获取 verification_id
+        await this.client.ensureCaptchaToken(false)
+        const verificationId = await this.client.requestVerificationID()
+        this.addition.verification_id = verificationId
+        this.addition.send_code = false
+        await this.onStateChanged?.({
+          verification_id: verificationId,
+          send_code: false,
+        })
+        return
+      }
+      throw new Error(
+        "login failed: phone_number provided, set send_code=true to receive SMS, then fill verify_code and save again",
+      )
+    }
     throw new Error(
-      "login failed: provide a valid access_token, or refresh_token, or phone_number + verify_code",
+      "login failed: provide a valid access_token, or refresh_token, or phone_number (+ send_code/verify_code for SMS login)",
     )
   }
 

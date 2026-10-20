@@ -189,7 +189,10 @@ function isRestrictedIpv4(octets: number[]): boolean {
  * 必须先解析成数值再按网段判断。
  */
 function parseIpv6Groups(input: string): number[] | null {
-  let s = String(input || "").trim().replace(/^\[/, "").replace(/\]$/, "")
+  let s = String(input || "")
+    .trim()
+    .replace(/^\[/, "")
+    .replace(/\]$/, "")
   const zone = s.indexOf("%")
   if (zone >= 0) s = s.slice(0, zone)
   if (!s.includes(":")) return null
@@ -246,7 +249,7 @@ function embeddedIpv4(high: number, low: number): number[] {
  * Validate that a target URL is safe against SSRF attacks:
  * 1. Protocol must be http: or https:
  * 2. Hostname/IP must not point to loopback, private RFC 1918 networks, link-local, or cloud metadata endpoints.
- * 
+ *
  * 2026-09-08 安全增强：
  * - 扩展 IPv6 检测（包括 IPv4-mapped IPv6）
  * - 检测 DNS 重绑定特征
@@ -334,10 +337,7 @@ export function isSafeUrl(
     }
 
     // 3. 检测前导零八进制绕过（0177.0.0.1 = 127.0.0.1）
-    if (
-      /^\d{1,3}(\.\d{1,3}){1,3}$/.test(host) &&
-      /(^|\.)0\d+/.test(host)
-    ) {
+    if (/^\d{1,3}(\.\d{1,3}){1,3}$/.test(host) && /(^|\.)0\d+/.test(host)) {
       return false
     }
 
