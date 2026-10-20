@@ -41,13 +41,6 @@
       "method": "POST",
       "payload": { "cron_secret": "" },
       "timezone": "Asia/Shanghai"
-    },
-    {
-      "name": "keep-warm",
-      "cron": "*/4 * * * *",
-      "path": "/api/healthz",
-      "method": "GET",
-      "timezone": "Asia/Shanghai"
     }
   ]
 }
