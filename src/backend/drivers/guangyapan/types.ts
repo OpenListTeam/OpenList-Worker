@@ -66,6 +66,19 @@ export interface GypTokenResp {
   error_description: string
 }
 
+/**
+ * 驱动运行期回写存储 addition 的状态变更集合：
+ * 覆盖 token、图形验证 token 与短信登录一次性字段。
+ */
+export interface GuangYaPanStateChanges {
+  access_token?: string
+  refresh_token?: string
+  captcha_token?: string
+  verify_code?: string
+  verification_id?: string
+  send_code?: boolean
+}
+
 /** POST /v1/auth/verification 的响应：下发短信并返回 verification_id */
 export interface GypVerificationResp {
   verification_id: string
