@@ -1332,10 +1332,19 @@ seedRouter.post("/convert", async (c) => {
       (hasInlineSeed ? body.path : undefined)
     const bytes = await encodeSeed(parsed.seed, target)
     await saveEncodedSeed(c, user, savePath, bytes)
+    const savedPath = savePath
+      ? joinVirtualPath(
+          normalizeVirtualPath(savePath),
+          fileNameFor(parsed.seed, target),
+        )
+      : undefined
     return c.json({
       code: 200,
       message: "success",
-      data: encodedResult(parsed.seed, target, bytes, { convertible: true }),
+      data: encodedResult(parsed.seed, target, bytes, {
+        convertible: true,
+        ...(savedPath ? { path: savedPath } : {}),
+      }),
     })
   } catch (error) {
     return errorResponse(c, 400, safeErrorMessage(error))
@@ -1766,7 +1775,15 @@ const updateSeedHandler = async (c: any) => {
       detectFormat(body.output_format || body.to_format) || parsed.format
     const bytes = await encodeSeed(seed, format)
     await saveEncodedSeed(c, user, outputPath, bytes)
-    const result = encodedResult(seed, format, bytes)
+    const savedPath = outputPath
+      ? joinVirtualPath(
+          normalizeVirtualPath(outputPath),
+          fileNameFor(seed, format),
+        )
+      : undefined
+    const result = encodedResult(seed, format, bytes, {
+      ...(savedPath ? { path: savedPath } : {}),
+    })
     const shareStatus = await checkSeedShareValidity(c, seed)
     if (Object.keys(shareStatus).length > 0)
       (result as Record<string, unknown>).share_status = shareStatus
