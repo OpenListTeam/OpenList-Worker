@@ -138,6 +138,32 @@ export class Driver123Open implements StorageDriver {
     throw new Error("[123Open] copy not supported")
   }
 
+  readonly rapidHashAlgos = ["sha1"]
+  readonly rapidHashNeedsPieces = false
+
+  async rapidUpload(
+    _virtualPath: string,
+    physicalPath: string,
+    metadata: { size: number; sha1?: string },
+  ): Promise<boolean> {
+    const sha1Hash = String(metadata.sha1 || "").toLowerCase()
+    if (!/^[0-9a-f]{40}$/.test(sha1Hash)) return false
+    const parts = physicalPath.split("/").filter(Boolean)
+    const name = parts.pop() || "file"
+    const parentPath = "/" + parts.join("/")
+    const parentId = await this.resolveDirId(parentPath)
+    const numericId = Number(parentId)
+    if (!Number.isSafeInteger(numericId)) return false
+    const result = await this.client.sha1Reuse(
+      numericId,
+      name,
+      sha1Hash,
+      metadata.size,
+      1,
+    )
+    return result.reuse === true
+  }
+
   async put(): Promise<void> {
     throw new Error("[123Open] upload not supported in stateless environment")
   }

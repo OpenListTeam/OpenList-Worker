@@ -52,7 +52,7 @@ import {
 import { parseZip, extractZipEntry, ZipArchive } from "../internal/archive/zip"
 import { assertSafeUrl, getTrustedHosts } from "../pkg/http"
 import { invalidatePaths } from "../internal/cache"
-import { seedRouter } from "./seed"
+import { seedRouter, torrentLegacyRouter } from "./seed"
 
 /**
  * 该路径所属存储是否禁止目录列表（对齐 Go handles.FsList 的 DisableIndex 判断）。
@@ -81,6 +81,7 @@ import {
 
 export const fsRouter = new Hono()
 fsRouter.route("/seed", seedRouter)
+fsRouter.route("/torrent", torrentLegacyRouter)
 
 /**
  * 请求级存储上下文（`env` + `waitUntil`）。

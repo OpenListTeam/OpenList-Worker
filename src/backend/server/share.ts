@@ -132,7 +132,7 @@ shareRouter.post("/create", async (c) => {
 })
 
 /** Generate a random 16-char share id using Web Crypto (Workers-compatible) */
-function generateShareId(): string {
+export function generateShareId(): string {
   const uuid = crypto.randomUUID().replace(/-/g, "")
   return uuid.slice(0, 16)
 }

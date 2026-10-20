@@ -3,7 +3,8 @@ import { getUserFromContext } from "./middlewares"
 import { canWrite, getActualPath, can, PermissionBit } from "../pkg/permission"
 import { assertSafeUrl } from "../pkg/http"
 import { safeErrorMessage } from "../pkg/errs"
-import { getSettings, resolvePath } from "../internal/model/db"
+import { getDb, getSettings, resolvePath, saveDb } from "../internal/model/db"
+import { generateShareId } from "./share"
 import {
   flushPendingDriverState,
   getDriver,
@@ -223,12 +224,16 @@ function validateSource(c: any, source: SeedSource): URL {
     url.origin === requestUrl.origin &&
     (/^\/(api\/)?p\//.test(url.pathname) ||
       url.pathname.startsWith("/d/") ||
+      url.pathname.startsWith("/sd/") ||
       url.pathname.startsWith("/@s/"))
+  // Align with the Go backend: shares live under /sd/ (legacy /@s/ is still
+  // accepted), direct sources under /d/.
   const shareSource =
     ["share", "openlist-share"].includes(type) &&
-    url.pathname.startsWith("/@s/")
+    (url.pathname.startsWith("/sd/") || url.pathname.startsWith("/@s/"))
   const directSource =
-    ["direct", "openlist-direct"].includes(type) && sameOpenList
+    ["direct", "openlist-direct"].includes(type) &&
+    url.pathname.startsWith("/d/")
   if (
     !shareSource &&
     !directSource &&
@@ -563,6 +568,32 @@ async function generateSeed(
       : {}
   const sourceFiles = await collectSourceFiles(c, user, body.paths ?? body.path)
   const siteUrl = await resolveSeedSiteUrl(c)
+  const shareFiles = new Set<string>(
+    Array.isArray(body.share_files)
+      ? body.share_files.map((path: unknown) => String(path))
+      : [],
+  )
+  const directFiles = new Set<string>(
+    Array.isArray(body.direct_files)
+      ? body.direct_files.map((path: unknown) => String(path))
+      : [],
+  )
+  const includeShare = body.include_share === true || shareFiles.size > 0
+  const includeDirect =
+    body.include_direct_source === true ||
+    body.include_sources === true ||
+    directFiles.size > 0
+  if (includeShare && !can(user, PermissionBit.SHARE))
+    throw new Error("Permission denied")
+  if ((includeShare || includeDirect) && !siteUrl)
+    throw new Error(
+      "seed_site_url must be configured before embedding download sources",
+    )
+  const useGlobalShare = shareFiles.size === 0 && body.include_share === true
+  const useGlobalDirect =
+    directFiles.size === 0 &&
+    (body.include_direct_source === true || body.include_sources === true)
+  let sharesDb: any | undefined
   const files: SeedFile[] = []
   const torrentPieces: string[] = []
   for (const file of sourceFiles) {
@@ -586,6 +617,46 @@ async function generateSeed(
     const comment = String(
       fileComments[file.relativePath] ?? fileComments[file.virtualPath] ?? "",
     )
+    const matches = (set: Set<string>) =>
+      set.has(file.virtualPath) || set.has(file.relativePath)
+    const sources: SeedSource[] = []
+    if (useGlobalDirect || matches(directFiles)) {
+      sources.push({
+        type: "openlist-direct",
+        url: `${siteUrl}/d${file.virtualPath}`,
+        expires_at: "",
+        share_id: "",
+      })
+    }
+    if (useGlobalShare || matches(shareFiles)) {
+      if (!sharesDb) sharesDb = await getDb(c.env)
+      const shareId = generateShareId()
+      if (!sharesDb.shares) sharesDb.shares = []
+      sharesDb.shares.push({
+        id: shareId,
+        new_id: shareId,
+        creator: user.username || "user",
+        creator_role: user.role ?? 1,
+        accessed: 0,
+        expires: null,
+        pwd: "",
+        max_accessed: 0,
+        disabled: false,
+        order_by: "",
+        order_direction: "",
+        extract_folder: "",
+        files: [file.virtualPath],
+        remark: "",
+        readme: "",
+        header: "",
+      })
+      sources.push({
+        type: "openlist-share",
+        url: `${siteUrl}/sd/${shareId}`,
+        expires_at: "",
+        share_id: shareId,
+      })
+    }
     const seedFile = applyHashMatrix(
       {
         path: file.relativePath,
@@ -606,23 +677,14 @@ async function generateSeed(
         cas_create_time: "",
         cas_cloud: "",
         missing_channels: [],
-        sources:
-          body.include_direct_source === true || body.include_sources === true
-            ? [
-                {
-                  type: "openlist-direct",
-                  url: `${siteUrl}/d${file.virtualPath}`,
-                  expires_at: "",
-                  share_id: "",
-                },
-              ]
-            : [],
+        sources,
       },
       matrix,
     )
     files.push(seedFile)
     torrentPieces.push(...seedFile.hashes.pieces.sha1)
   }
+  if (sharesDb) await saveDb(sharesDb, c.env)
   return {
     torrentPieces,
     seed: normalizeSeed({
@@ -1233,8 +1295,14 @@ seedRouter.post("/convert", async (c) => {
         data: { convertible: false, diagnostics },
       })
     }
+    const hasInlineSeed =
+      body.seed_data || body.content || body.data || body.torrent_data
+    const savePath =
+      body.save_path ||
+      body.output_path ||
+      (hasInlineSeed ? body.path : undefined)
     const bytes = await encodeSeed(parsed.seed, target)
-    await saveEncodedSeed(c, user, body.save_path, bytes)
+    await saveEncodedSeed(c, user, savePath, bytes)
     return c.json({
       code: 200,
       message: "success",
@@ -1282,18 +1350,44 @@ async function transferHandler(
   c: any,
   rapidOnly: boolean | ((body: any) => boolean),
 ) {
+  try {
+    const body = await readJson(c)
+    return await transferBody(c, body, rapidOnly)
+  } catch (error) {
+    return errorResponse(c, 400, safeErrorMessage(error))
+  }
+}
+
+async function transferBody(
+  c: any,
+  body: any,
+  rapidOnly: boolean | ((body: any) => boolean),
+) {
   const user = await getUserFromContext(c)
   if (!canWrite(user)) return errorResponse(c, 403, "Permission denied")
   try {
-    const body = await readJson(c)
     const rapid = typeof rapidOnly === "function" ? rapidOnly(body) : rapidOnly
     if (!rapid && !can(user, PermissionBit.OFFLINE_DOWNLOAD)) {
       return errorResponse(c, 403, "Offline download permission is required")
     }
     const parsed = await parseBodySeed(c, user, body)
-    const targetRoot = normalizeVirtualPath(
+    const finalRoot = normalizeVirtualPath(
       body.target_path || body.destination || body.path || "/",
     )
+    const transitPath = String(
+      body.transit_path ||
+        (body.options && typeof body.options === "object"
+          ? body.options.transit_path
+          : "") ||
+        "",
+    ).trim()
+    const transitMode =
+      !!transitPath &&
+      String(body.options?.mode || "").toLowerCase() === "transfer"
+    // Save into the intermediate directory first, then relay to the target.
+    const targetRoot = transitMode
+      ? normalizeVirtualPath(transitPath)
+      : finalRoot
     const selected = new Set<string>(
       Array.isArray(body.files)
         ? body.files.map((path: unknown) => String(path))
@@ -1377,12 +1471,80 @@ async function transferHandler(
         501,
       )
     }
+    if (transitMode) {
+      const relayed: Array<Record<string, unknown>> = []
+      let relayedCount = 0
+      for (const result of results) {
+        if (result.status === "unavailable") {
+          relayed.push(result)
+          continue
+        }
+        const filePath = String(result.path || "")
+        const seedFile = parsed.seed.files.find(
+          (item) => item.path === filePath,
+        )
+        const finalTarget = joinVirtualPath(finalRoot, filePath)
+        if (!seedFile) {
+          relayed.push({
+            ...result,
+            status: "unavailable",
+            error: "Seed file not found",
+          })
+          continue
+        }
+        try {
+          const transitTarget = joinVirtualPath(targetRoot, filePath)
+          const actualTransit = getActualPath(user, transitTarget)
+          const { item, rawUrl } = await getItem(
+            actualTransit,
+            storageContext(c),
+          )
+          const url = new URL(item.raw_url || rawUrl, c.req.url)
+          const transferred = await uploadStreamToDriver(
+            c,
+            user,
+            seedFile,
+            finalTarget,
+            {
+              source: {
+                type: "openlist-direct",
+                url: url.toString(),
+                expires_at: "",
+                share_id: "",
+              },
+              url,
+            },
+            false,
+          )
+          relayedCount++
+          relayed.push({
+            path: filePath,
+            target: finalTarget,
+            ...transferred,
+            method: "transfer",
+          })
+        } catch (error) {
+          relayed.push({
+            path: filePath,
+            target: finalTarget,
+            status: "unavailable",
+            method: "transfer",
+            error: safeErrorMessage(error),
+          })
+        }
+      }
+      return c.json({
+        code: 200,
+        message: "success",
+        data: { total: relayed.length, saved: relayedCount, results: relayed },
+      })
+    }
     const payload: Record<string, unknown> = {
       total: results.length,
       saved,
       results,
     }
-    if (body.update_channel === true && targetDriver) {
+    if (!transitMode && body.update_channel === true && targetDriver) {
       applySeedChannelUpdate(
         parsed.seed,
         targetDriver,
@@ -1410,12 +1572,49 @@ seedRouter.post("/quick_save", (c) =>
   }),
 )
 
+function shareIsValid(share: any): boolean {
+  if (!share || share.disabled) return false
+  const maxAccessed = Number(share.max_accessed || 0)
+  if (maxAccessed > 0 && Number(share.accessed || 0) >= maxAccessed) return false
+  if (!Array.isArray(share.files) || share.files.length === 0) return false
+  if (share.expires) {
+    const expires = Date.parse(String(share.expires))
+    if (Number.isFinite(expires) && expires <= Date.now()) return false
+  }
+  return true
+}
+
+// Mirrors the Go backend: report whether each openlist-share source still
+// points at a usable sharing.
+async function checkSeedShareValidity(
+  c: any,
+  seed: SharingSeed,
+): Promise<Record<string, boolean>> {
+  const status: Record<string, boolean> = {}
+  let shares: any[] | undefined
+  for (const file of seed.files) {
+    for (const source of file.sources) {
+      if (source.type !== "openlist-share") continue
+      const shareId = String(source.share_id || "").trim()
+      if (!shareId || status[shareId] !== undefined) continue
+      if (!shares) {
+        const db = await getDb(c.env)
+        shares = db.shares || []
+      }
+      const list: any[] = shares ?? []
+      status[shareId] = shareIsValid(list.find((item) => item.id === shareId))
+    }
+  }
+  return status
+}
+
 const updateSeedHandler = async (c: any) => {
   const user = await getUserFromContext(c)
   if (!user || user.disabled) return errorResponse(c, 401, "Unauthorized")
   try {
     const body = await readJson(c)
-    if (body.save_path && !canWrite(user))
+    const outputPath = String(body.output_path || body.save_path || "")
+    if (outputPath && !canWrite(user))
       return errorResponse(c, 403, "Permission denied")
     const parsed = await parseBodySeed(c, user, body)
     const patch =
@@ -1424,7 +1623,7 @@ const updateSeedHandler = async (c: any) => {
       body.options && typeof body.options === "object" ? body.options : {}
     const comment = patch.comment ?? options.comment
     const recalculate = !!(patch.recalculate ?? options.recalculate)
-    const seed = normalizeSeed({
+    let seed = normalizeSeed({
       ...parsed.seed,
       name: patch.name ?? parsed.seed.name,
       comment: comment ?? parsed.seed.comment,
@@ -1447,6 +1646,20 @@ const updateSeedHandler = async (c: any) => {
         for (const source of fileSources[file.path]) validateSource(c, source)
         file.sources = fileSources[file.path]
       }
+    }
+    const removeFiles = Array.isArray(body.remove_files)
+      ? body.remove_files.map((path: unknown) => String(path).trim())
+      : []
+    const removeSet = new Set(removeFiles.filter(Boolean))
+    if (removeFiles.length > 0) {
+      if (removeSet.size === 0)
+        throw new Error(
+          "remove_files requires at least one non-empty path",
+        )
+      const kept = seed.files.filter((file) => !removeSet.has(file.path))
+      if (kept.length === 0)
+        throw new Error("cannot remove all files from a seed")
+      seed = normalizeSeed({ ...seed, files: kept })
     }
     if (recalculate) {
       const pieceSize = Number(
@@ -1515,11 +1728,15 @@ const updateSeedHandler = async (c: any) => {
     const format =
       detectFormat(body.output_format || body.to_format) || parsed.format
     const bytes = await encodeSeed(seed, format)
-    await saveEncodedSeed(c, user, body.save_path, bytes)
+    await saveEncodedSeed(c, user, outputPath, bytes)
+    const result = encodedResult(seed, format, bytes)
+    const shareStatus = await checkSeedShareValidity(c, seed)
+    if (Object.keys(shareStatus).length > 0)
+      (result as Record<string, unknown>).share_status = shareStatus
     return c.json({
       code: 200,
       message: "success",
-      data: encodedResult(seed, format, bytes),
+      data: result,
     })
   } catch (error) {
     return errorResponse(c, 400, safeErrorMessage(error))
@@ -1528,6 +1745,128 @@ const updateSeedHandler = async (c: any) => {
 
 seedRouter.post("/update", updateSeedHandler)
 seedRouter.post("/update_channels", updateSeedHandler)
+
+function torrentInfoFromParsed(parsed: any) {
+  const seed = parsed.seed
+  return {
+    name: seed.name,
+    total_size: seed.files.reduce(
+      (sum: number, file: any) => sum + file.size,
+      0,
+    ),
+    piece_length: seed.piece_size,
+    piece_count: seed.files.reduce(
+      (sum: number, file: any) => sum + file.hashes.pieces.sha1.length,
+      0,
+    ),
+    info_hash: parsed.info_hash || "",
+    files: seed.files,
+    has_cas: seed.files.some(
+      (file: any) => !!file.cas_slice_md5 || file.hashes.pieces.md5.length > 0,
+    ),
+    cas: parsed.cas
+      ? {
+          file_md5: parsed.cas.md5,
+          slice_md5: parsed.cas.sliceMd5,
+          slice_size: seed.piece_size,
+          cloud: parsed.cas.cloud,
+        }
+      : undefined,
+  }
+}
+
+// Legacy `/fs/torrent/*` endpoints kept for older frontends and API clients.
+export const torrentLegacyRouter = new Hono()
+
+torrentLegacyRouter.post("/parse", async (c) => {
+  const user = await getUserFromContext(c)
+  if (!user || user.disabled) return errorResponse(c, 401, "Unauthorized")
+  try {
+    const body = await readJson(c)
+    const parsed = await parseBodySeed(c, user, body)
+    return c.json({
+      code: 200,
+      message: "success",
+      data: torrentInfoFromParsed(parsed),
+    })
+  } catch (error) {
+    return errorResponse(c, 400, safeErrorMessage(error))
+  }
+})
+
+torrentLegacyRouter.post("/upload_parse", async (c) => {
+  const user = await getUserFromContext(c)
+  if (!user || user.disabled) return errorResponse(c, 401, "Unauthorized")
+  try {
+    const max = envNumber(c, "SEED_MAX_METADATA_SIZE", DEFAULT_MAX_SEED_BYTES)
+    const form = await c.req.formData()
+    const upload = form.get("torrent")
+    if (!upload || typeof upload === "string")
+      throw new Error("torrent file is required")
+    if (upload.size > max)
+      return errorResponse(c, 413, `Torrent file exceeds the ${max} byte limit`)
+    const bytes = new Uint8Array(await upload.arrayBuffer())
+    if (bytes.byteLength > max)
+      return errorResponse(c, 413, `Torrent file exceeds the ${max} byte limit`)
+    const parsed = await parseSeed(bytes)
+    return c.json({
+      code: 200,
+      message: "success",
+      data: {
+        info: torrentInfoFromParsed(parsed),
+        torrent_data: Buffer.from(bytes).toString("base64"),
+      },
+    })
+  } catch (error) {
+    return errorResponse(c, 400, safeErrorMessage(error))
+  }
+})
+
+torrentLegacyRouter.post("/rapid_upload", async (c) => {
+  try {
+    const body = await readJson(c)
+    return await transferBody(
+      c,
+      {
+        ...body,
+        seed_data: body.seed_data || body.torrent_data,
+        target_path: body.target_path || body.path,
+      },
+      true,
+    )
+  } catch (error) {
+    return errorResponse(c, 400, safeErrorMessage(error))
+  }
+})
+
+torrentLegacyRouter.post("/generate", async (c) => {
+  const user = await getUserFromContext(c)
+  if (!user || user.disabled) return errorResponse(c, 401, "Unauthorized")
+  try {
+    const body = await readJson(c)
+    const paths = Array.isArray(body.paths)
+      ? body.paths
+      : body.path
+        ? [body.path]
+        : []
+    if (!paths.length) throw new Error("path is required")
+    const { seed, torrentPieces } = await generateSeed(
+      c,
+      user,
+      { ...body, paths },
+      ["torrent"],
+    )
+    const bytes = await encodeTorrent(seed, torrentPieces)
+    await saveEncodedSeed(c, user, body.save_path || body.output_path, bytes)
+    return c.json({
+      code: 200,
+      message: "success",
+      data: encodedResult(seed, "torrent", bytes),
+    })
+  } catch (error) {
+    return errorResponse(c, 400, safeErrorMessage(error))
+  }
+})
 
 export const seedTestHelpers = {
   contentBytes,

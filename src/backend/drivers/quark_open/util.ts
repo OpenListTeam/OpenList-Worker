@@ -7,6 +7,7 @@ import {
   QuarkDownloadData,
   QuarkRefreshResp,
 } from "./types"
+import { md5 } from "../../pkg/crypto"
 
 const API = "https://open-api-drive.quark.cn"
 const UA = "go-resty/3.0.0-beta.1 (https://resty.dev)"
@@ -39,6 +40,66 @@ export class ClientQuarkOpen {
   async init(): Promise<void> {
     if (!this.refreshToken)
       throw new Error("[QuarkOpen] refresh_token is required")
+  }
+
+  private async proofCode(
+    readRange: (start: number, length: number) => Promise<Uint8Array>,
+    seed: string,
+    size: number,
+  ): Promise<string> {
+    if (size <= 0) return ""
+    const digest = md5(seed)
+    const value = BigInt(`0x${digest.slice(0, 16)}`)
+    const start = Number(value % BigInt(size))
+    const end = Math.min(start + 8, size)
+    if (end <= start) return ""
+    const bytes = await readRange(start, end - start)
+    return Buffer.from(bytes).toString("base64")
+  }
+
+  /** Hash-based rapid upload probe (`/open/v1/file/upload_pre`). */
+  async rapidUpload(input: {
+    parentId: string
+    fileName: string
+    size: number
+    md5: string
+    sha1: string
+    readRange: (start: number, length: number) => Promise<Uint8Array>
+  }): Promise<boolean> {
+    const { token } = await this.generateSign(
+      "POST",
+      "/open/v1/file/upload_pre",
+    )
+    const userId = String((this.addition as any).user_id || "")
+    const proofSeed1 = md5(`${userId}${token}`)
+    const proofSeed2 = md5(String(input.size))
+    const proofCode1 = await this.proofCode(
+      input.readRange,
+      proofSeed1,
+      input.size,
+    )
+    const proofCode2 = await this.proofCode(
+      input.readRange,
+      proofSeed2,
+      input.size,
+    )
+    const resp = await this.request<any>("/open/v1/file/upload_pre", "POST", {
+      file_name: input.fileName,
+      size: input.size,
+      format_type: "application/octet-stream",
+      md5: input.md5,
+      sha1: input.sha1,
+      l_created_at: Date.now(),
+      l_updated_at: Date.now(),
+      pdir_fid: input.parentId,
+      same_path_reuse: true,
+      proof_version: "v1",
+      proof_seed1: proofSeed1,
+      proof_seed2: proofSeed2,
+      proof_code1: proofCode1,
+      proof_code2: proofCode2,
+    })
+    return resp?.data?.finish === true
   }
 
   /** 生成签名：x-pan-token = sha256(method&path&tm&signKey) */

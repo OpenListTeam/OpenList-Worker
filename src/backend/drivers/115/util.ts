@@ -180,6 +180,33 @@ export class Client115 {
     await this.request("/open/ufile/delete", { fid: fids, ignore_warn: 1 })
   }
 
+  /** Upload-init probe used by hash-based rapid upload. */
+  async uploadInit(opts: {
+    fileName: string
+    fileSize: number
+    target: string
+    fileId: string
+    preId: string
+    signKey?: string
+    signVal?: string
+  }): Promise<{
+    status?: number
+    sign_key?: string
+    sign_check?: string
+    file_id?: string
+  }> {
+    const resp = await this.request<any>("/upload/init", {
+      file_name: opts.fileName,
+      file_size: String(opts.fileSize),
+      target: `U_1_${opts.target}`,
+      fileid: opts.fileId,
+      preid: opts.preId,
+      sign_key: opts.signKey || "",
+      sign_val: opts.signVal || "",
+    })
+    return resp?.data || resp || {}
+  }
+
   async getDownloadUrl(pickCode: string): Promise<string> {
     const resp = await this.request<Cloud115DownResp>("/open/ufile/downurl", {
       pickcode: pickCode,

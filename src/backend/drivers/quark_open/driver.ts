@@ -135,6 +135,38 @@ export class DriverQuarkOpen implements StorageDriver {
     throw new Error("[QuarkOpen] copy not supported")
   }
 
+  readonly rapidHashAlgos = ["md5", "sha1"]
+  readonly rapidHashNeedsPieces = false
+
+  async rapidUpload(
+    _virtualPath: string,
+    physicalPath: string,
+    metadata: {
+      size: number
+      md5?: string
+      sha1?: string
+      readRange?: (start: number, length: number) => Promise<Uint8Array>
+    },
+  ): Promise<boolean> {
+    const md5Hash = String(metadata.md5 || "").toLowerCase()
+    const sha1Hash = String(metadata.sha1 || "").toLowerCase()
+    if (!/^[0-9a-f]{32}$/.test(md5Hash)) return false
+    if (!/^[0-9a-f]{40}$/.test(sha1Hash)) return false
+    if (!metadata.readRange) return false
+    const parts = physicalPath.split("/").filter(Boolean)
+    const name = parts.pop() || "file"
+    const parentPath = "/" + parts.join("/")
+    const parentId = await this.resolveDirId(parentPath)
+    return this.client.rapidUpload({
+      parentId,
+      fileName: name,
+      size: metadata.size,
+      md5: md5Hash,
+      sha1: sha1Hash,
+      readRange: metadata.readRange,
+    })
+  }
+
   async put(): Promise<void> {
     throw new Error("[QuarkOpen] upload not supported in stateless environment")
   }

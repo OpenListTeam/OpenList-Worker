@@ -267,6 +267,89 @@ test("seed capability formats follow driver-provided hashes", () => {
   )
 })
 
+test("legacy torrent parse returns the TorrentInfo contract", async () => {
+  await saveDb({
+    settings: [{ key: "token", value: ADMIN_TOKEN }],
+    users: [],
+    storages: [],
+    shares: [],
+  }, env)
+  const app = new Hono()
+  app.route("/api/fs", fsRouter)
+  const torrent = await encodeTorrent(casSeed())
+  const response = await app.request("/api/fs/torrent/parse", {
+    method: "POST",
+    headers: { Authorization: ADMIN_TOKEN, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      torrent_data: Buffer.from(torrent).toString("base64"),
+    }),
+  }, env)
+  assert.equal(response.status, 200)
+  const data = await response.json() as any
+  assert.equal(data.data.name, "hello.txt")
+  assert.equal(data.data.total_size, 5)
+  assert.equal(data.data.info_hash.length, 40)
+  assert.equal(data.data.files.length, 1)
+})
+
+test("seed update removes files and reports share validity", async () => {
+  const base = sampleSeed()
+  const second = { ...base.files[0], path: "second.txt" }
+  const seed = normalizeSeed({ ...base, files: [base.files[0], second] })
+  seed.files[0].sources = [
+    {
+      type: "openlist-share",
+      url: "https://files.example/sd/share-ok",
+      expires_at: "",
+      share_id: "share-ok",
+    },
+  ]
+  seed.files[1].sources = [
+    {
+      type: "openlist-share",
+      url: "https://files.example/sd/share-off",
+      expires_at: "",
+      share_id: "share-off",
+    },
+  ]
+  await saveDb({
+    settings: [{ key: "token", value: ADMIN_TOKEN }],
+    users: [],
+    storages: [],
+    shares: [
+      {
+        id: "share-ok",
+        files: ["/hello.txt"],
+        disabled: false,
+        expires: null,
+        max_accessed: 0,
+        accessed: 0,
+      },
+      {
+        id: "share-off",
+        files: ["/second.txt"],
+        disabled: true,
+        expires: null,
+        max_accessed: 0,
+        accessed: 0,
+      },
+    ],
+  } as any, env)
+  const app = new Hono()
+  app.route("/api/fs", fsRouter)
+  const response = await app.request("/api/fs/seed/update", {
+    method: "POST",
+    headers: { Authorization: ADMIN_TOKEN, "Content-Type": "application/json" },
+    body: JSON.stringify({ seed, remove_files: ["second.txt"] }),
+  }, env)
+  assert.equal(response.status, 200)
+  const data = await response.json() as any
+  assert.equal(data.data.seed.files.length, 1)
+  assert.equal(data.data.seed.files[0].path, "hello.txt")
+  assert.equal(data.data.share_status["share-ok"], true)
+  assert.equal(data.data.share_status["share-off"], undefined)
+})
+
 test("seed quick_save route accepts the unified transfer body", async () => {
   await saveDb({
     settings: [{ key: "token", value: ADMIN_TOKEN }],

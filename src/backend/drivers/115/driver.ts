@@ -5,6 +5,7 @@ import {
 } from "../../internal/driver/base"
 import { Driver115Addition, Cloud115File } from "./types"
 import { Client115 } from "./util"
+import { sha1 } from "../../pkg/crypto"
 
 function fileToItem(f: Cloud115File): FileItem {
   const isDir = f.Fc === "0"
@@ -143,6 +144,62 @@ export class Driver115 implements StorageDriver {
     const fid = await this.client.resolvePathId(srcPhysical, this.pathCache)
     const dstId = await this.client.resolvePathId(dstDir, this.pathCache)
     await this.client.copy(dstId, [fid])
+  }
+
+  readonly rapidHashAlgos = ["sha1"]
+  readonly rapidHashNeedsPieces = false
+
+  async rapidUpload(
+    _virtualPath: string,
+    physicalPath: string,
+    metadata: {
+      size: number
+      sha1?: string
+      readRange?: (start: number, length: number) => Promise<Uint8Array>
+    },
+  ): Promise<boolean> {
+    const sha1Full = String(metadata.sha1 || "").toUpperCase()
+    if (!/^[0-9A-F]{40}$/.test(sha1Full) || !metadata.readRange) return false
+    const parts = physicalPath.split("/").filter(Boolean)
+    const name = parts.pop() || "file"
+    const parentPath = "/" + parts.join("/")
+    const parentId = await this.client.resolvePathId(
+      parentPath,
+      this.pathCache,
+    )
+    const preSize = Math.min(128 * 1024, metadata.size)
+    const preId = (
+      await sha1(await metadata.readRange(0, preSize))
+    ).toUpperCase()
+    let initResp = await this.client.uploadInit({
+      fileName: name,
+      fileSize: metadata.size,
+      target: parentId,
+      fileId: sha1Full,
+      preId,
+    })
+    if (initResp.status === 2) return true
+    if ([6, 7, 8].includes(Number(initResp.status)) && initResp.sign_check) {
+      const [start, end] = initResp.sign_check
+        .split("-")
+        .map((value) => parseInt(value, 10))
+      if (Number.isFinite(start) && Number.isFinite(end)) {
+        const signVal = (
+          await sha1(await metadata.readRange(start, end - start + 1))
+        ).toUpperCase()
+        initResp = await this.client.uploadInit({
+          fileName: name,
+          fileSize: metadata.size,
+          target: parentId,
+          fileId: sha1Full,
+          preId,
+          signKey: initResp.sign_key,
+          signVal,
+        })
+        return initResp.status === 2
+      }
+    }
+    return false
   }
 
   async put(
