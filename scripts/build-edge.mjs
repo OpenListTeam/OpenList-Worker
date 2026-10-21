@@ -151,6 +151,10 @@ async function build() {
     outfile: "dist-server/api/[...route].js",
     minify: true,
     format: "esm",
+    // ESM 产物中保留的裸 require("crypto") 动态引用需要 Node createRequire
+    banner: {
+      js: "import { createRequire as __esbCreateRequire } from 'node:module'; const require = __esbCreateRequire(import.meta.url);",
+    },
     // neutral 平台默认不读 package.json 的 main/module 字段，必须显式配置，
     // 否则依赖 hash-wasm 等无 exports 映射的包会报 Could not resolve
     mainFields: ["module", "main"],
