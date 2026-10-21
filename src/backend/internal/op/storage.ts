@@ -392,6 +392,7 @@ async function createDriver(
     await driver.init?.()
   } else if (
     normDriver === "quarktv" ||
+    normDriver === "quarkuctv" ||
     normDriver === "uctv" ||
     normDriver === "quark_uc_tv"
   ) {
