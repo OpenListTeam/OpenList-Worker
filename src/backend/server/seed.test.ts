@@ -69,6 +69,17 @@ test("OSS codec preserves the versioned canonical schema", async () => {
   assert.equal(parsed.seed.version, 1)
 })
 
+test("OSS and torrent codecs preserve GCID hashes from Go seeds", async () => {
+  const original = sampleSeed()
+  original.files[0].hashes.gcid = "0123456789abcdef0123456789abcdef01234567"
+
+  const oss = await parseSeed(encodeOss(original), "oss")
+  assert.equal(oss.seed.files[0].hashes.gcid, original.files[0].hashes.gcid)
+
+  const torrent = await parseSeed(await encodeTorrent(original), "torrent")
+  assert.equal(torrent.seed.files[0].hashes.gcid, original.files[0].hashes.gcid)
+})
+
 test("torrent codec writes BT v1 info plus OpenList and CAS extensions", async () => {
   const original = casSeed()
   const bytes = await encodeTorrent(original)

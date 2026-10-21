@@ -23,6 +23,8 @@ export interface SeedHashes {
   md5: string
   sha1: string
   sha256: string
+  /** GCID used by Thunder/PikPak rapid upload; preserved from Go seeds. */
+  gcid?: string
   pieces: Record<SeedHashAlgorithm, string[]>
 }
 
@@ -130,6 +132,14 @@ function normalizeHash(value: unknown, algorithm: SeedHashAlgorithm): string {
   return hash
 }
 
+function normalizeGcid(value: unknown): string {
+  const hash = text(value).toLowerCase()
+  if (hash && !/^[0-9a-f]{40}$/.test(hash)) {
+    throw new Error("Invalid gcid hash")
+  }
+  return hash
+}
+
 function normalizeSources(value: unknown): SeedSource[] {
   if (!Array.isArray(value)) return []
   return value.map((item) => {
@@ -185,6 +195,7 @@ export function normalizeSeed(input: unknown): SharingSeed {
       throw new Error("Invalid seed file size")
     const hashes = file.hashes || {}
     const pieces = hashes.pieces || {}
+    const gcid = normalizeGcid(hashes.gcid)
     const expectedPieces = size > 0 ? Math.ceil(size / pieceSize) : 0
     const normalizedPieces = (algorithm: SeedHashAlgorithm): string[] => {
       if (!Array.isArray(pieces[algorithm])) return []
@@ -207,6 +218,7 @@ export function normalizeSeed(input: unknown): SharingSeed {
         md5: normalizeHash(hashes.md5, "md5"),
         sha1: normalizeHash(hashes.sha1, "sha1"),
         sha256: normalizeHash(hashes.sha256, "sha256"),
+        ...(gcid ? { gcid } : {}),
         pieces: {
           md5: normalizedPieces("md5"),
           sha1: normalizedPieces("sha1"),
@@ -321,6 +333,7 @@ export function applyHashMatrix(
     md5: matrix.md5.whole ? file.hashes.md5 : "",
     sha1: matrix.sha1.whole ? file.hashes.sha1 : "",
     sha256: matrix.sha256.whole ? file.hashes.sha256 : "",
+    ...(file.hashes.gcid ? { gcid: file.hashes.gcid } : {}),
     pieces: {
       md5: matrix.md5.pieces ? file.hashes.pieces.md5 : [],
       sha1: matrix.sha1.pieces ? file.hashes.pieces.sha1 : [],
