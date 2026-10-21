@@ -45,6 +45,7 @@ import {
 import { safeErrorMessage } from "../pkg/errs"
 import { encodeDownloadPath } from "../pkg/path"
 import { search } from "../internal/op/search"
+import { searchIndexed } from "../internal/op/search_index"
 import {
   getDisableIndex,
   resolveCacheExpiration,
@@ -1092,6 +1093,24 @@ fsRouter.post("/search", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const parentPath = getActualPath(user, body.parent || "/")
   try {
+    // 高性能路径：索引已建成时直接内存过滤 + 分页，不打下游网盘 API；
+    // 未建索引 / 未完成时回退实时遍历（与旧版行为兼容）。
+    const indexed = await searchIndexed(
+      {
+        parent: parentPath,
+        keywords: body.keywords || "",
+        scope: body.scope !== undefined ? parseInt(body.scope, 10) : 0,
+        page: body.page ? parseInt(body.page, 10) : 1,
+        per_page: body.per_page ? parseInt(body.per_page, 10) : 30,
+        user,
+        password: body.password || "",
+        env: c.env,
+      },
+      c.env,
+    )
+    if (indexed) {
+      return c.json({ code: 200, message: "success", data: indexed })
+    }
     const result = await search(
       {
         parent: parentPath,
