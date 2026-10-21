@@ -339,7 +339,7 @@ embyRouter.get("/Users/:id/FavoriteItems", async (c) => {
   return c.json({ Items: items, TotalRecordCount: items.length })
 })
 
-embyRouter.get("/Items", async (c) => {
+const handleItems = async (c: any) => {
   const user = (c as any).get("mediaUser")
   const db = await getMediaDb(c.env)
   const parent = c.req.query("ParentId") || "views"
@@ -451,11 +451,61 @@ embyRouter.get("/Items", async (c) => {
     TotalRecordCount: items.length,
     StartIndex: start,
   })
-})
+}
+
+embyRouter.get("/Items", handleItems)
+embyRouter.get("/Users/:id/Items", handleItems)
 
 embyRouter.get("/Items/:id", async (c) => {
   const user = (c as any).get("mediaUser")
   const id = c.req.param("id")
+  if (id.startsWith("sr-")) {
+    const folder = unb64(id.slice(3))
+    const db = await getMediaDb(c.env)
+    const item = db.items.find(
+      (i) =>
+        i.media_type === "video" &&
+        i.folder_path === folder &&
+        (i.episodes || "[]") !== "[]",
+    )
+    if (!item || !(await mediaHelpers.canAccessItem(c.env, user, item))) {
+      return c.json({ Error: "Not Found" }, 404)
+    }
+    let count = 0
+    try {
+      count = JSON.parse(item.episodes || "[]").length
+    } catch {
+      count = 0
+    }
+    return c.json(
+      itemDto(c, item, "Series", {
+        Id: id,
+        ChildCount: count,
+        RecursiveItemCount: count,
+      }),
+    )
+  }
+  if (id.startsWith("al-")) {
+    const key = unb64(id.slice(3))
+    const [artist, album] = key.split("\u0000")
+    const songs = (await accessItems(c.env, user, "music")).filter(
+      (s) =>
+        (s.album_name || "未知专辑") === album &&
+        (s.album_artist || "未知艺术家") === artist,
+    )
+    if (songs.length === 0) return c.json({ Error: "Not Found" }, 404)
+    const first = songs[0]
+    return c.json(
+      itemDto(c, first, "MusicAlbum", {
+        Id: id,
+        Name: album,
+        AlbumArtist: artist,
+        Artists: [artist],
+        ChildCount: songs.length,
+        RunTimeTicks: ticks(songs.reduce((n, s) => n + (s.duration || 0), 0)),
+      }),
+    )
+  }
   const target = await resolveId(c, user, id)
   if (!target) return c.json({ Error: "Not Found" }, 404)
   if (target.episode) {
@@ -633,7 +683,20 @@ async function subAuth(c: any) {
     }
     return null
   }
-  const pw = c.req.query("p") || ""
+  let pw = c.req.query("p") || ""
+  if (pw.startsWith("enc:")) {
+    try {
+      pw = new TextDecoder().decode(
+        Uint8Array.from(
+          (pw.slice(4).match(/.{2}/g) || []).map((h: string) =>
+            parseInt(h, 16),
+          ),
+        ),
+      )
+    } catch {
+      return null
+    }
+  }
   if (!pw || !user.password) return null
   const hash = await twoStepHash(pw, user.salt)
   return hash === user.password ? user : null
