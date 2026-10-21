@@ -446,7 +446,25 @@ adminRouter.post("/storage/update", async (c) => {
         })
       }
     }
-    db.storages[idx] = updatedStorage
+    // 登录过程 onStateChanged 会把 verification_id 等回写进 db；
+    // 这里用更新前的旧快照覆盖会丢状态。重新读取 db 合并回写值。
+    let finalAddition = updatedAddition
+    try {
+      const fresh = await getDb(c.env)
+      const freshSt = (fresh?.storages || []).find((s: any) => s.id === body.id)
+      if (freshSt) {
+        const freshAdd =
+          typeof freshSt.addition === "string"
+            ? freshSt.addition || "{}"
+            : JSON.stringify(freshSt.addition || {})
+        freshAdd && (finalAddition = JSON.stringify({
+          ...JSON.parse(updatedAddition || "{}"),
+          ...JSON.parse(freshAdd || "{}"),
+        }))
+      }
+    } catch {}
+
+    db.storages[idx] = { ...updatedStorage, addition: finalAddition }
     await saveDb(db, c.env)
     // 存储配置已变更（挂载路径 / root_folder_path / addition / 缓存策略等），
     // 既有缓存全部失效，避免继续返回旧挂载点或旧凭据下的结果。
