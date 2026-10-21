@@ -58,7 +58,11 @@ export class ClientQuarkUcTv {
 
   constructor(addition: DriverQuarkUcTvAddition) {
     this.addition = addition
-    this.conf = CONFS[addition.variant || "quark"]
+    // UI 下拉传入的是 "Quark"/"UC"（首字母大写），协议端固定小写键
+    const variantKey = (addition.variant || "quark").toLowerCase()
+    this.conf =
+      (variantKey === "uc" || variantKey === "quark" ? CONFS[variantKey] : null) ||
+      CONFS.quark
     this.deviceId = addition.device_id || md5(String(Date.now()))
     this.addition.device_id = this.deviceId
   }
