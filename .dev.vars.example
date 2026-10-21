@@ -31,6 +31,18 @@ ADMIN_PASS=
 # 留空表示仅允许同源请求。
 ALLOW_URLS=
 
+# 传输种子元数据/请求体上限（字节），默认 10485760（10 MiB）。
+# 作用于 /seed/parse、/seed/convert、/seed/update、/seed/upload_parse。
+SEED_MAX_METADATA_SIZE=10485760
+
+# 额外允许作为种子 source 的主机白名单，逗号/空格/分号分隔，支持 *.example.com。
+# 同源 OpenList 的 /d/、/sd/、/@s/ 与 /api/p/ 链接始终允许；留空表示只允许同源链接。
+# 兼容旧变量名 ALLOW_SEED（新变量优先）。
+SEED_SOURCE_ALLOWED_HOSTS=
+
+# 说明：seed_single_direct_preview 不是环境变量，而是数据库中的站点设置项
+# （默认 false）。可在管理后台「设置 → 种子」中修改，单文件种子解析时生效。
+
 # 前端静态资源 CDN 地址（可选）。需指向包含完整前端 dist 的目录（含 index.html）。
 # 配置后浏览器直连 CDN 加载 JS/CSS/图片等资源，不再经 Worker 中转。
 # 注入自动在两条路径中选择：

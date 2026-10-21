@@ -65,6 +65,9 @@ function pan123FileToFileItem(f: Pan123File): FileItem {
 }
 
 export class Pan123Driver implements StorageDriver {
+  readonly rapidHashAlgos = ["md5"]
+  readonly rapidHashNeedsPieces = false
+
   private client: Pan123Client
   private addition: Pan123Addition
   /** cache: physical path → folder FileId (string) */

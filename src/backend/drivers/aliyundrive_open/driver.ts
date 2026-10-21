@@ -137,6 +137,55 @@ export class AliyundriveOpen implements StorageDriver {
     await this.client.copy(fileId, dstId)
   }
 
+  readonly rapidHashAlgos = ["sha1"]
+  readonly rapidHashNeedsPieces = false
+
+  async rapidUpload(
+    _virtualPath: string,
+    physicalPath: string,
+    metadata: {
+      size: number
+      sha1?: string
+      readRange?: (start: number, length: number) => Promise<Uint8Array>
+    },
+  ): Promise<boolean> {
+    const sha1Hash = String(metadata.sha1 || "").toLowerCase()
+    if (!/^[0-9a-f]{40}$/.test(sha1Hash) || !metadata.readRange) return false
+    if (metadata.size <= 100 * 1024) return false
+    const parts = physicalPath.split("/").filter(Boolean)
+    const name = parts.pop() || "upload"
+    const parentPath = "/" + parts.join("/")
+    const parentId = await this.resolveFileId(parentPath)
+    const proofCode = await this.client.getProofCode(
+      metadata.size,
+      metadata.readRange,
+    )
+    const createResp = await this.client.openApiRequest<any>(
+      "/openFile/create",
+      {
+        drive_id: this.client.driveId,
+        parent_file_id: parentId,
+        name,
+        type: "file",
+        check_name_mode: "auto_rename",
+        size: metadata.size,
+        content_hash: sha1Hash,
+        content_hash_name: "sha1",
+        proof_version: "v1",
+        proof_code: proofCode,
+      },
+    )
+    if (!createResp?.rapid_upload) return false
+    if (createResp.file_id) {
+      await this.client.openApiRequest("/openFile/complete", {
+        drive_id: this.client.driveId,
+        file_id: createResp.file_id,
+        upload_id: createResp.upload_id,
+      })
+    }
+    return true
+  }
+
   async put(
     _virtualPath: string,
     physicalPath: string,

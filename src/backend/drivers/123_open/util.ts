@@ -68,6 +68,29 @@ export class Client123Open {
     throw new Error("[123Open] no valid authentication method (access_token / refresh_token / client_id+client_secret)")
   }
 
+  /** Hash-based rapid upload probe (`/upload/v2/file/sha1_reuse`). */
+  async sha1Reuse(
+    parentFileID: number,
+    filename: string,
+    sha1Hash: string,
+    size: number,
+    duplicate = 1,
+  ): Promise<{ reuse?: boolean; fileID?: number }> {
+    const resp = await this.request<{ reuse?: boolean; fileID?: number }>(
+      `${API}/upload/v2/file/sha1_reuse`,
+      "POST",
+      {
+        parentFileID,
+        filename,
+        sha1: sha1Hash.toLowerCase(),
+        size,
+        duplicate,
+      },
+    )
+    if (resp.code !== 0) throw new Error(`[123Open] ${resp.message}`)
+    return resp.data || {}
+  }
+
   private async request<T = any>(
     url: string,
     method: string,

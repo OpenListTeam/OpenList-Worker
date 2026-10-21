@@ -292,6 +292,30 @@ export class Cloud189PCDriver implements StorageDriver {
     })
   }
 
+  readonly rapidHashAlgos = ["md5"]
+  readonly rapidHashNeedsPieces = false
+
+  async rapidUpload(
+    _virtualPath: string,
+    physicalPath: string,
+    metadata: { size: number; md5?: string },
+  ): Promise<boolean> {
+    const md5Hash = String(metadata.md5 || "").toLowerCase()
+    if (!/^[0-9a-f]{32}$/.test(md5Hash) || metadata.size < 0) return false
+    const pathParts = physicalPath.split("/").filter(Boolean)
+    const fileName = pathParts.pop() || "upload"
+    const parentFolderId = pathParts.join("/") || this.rootFolderId
+    const initResp = (await this.client.requestUploadAPI(InitUploadURL, {
+      parentFolderId,
+      fileName,
+      fileSize: metadata.size,
+      fileMd5: md5Hash,
+      sliceSize: DefaultChunkSize,
+      lazyCheck: 1,
+    })) as Cloud189PCInitMultiUploadResp
+    return initResp.fileDataExists === 1
+  }
+
   async put(
     _virtualPath: string,
     physicalPath: string,

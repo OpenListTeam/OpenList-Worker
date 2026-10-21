@@ -52,7 +52,7 @@ import {
 import { parseZip, extractZipEntry, ZipArchive } from "../internal/archive/zip"
 import { assertSafeUrl, getTrustedHosts } from "../pkg/http"
 import { invalidatePaths } from "../internal/cache"
-import { seedRouter } from "./seed"
+import { seedRouter, torrentLegacyRouter } from "./seed"
 import { r2CanSignDirectUpload } from "../drivers/r2/driver"
 
 /**
@@ -82,6 +82,7 @@ import {
 
 export const fsRouter = new Hono()
 fsRouter.route("/seed", seedRouter)
+fsRouter.route("/torrent", torrentLegacyRouter)
 
 /**
  * 请求级存储上下文（`env` + `waitUntil`）。

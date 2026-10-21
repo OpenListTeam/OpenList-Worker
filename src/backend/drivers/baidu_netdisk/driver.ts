@@ -235,6 +235,34 @@ export class BaiduDriver implements StorageDriver {
 
   // ---- Upload (Go Put / PutRapid / precreate / uploadSlice) ----
 
+  readonly rapidHashAlgos = ["md5"]
+  readonly rapidHashNeedsPieces = false
+
+  async rapidUpload(
+    _virtualPath: string,
+    physicalPath: string,
+    metadata: { size: number; md5?: string },
+  ): Promise<boolean> {
+    const md5Hash = String(metadata.md5 || "").toLowerCase()
+    if (!/^[0-9a-f]{32}$/.test(md5Hash) || metadata.size < 1) return false
+    const path = this.baiduPath(physicalPath)
+    const now = Math.floor(Date.now() / 1000)
+    try {
+      await this.client.create(
+        path,
+        metadata.size,
+        0,
+        "",
+        JSON.stringify([md5Hash]),
+        now,
+        now,
+      )
+      return true
+    } catch {
+      return false
+    }
+  }
+
   async put(
     _virtualPath: string,
     physicalPath: string,

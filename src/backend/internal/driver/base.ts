@@ -23,6 +23,12 @@ export interface FileItem {
     md5?: string
     sha1?: string
     sha256?: string
+    /** Piece hashes when the driver exposes them (optional). */
+    pieces?: {
+      md5?: string[]
+      sha1?: string[]
+      sha256?: string[]
+    }
   }
 }
 
