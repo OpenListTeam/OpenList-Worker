@@ -2,7 +2,10 @@ import { Hono } from "hono"
 import type { Context } from "hono"
 import { cors } from "hono/cors"
 import { getDb, getKvStatus } from "../internal/model/db"
-import { isServerlessRuntime, NO_STORAGE_MESSAGE } from "../internal/model/store/backend"
+import {
+  isServerlessRuntime,
+  NO_STORAGE_MESSAGE,
+} from "../internal/model/store/backend"
 import { fsRouter } from "./fs"
 import {
   authRouter,
@@ -21,6 +24,7 @@ import { taskRouter } from "./task"
 import { ssoRouter } from "./sso"
 import { webauthnRouter } from "./webauthn"
 import { updatePwdHandler } from "./user"
+import { mediaAdminRouter, mediaPublicRouter, mediaRouter } from "./media"
 
 // --- 尽力而为的进程内限流 ---
 // 实现管理后台的 ip_limit（每 IP 每分钟请求数）与 traffic_limit（每 IP 每小时
@@ -230,9 +234,7 @@ export function setupRouter(app: Hono) {
         const env = (c as any).env || {}
         const allowedOriginsRaw =
           env.ALLOW_URLS ||
-          (typeof process !== "undefined"
-            ? process.env?.ALLOW_URLS
-            : "") ||
+          (typeof process !== "undefined" ? process.env?.ALLOW_URLS : "") ||
           ""
         const allowedOrigins = allowedOriginsRaw
           .split(",")
@@ -259,7 +261,15 @@ export function setupRouter(app: Hono) {
 
   // API core sub-routing (mounted at /api by the parent)
   app.route("/raw", rawRouter)
+  // 媒体路由必须放在 /fs 与 /admin 之前，避免被通配路由抢先匹配
+  app.route("/fs/media", mediaRouter)
+  app.route("/admin/media", mediaAdminRouter)
+  app.route("/public", mediaPublicRouter)
   app.route("/fs", fsRouter)
+  // Worker 不内置 ffmpeg：转码申请一律降级为直链播放
+  app.post("/fs/transcode/play", async (c) =>
+    c.json({ code: 200, message: "success", data: { transcode: false } }),
+  )
   app.route("/auth", authRouter)
   app.route("/public", publicRouter)
   app.route("/admin", adminRouter)
