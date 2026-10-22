@@ -117,7 +117,9 @@ export function removeJSComment(data: string): string {
         inComment = true
         i++
         continue
-      } else if (nextChar === "/") {
+      } else if (nextChar === "/" && !result.endsWith(":")) {
+        // 注意：'https://' 里的 '//' 不是注释（改版后页面大量使用绝对地址），
+        // 只有前一个字符不是 ':' 时才按行注释处理
         inSingleLineComment = true
         i++
         continue
