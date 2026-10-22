@@ -214,13 +214,19 @@ async function autoRegister(db: any, username: string, ssoId: string): Promise<a
   return user
 }
 
-function postMessageHtml(field: string, value: string): string {
-  const safe = String(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e")
+function postMessageHtml(
+  field: string,
+  value: string,
+  targetOrigin: string,
+): string {
+  const payload = JSON.stringify({ [field]: String(value) })
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
   return `<!DOCTYPE html>
 <head></head>
 <body>
 <script>
-window.opener.postMessage({"${field}":"${safe}"}, "*")
+window.opener.postMessage(${payload}, ${JSON.stringify(targetOrigin)})
 window.close()
 </script>
 </body>`
@@ -427,7 +433,7 @@ ssoRouter.get("/sso_callback", async (c) => {
       if (useCompat) {
         return c.redirect(`${apiOrigin(c)}/@manage?sso_id=${encodeURIComponent(userID)}`, 302)
       }
-      return c.html(postMessageHtml("sso_id", userID))
+      return c.html(postMessageHtml("sso_id", userID, apiOrigin(c)))
     }
 
     // sso_get_token
@@ -444,7 +450,7 @@ ssoRouter.get("/sso_callback", async (c) => {
     if (useCompat) {
       return c.redirect(`${apiOrigin(c)}/@login?token=${encodeURIComponent(token)}`, 302)
     }
-    return c.html(postMessageHtml("token", token))
+    return c.html(postMessageHtml("token", token, apiOrigin(c)))
   } catch (e: any) {
     return c.text(e.message || "SSO error", 500)
   }

@@ -2,13 +2,15 @@ import { Hono } from "hono"
 import { getDb, saveDb } from "../internal/model/db"
 import { adminAuthMiddleware, getUserFromContext } from "./middlewares"
 import { can, PermissionBit, isAdmin, getActualPath } from "../pkg/permission"
+import { decodePathForMatching } from "../pkg/path"
+import { canAccess, getNearestMeta } from "../pkg/meta"
 
 export const shareRouter = new Hono()
 
 function sanitizePath(p: string): string {
-  const normalized = (p || "").replace(/\\/g, "/").replace(/\/+/g, "/")
+  const normalized = decodePathForMatching(String(p || "")).replace(/\\/g, "/")
   const segments = normalized.split("/").filter((s) => s && s !== ".")
-  if (segments.some((s) => s === "..")) {
+  if (segments.some((s) => s === ".." || /^\.{3,}$/.test(s))) {
     throw new Error("Path traversal segment '..' is not allowed")
   }
   return "/" + segments.join("/")
@@ -73,6 +75,18 @@ shareRouter.post("/create", async (c) => {
         { code: 400, message: err.message || "Invalid file path", data: null },
         400,
       )
+    }
+  }
+
+  if (!isAdmin(user)) {
+    for (const file of files) {
+      const meta = await getNearestMeta(file, c.env)
+      if (!canAccess(user, meta, file, "")) {
+        return c.json(
+          { code: 403, message: "Permission denied", data: null },
+          403,
+        )
+      }
     }
   }
 

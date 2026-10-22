@@ -39,6 +39,7 @@ import {
 import { buildWebDavPropfindResponse } from "../internal/webdav/webdav"
 import { safeErrorMessage } from "../pkg/errs"
 import { encodeDownloadPath } from "../pkg/path"
+import { readBodyWithinLimit, tooLargeResponse } from "../pkg/upload-limit"
 
 /**
  * WebDAV 协议服务（挂载于 /dav/*）。
@@ -90,11 +91,7 @@ async function webdavAuth(
         (u: any) => u.username === username && !u.disabled,
       )
       if (!user) return null
-      // 空密码用户（guest）：Basic Auth 下若未提供密码则允许（与 AList 一致）
-      if (!user.password) {
-        if (password !== "") return null
-        return { user, metaPassword: isGuest(user) ? password : "" }
-      }
+      if (!user.password) return null
       if (await verifyUserPassword(user, password)) {
         return { user, metaPassword: isGuest(user) ? password : "" }
       }
@@ -388,8 +385,9 @@ webdavRouter.all("/*", async (c) => {
         if (await deniedByMetaWrite(c, user, splitPath(actualPath).dir, true)) {
           return metaForbidden(c)
         }
-        const buffer = Buffer.from(await c.req.arrayBuffer())
-        await putItem(actualPath, buffer, ctx)
+        const body = await readBodyWithinLimit(c)
+        if (!body.ok) return tooLargeResponse(c, body.limit)
+        await putItem(actualPath, body.buffer, ctx)
         return c.body(null, 201)
       }
 
@@ -423,6 +421,9 @@ webdavRouter.all("/*", async (c) => {
         }
         const src = splitPath(actualPath)
         const dst = splitPath(dest)
+        if (await deniedByMetaRead(c, user, actualPath, metaPassword)) {
+          return metaForbidden(c)
+        }
         // 对齐 Go webdav/file.go moveFiles：跨目录需要 MOVE 权限位、
         // 改名需要 RENAME 权限位；源/目标目录均需通过 meta 写判定
         if (src.dir !== dst.dir && !canMove(user)) {

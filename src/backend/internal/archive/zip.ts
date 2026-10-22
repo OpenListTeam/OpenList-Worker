@@ -25,10 +25,14 @@ export interface ZipArchive {
   entries: ZipEntry[]
 }
 
+export const MAX_ZIP_ENTRIES = 10000
+export const MAX_ZIP_ENTRY_UNCOMPRESSED = 64 * 1024 * 1024
+
 /** 解析 ZIP 的中央目录，返回条目列表（不包含目录条目，只返回文件） */
 export function parseZip(buffer: ArrayBuffer): ZipArchive {
   const view = new DataView(buffer)
   const length = buffer.byteLength
+  if (length < 22) throw new Error("Invalid ZIP: file is too small")
 
   // 1. 定位 End of Central Directory (EOCD)
   let eocdOffset = -1
@@ -45,10 +49,19 @@ export function parseZip(buffer: ArrayBuffer): ZipArchive {
 
   const cdCount = view.getUint16(eocdOffset + 10, true)
   const cdOffset = view.getUint32(eocdOffset + 16, true)
+  if (cdCount > MAX_ZIP_ENTRIES) {
+    throw new Error(`Invalid ZIP: too many entries (${cdCount})`)
+  }
+  if (cdOffset + 4 > length) {
+    throw new Error("Invalid ZIP: central directory is out of bounds")
+  }
 
   const entries: ZipEntry[] = []
   let currentCdOffset = cdOffset
   for (let i = 0; i < cdCount; i++) {
+    if (currentCdOffset + 46 > length) {
+      throw new Error("Invalid ZIP: truncated central directory")
+    }
     if (view.getUint32(currentCdOffset, true) !== 0x02014b50) break
 
     const compressionMethod = view.getUint16(currentCdOffset + 10, true)
@@ -58,6 +71,16 @@ export function parseZip(buffer: ArrayBuffer): ZipArchive {
     const extraFieldLength = view.getUint16(currentCdOffset + 30, true)
     const fileCommentLength = view.getUint16(currentCdOffset + 32, true)
     const localHeaderOffset = view.getUint32(currentCdOffset + 42, true)
+
+    const nextCdOffset =
+      currentCdOffset +
+      46 +
+      fileNameLength +
+      extraFieldLength +
+      fileCommentLength
+    if (nextCdOffset > length) {
+      throw new Error("Invalid ZIP: central directory entry is out of bounds")
+    }
 
     // modified: DOS date/time at offset +12
     const modTime = view.getUint16(currentCdOffset + 12, true)
@@ -71,17 +94,22 @@ export function parseZip(buffer: ArrayBuffer): ZipArchive {
     )
     const fileName = new TextDecoder("utf-8").decode(fileNameBytes)
 
-    currentCdOffset +=
-      46 + fileNameLength + extraFieldLength + fileCommentLength
+    currentCdOffset = nextCdOffset
 
     // 跳过目录条目
     if (fileName.endsWith("/")) continue
 
     // 读 local header 获取数据偏移
+    if (localHeaderOffset + 30 > length) {
+      throw new Error("Invalid ZIP: local header is out of bounds")
+    }
     if (view.getUint32(localHeaderOffset, true) !== 0x04034b50) continue
     const localFileNameLen = view.getUint16(localHeaderOffset + 26, true)
     const localExtraLen = view.getUint16(localHeaderOffset + 28, true)
     const dataOffset = localHeaderOffset + 30 + localFileNameLen + localExtraLen
+    if (dataOffset + compressedSize > length) {
+      throw new Error("Invalid ZIP: entry data is out of bounds")
+    }
 
     entries.push({
       name: fileName.replace(/\\/g, "/"),
@@ -110,6 +138,9 @@ export async function extractZipEntry(
 
   if (entry.compressionMethod === 0) {
     // Store（未压缩）
+    if (compressed.length > MAX_ZIP_ENTRY_UNCOMPRESSED) {
+      throw new Error("ZIP entry exceeds the uncompressed size limit")
+    }
     return new Uint8Array(compressed)
   }
 
@@ -118,12 +149,34 @@ export async function extractZipEntry(
     if (typeof DecompressionStream === "undefined") {
       throw new Error("DecompressionStream is not supported in this runtime")
     }
+    if (entry.size > MAX_ZIP_ENTRY_UNCOMPRESSED) {
+      throw new Error("ZIP entry exceeds the uncompressed size limit")
+    }
     const ds = new DecompressionStream("deflate-raw")
     const writer = ds.writable.getWriter()
-    writer.write(compressed)
-    writer.close()
-    const out = await new Response(ds.readable).arrayBuffer()
-    return new Uint8Array(out)
+    await writer.write(compressed)
+    await writer.close()
+    const reader = ds.readable.getReader()
+    const chunks: Uint8Array[] = []
+    let total = 0
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (!value?.length) continue
+      total += value.length
+      if (total > MAX_ZIP_ENTRY_UNCOMPRESSED) {
+        await reader.cancel()
+        throw new Error("ZIP entry exceeds the uncompressed size limit")
+      }
+      chunks.push(value)
+    }
+    const out = new Uint8Array(total)
+    let offset = 0
+    for (const chunk of chunks) {
+      out.set(chunk, offset)
+      offset += chunk.length
+    }
+    return out
   }
 
   throw new Error(

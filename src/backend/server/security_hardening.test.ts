@@ -12,6 +12,8 @@ import {
 } from "../pkg/permission"
 import { readBodyWithinLimit } from "../pkg/upload-limit"
 import { userRouter } from "./user"
+import { fsRouter } from "./fs"
+import { resolveShare } from "../internal/op/share"
 import { webdavRouter } from "./webdav"
 
 /**
@@ -24,11 +26,7 @@ const env: any = { JWT_SECRET: "test-only-jwt-secret-for-hardening" }
 const ADMIN_TOKEN = "HARDENING_STATIC_TOKEN"
 
 const seed = (users: any[], settings: any[] = []) =>
-  saveDb(
-    { settings, users, storages: [], shares: [] },
-    env,
-    { force: true },
-  )
+  saveDb({ settings, users, storages: [], shares: [] }, env, { force: true })
 
 const adminUser = (overrides: any = {}) => ({
   id: 1,
@@ -103,7 +101,10 @@ test("user/update forbids role changes and disabling the admin account", async (
     body: JSON.stringify({ id: 5, role: 2 }),
   })
   assert.equal(promote.status, 400)
-  assert.equal((await promote.json() as any).message, "role can not be changed")
+  assert.equal(
+    ((await promote.json()) as any).message,
+    "role can not be changed",
+  )
 
   const demote = await app.request("/api/admin/user/update", {
     method: "POST",
@@ -119,7 +120,7 @@ test("user/update forbids role changes and disabling the admin account", async (
   })
   assert.equal(disableAdmin.status, 400)
   assert.equal(
-    (await disableAdmin.json() as any).message,
+    ((await disableAdmin.json()) as any).message,
     "admin user can not be disabled",
   )
 
@@ -127,7 +128,12 @@ test("user/update forbids role changes and disabling the admin account", async (
   const ok = await app.request("/api/admin/user/update", {
     method: "POST",
     headers: adminHeaders,
-    body: JSON.stringify({ id: 5, permission: 8, base_path: "/data", disabled: true }),
+    body: JSON.stringify({
+      id: 5,
+      permission: 8,
+      base_path: "/data",
+      disabled: true,
+    }),
   })
   assert.equal(ok.status, 200)
 })
@@ -181,7 +187,10 @@ test("user/delete protects admin and guest by role, not by hardcoded id", async 
       headers: adminHeaders,
     })
     assert.equal(res.status, 400, `id=${id} must be protected`)
-    assert.equal((await res.json() as any).message, "cannot delete admin or guest")
+    assert.equal(
+      ((await res.json()) as any).message,
+      "cannot delete admin or guest",
+    )
   }
 
   const del = await app.request("/api/admin/user/delete?id=9", {
@@ -232,7 +241,11 @@ test("password change invalidates previously issued tokens (Go PwdTS parity)", a
     { headers: { Authorization: `Bearer ${tokenBefore}` } },
     env,
   )
-  assert.equal(after.status, 401, "token issued before the change must be rejected")
+  assert.equal(
+    after.status,
+    401,
+    "token issued before the change must be rejected",
+  )
 
   const tokenAfter = await sign(
     {
@@ -274,7 +287,10 @@ test("normalizeSegments / getActualPath / isWithinUserRoot 钳制越根遍历", 
   assert.equal(isWithinUserRoot(user, "/photos/bob"), false)
   assert.equal(isWithinUserRoot(user, "/photos/alice/../bob"), false)
   // base_path 为根的用户不受限制
-  assert.equal(isWithinUserRoot({ id: 1, role: 2, permission: 0, base_path: "/" }, "/any"), true)
+  assert.equal(
+    isWithinUserRoot({ id: 1, role: 2, permission: 0, base_path: "/" }, "/any"),
+    true,
+  )
 })
 
 test("readBodyWithinLimit 按实际字节数生效（省略 Content-Length 也不例外）", async () => {
@@ -370,8 +386,7 @@ test("WebDAV: 受 meta 保护的路径返回带指引的 403（而不是裸 403�
 
   const app = new Hono()
   app.route("/dav", webdavRouter)
-  const basic =
-    "Basic " + Buffer.from("dav-user:dav-pass").toString("base64")
+  const basic = "Basic " + Buffer.from("dav-user:dav-pass").toString("base64")
 
   // 账号本身有 WEBDAV_READ，但该路径带目录密码 → 元信息 ACL 拦截
   const res = await app.request(
@@ -385,4 +400,111 @@ test("WebDAV: 受 meta 保护的路径返回带指引的 403（而不是裸 403�
   assert.match(body, /directory-level access control/)
   assert.match(body, /meta password/)
   assert.match(body, /web UI|api\/fs/)
+})
+
+test("encoded dot segments are canonicalized before ACL and storage checks", () => {
+  const user = { id: 9, role: 0, permission: 0, base_path: "/photos/alice" }
+  assert.equal(getActualPath(user, "/%2e%2e/bob"), "/photos/alice/bob")
+  assert.equal(getActualPath(user, "/%252e%252e/bob"), "/photos/alice/bob")
+  assert.equal(isWithinUserRoot(user, "/photos/alice/%2e%2e/bob"), false)
+  assert.equal(isWithinUserRoot(user, "/photos/alice/%252e%252e/bob"), false)
+})
+
+test("share resolution rejects encoded traversal outside the shared root", async () => {
+  await saveDb(
+    {
+      settings: [],
+      users: [],
+      storages: [],
+      shares: [
+        {
+          id: "share-1",
+          files: ["/share/a.txt", "/share/b.txt"],
+          disabled: false,
+          expires: null,
+          pwd: "",
+          max_accessed: 0,
+          accessed: 0,
+        },
+      ],
+    },
+    env,
+    { force: true },
+  )
+
+  assert.equal((await resolveShare("/@s/share-1", "", env)).ok, true)
+  assert.equal(
+    (await resolveShare("/@s/share-1/a.txt/%2e%2e/secret", "", env)).ok,
+    false,
+  )
+  assert.equal(
+    (await resolveShare("/@s/share-1/a.txt/%252e%252e/secret", "", env)).ok,
+    false,
+  )
+})
+
+test("batch_rename rejects encoded traversal in src_name and new_name", async () => {
+  await seed([adminUser()], [{ key: "token", value: ADMIN_TOKEN }])
+  const app = new Hono()
+  app.route("/api/fs", fsRouter)
+
+  for (const rename_objects of [
+    [{ src_name: "%2e%2e", new_name: "safe.txt" }],
+    [{ src_name: "%252e%252e", new_name: "safe.txt" }],
+    [{ src_name: "safe.txt", new_name: "%2e%2e" }],
+  ]) {
+    const res = await app.request(
+      "/api/fs/batch_rename",
+      {
+        method: "POST",
+        headers: adminHeaders,
+        body: JSON.stringify({ src_dir: "/", rename_objects }),
+      },
+      env,
+    )
+    assert.equal(res.status, 400)
+  }
+})
+
+test("WebDAV PUT enforces MAX_UPLOAD before reading the body", async () => {
+  const davEnv: any = {
+    JWT_SECRET: "test-only-jwt-secret-for-hardening",
+    MAX_UPLOAD: "4",
+  }
+  const user: any = {
+    id: 12,
+    username: "dav-put-user",
+    role: 0,
+    permission: 1 << 9,
+    base_path: "/",
+    disabled: false,
+    pwd_update_at: new Date().toISOString(),
+  }
+  await setUserPassword(user, "dav-pass")
+  await saveDb(
+    {
+      settings: [],
+      users: [user],
+      storages: [],
+      shares: [],
+      metas: [],
+    },
+    davEnv,
+    { force: true },
+  )
+
+  const app = new Hono()
+  app.route("/dav", webdavRouter)
+  const basic =
+    "Basic " + Buffer.from("dav-put-user:dav-pass").toString("base64")
+  const res = await app.request(
+    "/dav/file.txt",
+    {
+      method: "PUT",
+      headers: { Authorization: basic, "Content-Length": "9" },
+      body: "123456789",
+    },
+    davEnv,
+  )
+  assert.equal(res.status, 413)
 })

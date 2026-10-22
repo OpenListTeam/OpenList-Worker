@@ -29,3 +29,37 @@ export function encodeDownloadPath(path: string): string {
     }
   })
 }
+
+export function decodePathForMatching(input: string): string {
+  let path = String(input || "")
+  for (let i = 0; i < 3; i++) {
+    let decoded: string
+    try {
+      decoded = decodeURIComponent(path)
+    } catch {
+      break
+    }
+    if (decoded === path) break
+    path = decoded
+  }
+  return path
+}
+
+export function normalizePathSegments(input: string): string {
+  const stack: string[] = []
+  for (const seg of String(input || "")
+    .replace(/\\/g, "/")
+    .split("/")) {
+    if (!seg || seg === ".") continue
+    if (seg === ".." || /^\.{3,}$/.test(seg)) {
+      stack.pop()
+      continue
+    }
+    stack.push(seg)
+  }
+  return "/" + stack.join("/")
+}
+
+export function normalizeVirtualPath(input: string): string {
+  return normalizePathSegments(decodePathForMatching(input))
+}
