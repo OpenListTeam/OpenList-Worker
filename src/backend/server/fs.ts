@@ -43,7 +43,7 @@ import {
   getSignExpiresIn,
 } from "../pkg/sign"
 import { safeErrorMessage } from "../pkg/errs"
-import { encodeDownloadPath } from "../pkg/path"
+import { decodePathForMatching, encodeDownloadPath } from "../pkg/path"
 import { search } from "../internal/op/search"
 import {
   getDisableIndex,
@@ -799,6 +799,29 @@ fsRouter.post("/get", async (c) => {
   }
 })
 
+function assertSafeDecodedName(clean: string): void {
+  let decoded = clean
+  for (let i = 0; i < 3; i++) {
+    let next: string
+    try {
+      next = decodeURIComponent(decoded)
+    } catch {
+      break
+    }
+    if (next === decoded) break
+    decoded = next
+    if (
+      decoded === "." ||
+      decoded === ".." ||
+      decoded.includes("/") ||
+      decoded.includes("\\") ||
+      decoded.includes("\0")
+    ) {
+      throw new Error(`Illegal file name '${clean}'`)
+    }
+  }
+}
+
 function validateFileName(name: any): string {
   if (typeof name !== "string" || !name.trim()) {
     throw new Error("Invalid or empty file name")
@@ -813,7 +836,12 @@ function validateFileName(name: any): string {
   ) {
     throw new Error(`Illegal file name '${clean}'`)
   }
+  assertSafeDecodedName(clean)
   return clean
+}
+
+function validateRenameSourceName(name: any): string {
+  return validateFileName(name)
 }
 
 function validateDirPath(p: any): string {
@@ -863,6 +891,8 @@ fsRouter.post("/rename", async (c) => {
   const requestContext = getStorageRequestContext(c)
   try {
     const actualOldPath = getActualPath(user, oldPath || "/")
+    if (await deniedByMetaReadAcl(c, user, actualOldPath, ""))
+      return permissionDenied(c)
     if (await deniedByMetaWriteAcl(c, user, [actualOldPath]))
       return permissionDenied(c)
     await renameItem(actualOldPath, cleanName, requestContext)
@@ -936,12 +966,14 @@ fsRouter.post("/move", async (c) => {
   try {
     const actualSrcDir = getActualPath(user, src_dir || "/")
     const actualDstDir = getActualPath(user, dst_dir || "/")
-    const aclPaths = [
-      actualDstDir,
-      ...cleanNames.map((n) =>
-        `${actualSrcDir}/${n}`.replace(/\/{2,}/g, "/"),
-      ),
-    ]
+    const srcPaths = cleanNames.map((n) =>
+      `${actualSrcDir}/${n}`.replace(/\/{2,}/g, "/"),
+    )
+    for (const srcPath of srcPaths) {
+      if (await deniedByMetaReadAcl(c, user, srcPath, ""))
+        return permissionDenied(c)
+    }
+    const aclPaths = [actualDstDir, ...srcPaths]
     if (await deniedByMetaWriteAcl(c, user, aclPaths))
       return permissionDenied(c)
     await moveItems(actualSrcDir, actualDstDir, cleanNames, requestContext)
@@ -978,6 +1010,13 @@ fsRouter.post("/copy", async (c) => {
   try {
     const actualSrcDir = getActualPath(user, src_dir || "/")
     const actualDstDir = getActualPath(user, dst_dir || "/")
+    const srcPaths = cleanNames.map((n) =>
+      `${actualSrcDir}/${n}`.replace(/\/{2,}/g, "/"),
+    )
+    for (const srcPath of srcPaths) {
+      if (await deniedByMetaReadAcl(c, user, srcPath, ""))
+        return permissionDenied(c)
+    }
     const aclPaths = [
       actualDstDir,
       ...cleanNames.map((n) =>
@@ -1135,6 +1174,19 @@ fsRouter.post("/other", async (c) => {
   // 体积边界说明：这里签发的直传 URL 由客户端直接写对象存储，数据不经过本站，
   // 因此 MAX_UPLOAD / MAX_UPPART 覆盖不到该路径——上限由下游存储自行约束。
   if (!canWrite(user)) return permissionDenied(c)
+  const aclPaths = [reqPath]
+  if (typeof body.file_name === "string" && body.file_name) {
+    let fileName: string
+    try {
+      fileName = validateFileName(body.file_name)
+    } catch (e: any) {
+      return c.json({ code: 400, message: e.message, data: null }, 400)
+    }
+    aclPaths.push(
+      `${reqPath === "/" ? "" : reqPath}/${fileName}`.replace(/\/{2,}/g, "/"),
+    )
+  }
+  if (await deniedByMetaWriteAcl(c, user, aclPaths)) return permissionDenied(c)
   try {
     const resolved = await resolvePath(reqPath)
     if (resolved.isVirtual || !resolved.storage) {
@@ -1180,20 +1232,39 @@ fsRouter.post("/batch_rename", async (c) => {
   }
   const dirPath = getActualPath(user, src_dir || "/")
   const requestContext = getStorageRequestContext(c)
+  let entries: { src: string; dst: string }[] = []
   try {
-    const aclPaths = rename_objects
-      .map((obj: any) => obj?.src_name)
-      .filter((n: any) => typeof n === "string" && n)
-      .map((n: string) => `${dirPath}/${n}`.replace(/\/{2,}/g, "/"))
+    entries = rename_objects
+      .map((obj: any) => {
+        if (!obj?.src_name || !obj?.new_name) return null
+        return {
+          src: validateRenameSourceName(obj.src_name),
+          dst: validateFileName(obj.new_name),
+        }
+      })
+      .filter(
+        (entry: { src: string; dst: string } | null): entry is { src: string; dst: string } =>
+          !!entry,
+      )
+  } catch (e: any) {
+    return c.json({ code: 400, message: e.message, data: null }, 400)
+  }
+  try {
+    const srcPaths = entries.map((entry) =>
+      `${dirPath}/${entry.src}`.replace(/\/{2,}/g, "/"),
+    )
+    for (const srcPath of srcPaths) {
+      if (await deniedByMetaReadAcl(c, user, srcPath, ""))
+        return permissionDenied(c)
+    }
+    const aclPaths = entries.flatMap((entry) => [
+      `${dirPath}/${entry.src}`.replace(/\/{2,}/g, "/"),
+      `${dirPath}/${entry.dst}`.replace(/\/{2,}/g, "/"),
+    ])
     if (await deniedByMetaWriteAcl(c, user, aclPaths))
       return permissionDenied(c)
-    for (const obj of rename_objects) {
-      const srcName = obj?.src_name
-      const newName = obj?.new_name
-      if (!srcName || !newName) continue
-      validateFileName(newName)
-      const fullPath = `${dirPath}/${srcName}`.replace(/\/{2,}/g, "/")
-      await renameItem(fullPath, newName, requestContext)
+    for (let i = 0; i < entries.length; i++) {
+      await renameItem(srcPaths[i], entries[i].dst, requestContext)
     }
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
@@ -1276,11 +1347,11 @@ fsRouter.post("/recursive_move", async (c) => {
             if (policy === "skip") continue
           }
           if (policy !== "overwrite") existing.add(item.name)
+          const srcFile = `${dir}/${item.name}`.replace(/\/{2,}/g, "/")
+          if (await deniedByMetaReadAcl(c, user, srcFile, ""))
+            return permissionDenied(c)
           if (
-            await deniedByMetaWriteAcl(c, user, [
-              dstPath,
-              `${dir}/${item.name}`.replace(/\/{2,}/g, "/"),
-            ])
+            await deniedByMetaWriteAcl(c, user, [dstPath, srcFile])
           )
             return permissionDenied(c)
           await moveItems(dir, dstPath, [item.name], requestContext)

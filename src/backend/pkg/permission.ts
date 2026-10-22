@@ -1,3 +1,5 @@
+import { normalizePathSegments, normalizeVirtualPath } from "./path"
+
 export enum UserRole {
   GENERAL = 0,
   GUEST = 1,
@@ -86,16 +88,7 @@ export function canRemove(user?: UserPermissionObj | null): boolean {
  * 空操作），因此结果永远以 "/" 开头且不含 ".." 段，无法向上逃逸。
  */
 export function normalizeSegments(p: string): string {
-  const stack: string[] = []
-  for (const seg of String(p || "").split("/")) {
-    if (!seg || seg === ".") continue
-    if (seg === "..") {
-      stack.pop()
-      continue
-    }
-    stack.push(seg)
-  }
-  return "/" + stack.join("/")
+  return normalizePathSegments(p)
 }
 
 /**
@@ -113,8 +106,8 @@ export function normalizeSegments(p: string): string {
  * 因为拼接后才规范化，下游只保证「不逃出存储物理根」，并不保证「不逃出用户
  * 根」，两者不是同一约束。这里先把 reqPath 折叠到根再拼接，从源头保证隔离。
  *
- * 注意：不额外增加 decodeURIComponent 次数。上游按约定只解码一次，多次解码会
- * 改变合法 `%2f`/百分号字面量的含义（与 Go 的 EncodePath 契约冲突）。
+ * 注意：这里与 resolvePath() 使用同一套解码/折叠规则，确保 ACL、签名与存储
+ * 看到的路径完全一致；解码次数固定为最多 3 次，避免二次编码绕过。
  */
 export function getActualPath(
   user?: UserPermissionObj | null,
@@ -125,12 +118,12 @@ export function getActualPath(
     return p
   }
 
-  const basePath = normalizeSegments((user?.base_path || "/").trim() || "/")
+  const basePath = normalizeVirtualPath((user?.base_path || "/").trim() || "/")
   if (basePath === "/") {
-    return normalizeSegments(p)
+    return normalizeVirtualPath(p)
   }
 
-  const cleanReq = normalizeSegments(p)
+  const cleanReq = normalizeVirtualPath(p)
   if (cleanReq === "/") {
     return basePath
   }
@@ -150,7 +143,7 @@ export function isWithinUserRoot(
   actualPath: string,
 ): boolean {
   const root = getActualPath(user, "/")
-  const target = normalizeSegments(actualPath)
+  const target = normalizeVirtualPath(actualPath)
   if (root === "/") return true
   return target === root || target.startsWith(root + "/")
 }

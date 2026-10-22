@@ -1,4 +1,5 @@
 import { getDb, saveDb } from "../model/db"
+import { decodePathForMatching, normalizeVirtualPath } from "../../pkg/path"
 
 /**
  * Share path resolution for /@s/{shareId}/... (frontend browsing)
@@ -19,19 +20,13 @@ export interface ShareResolveResult {
 // survived verbatim and `/@s/{id}/../../../` escalated a single-file share
 // into browsing the entire storage root (verified at runtime).
 // Backslashes are normalized first for the same reason as resolvePath (C-2).
-const normalize = (p: string) => {
-  const stack: string[] = []
-  for (const seg of String(p || "")
-    .replace(/\\/g, "/")
-    .split("/")) {
-    if (seg === "" || seg === ".") continue
-    if (seg === "..") {
-      stack.pop() // clamp at the share root instead of escaping upward
-      continue
-    }
-    stack.push(seg)
-  }
-  return "/" + stack.join("/")
+const normalize = (p: string): string => normalizeVirtualPath(p)
+
+const hasTraversal = (p: string): boolean => {
+  const decoded = decodePathForMatching(p).replace(/\\/g, "/")
+  return decoded
+    .split("/")
+    .some((seg) => seg === "." || seg === ".." || /^\.{3,}$/.test(seg))
 }
 
 /**
@@ -44,6 +39,9 @@ export async function resolveShare(
   password: string,
   envCtx?: any,
 ): Promise<ShareResolveResult> {
+  if (hasTraversal(reqPath)) {
+    return { ok: false, error: "Invalid share path" }
+  }
   const clean = normalize(reqPath)
   const parts = clean.split("/").filter(Boolean)
   if (parts.length < 1) {
@@ -94,9 +92,13 @@ export async function resolveShare(
 
   // FIX(C-3): containment check. Whatever normalize() produces, the result
   // must stay inside one of the explicitly shared paths.
-  const allowedRoots: string[] = (share.files || []).map((f: string) =>
-    normalize(f),
-  )
+  const allowedRoots: string[] = []
+  for (const f of share.files || []) {
+    if (hasTraversal(String(f))) {
+      return { ok: false, error: "Invalid share path" }
+    }
+    allowedRoots.push(normalize(String(f)))
+  }
   const withinShare = (p: string) =>
     allowedRoots.some((a) => p === a || p.startsWith(a === "/" ? "/" : a + "/"))
 
@@ -115,12 +117,15 @@ export async function resolveShare(
   })
   if (!match) return { ok: false, error: "path not found in share" }
   const real = normalize([normalize(match), ...rest.slice(1)].join("/"))
-  if (!withinShare(real)) return { ok: false, error: "path not found in share" }
+  if (hasTraversal(real) || !withinShare(real)) {
+    return { ok: false, error: "path not found in share" }
+  }
   return { ok: true, share, realPath: real }
 }
 
 /** Extract the share id from a path like `/@s/abc/sub` or `/abc/sub` */
 export function extractShareId(reqPath: string): string | null {
+  if (hasTraversal(reqPath)) return null
   const parts = normalize(reqPath).split("/").filter(Boolean)
   if (parts.length === 0) return null
   if (parts[0] === "@s") return parts[1] || null

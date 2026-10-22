@@ -1,6 +1,7 @@
 import { getDb } from "../internal/model/db"
 import type { UserPermissionObj } from "./permission"
 import { isAdmin } from "./permission"
+import { normalizeVirtualPath } from "./path"
 
 /**
  * Meta 消费层（对齐 Go server/common/check.go）。
@@ -80,13 +81,7 @@ export function metaCoversPath(
 }
 
 function fixAndCleanPath(p: string): string {
-  const normalized = (p || "/")
-    .replace(/\\/g, "/")
-    .replace(/\/+/g, "/")
-    .trim()
-  if (normalized === "" || normalized === "/") return "/"
-  const cleaned = "/" + normalized.split("/").filter(Boolean).join("/")
-  return cleaned
+  return normalizeVirtualPath(p)
 }
 
 /**

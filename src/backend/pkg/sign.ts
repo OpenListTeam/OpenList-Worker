@@ -2,6 +2,7 @@ import { getDb } from "../internal/model/db"
 import { getJwtSecret } from "../server/middlewares"
 import { hmacSha256 } from "./crypto"
 import { getEnableSign } from "../internal/driver/storageopts"
+import { normalizeVirtualPath } from "./path"
 
 /**
  * 下载链接签名（防盗链 / 链接过期）。
@@ -61,7 +62,7 @@ export async function getSignPolicy(c: any): Promise<SignPolicy> {
 
 /** 规范化路径（对齐 Go utils.FixAndCleanPath） */
 function fixAndCleanPath(p: string): string {
-  return "/" + String(p || "").split("/").filter(Boolean).join("/")
+  return normalizeVirtualPath(p)
 }
 
 /**
@@ -142,8 +143,18 @@ export async function isEncryptPath(
   // 对齐 Go：存储级 EnableSign 优先于 meta 密码分支
   if (await isStorageSignEnabled(c, reqPath)) return true
   const meta = await getNearestMeta(c, reqPath)
-  if (!meta || !meta.password) return false
-  return metaCoversPath(meta.path, reqPath, !!meta.p_sub)
+  if (!meta) return false
+  if (meta.password && metaCoversPath(meta.path, reqPath, !!meta.p_sub)) {
+    return true
+  }
+  if (
+    meta.read_users &&
+    meta.read_users.length > 0 &&
+    metaCoversPath(meta.path, reqPath, !!meta.read_users_sub)
+  ) {
+    return true
+  }
+  return false
 }
 
 /**
@@ -199,9 +210,10 @@ export async function signDownloadPath(
   expiresIn: number,
 ): Promise<string> {
   const secret = await getJwtSecret(c)
+  const path = normalizeVirtualPath(virtualPath)
   const expires =
     expiresIn === 0 ? 0 : Math.floor(Date.now() / 1000) + expiresIn
-  const hmac = await hmacSha256(`${virtualPath}:${expires}`, secret)
+  const hmac = await hmacSha256(`${path}:${expires}`, secret)
   return `${expires}.${hmac}`
 }
 
@@ -220,6 +232,7 @@ export async function verifyDownloadSign(
     return false
   }
   const secret = await getJwtSecret(c)
-  const expect = await hmacSha256(`${virtualPath}:${expires}`, secret)
+  const path = normalizeVirtualPath(virtualPath)
+  const expect = await hmacSha256(`${path}:${expires}`, secret)
   return constantTimeEqualHex(expect, hmac)
 }

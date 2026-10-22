@@ -13,6 +13,7 @@ import {
   writePersistedSecret,
 } from "./store/json"
 import { getStoreBackend, readCipher } from "./store/backend"
+import { decodePathForMatching, normalizePathSegments } from "../../pkg/path"
 
 // 保持外部（middlewares.ts / router.ts / admin.ts）对 getKvBinding / getKvStatus
 // 的既有引用不变，从 json 后端 re-export。
@@ -2163,39 +2164,11 @@ export const saveDb = async (
 export async function resolvePath(virtualPath: string, envCtx?: any) {
   const db = await getDb(envCtx)
 
-  // ============ 路径遍历防护增强 (2026-09-08) ============
-  // 1. URL 解码（防止 %2e%2e 等编码绕过）
-  let path = virtualPath
-  try {
-    path = decodeURIComponent(String(path || ""))
-  } catch {
-    // 解码失败，使用原始值
-  }
+  let path = decodePathForMatching(String(virtualPath || "")).replace(
+    /\\/g,
+    "/",
+  )
 
-  // 2. 多重解码检测（防止双重编码绕过）
-  let prevPath = ""
-  let decodeAttempts = 0
-  while (path !== prevPath && decodeAttempts < 3) {
-    prevPath = path
-    try {
-      const decoded = decodeURIComponent(path)
-      if (decoded === path) break // 没有更多编码
-      path = decoded
-      decodeAttempts++
-    } catch {
-      break
-    }
-  }
-
-  // 3. 规范化路径分隔符和特殊字符
-  path = path
-    .replace(/\\/g, "/") // 反斜杠 -> 正斜杠
-    .replace(/%5c/gi, "/") // URL 编码的反斜杠
-    .replace(/%2f/gi, "/") // URL 编码的正斜杠
-    .replace(/\.{3,}/g, "..") // 多个点规范化为 ..
-    .replace(/\/+/g, "/") // 多个斜杠合并为一个
-
-  // 4. 检测非法字符
   const illegalChars = ["\0", "\r", "\n", "\t"]
   for (const ch of illegalChars) {
     if (path.includes(ch)) {
@@ -2205,29 +2178,15 @@ export async function resolvePath(virtualPath: string, envCtx?: any) {
     }
   }
 
-  // 5. Windows 绝对路径检测
   if (/^[A-Za-z]:/.test(path)) {
     throw new Error("invalid path: absolute Windows path not allowed")
   }
 
-  // 6. UNC 路径检测
-  if (path.startsWith("//") || path.startsWith("\\\\")) {
+  if (path.startsWith("//")) {
     throw new Error("invalid path: UNC path not allowed")
   }
 
-  // Normalize ".." / "." segments so callers cannot escape the storage
-  // mount root (path traversal). A leading ".." that pops an empty stack
-  // is clamped to the root instead of escaping upward.
-  const stack: string[] = []
-  for (const seg of path.split("/")) {
-    if (seg === "" || seg === ".") continue
-    if (seg === "..") {
-      stack.pop()
-      continue
-    }
-    stack.push(seg)
-  }
-  let cleanPath = "/" + stack.join("/")
+  let cleanPath = normalizePathSegments(path)
   if (cleanPath === "") {
     cleanPath = "/"
   }
