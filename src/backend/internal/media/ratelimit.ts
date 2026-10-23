@@ -11,8 +11,9 @@
 
 import { readPersistedSecret, writePersistedSecret } from "../model/store/json"
 
-const MAX_RETRIES = 10
-const LOCK_MS = 15 * 60 * 1000
+// 与 Go 侧一致：5 次失败锁定 5 分钟（model.DefaultMaxAuthRetries / DefaultLockDuration）
+const MAX_RETRIES = 5
+const LOCK_MS = 5 * 60 * 1000
 const WINDOW_MS = 15 * 60 * 1000
 const PERSIST_PREFIX = "openlist_media_authlock_v1:"
 
@@ -32,12 +33,35 @@ const prune = () => {
     if (b.lockedUntil && b.lockedUntil > now) continue
     if (now - b.firstAt > WINDOW_MS) buckets.delete(key)
   }
+  if (buckets.size < MAX_BUCKETS) return
+  // 仍然超限：按最早创建时间淘汰一批。
+  // 用户名来自请求参数、可被随意伪造，只做 TTL 清理挡不住「每分钟换几千个
+  // 用户名」的请求，必须给 Map 一个硬上限。
+  const victims = Array.from(buckets.entries()).sort(
+    (a, b) => a[1].firstAt - b[1].firstAt,
+  )
+  const drop = Math.max(1, Math.ceil(victims.length * 0.1))
+  for (let i = 0; i < drop; i++) buckets.delete(victims[i][0])
+}
+
+/** 用户名维度的 key；空用户名返回空串（调用方跳过），并限制长度防止超长 key */
+const usernameKey = (username: string) => {
+  const name = String(username || "").trim().toLowerCase()
+  if (!name) return ""
+  return `media:user:${name.slice(0, 128)}`
 }
 
 const bucketOf = (key: string): Bucket => {
   let b = buckets.get(key)
   const now = Date.now()
-  if (!b || (now - b.firstAt > WINDOW_MS && (!b.lockedUntil || b.lockedUntil < now))) {
+  // 锁定到期或统计窗口过期都要重新计数。
+  // 否则锁定结束后第一次失败就会累加到旧计数上、立刻再次锁定（Go 的缓存带 TTL，
+  // 过期即清零，这里必须等价），用户会陷入「错一次锁五分钟」的循环。
+  if (
+    !b ||
+    (b.lockedUntil && b.lockedUntil <= now) ||
+    now - b.firstAt > WINDOW_MS
+  ) {
     b = { count: 0, firstAt: now, lockedUntil: 0 }
     buckets.set(key, b)
     prune()
@@ -111,9 +135,9 @@ export const authLocked = async (c: any): Promise<boolean> => {
 
 export const authLockedFor = async (c: any, username: string) => {
   if (await authLocked(c)) return true
-  const name = String(username || "").trim().toLowerCase()
-  if (!name) return false
-  const b = buckets.get(`media:user:${name}`)
+  const key = usernameKey(username)
+  if (!key) return false
+  const b = buckets.get(key)
   return !!b?.lockedUntil && b.lockedUntil > Date.now()
 }
 
@@ -136,9 +160,9 @@ export const authFailed = async (c: any, username = "") => {
       }
     }
   }
-  const name = String(username || "").trim().toLowerCase()
-  if (name) {
-    const ub = bucketOf(`media:user:${name}`)
+  const userKey = usernameKey(username)
+  if (userKey) {
+    const ub = bucketOf(userKey)
     ub.count += 1
     if (ub.count >= MAX_RETRIES) ub.lockedUntil = Date.now() + LOCK_MS
   }
@@ -146,8 +170,8 @@ export const authFailed = async (c: any, username = "") => {
 
 export const authSucceeded = (c: any, username = "") => {
   buckets.delete(`media:${clientIp(c)}`)
-  const name = String(username || "").trim().toLowerCase()
-  if (name) buckets.delete(`media:user:${name}`)
+  const userKey = usernameKey(username)
+  if (userKey) buckets.delete(userKey)
 }
 
 /** 测试/管理用：清空内存计数 */

@@ -913,8 +913,9 @@ embyRouter.get("/System/Info", (c) =>
     EncoderLocation: "System",
     SystemArchitecture: "X64",
     SystemUpdateLevel: "Release",
-    HttpServerPortNumber: 443,
-    HttpsPortNumber: 443,
+    // 该端点匿名可访问；客户端本来就已知接入端口，回真实端口只是白给一份探测信息
+    HttpServerPortNumber: 0,
+    HttpsPortNumber: 0,
     ProgramDataPath: "",
     ItemsByNamePath: "",
     CachePath: "",
@@ -924,9 +925,12 @@ embyRouter.get("/System/Info", (c) =>
   }),
 )
 
-embyRouter.get("/System/Endpoint", (c) =>
-  c.json({ IsLocal: true, IsInNetwork: true }),
-)
+embyRouter.get("/System/Endpoint", (c) => {
+  // 按实际来源判断：固定返回 true 会让客户端误以为可内网直连，也等于对匿名
+  // 访问者宣称内网可达
+  const local = isLocalClient(c)
+  return c.json({ IsLocal: local, IsInNetwork: local })
+})
 embyRouter.get("/System/Configuration/Public", (c) => c.json({}))
 embyRouter.get("/Branding/Configuration", (c) => c.json({}))
 embyRouter.get("/Localization/Options", (c) => c.json([]))
@@ -963,6 +967,66 @@ async function userFromDb(env: any, id?: number, name?: string) {
   )
 }
 
+/** 常量时间比较，避免按前缀命中后通过比较耗时泄露密钥内容 */
+const safeEqualStr = (a: string, b: string) => {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
+/**
+ * 按明文应用密钥查找记录（对齐 Go 的 LookUpAppKeyUser）。
+ * 先用 prefix 把范围缩到同前缀的少数几条，再解密做常量时间比对；
+ * 相比「遍历全部 key 比 sha256」，密钥多了以后也不会退化成 O(n)。
+ */
+async function findAppKeyByPlain(env: any, plain: string, db: MediaDb) {
+  const key = String(plain || "").trim()
+  if (!key.startsWith("olmp_")) return null
+  const prefix = key.slice(0, 10)
+  const ctx = { env }
+  for (const row of db.app_keys.filter((k) => k.prefix === prefix)) {
+    const stored = await mediaHelpers.appKeyPlainOf(ctx, row)
+    if (stored && safeEqualStr(stored, key)) return row
+  }
+  return null
+}
+
+/**
+ * Emby 客户端按 GUID 校验用户 Id；这里把数字 id 映射成稳定、可逆的 GUID 形状。
+ * 数字 id 与用户名仍可解析（对齐 Go 的 embyResolveUserID 兼容旧形式）。
+ */
+const userGuid = (id: number) =>
+  `00000000-0000-4000-8000-${Math.max(0, Math.trunc(Number(id) || 0))
+    .toString(16)
+    .padStart(12, "0")}`
+
+const parseUserGuid = (raw: string): number => {
+  const m = String(raw || "").match(/^0{8}-0{4}-4000-8000-([0-9a-f]{12})$/i)
+  if (!m) return 0
+  const id = parseInt(m[1], 16)
+  return Number.isFinite(id) && id > 0 ? id : 0
+}
+
+/** 请求是否来自本机 / 内网（/System/Endpoint 用，不能固定返回 true） */
+const isLocalClient = (c: any) => {
+  const ip = String(
+    c.req.header("cf-connecting-ip") ||
+      c.req.header("x-real-ip") ||
+      c.req.header("x-forwarded-for") ||
+      "",
+  )
+    .split(",")[0]
+    .trim()
+    .toLowerCase()
+  if (!ip) return false
+  if (ip === "::1" || ip.startsWith("127.")) return true
+  if (ip.startsWith("10.") || ip.startsWith("192.168.")) return true
+  const m = ip.match(/^172\.(\d{1,3})\./)
+  if (m && Number(m[1]) >= 16 && Number(m[1]) <= 31) return true
+  return ip.startsWith("fc") || ip.startsWith("fd") || ip.startsWith("fe80:")
+}
+
 async function tokenUser(env: any, token: string) {
   if (!token) return null
   const db = await getMediaDb(env)
@@ -975,10 +1039,10 @@ async function tokenUser(env: any, token: string) {
       return user
     }
   }
-  const key = db.app_keys.find((k) => k.secret === hash)
+  const key = await findAppKeyByPlain(env, token, db)
   if (key) {
     const user = await userFromDb(env, key.user_id)
-    if (user && !user.disabled) {
+    if (user && !user.disabled && user.username !== "guest") {
       key.last_used_at = new Date().toISOString()
       return user
     }
@@ -989,7 +1053,7 @@ async function tokenUser(env: any, token: string) {
 const userDto = (u: any, c: any) => ({
   Name: u.username,
   ServerId: embyServerId(c),
-  Id: String(u.id),
+  Id: userGuid(u.id),
   HasPassword: !!u.password,
   HasConfiguredPassword: !!u.password,
   Configuration: {},
@@ -1040,8 +1104,7 @@ async function authenticate(c: any, username: string, pw: string) {
   // 应用密钥也可以直接当密码用（对齐 Go）
   if (pw.startsWith("olmp_")) {
     const mediaDb = await getMediaDb(c.env)
-    const hash = await mediaHelpers.sha256Hex(pw)
-    const key = mediaDb.app_keys.find((k) => k.secret === hash)
+    const key = await findAppKeyByPlain(c.env, pw, mediaDb)
     if (key) {
       const owner = await userFromDb(c.env, key.user_id)
       if (owner && owner.id === user.id) {
@@ -1100,7 +1163,12 @@ embyRouter.post("/Users/:id/Authenticate", async (c) => {
   const rawId = c.req.param("id")
   const { pw } = await readAuthBody(c)
   let user: any = null
-  if (/^\d+$/.test(rawId)) {
+  // 兼容三种形式：GUID（当前返回）、数字（旧客户端缓存）、用户名
+  const guidId = parseUserGuid(rawId)
+  if (guidId) {
+    user = await userFromDb(c.env, guidId)
+  }
+  if (!user && /^\d+$/.test(rawId)) {
     user = await userFromDb(c.env, Number(rawId))
   }
   if (!user) {
@@ -2234,8 +2302,7 @@ async function subAuth(c: any, p: Record<string, string>) {
   // 1) apiKey 直接认证（OpenSubsonic apiKeyAuthentication）
   const apiKey = param(p, "apiKey")
   if (apiKey) {
-    const hash = await mediaHelpers.sha256Hex(apiKey)
-    const row = db.app_keys.find((k) => k.secret === hash)
+    const row = await findAppKeyByPlain(c.env, apiKey, db)
     if (row) {
       const user = await userFromDb(c.env, row.user_id)
       if (user && !user.disabled && user.username !== "guest") {
@@ -2293,8 +2360,16 @@ async function subAuth(c: any, p: Record<string, string>) {
   return user
 }
 
-const hasCredential = (p: Record<string, string>) =>
-  !!(param(p, "apiKey") || param(p, "u") || param(p, "t") || param(p, "p"))
+/**
+ * 请求是否真的带了认证凭据（对齐 Go 的 subHasCredential）。
+ * 只有 u 没有 t/p 的裸探测不算失败：部分客户端启动时会先发一次空探测，
+ * 计入失败会把它自己的 IP 锁死。
+ */
+const hasCredential = (p: Record<string, string>) => {
+  if (param(p, "apiKey")) return true
+  if (!param(p, "u")) return false
+  return !!(param(p, "t") || param(p, "p"))
+}
 
 const subSongDto = (item: MediaItem) => ({
   id: `so-${item.id}`,

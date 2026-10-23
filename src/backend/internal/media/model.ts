@@ -414,7 +414,8 @@ export const mediaProtocolEnabled = (
 ) => mediaEnabled(settings) && settingBool(settings, key)
 
 /** Emby 版本号：客户端会按版本判断能力，固定为一个较新的 4.8 分支 */
-export const EMBY_VERSION = "4.8.8.0"
+// 与 Go 的 embyCompatVersion 保持一致：返回客户端可接受的兼容版本
+export const EMBY_VERSION = "4.10.0.5"
 
 /** Subsonic 协议版本 */
 export const SUBSONIC_VERSION = "1.16.1"
