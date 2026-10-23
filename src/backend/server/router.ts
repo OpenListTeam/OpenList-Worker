@@ -24,7 +24,12 @@ import { taskRouter } from "./task"
 import { ssoRouter } from "./sso"
 import { webauthnRouter } from "./webauthn"
 import { updatePwdHandler } from "./user"
-import { mediaAdminRouter, mediaPublicRouter, mediaRouter } from "./media"
+import {
+  mediaAdminRouter,
+  mediaPublicRouter,
+  mediaRouter,
+  meAppkeyRouter,
+} from "./media"
 
 // --- 尽力而为的进程内限流 ---
 // 实现管理后台的 ip_limit（每 IP 每分钟请求数）与 traffic_limit（每 IP 每小时
@@ -265,10 +270,23 @@ export function setupRouter(app: Hono) {
   app.route("/fs/media", mediaRouter)
   app.route("/admin/media", mediaAdminRouter)
   app.route("/public", mediaPublicRouter)
+  // 普通用户自助签发媒体应用密钥（对齐 Go 的 /api/me/appkey/*）
+  app.route("/auth/me/appkey", meAppkeyRouter)
   app.route("/fs", fsRouter)
-  // Worker 不内置 ffmpeg：转码申请一律降级为直链播放
+  // Worker 不内置 ffmpeg，也不允许开启转码：
+  // 返回 200 + supported:false 让前端平滑降级到直链（不弹错误），
+  // 同时在响应里明确声明能力不存在，便于客户端区分「降级」与「失败」。
   app.post("/fs/transcode/play", async (c) =>
-    c.json({ code: 200, message: "success", data: { transcode: false } }),
+    c.json({
+      code: 200,
+      message: "success",
+      data: {
+        transcode: false,
+        supported: false,
+        reason:
+          "Transcoding is not available in the Worker runtime (no ffmpeg)",
+      },
+    }),
   )
   app.route("/auth", authRouter)
   app.route("/public", publicRouter)

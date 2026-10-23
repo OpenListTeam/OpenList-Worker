@@ -944,6 +944,22 @@ export const defaultDb = {
       flag: 1,
     },
     {
+      key: "media_subsonic_allow_password_auth",
+      value: "false",
+      type: "bool",
+      help: "Allow Subsonic u+p authentication with the OpenList password",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_cover_gateway",
+      value: "false",
+      type: "bool",
+      help: "Fallback to a third-party image gateway when cover fetch fails",
+      group: 12,
+      flag: 1,
+    },
+    {
       key: "media_download_cover",
       value: "false",
       type: "bool",
@@ -2551,7 +2567,9 @@ export async function getSettings() {
       settingsObj[s.key] = s.value
     })
   }
-  return settingsObj
+  // Worker 无 ffmpeg：即使有人直接改库，也不允许转码开关生效
+  const { disableTranscodeSettings } = await import("./transcode-guard")
+  return disableTranscodeSettings(settingsObj)
 }
 
 export async function getUsers() {
