@@ -12,6 +12,10 @@ import { checkAdminAuth } from "../pkg/utils"
 import { safeErrorMessage } from "../pkg/errs"
 import { validateHide } from "../pkg/meta"
 import {
+  isTranscodeSettingKey,
+  stripTranscodeSettings,
+} from "../internal/model/transcode-guard"
+import {
   PROXY_RANGE_DRIVERS,
   driverMustProxy,
   driverPreferProxy,
@@ -4724,6 +4728,9 @@ adminRouter.get("/setting/list", async (c) => {
 
   let settings = db.settings || []
 
+  // Worker 没有 ffmpeg：转码设置一律不下发，避免前端展示永远失败的开关
+  settings = stripTranscodeSettings(settings)
+
   if (groupQuery !== undefined) {
     const groupNum = parseInt(groupQuery, 10)
     settings = settings.filter((s: any) => s.group === groupNum)
@@ -4750,6 +4757,16 @@ adminRouter.post("/setting/save", async (c) => {
     const key = item.key
     if (typeof key !== "string" || key.length === 0 || key.length > 128)
       continue
+
+    // Worker 不支持转码：拒绝写入，并把历史遗留的开关强制落成 false。
+    // 只跳过该字段而不是整批返回 400，避免一次保存中其它合法设置被连带拒绝。
+    if (isTranscodeSettingKey(key)) {
+      const existing = db.settings.find((s: any) => s.key === key)
+      if (existing) {
+        existing.value = key === "transcode_enabled" ? "false" : ""
+      }
+      continue
+    }
 
     let value = item.value
     if (value !== null && typeof value === "object") {
