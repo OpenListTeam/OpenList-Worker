@@ -45,18 +45,56 @@ const bucketOf = (key: string): Bucket => {
   return b
 }
 
+/**
+ * 客户端真实 IP。
+ *
+ * Workers 上 `cf-connecting-ip` 由边缘注入、客户端改不了；`x-forwarded-for`
+ * 是客户端自带的请求头，只按它限流等于没限流——换个头就能绕过，还能把伪造
+ * IP 当持久化 key 刷写入。优先级固定为 cf-connecting-ip → x-real-ip →
+ * x-forwarded-for 首段（仅非 CF 部署才会走到最后一项）。
+ */
 export const clientIp = (c: any): string => {
-  const h = c?.req?.header?.("x-forwarded-for") || c?.req?.header?.("x-real-ip") || ""
+  const h =
+    c?.req?.header?.("cf-connecting-ip") ||
+    c?.req?.header?.("x-real-ip") ||
+    c?.req?.header?.("x-forwarded-for") ||
+    ""
   return String(h).split(",")[0].trim() || "unknown"
 }
 
+const IPV4 = /^(\d{1,3}\.){3}\d{1,3}$/
+const IPV6 = /^[0-9a-f:.]+$/i
+
+/** 只有格式合法的 IP 才允许作为持久化 key，避免伪造串污染存储 */
+const isPersistableIp = (ip: string) =>
+  ip !== "unknown" && (IPV4.test(ip) || IPV6.test(ip))
+
+// 持久化写入自限：每个 isolate 每分钟最多写 N 次。
+// 没有这一层，攻击者轮换伪造 IP 就能把锁定状态变成写放大（KV/D1 计费 + 配额）。
+const PERSIST_WINDOW_MS = 60_000
+const MAX_PERSIST_PER_WINDOW = 60
+let persistWindowAt = 0
+let persistCount = 0
+const allowPersist = () => {
+  const now = Date.now()
+  if (now - persistWindowAt > PERSIST_WINDOW_MS) {
+    persistWindowAt = now
+    persistCount = 0
+  }
+  if (persistCount >= MAX_PERSIST_PER_WINDOW) return false
+  persistCount += 1
+  return true
+}
+
 export const authLocked = async (c: any): Promise<boolean> => {
-  const key = `media:${clientIp(c)}`
+  const ip = clientIp(c)
+  const key = `media:${ip}`
   const b = buckets.get(key)
   if (b?.lockedUntil && b.lockedUntil > Date.now()) return true
+  if (!isPersistableIp(ip)) return false
   // 跨 isolate 的锁定状态（尽力而为，读失败不影响主流程）
   try {
-    const raw = await readPersistedSecret(c?.env, PERSIST_PREFIX + clientIp(c))
+    const raw = await readPersistedSecret(c?.env, PERSIST_PREFIX + ip)
     if (raw) {
       const until = Number(raw) || 0
       if (until > Date.now()) {
@@ -86,14 +124,16 @@ export const authFailed = async (c: any, username = "") => {
   b.count += 1
   if (b.count >= MAX_RETRIES) {
     b.lockedUntil = Date.now() + LOCK_MS
-    try {
-      await writePersistedSecret(
-        c?.env,
-        PERSIST_PREFIX + ip,
-        String(b.lockedUntil),
-      )
-    } catch {
-      /* ignore */
+    if (isPersistableIp(ip) && allowPersist()) {
+      try {
+        await writePersistedSecret(
+          c?.env,
+          PERSIST_PREFIX + ip,
+          String(b.lockedUntil),
+        )
+      } catch {
+        /* ignore */
+      }
     }
   }
   const name = String(username || "").trim().toLowerCase()

@@ -61,11 +61,14 @@ export function bytesToBase64(bytes: Uint8Array): string {
 export async function persistCover(
   env: any,
   data: Uint8Array | undefined,
-  mime: string | undefined,
   opts: ThumbOptions,
 ): Promise<CoverResult> {
   if (!data || data.length === 0) return emptyCover()
-  const realMime = sniffImageMime(data) || mime || "image/jpeg"
+  // 只信魔数。调用方给的 MIME 来自文件元数据（ID3 APIC / 刮削站点），
+  // 采信它就会把 image/svg+xml 这类可执行内容存成封面，
+  // 最终在 serveCover 的 data: 分支变成可执行的 Content-Type。
+  const realMime = sniffImageMime(data)
+  if (!realMime) return emptyCover()
 
   if (!opts.storeThumbnail) {
     if (data.length > MAX_INLINE_BYTES) return emptyCover()

@@ -194,6 +194,19 @@ async function exists(env: any, path: string) {
   }
 }
 
+/**
+ * 目标路径是否仍在输出根目录内。
+ *
+ * outRoot 为空表示同目录模式，不做校验；outRoot 为 "/"（输出到存储根）时
+ * 任何绝对路径都在根内——旧实现用 `startsWith(`${outRoot}/`)` 判断，
+ * outRoot 为 "/" 会变成 startsWith("//")，把所有目标都误判成越界。
+ */
+export const withinOutRoot = (outRoot: string, dst: string): boolean => {
+  if (!outRoot || outRoot === "/") return true
+  const normalized = "/" + dst.split("/").filter(Boolean).join("/")
+  return normalized === outRoot || normalized.startsWith(`${outRoot}/`)
+}
+
 /** 为一组条目生成 STRM，返回写入数量 */
 export async function generateStrmForItems(
   env: any,
@@ -213,12 +226,7 @@ export async function generateStrmForItems(
       const dst = opts.sameDir ? target.sameDirPath : joinPath([outRoot, target.relPath])
       if (!dst) continue
       // 防目录穿越：relPath 里可能含刮削得到的外部名称
-      if (!opts.sameDir) {
-        const normalized = "/" + dst.split("/").filter(Boolean).join("/")
-        if (outRoot && normalized !== outRoot && !normalized.startsWith(`${outRoot}/`)) {
-          continue
-        }
-      }
+      if (!opts.sameDir && !withinOutRoot(outRoot, dst)) continue
       if (!opts.overwrite && (await exists(env, dst))) continue
       try {
         const content = await renderStrmContent(

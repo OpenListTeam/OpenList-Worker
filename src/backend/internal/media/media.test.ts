@@ -33,7 +33,8 @@ import {
   isTranscodeSettingKey,
   stripTranscodeSettings,
 } from "../model/transcode-guard"
-import { buildStrmTargets } from "./strm"
+import { buildStrmTargets, withinOutRoot } from "./strm"
+import { emptyCover, persistCover } from "./thumb"
 import { __scanTest } from "./scan"
 
 test("media extension mapping", () => {
@@ -411,4 +412,38 @@ test("STRM targets follow Emby/Jellyfin layout", () => {
     season: 0,
   })
   assert.match(movie[0].relPath, /Movie \(2020\)\/Movie \(2020\)\.strm$/)
+})
+
+test("封面只认魔数，声明成 SVG 的内容会被丢弃", async () => {
+  const svg = new TextEncoder().encode(
+    '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+  )
+  const stored = await persistCover(null, svg, {
+    storeThumbnail: false,
+    mode: "runtime",
+  })
+  assert.deepEqual(stored, emptyCover())
+
+  // 真正的 JPEG 头：0xFFD8FF + SOI/APP0
+  const jpeg = new Uint8Array([
+    0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
+  ])
+  const inline = await persistCover(null, jpeg, {
+    storeThumbnail: false,
+    mode: "runtime",
+  })
+  assert.equal(inline.thumb_mime, "image/jpeg")
+  assert.match(inline.cover, /^data:image\/jpeg;base64,/)
+})
+
+test("STRM 输出根边界", () => {
+  // 同目录模式不校验
+  assert.equal(withinOutRoot("", "/a/b.strm"), true)
+  assert.equal(withinOutRoot("/out", "/out/a.strm"), true)
+  assert.equal(withinOutRoot("/out", "/out/sub/a.strm"), true)
+  // 前缀相同但不同目录不能放行
+  assert.equal(withinOutRoot("/out", "/output/a.strm"), false)
+  assert.equal(withinOutRoot("/out", "/other/a.strm"), false)
+  // 输出根设为存储根时不能把所有目标都判成越界
+  assert.equal(withinOutRoot("/", "/a/b.strm"), true)
 })

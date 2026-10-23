@@ -219,14 +219,12 @@ export function parseID3v2(bytes: Uint8Array): MusicTag | null {
         // encoding(1) mime\0 type(1) desc\0 data
         const enc = data[0]
         let p = 1
-        let mime = ""
         if (id === "PIC") {
-          mime = "image/" + decodeLatin1(data.subarray(1, 4)).toLowerCase()
+          // 3 字节图像格式（"JPG"/"PNG"），同样不可信，只用于跳过
           p = 4
         } else {
           const end = indexOfNul(data, p)
           if (end < 0) break
-          mime = decodeLatin1(data.subarray(p, end)).trim().toLowerCase()
           p = end + 1
         }
         if (p >= data.length) break
@@ -236,9 +234,12 @@ export function parseID3v2(bytes: Uint8Array): MusicTag | null {
         p = descEnd + (enc === 1 || enc === 2 ? 2 : 1)
         if (p >= data.length) break
         const cover = data.subarray(p)
-        if (cover.length > 0) {
+        // 不采信帧里声明的 MIME：那是文件作者随手填的，采信它等于让
+        // image/svg+xml 之类的声明一路流到响应的 Content-Type（存储型 XSS）。
+        const sniffed = sniffImageMime(cover)
+        if (sniffed) {
           tag.coverData = cover
-          tag.coverMime = mime && mime.startsWith("image/") ? mime : sniffImageMime(cover) || "image/jpeg"
+          tag.coverMime = sniffed
         }
         break
       }
@@ -395,8 +396,7 @@ export function parseFLAC(bytes: Uint8Array): MusicTag | null {
       const mimeLen = beUint32(block, p)
       p += 4
       if (p + mimeLen > block.length) break
-      const mime = decodeLatin1(block.subarray(p, p + mimeLen)).toLowerCase()
-      p += mimeLen
+      p += mimeLen // 跳过声明 MIME：只按魔数判定
       const descLen = beUint32(block, p)
       p += 4 + descLen
       p += 16 // width/height/depth/colors
@@ -404,11 +404,12 @@ export function parseFLAC(bytes: Uint8Array): MusicTag | null {
       const dataLen = beUint32(block, p)
       p += 4
       if (dataLen > 0 && p + dataLen <= block.length) {
-        tag.coverData = block.subarray(p, p + dataLen)
-        tag.coverMime =
-          mime && mime.startsWith("image/")
-            ? mime
-            : sniffImageMime(tag.coverData) || "image/jpeg"
+        const cover = block.subarray(p, p + dataLen)
+        const sniffed = sniffImageMime(cover)
+        if (sniffed) {
+          tag.coverData = cover
+          tag.coverMime = sniffed
+        }
       }
     }
 
@@ -494,9 +495,12 @@ export function parseM4ATags(bytes: Uint8Array): MusicTag | null {
         }
         case "covr": {
           if (dType === 13 || dType === 14) {
-            tag.coverData = payload
-            tag.coverMime =
-              sniffImageMime(payload) || (dType === 14 ? "image/png" : "image/jpeg")
+            // 与 APIC / FLAC 一致：只按魔数判定，dType 只是「这本该是 PNG/JPEG」的提示
+            const sniffed = sniffImageMime(payload)
+            if (sniffed) {
+              tag.coverData = payload
+              tag.coverMime = sniffed
+            }
           }
           break
         }

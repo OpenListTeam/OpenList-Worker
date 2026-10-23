@@ -162,6 +162,13 @@ function baseVisible(db: MediaDb, user: any, item: MediaItem) {
   }
 }
 
+/** 取 guest 用户（匿名入口用）；不存在或被禁用返回 null */
+async function guestUserOf(env: any) {
+  const db = await getDb(env)
+  const guest = (db.users || []).find((u: any) => u.username === "guest")
+  return guest && !guest.disabled ? guest : null
+}
+
 /** meta 级校验（成本较高，只对要返回的条目调用） */
 async function metaFilter(env: any, user: any, items: MediaItem[]) {
   const out: MediaItem[] = []
@@ -171,14 +178,15 @@ async function metaFilter(env: any, user: any, items: MediaItem[]) {
   return out
 }
 
-async function loadLibrary(
-  env: any,
-  user: any,
-  options: { all?: boolean } = {},
-): Promise<EmbyLibrary> {
+/**
+ * 加载协议层媒体库。
+ *
+ * 只保留「按 user 过滤」这一条路径：之前的 `all: true` 分支只过滤 hidden，
+ * 会绕过 base_path / 类型开关，被匿名封面接口用来读全库。
+ */
+async function loadLibrary(env: any, user: any): Promise<EmbyLibrary> {
   const db = await getMediaDb(env)
-  const visible = (item: MediaItem) =>
-    options.all ? !item.hidden : baseVisible(db, user, item)
+  const visible = (item: MediaItem) => baseVisible(db, user, item)
   const videos = db.items.filter((i) => i.media_type === "video" && visible(i))
   const music = db.items.filter((i) => i.media_type === "music" && visible(i))
   const images = db.items.filter((i) => i.media_type === "image" && visible(i))
@@ -1119,9 +1127,16 @@ embyRouter.post("/Users/:id/Authenticate", async (c) => {
   })
 })
 
-/** 图片端点：允许匿名（客户端封面 URL 不带 token） */
+/** 图片端点：允许匿名（客户端封面 URL 不带 token），但按 guest 权限过滤 */
 embyRouter.get("/Items/:id/Images/:type", async (c) => {
-  const lib = await loadLibrary(c.env, null, { all: true })
+  // 匿名 ≠ 全库可见：带 token 时按该用户过滤，没有 token 才退回 guest，
+  // 两条路径都走 base_path / 类型开关 / hidden 的同一套判断。之前用 all:true
+  // 只过滤 hidden，等于绕过了用户根目录与 meta 权限。
+  const token = requestToken(c)
+  const user =
+    (token ? await tokenUser(c.env, token) : null) ?? (await guestUserOf(c.env))
+  if (!user) return c.body(null, 401)
+  const lib = await loadLibrary(c.env, user)
   const id = origId(lib, c.req.param("id"))
   const target = findItem(lib.db, Number(id.replace(/^(mv|so)-/, "")))
   let cover = target?.cover || ""
@@ -1149,13 +1164,24 @@ async function serveCover(c: any, cover: string) {
     )
   }
   if (cover.startsWith("data:")) {
-    const m = cover.match(/^data:([^;]+);base64,(.*)$/)
+    const m = cover.match(/^data:[^;]+;base64,(.*)$/)
     if (!m) return c.body(null, 404)
-    const bin = atob(m[2])
-    const bytes = Uint8Array.from(bin, (ch) => ch.charCodeAt(0))
-    c.header("Content-Type", m[1])
+    let bytes: Uint8Array
+    try {
+      bytes = Uint8Array.from(atob(m[1]), (ch) => ch.charCodeAt(0))
+    } catch {
+      // 存量数据里可能有被截断/篡改的 base64
+      return c.body(null, 404)
+    }
+    // 内联串里的 MIME 来自历史数据（早期版本会采信 ID3 声明的 image/svg+xml），
+    // 这里按魔数重新判定，认不出来直接 404，不再把存储串当 Content-Type 用。
+    const mime = mediaHelpers.sniffImageMime(bytes)
+    if (!mime) return c.body(null, 404)
+    c.header("Content-Type", mime)
     c.header("Cache-Control", "public, max-age=604800")
     c.header("X-Content-Type-Options", "nosniff")
+    // 再补一层沙箱：即使以后嗅探白名单里混进可执行格式，也不会在本站源下跑脚本
+    c.header("Content-Security-Policy", "default-src 'none'; sandbox")
     return c.body(bytes as any)
   }
   if (/^https?:\/\//i.test(cover)) {

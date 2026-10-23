@@ -459,7 +459,7 @@ async function scrapeImage(ctx: ScrapeContext, item: MediaItem): Promise<boolean
   if (!item.cover && item.file_size > 0 && item.file_size <= 8 * 1024 * 1024) {
     const full = await readFileRange(path, 0, item.file_size, { env: ctx.env })
     if (full) {
-      const stored = await persistCover(ctx.env, full, mime, ctx.thumb)
+      const stored = await persistCover(ctx.env, full, ctx.thumb)
       if (stored.cover) {
         item.cover = stored.cover
         item.thumb = stored.thumb
@@ -513,12 +513,7 @@ async function fillMusicFromLocal(ctx: ScrapeContext, item: MediaItem) {
   if (!item.authors && tag.artist) item.authors = JSON.stringify([tag.artist])
   if (!item.duration && tag.duration) item.duration = tag.duration
   if (!item.cover && tag.coverData) {
-    const stored = await persistCover(
-      ctx.env,
-      tag.coverData,
-      tag.coverMime,
-      ctx.thumb,
-    )
+    const stored = await persistCover(ctx.env, tag.coverData, ctx.thumb)
     if (stored.cover) {
       item.cover = stored.cover
       item.thumb = stored.thumb
@@ -556,7 +551,7 @@ async function fillBookCoverFromLocal(ctx: ScrapeContext, item: MediaItem) {
         ? await extractCbzCover(data)
         : await extractPdfCover(data)
   if (!found) return
-  const stored = await persistCover(ctx.env, found.data, found.mime, ctx.thumb)
+  const stored = await persistCover(ctx.env, found.data, ctx.thumb)
   if (stored.cover) {
     item.cover = stored.cover
     item.thumb = stored.thumb
@@ -578,7 +573,7 @@ async function maybeDownloadCover(ctx: ScrapeContext, item: MediaItem) {
     if (buf.length === 0 || buf.length > 8 * 1024 * 1024) return
     const mime = sniffImageMime(buf)
     if (!mime) return
-    const stored = await persistCover(ctx.env, buf, mime, ctx.thumb)
+    const stored = await persistCover(ctx.env, buf, ctx.thumb)
     if (stored.cover) {
       item.cover = stored.cover
       item.thumb = stored.thumb

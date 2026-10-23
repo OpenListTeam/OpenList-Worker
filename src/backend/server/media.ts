@@ -1048,6 +1048,29 @@ const listKeysDto = (db: any, userId?: number) =>
       created_at: k.created_at,
     }))
 
+/** 每个用户最多持有的应用密钥数：每次创建都会全量重写媒体库文档，必须有上限 */
+const MAX_APP_KEYS_PER_USER = 20
+
+/**
+ * 创建应用密钥前的准入检查。
+ *
+ * getUserFromContext 在没有 Authorization 头时会回退成 guest，所以只判断
+ * 「user 存在」等于允许匿名创建密钥——既会写脏数据，也会触发整份文档重写。
+ */
+const denyKeyCreate = async (c: any, user: any) => {
+  if (!user) return fail(c, "未登录", 401)
+  if (String(user.username || "") === "guest") {
+    return fail(c, "访客不能创建应用密钥", 403)
+  }
+  const db = await getMediaDb(c.env)
+  const ownerId = user.id || 1
+  const owned = db.app_keys.filter((k) => k.user_id === ownerId).length
+  if (owned >= MAX_APP_KEYS_PER_USER) {
+    return fail(c, `应用密钥数量已达上限（${MAX_APP_KEYS_PER_USER}）`, 400)
+  }
+  return null
+}
+
 const createKey = async (c: any, user: any, name: string) => {
   const db = await getMediaDb(c.env)
   const plain = randomToken("olmp_")
@@ -1079,6 +1102,8 @@ mediaAdminRouter.get("/appkey/list", async (c) => {
 mediaAdminRouter.post("/appkey/create", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const user = await getUserFromContext(c)
+  const denied = await denyKeyCreate(c, user)
+  if (denied) return denied
   return ok(c, await createKey(c, user, body.name))
 })
 
@@ -1108,6 +1133,8 @@ meAppkeyRouter.get("/list", async (c) => {
 meAppkeyRouter.post("/create", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const user = await getUserFromContext(c)
+  const denied = await denyKeyCreate(c, user)
+  if (denied) return denied
   return ok(c, await createKey(c, user, body.name))
 })
 
@@ -1264,7 +1291,10 @@ mediaPublicRouter.get("/media/thumb", async (c) => {
   if (!/^[a-f0-9]{16,64}$/i.test(hash)) return c.body(null, 404)
   const thumb = await readThumb(c.env, hash)
   if (!thumb) return c.body(null, 404)
-  c.header("Content-Type", thumb.mime)
+  // 存量数据的 mime 可能来自旧版本（会采信文件内声明的 MIME），按魔数复核一遍
+  const mime = sniffImageMime(thumb.bytes)
+  if (!mime) return c.body(null, 404)
+  c.header("Content-Type", mime)
   c.header("Cache-Control", "public, max-age=604800")
   c.header("X-Content-Type-Options", "nosniff")
   c.header("Content-Disposition", 'inline; filename="thumb"')

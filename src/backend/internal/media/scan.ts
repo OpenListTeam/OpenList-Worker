@@ -427,7 +427,7 @@ async function buildItem(
     const head = await readFileRange(fullPath, 0, 256 * 1024, { env })
     const mime = head ? sniffImageMime(head) : ""
     if (!cover && head && mime) {
-      const stored = await persistCover(env, head, mime, opts.thumb)
+      const stored = await persistCover(env, head, opts.thumb)
       cover = stored.cover
       thumb = stored.thumb
       thumbMime = stored.thumb_mime
@@ -455,7 +455,7 @@ async function buildItem(
               ? await extractCbzCover(data)
               : await extractPdfCover(data)
         if (found) {
-          const stored = await persistCover(env, found.data, found.mime, opts.thumb)
+          const stored = await persistCover(env, found.data, opts.thumb)
           cover = stored.cover
           thumb = stored.thumb
           thumbMime = stored.thumb_mime
@@ -546,7 +546,7 @@ async function buildMusicItems(
     let thumb = ""
     let thumbMime = ""
     if (tag.coverData) {
-      const stored = await persistCover(env, tag.coverData, tag.coverMime, opts.thumb)
+      const stored = await persistCover(env, tag.coverData, opts.thumb)
       cover = stored.cover
       thumb = stored.thumb
       thumbMime = stored.thumb_mime
@@ -604,7 +604,7 @@ async function buildMusicItems(
   let thumb = ""
   let thumbMime = ""
   if (tag.coverData) {
-    const stored = await persistCover(env, tag.coverData, tag.coverMime, opts.thumb)
+    const stored = await persistCover(env, tag.coverData, opts.thumb)
     cover = stored.cover
     thumb = stored.thumb
     thumbMime = stored.thumb_mime
