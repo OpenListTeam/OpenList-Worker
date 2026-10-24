@@ -190,6 +190,8 @@ export const normalizeDriver = (driverName: string): string => {
   if (norm.startsWith("githubrelease")) return "GitHub Releases"
   if (norm.startsWith("cnbrelease")) return "CNB Releases"
   if (norm.startsWith("github")) return "GitHub API"
+  if (norm === "internai" || norm === "internaicloud" || norm === "shushengpan")
+    return "InternAI"
   if (norm === "local") return "Local"
   if (norm.includes("pikpak")) return "PikPak"
   if (norm.includes("seafile")) return "Seafile"
@@ -1723,6 +1725,68 @@ const driverConfigs: Record<string, any> = {
       no_upload: true,
       need_ms: false,
       default_root: "",
+    },
+  },
+  // 书生云盘（InternAI Discovery 平台云盘，discovery.intern-ai.org.cn）。
+  // 字段对齐 Go drivers/intern_ai。
+  InternAI: {
+    name: "InternAI",
+    default_mount_path: "/intern_ai",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "root_folder_path",
+        type: "string",
+        default: "/",
+        required: false,
+        help: "云盘内挂载根目录，默认 /",
+      },
+      {
+        name: "token",
+        type: "string",
+        default: "",
+        required: true,
+        help: "uaa-token：登录 discovery.intern-ai.org.cn 后浏览器 Cookie 中 uaa-token 的值",
+      },
+      {
+        name: "api_base",
+        type: "string",
+        default: "https://discovery.intern-ai.org.cn",
+        required: false,
+        help: "平台地址（自部署/代理时可改）",
+      },
+      {
+        name: "page_size",
+        type: "number",
+        default: "100",
+        required: false,
+        help: "列目录分页大小（最大 200）",
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "name,size,modified",
+        default: "name",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "asc,desc",
+        default: "asc",
+        required: false,
+      },
+    ],
+    config: {
+      name: "InternAI",
+      local_sort: false,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      // upload-url + PUT 已实现，支持上传
+      no_upload: false,
+      need_ms: false,
+      default_root: "/",
     },
   },
   Thunder: {
