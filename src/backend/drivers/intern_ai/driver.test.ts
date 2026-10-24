@@ -226,7 +226,11 @@ test("driver 写操作端到端（mkdir/rename/move/copy/remove/put）", async (
     }],
     ["/api/ml/v1/cloud-disk/upload-url", (_u, init) => {
       calls.push({ ep: "upload-url", body: JSON.parse(String(init.body)) })
-      return ok({ urls: [{ upload_url: "https://upload.example.com/put" }] })
+      // 生产实测：upload-url 端点不带 {code,msg,data} 信封，直接返回 {urls:[...]}
+      return new Response(
+        JSON.stringify({ urls: [{ upload_url: "https://upload.example.com/put" }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )
     }],
     ["https://upload.example.com/put", () => new Response("", { status: 200 })],
   ])
@@ -270,4 +274,45 @@ test("get 未命中条目时报 not found", async () => {
     () => d.get("/v", "/missing.txt"),
     /not found/,
   )
+})
+
+test("list 无信封 upload-url + 数字时间戳（生产实测形状）", async () => {
+  // 1) upload-url 无信封：request() 必须容忍顶层 {urls:[...]}，不得因 code 丢失而报错
+  const c = makeClient({ page_size: 10 })
+  const restore1 = installFetch([
+    ["/api/ml/v1/cloud-disk/upload-url", () =>
+      new Response(
+        JSON.stringify({
+          urls: [{ file_key: "/x/rt.txt", upload_url: "https://up.example/put", skipped: false }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )],
+    ["https://up.example/put", () => new Response("", { status: 200 })],
+  ])
+  try {
+    const up = await c.getUploadUrl("/x", "rt.txt", 3)
+    assert.equal(up, "https://up.example/put")
+  } finally {
+    restore1()
+  }
+
+  // 2) modified_at 为 unix 秒数字时必须正确转 ISO，而不是退化成 epoch
+  const d = makeDriver([
+    ["/api/ml/v1/cloud-disk/list", () =>
+      ok({
+        files: [{
+          file_key: "/n.txt",
+          file_name: "n.txt",
+          is_dir: false,
+          size: 5,
+          modified_at: 1792815193,
+          cloud_file_status: null,
+        }],
+        next_page_token: "",
+      })],
+  ])
+  await d.init()
+  const items = await d.list("/v", "/")
+  assert.equal(items.length, 1)
+  assert.equal(items[0]!.modified, new Date(1792815193 * 1000).toISOString())
 })

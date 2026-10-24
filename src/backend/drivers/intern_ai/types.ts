@@ -20,8 +20,9 @@ export interface InternAIFileItem {
   is_dir: boolean
   size: number
   content_type?: string
-  modified_at?: string
-  created_at?: string
+  /** unix-seconds number in production, RFC3339 string on some deployments */
+  modified_at?: string | number
+  created_at?: string | number
   cloud_file_status?: string | null
 }
 
@@ -46,7 +47,11 @@ export interface InternAICheckResult {
 }
 
 export interface InternAIResp<T = any> {
-  code: number
+  /**
+   * Most endpoints answer {code:0,msg,data}; a few (upload-url) answer the
+   * payload directly at the top level. `code` is optional to reflect that.
+   */
+  code?: number
   msg?: string
   data?: T
 }

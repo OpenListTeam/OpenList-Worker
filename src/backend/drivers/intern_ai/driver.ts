@@ -21,9 +21,16 @@ function nameOf(fileKey: string, fileName?: string): string {
 }
 
 /** Normalize the platform timestamp into an ISO string (epoch fallback). */
-function toIso(ts?: string | null): string {
-  if (ts) {
-    const ms = Date.parse(ts)
+function toIso(ts?: string | number | null): string {
+  if (ts !== undefined && ts !== null && ts !== "") {
+    // production returns unix-seconds numbers; also accept ms numbers,
+    // numeric strings and RFC3339 strings
+    const n = typeof ts === "number" ? ts : Number(String(ts).trim())
+    if (Number.isFinite(n) && String(ts).trim() !== "") {
+      const ms = n < 1e12 ? n * 1000 : n
+      if (n > 0) return new Date(ms).toISOString()
+    }
+    const ms = Date.parse(String(ts))
     if (Number.isFinite(ms)) return new Date(ms).toISOString()
   }
   return EPOCH_ISO

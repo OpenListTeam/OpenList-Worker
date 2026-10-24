@@ -110,9 +110,17 @@ export class InternAIClient {
     if (resp.status >= 400) {
       throw new Error(`[InternAI] ${ep} returned HTTP ${resp.status}`)
     }
-    const json = (await resp.json().catch(() => null)) as InternAIResp<T> | null
+    const json = (await resp.json().catch(() => null)) as
+      | (InternAIResp<T> & Record<string, unknown>)
+      | null
     if (!json) {
       throw new Error(`[InternAI] ${ep} returned a non-JSON response`)
+    }
+    // Some endpoints (observed on the production upload-url endpoint) answer
+    // the payload directly at the top level instead of the {code,msg,data}
+    // envelope. Tolerate both shapes.
+    if (typeof json.code !== "number") {
+      return json as unknown as T
     }
     if (json.code !== 0) {
       throw new Error(`[InternAI] ${ep} error: code=${json.code} msg=${json.msg ?? ""}`)
