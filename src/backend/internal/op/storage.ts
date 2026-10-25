@@ -16,7 +16,6 @@ import { OnedriveAPP } from "../../drivers/onedrive_app/driver"
 import { AliyundriveOpen } from "../../drivers/aliyundrive_open/driver"
 import { GoogleDrive } from "../../drivers/google_drive/driver"
 import { QuarkDriver } from "../../drivers/quark/driver"
-import { Driver115 } from "../../drivers/115/driver"
 import { DriverCloudreve } from "../../drivers/cloudreve_v4/driver"
 import { DriverCloudreveV3 } from "../../drivers/cloudreve_v3/driver"
 import { DriverOpenlist } from "../../drivers/openlist/driver"
@@ -295,14 +294,10 @@ async function createDriver(
   ) {
     driver = new QuarkDriver(parseAddition(storageConfig))
     await driver.init?.()
-  } else if (
-    normDriver === "115" ||
-    normDriver === "115cloud" ||
-    normDriver === "115open" ||
-    normDriver === "115netdisk"
-  ) {
-    driver = new Driver115(parseAddition(storageConfig))
-    await driver.init?.()
+  // 注意：115 / 115Open 统一走 Pan115Driver（115open 目录）。
+  // 旧 drivers/115（Client115）端点写成 /open + /open/ufile/files → /open/open/ufile/files，
+  // 且用 POST+JSON，115 开放平台实际要求 GET+query，会报 "Method POST does not exist"，
+  // 再经错误模板输出为 "[115] API error ()"。该分支已在下方 normDriver.startsWith("115") 处理。
   } else if (
     normDriver === "cloudreve" ||
     normDriver === "cloudrevev3" ||
