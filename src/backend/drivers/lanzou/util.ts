@@ -35,11 +35,17 @@ const FN_DOMAIN_RE = /var\s+domain[12]\s*=\s*'([^']*(?:ajaxfile|ajaxm)\.php\?fil
 const FN_SIGN_RE = /var\s+wp_sign\s*=\s*'([^']*)'/
 const FN_AJAXDATA_RE = /var\s+ajaxdata\s*=\s*'([^']*)'/
 
+/** 新旧结构都不匹配时的提示：说明页面可能又改版了，而不是笼统的"未找到文件 ID" */
+const UNKNOWN_SHARE_PAGE_MSG =
+  "[Lanzou] 未能识别下载页结构（旧版 /ajaxm.php 与 2026-10 的 /fn 结构都不匹配），蓝奏云可能再次改版，需要更新驱动"
+
 /**
  * 从改版后的 /fn? 内页提取下载接口地址与签名表单。
  * 对应页面 JS：POST domain1 {'action':'downprocess','websignkey':ajaxdata,
  *   'signs':ajaxdata,'sign':wp_sign,'websign':'2','kd':kdns,'ves':1}
- * 未命中改版结构时返回 null（调用方回退到旧版解析）。
+ * @param pageData /fn 内页 HTML（建议先过 removeNotes）
+ * @returns 解析成功返回 { url, fileId, form }；未命中改版结构（缺 domain1/wp_sign/ajaxdata）
+ *   返回 null —— 这不是错误，调用方应回退到旧版解析
  */
 export function parseFnPage(pageData: string): {
   url: string
@@ -844,14 +850,18 @@ export class LanzouClient {
           resp = await this.postShareAjax(fnPage.url, fnPage.form)
         } else {
           // 兜底：页面变体（无引号 / 无前导斜杠），沿用原有宽松提取
-          param = htmlJsonToMap(cleanNextPage, cleanNextPage)
+          try {
+            param = htmlJsonToMap(cleanNextPage, cleanNextPage)
+          } catch {
+            throw new Error(UNKNOWN_SHARE_PAGE_MSG)
+          }
           const fileIdMatch =
             cleanNextPage.match(/['"]?\/?ajax(?:file|m)\.php\?file=(\d+)['"]?/) ||
             cleanNextPage.match(/file\s*[:=]\s*['"]?(\d+)['"]?/) ||
             cleanNextPage.match(/file=(\d+)/) ||
             cleanNextPage.match(/var\s+file_id\s*=\s*['"]?(\d+)['"]?/)
           const fileId = fileIdMatch ? fileIdMatch[1] : ""
-          if (!fileId) throw new Error("[Lanzou] 未找到文件 ID")
+          if (!fileId) throw new Error(UNKNOWN_SHARE_PAGE_MSG)
           resp = await this.postShareAjax(
             `${shareBaseDomain}/ajaxfile.php?file=${fileId}`,
             param,

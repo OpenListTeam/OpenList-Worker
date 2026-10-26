@@ -237,6 +237,80 @@ await test("Lanzou Driver get() 适配改版 /fn 内页（apifile 绝对地址�
   }
 })
 
+// 6. 旧版 /fn 内页回归：确认改版适配没有破坏原有结构
+await test("Lanzou Driver get() 保持旧版 /fn 内页兼容性", async () => {
+  const driver = new LanzouDriver({
+    type: "url",
+    root_folder_id: "b00test",
+    shareUrl: "https://pan.lanzoui.com",
+  })
+
+  const mockFilePage = `
+  <html>
+  <title>legacy.zip - 蓝奏云</title>
+  <div class="fileinfo">大小：1.2 M</div>
+  <iframe src="/fn?oldtoken"></iframe>
+  </html>
+  `
+  // 旧版：相对路径 + data 对象（改版前一直用的结构）
+  const mockIframe = `
+  <html>
+  <script>
+  var ajaxdata = 'OLD_AJAX';
+  var skdkw = 'OLD_SIGN';
+  var websignkey = 'OLD_KEY';
+  $.ajax({
+      type : 'post',
+      url : '/ajaxm.php?file=555',
+      data : { 'action':'downprocess', 'signs':ajaxdata, 'sign':skdkw, 'ves':1, 'websignkey':websignkey },
+      dataType : 'json'
+  });
+  </script>
+  </html>
+  `
+
+  let posted: { url: string; form: URLSearchParams } | null = null
+  const originalFetch = globalThis.fetch
+  try {
+    (globalThis as any).fetch = async (url: string, init: RequestInit = {}) => {
+      const urlStr = String(url)
+      const method = (init.method || "GET").toUpperCase()
+      if (urlStr.includes("/fn?")) return new Response(mockIframe)
+      if (method === "POST") {
+        posted = { url: urlStr, form: new URLSearchParams(String(init.body || "")) }
+        return new Response(
+          JSON.stringify({ zt: 1, dom: "https://developer.lanzoui.com", url: "token_old" }),
+        )
+      }
+      if (urlStr.includes("developer.lanzoui.com/file")) {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://cdn.example.com/legacy.zip" },
+        })
+      }
+      if (urlStr.includes("pan.lanzoui.com/b00test")) {
+        return new Response(mockFilePage)
+      }
+      return new Response("Not Found", { status: 404 })
+    }
+
+    const item = await driver.get("/b00test", "/legacy.zip")
+    const got = posted as { url: string; form: URLSearchParams } | null
+    if (!got) throw new Error("下载接口未被调用")
+    // 旧版仍应 POST 到分享域相对地址，而不是 apifile
+    if (got.url !== "https://pan.lanzoui.com/ajaxfile.php?file=555") {
+      throw new Error(`旧版下载接口地址错误: ${got.url}`)
+    }
+    if (got.form.get("signs") !== "OLD_AJAX") throw new Error("signs 未透传")
+    if (got.form.get("sign") !== "OLD_SIGN") throw new Error("sign 未透传")
+    if (item.raw_url !== "https://cdn.example.com/legacy.zip") {
+      throw new Error(`直链错误: ${item.raw_url}`)
+    }
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 // Clean up scratch files
 try {
   const fs = await import("fs")

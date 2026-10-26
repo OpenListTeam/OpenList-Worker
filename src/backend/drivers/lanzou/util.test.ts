@@ -104,6 +104,18 @@ test("parseFnPage returns null for legacy page", () => {
   assert.equal(parseFnPage(LEGACY_FN_PAGE), null)
 })
 
+test("parseFnPage returns null when sign vars are missing", () => {
+  // 只有 domain1、缺 wp_sign / ajaxdata：不算改版结构，交给旧版兜底
+  const partial = `<script>var domain1='https://apifile.woozooo.com/ajaxfile.php?file=42';</script>`
+  assert.equal(parseFnPage(partial), null)
+
+  const noAjaxData = `<script>
+var domain1='https://apifile.woozooo.com/ajaxfile.php?file=42';
+var wp_sign='S';
+</script>`
+  assert.equal(parseFnPage(noAjaxData), null)
+})
+
 test("removeJSComment keeps url '//' but strips real comments", () => {
   const src = [
     "var a = 'https://apifile.woozooo.com/ajaxfile.php?file=1' // 行注释",
@@ -169,5 +181,39 @@ test("absolute iframe src is used as-is instead of being prefixed", async () => 
   assert.equal(
     posts[0].url,
     "https://apifile.woozooo.com/ajaxfile.php?file=1234567",
+  )
+})
+
+test("legacy markers win when the page carries both legacy and fn structure", async () => {
+  // 优先级约定：旧版严格正则先命中就不再看 /fn 结构（与上游 Go 版一致）
+  const mixed = `<html><body><script>
+var domain1='https://apifile.woozooo.com/ajaxfile.php?file=999';
+var wp_sign='NEWSIGN';
+var ajaxdata='NEWDATA';
+$("#go").click(function(){
+  $.ajax({type:'post', url:'/ajaxm.php?file=777', data:{action:'downprocess', signs:'OLDSIGN', sign:'OLDSIGN2', websign:'2', kd:1, ves:1}, dataType:'json'});
+});
+</script></body></html>`
+
+  const { posts } = installFetch(mixed)
+  await newClient().getFilesByShareUrl(SHARE_ID, "", SHARE_PAGE, SHARE_DOMAIN)
+
+  assert.equal(posts.length, 1)
+  assert.equal(`${SHARE_DOMAIN}/ajaxfile.php?file=777`, posts[0].url)
+  assert.equal(posts[0].form.get("signs"), "OLDSIGN")
+})
+
+test("unrecognized page reports an actionable error instead of 'not find file id'", async () => {
+  const unknown = `<html><body><script>
+$("#go").click(function(){
+  $.ajax({type:'post', url:'/somethingelse.php', data:{action:'downprocess'}, dataType:'json'});
+});
+</script></body></html>`
+
+  installFetch(unknown)
+  await assert.rejects(
+    () =>
+      newClient().getFilesByShareUrl(SHARE_ID, "", SHARE_PAGE, SHARE_DOMAIN),
+    /未能识别下载页结构/,
   )
 })
