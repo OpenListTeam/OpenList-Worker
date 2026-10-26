@@ -1195,34 +1195,98 @@ embyRouter.post("/Users/:id/Authenticate", async (c) => {
   })
 })
 
-/** 图片端点：允许匿名（客户端封面 URL 不带 token），但按 guest 权限过滤 */
-embyRouter.get("/Items/:id/Images/:type", async (c) => {
-  // 匿名 ≠ 全库可见：带 token 时按该用户过滤，没有 token 才退回 guest，
-  // 两条路径都走 base_path / 类型开关 / hidden 的同一套判断。之前用 all:true
-  // 只过滤 hidden，等于绕过了用户根目录与 meta 权限。
+/** 取条目列表里第一个「当前用户可访问且带封面」的条目封面 */
+async function firstAccessibleCover(env: any, user: any, items: MediaItem[]) {
+  for (const item of items) {
+    if (!item.cover) continue
+    if (await mediaHelpers.canAccessItem(env, user, item)) return item.cover
+  }
+  return ""
+}
+
+/**
+ * 解析图片请求对应的封面。
+ *
+ * 必须基于 lib.db 再做一次完整权限校验：
+ *   - lib.db 是全库快照，只有 videos/music 等派生集合按用户过滤过；
+ *   - origId 对未登记的 ID 原样返回，因此 `mv-42` / `ep-7-2` 这类请求
+ *     可能直接命中被隐藏、位于访客根目录之外或类型已关闭的条目。
+ * Series / Season / Album 的封面来自聚合里的某一条目，同样要逐条校验，
+ * 不能直接读聚合对象上缓存的 cover。
+ */
+async function coverOfId(env: any, user: any, lib: EmbyLibrary, rawId: string) {
+  const id = origId(lib, rawId)
+
+  const single = id.match(/^(?:mv|so)-(\d+)$/)
+  if (single) {
+    const item = findItem(lib.db, Number(single[1]))
+    if (!item || !(await mediaHelpers.canAccessItem(env, user, item))) return ""
+    return item.cover || ""
+  }
+
+  const episode = id.match(/^ep-(\d+)-(\d+)$/)
+  if (episode) {
+    // 剧集封面取所属条目（合并条目 / 单集文件）的封面
+    const item = findItem(lib.db, Number(episode[1]))
+    if (!item || !(await mediaHelpers.canAccessItem(env, user, item))) return ""
+    return item.cover || ""
+  }
+
+  if (id.startsWith("sr-")) {
+    const series = lib.series.find((s) => s.key === id.slice(3))
+    return series ? firstAccessibleCover(env, user, series.items) : ""
+  }
+
+  if (id.startsWith("sn-")) {
+    const rest = id.slice(3)
+    const sep = rest.lastIndexOf("-")
+    if (sep < 0) return ""
+    const series = lib.series.find((s) => s.key === rest.slice(0, sep))
+    if (!series) return ""
+    const season = Number(rest.slice(sep + 1)) || 1
+    return firstAccessibleCover(
+      env,
+      user,
+      episodesOf(series, season).map((ep) => ep.item),
+    )
+  }
+
+  if (id.startsWith("al-")) {
+    const album = lib.albums.find((a) => a.key === id.slice(3))
+    return album ? firstAccessibleCover(env, user, album.items) : ""
+  }
+
+  if (id.startsWith("ar-")) {
+    const key = id.slice(3)
+    const items: MediaItem[] = []
+    for (const album of lib.albums) {
+      if (artistKeyOf(album.items[0]) !== key) continue
+      items.push(...album.items)
+    }
+    return firstAccessibleCover(env, user, items)
+  }
+
+  return ""
+}
+
+/**
+ * 图片端点：允许匿名（客户端封面 URL 不带 token），但按 guest 权限过滤。
+ *
+ * 带 token 时按该用户过滤，没有 token 才退回 guest，两条路径都走
+ * base_path / 类型开关 / hidden / meta 的同一套判断。
+ */
+async function handleItemImage(c: any) {
   const token = requestToken(c)
   const user =
     (token ? await tokenUser(c.env, token) : null) ?? (await guestUserOf(c.env))
   if (!user) return c.body(null, 401)
   const lib = await loadLibrary(c.env, user)
-  const id = origId(lib, c.req.param("id"))
-  const target = findItem(lib.db, Number(id.replace(/^(mv|so)-/, "")))
-  let cover = target?.cover || ""
-  if (!cover && id.startsWith("ep-")) {
-    const item = findItem(lib.db, Number(id.split("-")[1]))
-    cover = item?.cover || ""
-  }
-  if (!cover && (id.startsWith("sr-") || id.startsWith("sn-"))) {
-    const key = id.startsWith("sr-") ? id.slice(3) : id.slice(3, id.lastIndexOf("-"))
-    cover = lib.series.find((s) => s.key === key)?.cover || ""
-  }
-  if (!cover && id.startsWith("al-")) {
-    const key = id.slice(3)
-    cover = lib.albums.find((a) => a.key === key)?.cover || ""
-  }
+  const cover = await coverOfId(c.env, user, lib, c.req.param("id"))
   if (!cover) return c.body(null, 404)
   return serveCover(c, cover)
-})
+}
+
+embyRouter.get("/Items/:id/Images/:type", handleItemImage)
 
 async function serveCover(c: any, cover: string) {
   const origin = originOf(c)
@@ -1561,26 +1625,6 @@ embyRouter.get("/Users/:id/Images/:type", (c) => c.body(null, 404))
 embyRouter.get("/Shows/Upcoming", (c) =>
   c.json({ Items: [], TotalRecordCount: 0 }),
 )
-
-embyRouter.get("/Items/:id/Images/:type", async (c) => {
-  const user = (c as any).get("mediaUser")
-  const lib = await loadLibrary(c.env, user)
-  const id = origId(lib, c.req.param("id"))
-  let cover = ""
-  const numeric = id.match(/^(?:mv|so)-(\d+)$/)
-  if (numeric) cover = findItem(lib.db, Number(numeric[1]))?.cover || ""
-  if (!cover && id.startsWith("ep-")) {
-    cover = findItem(lib.db, Number(id.split("-")[1]))?.cover || ""
-  }
-  if (!cover && id.startsWith("sr-")) {
-    cover = lib.series.find((s) => s.key === id.slice(3))?.cover || ""
-  }
-  if (!cover && id.startsWith("al-")) {
-    cover = lib.albums.find((a) => a.key === id.slice(3))?.cover || ""
-  }
-  if (!cover) return c.body(null, 404)
-  return serveCover(c, cover)
-})
 
 /** 歌词：作为外挂字幕轨（Emby Theater 的歌词面板只读 Subtitle 流） */
 const handleLyrics = async (c: any, idRaw: string) => {
@@ -3031,17 +3075,9 @@ const handleSubsonic = async (c: any, methodRaw: string) => {
       )
     }
     case "getcoverart": {
-      const id = param(p, "id")
-      let cover = ""
-      if (id.startsWith("so-")) {
-        cover = findItem(db, Number(id.slice(3)))?.cover || ""
-      } else if (id.startsWith("al-")) {
-        cover = lib.albums.find((a) => a.key === id.slice(3))?.cover || ""
-      } else if (id.startsWith("ar-")) {
-        const key = id.slice(3)
-        cover =
-          lib.albums.find((a) => artistKeyOf(a.items[0]) === key)?.cover || ""
-      }
+      // 与 Emby 图片端点同一套校验：db 是全库快照，直接 findItem 会漏掉
+      // hidden / base_path / meta / 类型开关的判断。
+      const cover = await coverOfId(c.env, user, lib, param(p, "id"))
       if (!cover) return c.body(null, 404)
       return serveCover(c, cover)
     }
@@ -3071,4 +3107,7 @@ export const __embyTest = {
   episodesOf,
   seasonListOf,
   parseEpisodesOf,
+  seriesKeyOf,
+  albumKeyOf,
+  artistKeyOf,
 }

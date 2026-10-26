@@ -17,7 +17,11 @@
  * 自动拆分落盘并清理旧字段，无需人工迁移。
  */
 
-import { readPersistedSecret, writePersistedSecret } from "../model/store/json"
+import {
+  listPersistedSecrets,
+  readPersistedSecret,
+  writePersistedSecret,
+} from "../model/store/json"
 import {
   DEFAULT_CONFIG,
   emptyMediaDb,
@@ -214,6 +218,65 @@ const buildMetaPayload = (db: MediaDb) => {
   }
 }
 
+/** 从 list() 返回的键名里还原分片 id（只接受纯数字，忽略损坏键） */
+const shardIdsOf = (keys: string[], prefix: string) => {
+  const out: string[] = []
+  for (const key of keys) {
+    if (!key.startsWith(prefix)) continue
+    const id = key.slice(prefix.length)
+    if (/^\d+$/.test(id)) out.push(id)
+  }
+  return out
+}
+
+/** 合并分片索引：去重、按数字序排列，只增不减 */
+const mergeShardIds = (...lists: any[]) => {
+  const set = new Set<string>()
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue
+    for (const value of list) {
+      const id = String(value ?? "").trim()
+      if (/^\d+$/.test(id)) set.add(id)
+    }
+  }
+  return Array.from(set).sort((a, b) => Number(a) - Number(b))
+}
+
+/**
+ * 提交前把本地 meta 与持久化版本合并。
+ *
+ * saveChain 只串行化**本实例**的写入：另一个实例可能在我们读取之后新增了
+ * 分片（例如某用户首次上报播放进度）并写入 meta。若直接用本地快照覆盖，
+ * 全局索引就会丢掉对方的条目，冷启动后那些分片不再被读取。
+ * 这里在写入前重新读一次持久化 meta，把分片索引与 id 水位合并进去；
+ * 分片本身还会在 getMediaDb 里按前缀枚举（见 listPersistedSecrets），
+ * 因此即使索引仍然写丢，数据也不会不可见。
+ */
+async function mergeMetaForCommit(
+  env: any,
+  local: Record<string, any>,
+): Promise<Record<string, any>> {
+  const raw = await readPersistedSecret(env, META_KEY)
+  if (!raw) return local
+  try {
+    const persisted = JSON.parse(raw)
+    if (!persisted || typeof persisted !== "object") return local
+    return {
+      ...local,
+      // next_id 只取更大值：避免把全局水位写回去，导致 id 被重复分配
+      next_id: Math.max(
+        Number(local.next_id) || 1,
+        Number(persisted.next_id) || 1,
+      ),
+      item_shards: mergeShardIds(local.item_shards, persisted.item_shards),
+      user_shards: mergeShardIds(local.user_shards, persisted.user_shards),
+    }
+  } catch {
+    // 持久化内容损坏：按本地快照提交，至少不让本次写入失败
+    return local
+  }
+}
+
 function ensureConfigs(db: MediaDb) {
   for (const type of MEDIA_TYPES) {
     if (!db.configs.some((c) => c.media_type === type)) {
@@ -275,11 +338,30 @@ export async function getMediaDb(env: any): Promise<MediaDb> {
 
     ensureConfigs(db)
 
+    // 分片本身才是权威来源：meta 里的索引会被其它实例覆盖（多实例各自保存时
+    // 只写自己的条目），只按索引读取会永久丢掉对方的分片。这里按前缀枚举一遍
+    // 并与索引取并集，索引退化为「少一次 list 的提示」。
+    const [itemKeys, userKeys] = await Promise.all([
+      listPersistedSecrets(env, ITEMS_PREFIX),
+      listPersistedSecrets(env, USERDATA_PREFIX),
+    ])
+    const itemShardIds = mergeShardIds(
+      db.item_shards,
+      shardIdsOf(itemKeys, ITEMS_PREFIX),
+    )
+    const userShardIds = mergeShardIds(
+      db.user_shards,
+      shardIdsOf(userKeys, USERDATA_PREFIX),
+    )
+    // 补全后的索引写回内存快照，下一次保存会把它一起提交
+    db.item_shards = itemShardIds
+    db.user_shards = userShardIds
+
     const itemGroups: MediaItem[] = []
     if (legacyItems.length > 0) {
       itemGroups.push(...legacyItems)
     } else {
-      for (const sid of db.item_shards) {
+      for (const sid of itemShardIds) {
         itemGroups.push(...(await readShardItems(env, sid)))
       }
     }
@@ -287,7 +369,7 @@ export async function getMediaDb(env: any): Promise<MediaDb> {
     if (legacyUserData.length > 0) {
       userRows.push(...legacyUserData)
     } else {
-      for (const uid of db.user_shards) {
+      for (const uid of userShardIds) {
         userRows.push(...(await readShardUserData(env, uid)))
       }
     }
@@ -304,7 +386,12 @@ export async function getMediaDb(env: any): Promise<MediaDb> {
         metaSnapshot: "",
       }
       cache = state
-      await saveMediaDb(env, db)
+      // 迁移写失败不能连带丢掉刚读出来的数据（否则下面的 catch 会回退到空库）
+      try {
+        await saveMediaDb(env, db)
+      } catch (e: any) {
+        console.warn("[media] legacy migration failed:", e?.message || e)
+      }
     }
 
     cache = {
@@ -346,6 +433,12 @@ const serializeUsers = (list: MediaUserData[]) => JSON.stringify(list)
 /**
  * 保存媒体库。按分片 diff，只写发生变化的部分。
  *
+ * 写入顺序与失败语义：
+ *   1. 先写条目 / 用户数据分片，任何一个失败立即终止（不再写 meta）；
+ *   2. 全部分片成功后才提交 meta（分片索引 + 配置等）；
+ *   3. 快照只在写入成功后才推进，失败时保持旧值，下一次保存会重新尝试。
+ * 这样既不会「把失败当成功」，也不会发布指向未写入分片的索引。
+ *
  * 注意：`db` 若与缓存不是同一对象，会先合并（调用方通常是同一个）。
  */
 export function saveMediaDb(env: any, db?: MediaDb): Promise<void> {
@@ -364,78 +457,101 @@ export function saveMediaDb(env: any, db?: MediaDb): Promise<void> {
   state.loadedAt = Date.now()
   cache = state
 
-  const itemGroups = groupItems(target.items)
-  const userGroups = groupUserData(target.user_data)
-  const metaPayload = buildMetaPayload(target)
-  const metaStr = JSON.stringify(metaPayload)
-
-  // 先算出需要写的内容（在进入串行队列前完成，避免并发修改导致漏写）
-  const itemWrites: Array<{ sid: number; payload: string }> = []
-  for (const [sid, list] of itemGroups) {
-    const payload = serializeItems(list)
-    if (state.itemSnapshots.get(String(sid)) !== payload) {
-      itemWrites.push({ sid, payload })
-    }
-  }
-  // 被清空的分片也要写空数组，否则删除 scan_path 后旧条目会「复活」
-  for (const sid of Array.from(state.itemSnapshots.keys())) {
-    if (!itemGroups.has(Number(sid))) {
-      itemWrites.push({ sid: Number(sid), payload: "[]" })
-    }
-  }
-
-  const userWrites: Array<{ uid: number; payload: string }> = []
-  for (const [uid, list] of userGroups) {
-    const payload = serializeUsers(list)
-    if (state.userSnapshots.get(String(uid)) !== payload) {
-      userWrites.push({ uid, payload })
-    }
-  }
-  for (const uid of Array.from(state.userSnapshots.keys())) {
-    if (!userGroups.has(Number(uid))) {
-      userWrites.push({ uid: Number(uid), payload: "[]" })
-    }
-  }
-
-  const metaChanged = state.metaSnapshot !== metaStr
-
-  if (itemWrites.length === 0 && userWrites.length === 0 && !metaChanged) {
-    return Promise.resolve()
-  }
-
-  // 乐观更新快照：写入失败会回滚，避免同一个 isolate 反复重试写坏数据
-  const prevItem = new Map(state.itemSnapshots)
-  const prevUser = new Map(state.userSnapshots)
-  const prevMeta = state.metaSnapshot
-  for (const w of itemWrites) state.itemSnapshots.set(String(w.sid), w.payload)
-  for (const w of userWrites) state.userSnapshots.set(String(w.uid), w.payload)
-  if (metaChanged) state.metaSnapshot = metaStr
-
+  // diff 与写入都放进串行队列：快照只在真正写成功后才推进，因此排队的后续保存
+  // 能看到前一次的结果；失败后重试同一份数据也不会被误判成「无变化」。
   saveChain = saveChain
     .catch(() => undefined)
     .then(async () => {
-      for (const w of itemWrites) {
-        await writePersistedSecret(env, itemShardKey(w.sid), w.payload)
+      const itemGroups = groupItems(target.items)
+      const userGroups = groupUserData(target.user_data)
+
+      const itemWrites: Array<{ sid: number; payload: string }> = []
+      for (const [sid, list] of itemGroups) {
+        const payload = serializeItems(list)
+        if (state.itemSnapshots.get(String(sid)) !== payload) {
+          itemWrites.push({ sid, payload })
+        }
       }
-      for (const w of userWrites) {
-        await writePersistedSecret(env, userShardKey(w.uid), w.payload)
+      // 被清空的分片也要写空数组，否则删除 scan_path 后旧条目会「复活」
+      for (const sid of Array.from(state.itemSnapshots.keys())) {
+        if (!itemGroups.has(Number(sid))) {
+          itemWrites.push({ sid: Number(sid), payload: "[]" })
+        }
       }
-      if (metaChanged) {
-        await writePersistedSecret(env, META_KEY, metaStr)
+
+      const userWrites: Array<{ uid: number; payload: string }> = []
+      for (const [uid, list] of userGroups) {
+        const payload = serializeUsers(list)
+        if (state.userSnapshots.get(String(uid)) !== payload) {
+          userWrites.push({ uid, payload })
+        }
       }
-    })
-    .catch((err) => {
-      console.error("[media] save failed:", err?.message || err)
-      state.itemSnapshots = prevItem
-      state.userSnapshots = prevUser
-      state.metaSnapshot = prevMeta
+      for (const uid of Array.from(state.userSnapshots.keys())) {
+        if (!userGroups.has(Number(uid))) {
+          userWrites.push({ uid: Number(uid), payload: "[]" })
+        }
+      }
+
+      const localMeta = buildMetaPayload(target) as Record<string, any>
+      const localMetaStr = JSON.stringify(localMeta)
+      const metaChanged = state.metaSnapshot !== localMetaStr
+
+      if (itemWrites.length === 0 && userWrites.length === 0 && !metaChanged) {
+        return
+      }
+
+      try {
+        for (const w of itemWrites) {
+          if (!(await writePersistedSecret(env, itemShardKey(w.sid), w.payload))) {
+            throw new Error(`items shard ${w.sid} write failed`)
+          }
+        }
+        for (const w of userWrites) {
+          if (!(await writePersistedSecret(env, userShardKey(w.uid), w.payload))) {
+            throw new Error(`userdata shard ${w.uid} write failed`)
+          }
+        }
+        // 所有分片都成功后才提交 meta，避免发布指向未写入分片的索引
+        if (metaChanged) {
+          const meta = await mergeMetaForCommit(env, localMeta)
+          const metaStr = JSON.stringify(meta)
+          if (!(await writePersistedSecret(env, META_KEY, metaStr))) {
+            throw new Error("media meta write failed")
+          }
+          // 快照记录**本地视图**：持久化版本里可能含别的实例的分片，若拿合并
+          // 结果当基准，之后每次保存都会误判成「meta 有变化」而反复重写。
+          state.metaSnapshot = localMetaStr
+          // 采纳其它实例推进过的 id 水位，避免后续分配复用已被占用的 id
+          const nextId = Number(meta.next_id) || 1
+          if (nextId > (Number(target.next_id) || 1)) target.next_id = nextId
+        }
+        // 只有全部写成功才推进快照；失败时保持旧值，重试会重新写入
+        for (const w of itemWrites) {
+          state.itemSnapshots.set(String(w.sid), w.payload)
+        }
+        for (const w of userWrites) {
+          state.userSnapshots.set(String(w.uid), w.payload)
+        }
+      } catch (err: any) {
+        console.error("[media] save failed:", err?.message || err)
+        // 内存里的改动没有落盘：让下一次读取回到持久化版本，
+        // 避免界面继续展示「看起来已保存」的进度。
+        state.loadedAt = 0
+        throw err
+      }
     })
 
   return saveChain
 }
 
-/** 只写 meta（配置/扫描路径/播放列表变更时用，避免触碰条目分片） */
-export async function saveMediaMeta(env: any, db: MediaDb) {
+/**
+ * 只写 meta（配置/扫描路径/播放列表变更时用，避免触碰条目分片）。
+ *
+ * 与 saveMediaDb 共用 saveChain：meta 里带着分片索引，若它抢在排队中的分片
+ * 写入之前落盘，就会发布指向尚未写入分片的索引（冷启动后读到空分片）。
+ * 失败语义同 saveMediaDb：抛错 + 不推进快照 + 失效缓存，下一次保存重试。
+ */
+export function saveMediaMeta(env: any, db: MediaDb): Promise<void> {
   const state: CacheState =
     cache ??
     ({
@@ -445,11 +561,36 @@ export async function saveMediaMeta(env: any, db: MediaDb) {
       userSnapshots: new Map(),
       metaSnapshot: "",
     } as CacheState)
-  const metaStr = JSON.stringify(buildMetaPayload(db))
-  if (state.metaSnapshot === metaStr) return
-  state.metaSnapshot = metaStr
-  state.db = db
-  await writePersistedSecret(env, META_KEY, metaStr)
+
+  saveChain = saveChain
+    .catch(() => undefined)
+    .then(async () => {
+      const localMeta = buildMetaPayload(db) as Record<string, any>
+      const localMetaStr = JSON.stringify(localMeta)
+      if (state.metaSnapshot === localMetaStr) return
+      try {
+        const meta = await mergeMetaForCommit(env, localMeta)
+        const metaStr = JSON.stringify(meta)
+        if (!(await writePersistedSecret(env, META_KEY, metaStr))) {
+          throw new Error("media meta write failed")
+        }
+        // 成功后才推进快照（记录本地视图，理由同 saveMediaDb），
+        // 失败时下一次保存会重新写入。
+        state.metaSnapshot = localMetaStr
+        state.db = db
+        state.loadedAt = Date.now()
+        // 采纳其它实例推进过的 id 水位，避免后续分配复用已被占用的 id
+        const nextId = Number(meta.next_id) || 1
+        if (nextId > (Number(db.next_id) || 1)) db.next_id = nextId
+      } catch (err: any) {
+        console.error("[media] save meta failed:", err?.message || err)
+        // meta 没落盘：让下一次读取回到持久化版本，避免界面继续展示未保存的改动
+        state.loadedAt = 0
+        throw err
+      }
+    })
+
+  return saveChain
 }
 
 export function getNextId(db: MediaDb) {
