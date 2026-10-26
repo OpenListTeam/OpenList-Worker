@@ -43,3 +43,56 @@ test("PikPak driver instantiation", () => {
   })
   assert.ok(driver)
 })
+
+function createDriverWithRequests(responses: unknown[]) {
+  const driver = new PikPakDriver({
+    username: "user@example.com",
+    password: "password123",
+    platform: "web",
+  })
+  const calls: { url: string; params?: Record<string, string> }[] = []
+  ;(driver as any).resolveParentId = async () => "file-id-1"
+  ;(driver as any).client = {
+    request: async (url: string, options: any) => {
+      calls.push({ url, params: options?.params })
+      return responses[calls.length - 1]
+    },
+  }
+  return { driver, calls }
+}
+
+test("PikPak get falls back to usage=FETCH when CACHE returns no link", async () => {
+  const { driver, calls } = createDriverWithRequests([
+    { id: "file-id-1", kind: "drive#file", name: "readme.txt", size: "12" },
+    {
+      id: "file-id-1",
+      kind: "drive#file",
+      name: "readme.txt",
+      size: "12",
+      web_content_link: "https://dl.example.com/readme.txt",
+    },
+  ])
+
+  const item = await driver.get("/readme.txt", "/readme.txt")
+  assert.equal(item.raw_url, "https://dl.example.com/readme.txt")
+  assert.equal(calls.length, 2)
+  assert.equal(calls[0].params?.usage, "CACHE")
+  assert.equal(calls[1].params?.usage, "FETCH")
+})
+
+test("PikPak get keeps a single CACHE request when medias is present", async () => {
+  const { driver, calls } = createDriverWithRequests([
+    {
+      id: "file-id-1",
+      kind: "drive#file",
+      name: "movie.mp4",
+      size: "1024",
+      medias: [{ link: { url: "https://media.example.com/movie.mp4" } }],
+    },
+  ])
+
+  const item = await driver.get("/movie.mp4", "/movie.mp4")
+  assert.equal(item.raw_url, "https://media.example.com/movie.mp4")
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].params?.usage, "CACHE")
+})
