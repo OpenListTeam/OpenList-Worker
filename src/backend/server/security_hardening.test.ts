@@ -14,6 +14,12 @@ import { readBodyWithinLimit } from "../pkg/upload-limit"
 import { userRouter } from "./user"
 import { fsRouter } from "./fs"
 import { resolveShare } from "../internal/op/share"
+import { canonicalizeVirtualPath, getMaxPathDepth } from "../pkg/path"
+import {
+  extractZipEntry,
+  getZipLimits,
+  parseZip,
+} from "../internal/archive/zip"
 import { webdavRouter } from "./webdav"
 
 /**
@@ -507,4 +513,163 @@ test("WebDAV PUT enforces MAX_UPLOAD before reading the body", async () => {
     davEnv,
   )
   assert.equal(res.status, 413)
+})
+
+// ── review follow-up: 统一路径规范化 / ZIP 限制 / WebDAV 空白密码 ──
+
+test("canonicalizeVirtualPath: 宽松折叠与严格拒绝选项", () => {
+  assert.equal(canonicalizeVirtualPath("/a//b/./c"), "/a/b/c")
+  assert.equal(canonicalizeVirtualPath("/a/%2e%2e/b"), "/b")
+  assert.equal(canonicalizeVirtualPath("/a/%252e%252e/b"), "/b")
+
+  assert.throws(
+    () => canonicalizeVirtualPath("/a/%2e%2e/b", { rejectTraversal: true }),
+    /traversal/,
+  )
+  assert.throws(
+    () => canonicalizeVirtualPath("C:/windows", { rejectAbsolute: true }),
+    /Windows/,
+  )
+  assert.throws(
+    () => canonicalizeVirtualPath("//server/share", { rejectAbsolute: true }),
+    /UNC/,
+  )
+  assert.throws(
+    () => canonicalizeVirtualPath("/a/\0/b", { rejectIllegalChars: true }),
+    /illegal character/,
+  )
+  assert.throws(
+    () => canonicalizeVirtualPath("/a/b/c", { maxDepth: 2 }),
+    /maximum depth/,
+  )
+  assert.equal(getMaxPathDepth({ MAX_PATH_DEPTH: "3" }), 3)
+  assert.equal(getMaxPathDepth({ MAX_PATH_DEPTH: "0" }), 128)
+  assert.throws(
+    () =>
+      canonicalizeVirtualPath("/a/b/c", {
+        maxDepth: getMaxPathDepth({ MAX_PATH_DEPTH: "2" }),
+      }),
+    /maximum depth/,
+  )
+})
+
+function makeStoredZip(
+  files: { name: string; data: Uint8Array }[],
+): ArrayBuffer {
+  const enc = new TextEncoder()
+  const body: Uint8Array[] = []
+  const central: Uint8Array[] = []
+  let offset = 0
+  for (const file of files) {
+    const name = enc.encode(file.name)
+    const data = file.data
+    const local = new Uint8Array(30 + name.length)
+    const lv = new DataView(local.buffer)
+    lv.setUint32(0, 0x04034b50, true)
+    lv.setUint16(4, 20, true)
+    lv.setUint16(8, 0, true)
+    lv.setUint32(18, data.length, true)
+    lv.setUint32(22, data.length, true)
+    lv.setUint16(26, name.length, true)
+    local.set(name, 30)
+    body.push(local, data)
+
+    const cd = new Uint8Array(46 + name.length)
+    const cv = new DataView(cd.buffer)
+    cv.setUint32(0, 0x02014b50, true)
+    cv.setUint16(4, 20, true)
+    cv.setUint16(6, 20, true)
+    cv.setUint32(20, data.length, true)
+    cv.setUint32(24, data.length, true)
+    cv.setUint16(28, name.length, true)
+    cv.setUint32(42, offset, true)
+    cd.set(name, 46)
+    central.push(cd)
+    offset += local.length + data.length
+  }
+  const cdSize = central.reduce((n, c) => n + c.length, 0)
+  const eocd = new Uint8Array(22)
+  const ev = new DataView(eocd.buffer)
+  ev.setUint32(0, 0x06054b50, true)
+  ev.setUint16(8, files.length, true)
+  ev.setUint16(10, files.length, true)
+  ev.setUint32(12, cdSize, true)
+  ev.setUint32(16, offset, true)
+
+  const parts = [...body, ...central, eocd]
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
+  let pos = 0
+  for (const part of parts) {
+    out.set(part, pos)
+    pos += part.length
+  }
+  return out.buffer
+}
+
+test("ZIP 限制可通过环境变量收紧，并同时约束条目数与解压大小", async () => {
+  const zip = makeStoredZip([
+    { name: "a.txt", data: new Uint8Array([1, 2]) },
+    { name: "b.txt", data: new Uint8Array([3, 4]) },
+  ])
+
+  assert.equal(parseZip(zip).entries.length, 2)
+  assert.equal(
+    getZipLimits({ MAX_ZIP_ENTRIES: "1", MAX_ZIP_ENTRY_UNCOMPRESSED: "1" })
+      .maxEntries,
+    1,
+  )
+  assert.throws(
+    () => parseZip(zip, { MAX_ZIP_ENTRIES: "1" }),
+    /too many entries/,
+  )
+
+  const archive = parseZip(zip, { MAX_ZIP_ENTRIES: "10" })
+  await assert.rejects(
+    () =>
+      extractZipEntry(zip, archive.entries[0], {
+        MAX_ZIP_ENTRY_UNCOMPRESSED: "1",
+      }),
+    /exceeds the uncompressed size limit/,
+  )
+})
+
+test("WebDAV 拒绝空密码与纯空格 Basic 密码", async () => {
+  const davEnv: any = { JWT_SECRET: "test-only-jwt-secret-for-hardening" }
+  const user: any = {
+    id: 13,
+    username: "dav-empty-pass",
+    role: 0,
+    permission: 1 << 8,
+    base_path: "/",
+    disabled: false,
+    pwd_update_at: new Date().toISOString(),
+  }
+  await setUserPassword(user, "dav-pass")
+  await saveDb(
+    {
+      settings: [],
+      users: [user],
+      storages: [],
+      shares: [],
+      metas: [],
+    },
+    davEnv,
+    { force: true },
+  )
+
+  const app = new Hono()
+  app.route("/dav", webdavRouter)
+  for (const password of ["", "   "]) {
+    const basic =
+      "Basic " + Buffer.from(`dav-empty-pass:${password}`).toString("base64")
+    const res = await app.request(
+      "/dav/",
+      {
+        method: "PROPFIND",
+        headers: { Authorization: basic, Depth: "0" },
+      },
+      davEnv,
+    )
+    assert.equal(res.status, 401, `password=${JSON.stringify(password)}`)
+  }
 })

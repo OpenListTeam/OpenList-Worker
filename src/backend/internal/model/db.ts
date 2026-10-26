@@ -13,7 +13,8 @@ import {
   writePersistedSecret,
 } from "./store/json"
 import { getStoreBackend, readCipher } from "./store/backend"
-import { decodePathForMatching, normalizePathSegments } from "../../pkg/path"
+import { canonicalizeVirtualPath, getMaxPathDepth } from "../../pkg/path"
+import { secureWarn } from "../../pkg/secure-log"
 
 // 保持外部（middlewares.ts / router.ts / admin.ts）对 getKvBinding / getKvStatus
 // 的既有引用不变，从 json 后端 re-export。
@@ -2164,31 +2165,20 @@ export const saveDb = async (
 export async function resolvePath(virtualPath: string, envCtx?: any) {
   const db = await getDb(envCtx)
 
-  let path = decodePathForMatching(String(virtualPath || "")).replace(
-    /\\/g,
-    "/",
-  )
-
-  const illegalChars = ["\0", "\r", "\n", "\t"]
-  for (const ch of illegalChars) {
-    if (path.includes(ch)) {
-      throw new Error(
-        `invalid path: illegal character detected (0x${ch.charCodeAt(0).toString(16)})`,
-      )
-    }
-  }
-
-  if (/^[A-Za-z]:/.test(path)) {
-    throw new Error("invalid path: absolute Windows path not allowed")
-  }
-
-  if (path.startsWith("//")) {
-    throw new Error("invalid path: UNC path not allowed")
-  }
-
-  let cleanPath = normalizePathSegments(path)
-  if (cleanPath === "") {
-    cleanPath = "/"
+  let cleanPath: string
+  try {
+    // 解码 → 反斜杠归一 → 拒绝控制字符/盘符/UNC → 折叠点段，一次完成。
+    cleanPath = canonicalizeVirtualPath(String(virtualPath || ""), {
+      rejectIllegalChars: true,
+      rejectAbsolute: true,
+      maxDepth: getMaxPathDepth(envCtx),
+    })
+  } catch (e: any) {
+    secureWarn("[security] blocked virtual path", {
+      path: String(virtualPath || ""),
+      reason: e?.message || String(e),
+    })
+    throw e
   }
 
   const activeStorages = (db.storages || []).filter(

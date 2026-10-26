@@ -82,10 +82,14 @@ async function webdavAuth(
   if (authHeader.startsWith("Basic ")) {
     try {
       const decoded = atob(authHeader.substring(6).trim())
+      if (!decoded) return null
       const idx = decoded.indexOf(":")
       if (idx < 0) return null
       const username = decoded.substring(0, idx)
       const password = decoded.substring(idx + 1)
+      // 空密码 / 全空格密码直接拒绝：既避免空口令账号被利用，
+      // 也防止后续哈希比较把纯空白当成有效口令。
+      if (!password.trim()) return null
       const { users } = await getOrInitUsers(c.env)
       const user = users.find(
         (u: any) => u.username === username && !u.disabled,

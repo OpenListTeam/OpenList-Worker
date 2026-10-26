@@ -43,7 +43,7 @@ import {
   getSignExpiresIn,
 } from "../pkg/sign"
 import { safeErrorMessage } from "../pkg/errs"
-import { decodePathForMatching, encodeDownloadPath } from "../pkg/path"
+import { encodeDownloadPath } from "../pkg/path"
 import { search } from "../internal/op/search"
 import {
   getDisableIndex,
@@ -1965,7 +1965,7 @@ fsRouter.post("/archive/meta", async (c) => {
       return permissionDenied(c)
     }
     const bytes = await fetchArchiveBytes(c, user, path)
-    const archive = parseZip(bytes)
+    const archive = parseZip(bytes, c.env)
     const tree = buildArchiveTree(archive)
     return c.json({
       code: 200,
@@ -2016,7 +2016,7 @@ fsRouter.post("/archive/list", async (c) => {
       return permissionDenied(c)
     }
     const bytes = await fetchArchiveBytes(c, user, path)
-    const archive = parseZip(bytes)
+    const archive = parseZip(bytes, c.env)
     const prefix = innerPath ? innerPath.replace(/^\/+|\/+$/g, "") + "/" : ""
     const items = archive.entries
       .filter((e) => {
@@ -2079,7 +2079,7 @@ fsRouter.post("/archive/decompress", async (c) => {
         return c.json({ code: 400, message: `unsupported archive format: ${name} (only ZIP is supported)`, data: null }, 400)
       }
       const bytes = await fetchArchiveBytes(c, user, srcPath)
-      const archive = parseZip(bytes)
+      const archive = parseZip(bytes, c.env)
       const prefix = innerPath ? innerPath.replace(/^\/+|\/+$/g, "") + "/" : ""
       for (const entry of archive.entries) {
         if (prefix && !entry.name.startsWith(prefix)) continue
@@ -2100,7 +2100,7 @@ fsRouter.post("/archive/decompress", async (c) => {
           )
           continue
         }
-        const content = await extractZipEntry(bytes, entry)
+        const content = await extractZipEntry(bytes, entry, c.env)
         await putItem(targetPath, Buffer.from(content), getStorageRequestContext(c))
         count++
       }

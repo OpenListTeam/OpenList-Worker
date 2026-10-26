@@ -3,7 +3,12 @@
  * 仅支持 ZIP 格式（Deflate/Store）；rar/7z 等格式由上层明确返回「不支持」。
  *
  * 参考：插件 zip 包的解析逻辑（src/utils/zip_plugin.ts 的 extractZipNative）。
+ *
+ * 安全限制可通过环境变量覆盖（非法值回退默认）：
+ *   MAX_ZIP_ENTRIES             最大条目数（默认 10000）
+ *   MAX_ZIP_ENTRY_UNCOMPRESSED  单条目解压后大小上限（默认 64MB）
  */
+import { secureWarn } from "../../pkg/secure-log"
 
 export interface ZipEntry {
   /** 归档内路径（目录以 / 结尾） */
@@ -25,11 +30,44 @@ export interface ZipArchive {
   entries: ZipEntry[]
 }
 
-export const MAX_ZIP_ENTRIES = 10000
-export const MAX_ZIP_ENTRY_UNCOMPRESSED = 64 * 1024 * 1024
+export const DEFAULT_MAX_ZIP_ENTRIES = 10000
+export const DEFAULT_MAX_ZIP_ENTRY_UNCOMPRESSED = 64 * 1024 * 1024
+
+export interface ZipLimits {
+  maxEntries: number
+  maxUncompressed: number
+}
+
+function readZipLimit(key: string, fallback: number, env?: any): number {
+  const e = env && typeof env === "object" ? env : {}
+  const raw =
+    e[key] !== undefined && e[key] !== null && String(e[key]) !== ""
+      ? e[key]
+      : typeof process !== "undefined"
+        ? process.env?.[key]
+        : undefined
+  if (raw === undefined || raw === null || String(raw).trim() === "")
+    return fallback
+  const n = parseInt(String(raw), 10)
+  if (!Number.isFinite(n) || n <= 0) return fallback
+  return n
+}
+
+/** 解析 ZIP 安全限制（每次调用读取 env，便于按部署覆盖）。 */
+export function getZipLimits(env?: any): ZipLimits {
+  return {
+    maxEntries: readZipLimit("MAX_ZIP_ENTRIES", DEFAULT_MAX_ZIP_ENTRIES, env),
+    maxUncompressed: readZipLimit(
+      "MAX_ZIP_ENTRY_UNCOMPRESSED",
+      DEFAULT_MAX_ZIP_ENTRY_UNCOMPRESSED,
+      env,
+    ),
+  }
+}
 
 /** 解析 ZIP 的中央目录，返回条目列表（不包含目录条目，只返回文件） */
-export function parseZip(buffer: ArrayBuffer): ZipArchive {
+export function parseZip(buffer: ArrayBuffer, env?: any): ZipArchive {
+  const limits = getZipLimits(env)
   const view = new DataView(buffer)
   const length = buffer.byteLength
   if (length < 22) throw new Error("Invalid ZIP: file is too small")
@@ -49,8 +87,12 @@ export function parseZip(buffer: ArrayBuffer): ZipArchive {
 
   const cdCount = view.getUint16(eocdOffset + 10, true)
   const cdOffset = view.getUint32(eocdOffset + 16, true)
-  if (cdCount > MAX_ZIP_ENTRIES) {
-    throw new Error(`Invalid ZIP: too many entries (${cdCount})`)
+  if (cdCount > limits.maxEntries) {
+    secureWarn("[security] blocked ZIP entry count", {
+      entries: cdCount,
+      limit: limits.maxEntries,
+    })
+    throw new Error("Invalid ZIP: too many entries")
   }
   if (cdOffset + 4 > length) {
     throw new Error("Invalid ZIP: central directory is out of bounds")
@@ -129,7 +171,9 @@ export function parseZip(buffer: ArrayBuffer): ZipArchive {
 export async function extractZipEntry(
   buffer: ArrayBuffer,
   entry: ZipEntry,
+  env?: any,
 ): Promise<Uint8Array> {
+  const limits = getZipLimits(env)
   const compressed = new Uint8Array(
     buffer,
     entry.dataOffset,
@@ -138,7 +182,12 @@ export async function extractZipEntry(
 
   if (entry.compressionMethod === 0) {
     // Store（未压缩）
-    if (compressed.length > MAX_ZIP_ENTRY_UNCOMPRESSED) {
+    if (compressed.length > limits.maxUncompressed) {
+      secureWarn("[security] blocked ZIP entry size", {
+        entry: entry.name,
+        size: compressed.length,
+        limit: limits.maxUncompressed,
+      })
       throw new Error("ZIP entry exceeds the uncompressed size limit")
     }
     return new Uint8Array(compressed)
@@ -149,7 +198,12 @@ export async function extractZipEntry(
     if (typeof DecompressionStream === "undefined") {
       throw new Error("DecompressionStream is not supported in this runtime")
     }
-    if (entry.size > MAX_ZIP_ENTRY_UNCOMPRESSED) {
+    if (entry.size > limits.maxUncompressed) {
+      secureWarn("[security] blocked ZIP entry size", {
+        entry: entry.name,
+        size: entry.size,
+        limit: limits.maxUncompressed,
+      })
       throw new Error("ZIP entry exceeds the uncompressed size limit")
     }
     const ds = new DecompressionStream("deflate-raw")
@@ -164,8 +218,13 @@ export async function extractZipEntry(
       if (done) break
       if (!value?.length) continue
       total += value.length
-      if (total > MAX_ZIP_ENTRY_UNCOMPRESSED) {
+      if (total > limits.maxUncompressed) {
         await reader.cancel()
+        secureWarn("[security] blocked ZIP entry decompressed size", {
+          entry: entry.name,
+          size: total,
+          limit: limits.maxUncompressed,
+        })
         throw new Error("ZIP entry exceeds the uncompressed size limit")
       }
       chunks.push(value)
