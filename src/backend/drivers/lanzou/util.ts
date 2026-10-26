@@ -27,6 +27,51 @@ const LANZOU_SHARE_DOMAINS = [
 /** 蓝奏云 Cookie 过期提示文案（cookie 有效期约 15 天） */
 const COOKIE_EXPIRED_MSG = "[Lanzou] Cookie 已过期或失效，请在管理后台重新填写 Cookie（有效期约 15 天）"
 
+/** 旧版分享下载页结构：相对路径 '/ajaxm.php?file=N'（带引号） */
+const LEGACY_FILE_ID_RE = /'\/ajax(?:file|m)\.php\?file=(\d+)'/
+
+/** 2026-10 改版：文件页将下载参数移入 /fn? 内页，接口变为 apifile 绝对地址并携带签名 */
+const FN_DOMAIN_RE = /var\s+domain[12]\s*=\s*'([^']*(?:ajaxfile|ajaxm)\.php\?file=(\d+)[^']*)'/
+const FN_SIGN_RE = /var\s+wp_sign\s*=\s*'([^']*)'/
+const FN_AJAXDATA_RE = /var\s+ajaxdata\s*=\s*'([^']*)'/
+
+/** 新旧结构都不匹配时的提示：说明页面可能又改版了，而不是笼统的"未找到文件 ID" */
+const UNKNOWN_SHARE_PAGE_MSG =
+  "[Lanzou] 未能识别下载页结构（旧版 /ajaxm.php 与 2026-10 的 /fn 结构都不匹配），蓝奏云可能再次改版，需要更新驱动"
+
+/**
+ * 从改版后的 /fn? 内页提取下载接口地址与签名表单。
+ * 对应页面 JS：POST domain1 {'action':'downprocess','websignkey':ajaxdata,
+ *   'signs':ajaxdata,'sign':wp_sign,'websign':'2','kd':kdns,'ves':1}
+ * @param pageData /fn 内页 HTML（建议先过 removeNotes）
+ * @returns 解析成功返回 { url, fileId, form }；未命中改版结构（缺 domain1/wp_sign/ajaxdata）
+ *   返回 null —— 这不是错误，调用方应回退到旧版解析
+ */
+export function parseFnPage(pageData: string): {
+  url: string
+  fileId: string
+  form: Record<string, string>
+} | null {
+  const domainMatch = pageData.match(FN_DOMAIN_RE)
+  if (!domainMatch) return null
+  const signMatch = pageData.match(FN_SIGN_RE)
+  const ajaxDataMatch = pageData.match(FN_AJAXDATA_RE)
+  if (!signMatch || !ajaxDataMatch) return null
+  return {
+    url: domainMatch[1],
+    fileId: domainMatch[2],
+    form: {
+      action: "downprocess",
+      websignkey: ajaxDataMatch[1],
+      signs: ajaxDataMatch[1],
+      sign: signMatch[1],
+      websign: "2",
+      kd: "1",
+      ves: "1",
+    },
+  }
+}
+
 export class LanzouClient {
   private addition: LanzouAddition
   private cookie: string = ""
@@ -668,6 +713,31 @@ export class LanzouClient {
   }
 
   /**
+   * POST 分享下载接口并解析响应。
+   * 旧版走分享域相对地址（ajaxfile.php?file=N），2026-10 改版走 apifile 绝对地址 + 签名表单。
+   * @param referer 省略时使用 baseUrl（与上游 Go 版一致）
+   */
+  private async postShareAjax(
+    url: string,
+    form: Record<string, string>,
+    referer?: string,
+  ): Promise<LanzouShareResp> {
+    const resStr = await this.request(url, "POST", form, referer)
+    let resp: LanzouShareResp
+    try {
+      resp = JSON.parse(resStr)
+    } catch {
+      throw new Error(`[Lanzou] 下载接口响应格式错误: ${resStr}`)
+    }
+    if (resp.zt !== 1) {
+      throw new Error(
+        resp.info || resp.text || `[Lanzou] 提取链接失败 (zt=${resp.zt})`,
+      )
+    }
+    return resp
+  }
+
+  /**
    * 解析单文件分享页面并提取下载直链
    */
   async getFilesByShareUrl(
@@ -749,7 +819,11 @@ export class LanzouClient {
       }
 
       const iframePath = iframeMatch[1]
-      const iframeFullUrl = `${shareBaseDomain}${iframePath.startsWith("/") ? "" : "/"}${iframePath}`
+      // 改版后 iframe 可能直接给绝对地址（如 https://xxx.lanzn.com/fn?token），
+      // 此时不能再拼 shareBaseDomain，否则会拼成 https://hosthttps://host/fn?...
+      const iframeFullUrl = /^https?:\/\//i.test(iframePath)
+        ? iframePath
+        : `${shareBaseDomain}${iframePath.startsWith("/") ? "" : "/"}${iframePath}`
       const nextPageData = await this.request(
         iframeFullUrl,
         "GET",
@@ -757,32 +831,43 @@ export class LanzouClient {
         sharePageUrl,
       )
       const cleanNextPage = removeNotes(nextPageData)
-      param = htmlJsonToMap(cleanNextPage, cleanNextPage)
 
-      const fileIdMatch =
-        cleanNextPage.match(/['"]?\/?ajax(?:file|m)\.php\?file=(\d+)['"]?/) ||
-        cleanNextPage.match(/file\s*[:=]\s*['"]?(\d+)['"]?/) ||
-        cleanNextPage.match(/file=(\d+)/) ||
-        cleanNextPage.match(/var\s+file_id\s*=\s*['"]?(\d+)['"]?/)
-      const fileId = fileIdMatch ? fileIdMatch[1] : ""
-      if (!fileId) throw new Error("[Lanzou] 未找到文件 ID")
-
-      const resStr = await this.request(
-        `${shareBaseDomain}/ajaxfile.php?file=${fileId}`,
-        "POST",
-        param,
-        iframeFullUrl,
-      )
       let resp: LanzouShareResp
-      try {
-        resp = JSON.parse(resStr)
-      } catch {
-        throw new Error(`[Lanzou] ajaxfile.php 响应格式错误: ${resStr}`)
-      }
-      if (resp.zt !== 1) {
-        throw new Error(
-          resp.info || resp.text || `[Lanzou] 提取链接失败 (zt=${resp.zt})`,
+      const legacyIdMatch = cleanNextPage.match(LEGACY_FILE_ID_RE)
+      if (legacyIdMatch) {
+        // 旧版结构：相对路径 /ajaxm.php?file=N
+        param = htmlJsonToMap(cleanNextPage, cleanNextPage)
+        resp = await this.postShareAjax(
+          `${shareBaseDomain}/ajaxfile.php?file=${legacyIdMatch[1]}`,
+          param,
+          iframeFullUrl,
         )
+      } else {
+        const fnPage = parseFnPage(cleanNextPage)
+        if (fnPage) {
+          // 2026-10 改版结构：/fn? 内页携带 apifile 绝对地址与签名参数，
+          // 必须原样 POST 到该地址（签名与 file=N 绑定），不能再拼成分享域相对路径
+          resp = await this.postShareAjax(fnPage.url, fnPage.form)
+        } else {
+          // 兜底：页面变体（无引号 / 无前导斜杠），沿用原有宽松提取
+          try {
+            param = htmlJsonToMap(cleanNextPage, cleanNextPage)
+          } catch {
+            throw new Error(UNKNOWN_SHARE_PAGE_MSG)
+          }
+          const fileIdMatch =
+            cleanNextPage.match(/['"]?\/?ajax(?:file|m)\.php\?file=(\d+)['"]?/) ||
+            cleanNextPage.match(/file\s*[:=]\s*['"]?(\d+)['"]?/) ||
+            cleanNextPage.match(/file=(\d+)/) ||
+            cleanNextPage.match(/var\s+file_id\s*=\s*['"]?(\d+)['"]?/)
+          const fileId = fileIdMatch ? fileIdMatch[1] : ""
+          if (!fileId) throw new Error(UNKNOWN_SHARE_PAGE_MSG)
+          resp = await this.postShareAjax(
+            `${shareBaseDomain}/ajaxfile.php?file=${fileId}`,
+            param,
+            iframeFullUrl,
+          )
+        }
       }
 
       baseUrl = `${resp.dom}/file`
