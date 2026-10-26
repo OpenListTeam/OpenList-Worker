@@ -2,16 +2,28 @@ import { Hono } from "hono"
 import { getDb, saveDb } from "../internal/model/db"
 import { adminAuthMiddleware, getUserFromContext } from "./middlewares"
 import { can, PermissionBit, isAdmin, getActualPath } from "../pkg/permission"
+import { canonicalizeVirtualPath, getMaxPathDepth } from "../pkg/path"
+import { secureWarn } from "../pkg/secure-log"
+import { canAccess, getNearestMeta } from "../pkg/meta"
 
 export const shareRouter = new Hono()
 
-function sanitizePath(p: string): string {
-  const normalized = (p || "").replace(/\\/g, "/").replace(/\/+/g, "/")
-  const segments = normalized.split("/").filter((s) => s && s !== ".")
-  if (segments.some((s) => s === "..")) {
-    throw new Error("Path traversal segment '..' is not allowed")
+function sanitizePath(p: string, env?: any): string {
+  try {
+    return canonicalizeVirtualPath(String(p || ""), {
+      rejectTraversal: true,
+      rejectIllegalChars: true,
+      rejectAbsolute: true,
+      maxDepth: getMaxPathDepth(env),
+    })
+  } catch (e: any) {
+    secureWarn("[security] blocked share path", {
+      path: String(p || ""),
+      reason: e?.message || String(e),
+      where: "share.sanitizePath",
+    })
+    throw new Error("Invalid path")
   }
-  return "/" + segments.join("/")
 }
 
 // 分享管理接口需要管理员权限（list/get/update/delete）
@@ -65,7 +77,7 @@ shareRouter.post("/create", async (c) => {
   if (Array.isArray(body.files)) {
     try {
       files = body.files.map((f: string) => {
-        const clean = sanitizePath(String(f))
+        const clean = sanitizePath(String(f), c.env)
         return isAdmin(user) ? clean : getActualPath(user, clean)
       })
     } catch (err: any) {
@@ -73,6 +85,18 @@ shareRouter.post("/create", async (c) => {
         { code: 400, message: err.message || "Invalid file path", data: null },
         400,
       )
+    }
+  }
+
+  if (!isAdmin(user)) {
+    for (const file of files) {
+      const meta = await getNearestMeta(file, c.env)
+      if (!canAccess(user, meta, file, "")) {
+        return c.json(
+          { code: 403, message: "Permission denied", data: null },
+          403,
+        )
+      }
     }
   }
 

@@ -1,4 +1,6 @@
 import { getDb, saveDb } from "../model/db"
+import { canonicalizeVirtualPath, getMaxPathDepth } from "../../pkg/path"
+import { secureWarn } from "../../pkg/secure-log"
 
 /**
  * Share path resolution for /@s/{shareId}/... (frontend browsing)
@@ -19,19 +21,32 @@ export interface ShareResolveResult {
 // survived verbatim and `/@s/{id}/../../../` escalated a single-file share
 // into browsing the entire storage root (verified at runtime).
 // Backslashes are normalized first for the same reason as resolvePath (C-2).
-const normalize = (p: string) => {
-  const stack: string[] = []
-  for (const seg of String(p || "")
-    .replace(/\\/g, "/")
-    .split("/")) {
-    if (seg === "" || seg === ".") continue
-    if (seg === "..") {
-      stack.pop() // clamp at the share root instead of escaping upward
-      continue
-    }
-    stack.push(seg)
+const normalize = (p: string): string => canonicalizeVirtualPath(p)
+
+/**
+ * 分享路径不接受任何相对段：解码后一旦出现 `.` / `..` / `...` 就拒绝。
+ * 返回 null 并记录一条安全日志；调用方统一转成 “Invalid share path”。
+ */
+function canonicalSharePath(
+  p: string,
+  where: string,
+  maxDepth: number = getMaxPathDepth(),
+): string | null {
+  try {
+    return canonicalizeVirtualPath(p, {
+      rejectTraversal: true,
+      rejectIllegalChars: true,
+      rejectAbsolute: true,
+      maxDepth,
+    })
+  } catch (e: any) {
+    secureWarn("[security] blocked share path", {
+      path: String(p || ""),
+      reason: e?.message || String(e),
+      where,
+    })
+    return null
   }
-  return "/" + stack.join("/")
 }
 
 /**
@@ -44,7 +59,11 @@ export async function resolveShare(
   password: string,
   envCtx?: any,
 ): Promise<ShareResolveResult> {
-  const clean = normalize(reqPath)
+  const maxDepth = getMaxPathDepth(envCtx)
+  const clean = canonicalSharePath(reqPath, "resolveShare.reqPath", maxDepth)
+  if (clean === null) {
+    return { ok: false, error: "Invalid share path" }
+  }
   const parts = clean.split("/").filter(Boolean)
   if (parts.length < 1) {
     return { ok: false, error: "Invalid share path" }
@@ -94,9 +113,18 @@ export async function resolveShare(
 
   // FIX(C-3): containment check. Whatever normalize() produces, the result
   // must stay inside one of the explicitly shared paths.
-  const allowedRoots: string[] = (share.files || []).map((f: string) =>
-    normalize(f),
-  )
+  const allowedRoots: string[] = []
+  for (const f of share.files || []) {
+    const root = canonicalSharePath(
+      String(f),
+      "resolveShare.share.files",
+      maxDepth,
+    )
+    if (root === null) {
+      return { ok: false, error: "Invalid share path" }
+    }
+    allowedRoots.push(root)
+  }
   const withinShare = (p: string) =>
     allowedRoots.some((a) => p === a || p.startsWith(a === "/" ? "/" : a + "/"))
 
@@ -104,7 +132,7 @@ export async function resolveShare(
   // always suspicious — reject instead of concatenating them.
   if (share.files.length === 1) {
     if (rest.length > 0) return { ok: false, error: "path not found in share" }
-    return { ok: true, share, realPath: normalize(share.files[0]) }
+    return { ok: true, share, realPath: allowedRoots[0] }
   }
 
   // Multi-file share, sub-path: match by basename
@@ -114,14 +142,22 @@ export async function resolveShare(
     return segs[segs.length - 1] === subName
   })
   if (!match) return { ok: false, error: "path not found in share" }
-  const real = normalize([normalize(match), ...rest.slice(1)].join("/"))
-  if (!withinShare(real)) return { ok: false, error: "path not found in share" }
+  const real = canonicalSharePath(
+    [normalize(match), ...rest.slice(1)].join("/"),
+    "resolveShare.realPath",
+    maxDepth,
+  )
+  if (real === null || !withinShare(real)) {
+    return { ok: false, error: "path not found in share" }
+  }
   return { ok: true, share, realPath: real }
 }
 
 /** Extract the share id from a path like `/@s/abc/sub` or `/abc/sub` */
 export function extractShareId(reqPath: string): string | null {
-  const parts = normalize(reqPath).split("/").filter(Boolean)
+  const clean = canonicalSharePath(reqPath, "extractShareId")
+  if (clean === null) return null
+  const parts = clean.split("/").filter(Boolean)
   if (parts.length === 0) return null
   if (parts[0] === "@s") return parts[1] || null
   return parts[0]
