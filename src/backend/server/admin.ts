@@ -14,6 +14,7 @@ import {
   clearSearchIndex,
   readIndexMeta,
   stopIndex,
+  getSearchIndexConfig,
 } from "../internal/op/search_index"
 import { checkAdminAuth } from "../pkg/utils"
 import { safeErrorMessage } from "../pkg/errs"
@@ -5158,19 +5159,28 @@ adminRouter.post("/storage/refresh_one", async (c) => {
 // 游标续建」，不再内嵌进主配置 JSON（低存储 / 低写放大），搜索改为内存过滤。
 // 超过单请求预算时写 cursor 返回 done=false，前端重复触发 /index/build 即续建。
 
-function indexProgressFromMeta(metaOrPass: any) {
+function indexProgressFromMeta(metaOrPass: any, env?: any) {
   // 兼容两种来源：IndexMeta（is_done）与 PassResult（done）。
   // 无任何 meta（未建过索引）时 is_done=true —— 对齐旧实现
   // （旧 getDb 无 search_index 时返回 {}，is_done = !!(undefined !== false)），
   // 避免「未建索引」被前端误读为「构建中」。
   const isDone = metaOrPass
-    ? metaOrPass.done ?? metaOrPass.is_done ?? false
+    ? (metaOrPass.done ?? metaOrPass.is_done ?? false)
     : true
+  // building_at 是跨 isolate 的软租约；超过租约时长视为陈旧锁，不再上报构建中
+  let isBuilding = !!metaOrPass?.busy
+  if (metaOrPass?.building_at) {
+    const cfg = getSearchIndexConfig(env)
+    const at = Date.parse(metaOrPass.building_at)
+    isBuilding = Number.isFinite(at) && Date.now() - at < cfg.buildLeaseMs
+  }
   return {
     obj_count: metaOrPass?.total ?? 0,
     is_done: !!isDone,
     last_done_time: (metaOrPass?.updated_at as string) || null,
     error: metaOrPass?.error || "",
+    is_building: isBuilding,
+    busy: !!metaOrPass?.busy,
   }
 }
 
@@ -5203,9 +5213,9 @@ adminRouter.post("/index/build", async (c) => {
     })
     return c.json({
       code: 200,
-      message: "success",
+      message: res.busy ? "index build already in progress" : "success",
       data: {
-        ...indexProgressFromMeta(res),
+        ...indexProgressFromMeta(res, c.env),
         done: res.done,
         scanned: res.scanned,
       },
@@ -5229,9 +5239,9 @@ adminRouter.post("/index/update", async (c) => {
     }
     return c.json({
       code: 200,
-      message: "success",
+      message: res.busy ? "index update already in progress" : "success",
       data: {
-        ...indexProgressFromMeta(res),
+        ...indexProgressFromMeta(res, c.env),
         scanned: res.scanned,
       },
     })
@@ -5248,7 +5258,7 @@ adminRouter.post("/index/stop", async (c) => {
     return c.json({
       code: 200,
       message: "success",
-      data: indexProgressFromMeta(meta),
+      data: indexProgressFromMeta(meta, c.env),
     })
   } catch (e: any) {
     return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
@@ -5262,7 +5272,7 @@ adminRouter.post("/index/clear", async (c) => {
     return c.json({
       code: 200,
       message: "success",
-      data: indexProgressFromMeta(null),
+      data: indexProgressFromMeta(null, c.env),
     })
   } catch (e: any) {
     return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
@@ -5276,7 +5286,7 @@ adminRouter.get("/index/progress", async (c) => {
     return c.json({
       code: 200,
       message: "success",
-      data: indexProgressFromMeta(meta),
+      data: indexProgressFromMeta(meta, c.env),
     })
   } catch (e: any) {
     return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
@@ -5288,7 +5298,7 @@ adminRouter.post("/scan/start", async (c) => {
   try {
     const res = await runIndexPass(c.env, { max_depth: 20 })
     const meta = await readIndexMeta(c.env)
-    const progress = indexProgressFromMeta(meta || res)
+    const progress = indexProgressFromMeta(meta || res, c.env)
     // db.scan_result 只保留轻量元数据，不再内嵌 items（历史上是第二份大存储）
     const db = await getDb(c.env)
     db.scan_result = {
@@ -5313,7 +5323,12 @@ adminRouter.post("/scan/stop", async (c) => {
   return c.json({
     code: 200,
     message: "success",
-    data: { obj_count: db.scan_result?.total ?? 0, is_done: true, last_done_time: db.scan_result?.updated_at || null, error: db.scan_result?.error || "" },
+    data: {
+      obj_count: db.scan_result?.total ?? 0,
+      is_done: true,
+      last_done_time: db.scan_result?.updated_at || null,
+      error: db.scan_result?.error || "",
+    },
   })
 })
 

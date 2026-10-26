@@ -12,17 +12,43 @@ import {
   joinChildPath,
   normalizeParentKey,
   DEFAULT_PASS_DIR_BUDGET,
+  getSearchIndexConfig,
+  INDEX_META_KEY,
+  INDEX_CURSOR_KEY,
+  INDEX_SHARD_PREFIX,
 } from "./search_index"
+import { getStorageBackend } from "../model/store/backend"
 import type { IndexTuple } from "./search_index"
 
 // ── 编码 roundtrip ─────────────────────────────
 
 test("encodeShard/decodeShard roundtrip", async () => {
   const tuples: IndexTuple[] = [
-    { n: "中文 电影.mp4", p: "", size: 1024, m: "2024-01-01T00:00:00", is_dir: false, t: 2 },
+    {
+      n: "中文 电影.mp4",
+      p: "",
+      size: 1024,
+      m: "2024-01-01T00:00:00",
+      is_dir: false,
+      t: 2,
+    },
     { n: "docs", p: "", size: 0, m: "2024-01-02T10:30:00", is_dir: true, t: 1 },
-    { n: "readme.md", p: "docs", size: 88, m: "2024-01-03T10:00:00", is_dir: false, t: 4 },
-    { n: "a/b', \"quotes\" & \n seа".slice(0, 3), p: "docs/sub", size: 1, m: "", is_dir: false, t: 0 },
+    {
+      n: "readme.md",
+      p: "docs",
+      size: 88,
+      m: "2024-01-03T10:00:00",
+      is_dir: false,
+      t: 4,
+    },
+    {
+      n: 'a/b\', "quotes" & \n seа'.slice(0, 3),
+      p: "docs/sub",
+      size: 1,
+      m: "",
+      is_dir: false,
+      t: 0,
+    },
   ]
   const b64 = await encodeShard(tuples)
   assert.ok(typeof b64 === "string" && b64.length > 0)
@@ -59,15 +85,43 @@ function makeTree() {
   const files: Record<string, any[]> = {
     "/": [
       { name: "a", size: 1, is_dir: false, modified: "T1", sign: "s", type: 0 },
-      { name: "mount", size: 0, is_dir: true, modified: "T2", sign: "", type: 1 },
-      { name: "dir1", size: 0, is_dir: true, modified: "T3", sign: "s", type: 1 },
+      {
+        name: "mount",
+        size: 0,
+        is_dir: true,
+        modified: "T2",
+        sign: "",
+        type: 1,
+      },
+      {
+        name: "dir1",
+        size: 0,
+        is_dir: true,
+        modified: "T3",
+        sign: "s",
+        type: 1,
+      },
     ],
     "/mount": [
-      { name: "inner", size: 5, is_dir: false, modified: "T4", sign: "x", type: 0 },
+      {
+        name: "inner",
+        size: 5,
+        is_dir: false,
+        modified: "T4",
+        sign: "x",
+        type: 0,
+      },
     ],
     "/dir1": [
       { name: "b", size: 2, is_dir: false, modified: "T5", sign: "s", type: 0 },
-      { name: "dir2", size: 0, is_dir: true, modified: "T6", sign: "s", type: 1 },
+      {
+        name: "dir2",
+        size: 0,
+        is_dir: true,
+        modified: "T6",
+        sign: "s",
+        type: 1,
+      },
     ],
     "/dir1/dir2": [],
   }
@@ -195,15 +249,24 @@ test("searchIndexed：索引命中 + 关键词 + scope + 分页", async () => {
   const sub = await searchIndexed({ env, parent: "/dir1" } as any, env)
   assert.strictEqual(sub!.total, 2) // b + dir2
   // scope=1 只看目录
-  const dirs = await searchIndexed({ env, parent: "/dir1", scope: 1 } as any, env)
+  const dirs = await searchIndexed(
+    { env, parent: "/dir1", scope: 1 } as any,
+    env,
+  )
   assert.strictEqual(dirs!.total, 1)
   assert.strictEqual(dirs!.content[0].name, "dir2")
   // scope=2 只看文件
-  const filesOnly = await searchIndexed({ env, parent: "/dir1", scope: 2 } as any, env)
+  const filesOnly = await searchIndexed(
+    { env, parent: "/dir1", scope: 2 } as any,
+    env,
+  )
   assert.strictEqual(filesOnly!.total, 1)
   assert.strictEqual(filesOnly!.content[0].name, "b")
   // 分页
-  const page2 = await searchIndexed({ env, parent: "/dir1", per_page: 1, page: 2 } as any, env)
+  const page2 = await searchIndexed(
+    { env, parent: "/dir1", per_page: 1, page: 2 } as any,
+    env,
+  )
   assert.strictEqual(page2!.content.length, 1)
 })
 
@@ -242,4 +305,141 @@ test("updateIndexSubtree：指定子树真增量（不重扫 /）", async () => 
   assert.strictEqual(after!.total, 5, "子树剔除后重收集，总条目数不变")
   const sub = await searchIndexed({ env, parent: "/dir1" } as any, env)
   assert.strictEqual(sub!.total, 2)
+})
+
+// ── 可配置参数 / 并发租约 / 失败阈值 / 分片清理（review follow-up）──
+
+test("getSearchIndexConfig：默认值、env 覆盖与非法值回退", () => {
+  const def = getSearchIndexConfig({})
+  assert.strictEqual(def.shardSize, 4000)
+  assert.strictEqual(def.shardMaxCount, 200)
+  assert.strictEqual(def.itemsHardCap, 600_000)
+  assert.strictEqual(def.passDirBudget, DEFAULT_PASS_DIR_BUDGET)
+  assert.strictEqual(def.maxErrors, 100)
+  assert.strictEqual(def.logStats, false)
+
+  const custom = getSearchIndexConfig({
+    INDEX_SHARD_SIZE: "2",
+    INDEX_MAX_ERRORS: "1",
+    INDEX_LOG_STATS: "true",
+  })
+  assert.strictEqual(custom.shardSize, 2)
+  assert.strictEqual(custom.maxErrors, 1)
+  assert.strictEqual(custom.logStats, true)
+
+  const invalid = getSearchIndexConfig({
+    INDEX_SHARD_SIZE: "abc",
+    INDEX_WALK_CONCURRENCY: "99",
+    INDEX_MAX_ERRORS: "0",
+  })
+  assert.strictEqual(invalid.shardSize, 4000)
+  assert.strictEqual(invalid.walkConcurrency, 8)
+  assert.strictEqual(invalid.maxErrors, 0)
+})
+
+test("INDEX_SHARD_SIZE：分片数按配置生效", async () => {
+  const env = { INDEX_SHARD_SIZE: "2" }
+  await clearSearchIndex(env)
+  const r = await runIndexPass(env, { lister: makeTree(), dir_budget: 50 })
+  assert.strictEqual(r.done, true)
+  const meta = (await readIndexMeta(env))!
+  assert.strictEqual(meta.total, 5)
+  assert.strictEqual(meta.shards, 3)
+  await clearSearchIndex(env)
+})
+
+test("runIndexPass：未过期租约返回 busy，且不再调用 lister", async () => {
+  const env = {}
+  await clearSearchIndex(env)
+  const { driver } = await getStorageBackend(env)
+  await driver.put(
+    INDEX_META_KEY,
+    JSON.stringify({
+      v: 1,
+      total: 42,
+      is_done: true,
+      updated_at: new Date().toISOString(),
+      error: "",
+      shards: 0,
+      building_at: new Date().toISOString(),
+    }),
+    env,
+  )
+  let called = 0
+  const r = await runIndexPass(env, {
+    lister: () => {
+      called++
+      return Promise.resolve({ content: [] })
+    },
+  })
+  assert.strictEqual(r.busy, true)
+  assert.strictEqual(r.total, 42)
+  assert.strictEqual(called, 0)
+  await clearSearchIndex(env)
+})
+
+test("runIndexPass：陈旧租约会被接管并继续构建", async () => {
+  const env = { INDEX_BUILD_LEASE_MS: "10000" }
+  await clearSearchIndex(env)
+  const { driver } = await getStorageBackend(env)
+  await driver.put(
+    INDEX_META_KEY,
+    JSON.stringify({
+      v: 1,
+      total: 42,
+      is_done: true,
+      updated_at: new Date().toISOString(),
+      error: "",
+      shards: 0,
+      building_at: new Date(Date.now() - 20_000).toISOString(),
+    }),
+    env,
+  )
+  let called = 0
+  const r = await runIndexPass(env, {
+    lister: (p) => {
+      called++
+      return makeTree()(p)
+    },
+    dir_budget: 50,
+  })
+  assert.strictEqual(r.busy, undefined)
+  assert.strictEqual(r.done, true)
+  assert.ok(called > 0)
+  const meta = (await readIndexMeta(env))!
+  assert.strictEqual(meta.is_done, true)
+  assert.strictEqual(meta.building_at, null, "pass 结束后应释放租约")
+  await clearSearchIndex(env)
+})
+
+test("runIndexPass：失败目录数达到阈值时中止并清空 cursor", async () => {
+  const env = { INDEX_MAX_ERRORS: "1" }
+  await clearSearchIndex(env)
+  const r = await runIndexPass(env, {
+    lister: () => Promise.reject(new Error("boom")),
+    dir_budget: 10,
+  })
+  assert.strictEqual(r.done, false)
+  assert.match(r.error, /Too many failed directories/)
+  const meta = (await readIndexMeta(env))!
+  assert.strictEqual(meta.is_done, false)
+  const { driver } = await getStorageBackend(env)
+  assert.strictEqual(await driver.get(INDEX_CURSOR_KEY, env), null)
+  await clearSearchIndex(env)
+})
+
+test("clearSearchIndex：meta、cursor 与全部分片键一并删除", async () => {
+  const env = {}
+  await clearSearchIndex(env)
+  await runIndexPass(env, { lister: makeTree(), dir_budget: 50 })
+  const meta = (await readIndexMeta(env))!
+  assert.ok(meta.shards > 0)
+  const { driver } = await getStorageBackend(env)
+  const before = await driver.list(INDEX_SHARD_PREFIX, env)
+  assert.strictEqual(before.length, meta.shards)
+
+  await clearSearchIndex(env)
+  assert.strictEqual(await readIndexMeta(env), null)
+  assert.strictEqual((await driver.list(INDEX_SHARD_PREFIX, env)).length, 0)
+  assert.strictEqual(await driver.get(INDEX_CURSOR_KEY, env), null)
 })
