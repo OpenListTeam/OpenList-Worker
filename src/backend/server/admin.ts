@@ -8,6 +8,14 @@ import {
 } from "../internal/model/db"
 import { getDriver } from "../internal/op/storage"
 import { search } from "../internal/op/search"
+import {
+  runIndexPass,
+  updateIndexSubtree,
+  clearSearchIndex,
+  readIndexMeta,
+  stopIndex,
+  getSearchIndexConfig,
+} from "../internal/op/search_index"
 import { checkAdminAuth } from "../pkg/utils"
 import { safeErrorMessage } from "../pkg/errs"
 import { validateHide } from "../pkg/meta"
@@ -5210,136 +5218,69 @@ adminRouter.post("/storage/refresh_one", async (c) => {
 })
 
 // --- Search Index / Scan ---
-// Serverless 环境无常驻后台任务，索引构建为「请求内同步遍历 + KV 缓存」。
-// 对大型存储可能耗时较长（受 Worker CPU 时限约束），但中小型部署可用；
-// 前端仍可实时搜索（search 函数递归遍历），索引缓存仅用于加速与进度展示。
+// Serverless 环境无常驻后台任务：索引构建为「有界并发 BFS + 独立 KV 分片存储 +
+// 游标续建」，不再内嵌进主配置 JSON（低存储 / 低写放大），搜索改为内存过滤。
+// 超过单请求预算时写 cursor 返回 done=false，前端重复触发 /index/build 即续建。
 
-function indexProgress(db: any) {
-  const idx = db.search_index || {}
+function indexProgressFromMeta(metaOrPass: any, env?: any) {
+  // 兼容两种来源：IndexMeta（is_done）与 PassResult（done）。
+  // 无任何 meta（未建过索引）时 is_done=true —— 对齐旧实现
+  // （旧 getDb 无 search_index 时返回 {}，is_done = !!(undefined !== false)），
+  // 避免「未建索引」被前端误读为「构建中」。
+  const isDone = metaOrPass
+    ? (metaOrPass.done ?? metaOrPass.is_done ?? false)
+    : true
+  // building_at 是跨 isolate 的软租约；超过租约时长视为陈旧锁，不再上报构建中
+  let isBuilding = !!metaOrPass?.busy
+  if (metaOrPass?.building_at) {
+    const cfg = getSearchIndexConfig(env)
+    const at = Date.parse(metaOrPass.building_at)
+    isBuilding = Number.isFinite(at) && Date.now() - at < cfg.buildLeaseMs
+  }
   return {
-    obj_count: idx.total ?? 0,
-    is_done: idx.is_done !== false,
-    last_done_time: idx.updated_at || null,
-    error: idx.error || "",
+    obj_count: metaOrPass?.total ?? 0,
+    is_done: !!isDone,
+    last_done_time: (metaOrPass?.updated_at as string) || null,
+    error: metaOrPass?.error || "",
+    is_building: isBuilding,
+    busy: !!metaOrPass?.busy,
   }
 }
 
-// POST /api/admin/index/build — 全量重建索引（同步遍历 /）
+// POST /api/admin/index/build — 全量重建索引（有界并发 BFS + 游标续建）
 adminRouter.post("/index/build", async (c) => {
   try {
-    const db = await getDb(c.env)
-    const res = await search(
-      { parent: "/", keywords: "", max_depth: 20, max_results: 2000 },
-      c.env,
-    )
-    db.search_index = {
-      items: res.content,
-      total: res.total,
-      is_done: true,
-      updated_at: new Date().toISOString(),
-      error: "",
-    }
-    await saveDb(db, c.env)
-    return c.json({
-      code: 200,
-      message: "success",
-      data: indexProgress(db),
-    })
-  } catch (e: any) {
-    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
-  }
-})
-
-// POST /api/admin/index/update — 更新指定路径索引
-adminRouter.post("/index/update", async (c) => {
-  try {
     const body = await c.req.json().catch(() => ({}))
-    const paths: string[] = Array.isArray(body.paths) ? body.paths : ["/"]
-    const maxDepth = Math.min(20, Math.max(0, Number(body.max_depth) || 20))
+    // 若主配置 JSON 里还残留旧格式的 search_index.items（旧版本部署升级），
+    // 借这次重建瘦身：写回轻量占位，真正的数据迁往独立 KV 分片键。
     const db = await getDb(c.env)
-    const prev = db.search_index?.items || []
-    // 移除旧索引中属于这些路径的条目，再重建
-    const keep = prev.filter(
-      (it: any) => !paths.some((p: string) => (it.parent || "/").startsWith(p)),
-    )
-    const res = await search(
-      { parent: "/", keywords: "", max_depth: maxDepth, max_results: 2000 },
-      c.env,
-    )
-    db.search_index = {
-      items: [...keep, ...res.content],
-      total: keep.length + res.total,
-      is_done: true,
-      updated_at: new Date().toISOString(),
-      error: "",
-    }
-    await saveDb(db, c.env)
-    return c.json({
-      code: 200,
-      message: "success",
-      data: indexProgress(db),
-    })
-  } catch (e: any) {
-    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
-  }
-})
-
-// POST /api/admin/index/stop — 无后台任务，直接标记完成
-adminRouter.post("/index/stop", async (c) => {
-  const db = await getDb(c.env)
-  if (db.search_index) db.search_index.is_done = true
-  await saveDb(db, c.env)
-  return c.json({ code: 200, message: "success", data: indexProgress(db) })
-})
-
-// POST /api/admin/index/clear — 清空索引
-adminRouter.post("/index/clear", async (c) => {
-  const db = await getDb(c.env)
-  db.search_index = {
-    items: [],
-    total: 0,
-    is_done: true,
-    updated_at: new Date().toISOString(),
-    error: "",
-  }
-  await saveDb(db, c.env)
-  return c.json({ code: 200, message: "success", data: indexProgress(db) })
-})
-
-// GET /api/admin/index/progress — 索引进度
-adminRouter.get("/index/progress", async (c) => {
-  const db = await getDb(c.env)
-  return c.json({
-    code: 200,
-    message: "success",
-    data: indexProgress(db),
-  })
-})
-
-// POST /api/admin/scan/start — 手动扫描（同步遍历 /）
-adminRouter.post("/scan/start", async (c) => {
-  try {
-    const db = await getDb(c.env)
-    const res = await search(
-      { parent: "/", keywords: "", max_depth: 20, max_results: 2000 },
-      c.env,
-    )
-    db.scan_result = {
-      items: res.content,
-      total: res.total,
-      is_done: true,
-      updated_at: new Date().toISOString(),
-      error: "",
-    }
-    await saveDb(db, c.env)
-    return c.json({
-      code: 200,
-      message: "success",
-      data: {
-        obj_count: res.total,
-        is_done: true,
-        last_done_time: db.scan_result.updated_at,
+    if (db.search_index?.items?.length || db.scan_result?.items?.length) {
+      db.search_index = {
+        items: [],
+        total: db.search_index.total || 0,
+        is_done: db.search_index.is_done !== false,
+        updated_at: db.search_index.updated_at || null,
         error: "",
+      }
+      db.scan_result = {
+        items: [],
+        total: db.scan_result.total || 0,
+        is_done: db.scan_result.is_done !== false,
+        updated_at: db.scan_result.updated_at || null,
+        error: "",
+      }
+      await saveDb(db, c.env)
+    }
+    const res = await runIndexPass(c.env, {
+      max_depth: Number(body?.max_depth) || 20,
+    })
+    return c.json({
+      code: 200,
+      message: res.busy ? "index build already in progress" : "success",
+      data: {
+        ...indexProgressFromMeta(res, c.env),
+        done: res.done,
+        scanned: res.scanned,
       },
     })
   } catch (e: any) {
@@ -5347,16 +5288,114 @@ adminRouter.post("/scan/start", async (c) => {
   }
 })
 
-// POST /api/admin/scan/stop — 无后台任务，标记完成
+// POST /api/admin/index/update — 按 paths 增量重建子树（不再全量重扫 /）
+adminRouter.post("/index/update", async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}))
+    const paths: string[] = Array.isArray(body.paths) ? body.paths : ["/"]
+    const res = await updateIndexSubtree(c.env, {
+      parents: paths,
+      max_depth: Math.min(30, Math.max(0, Number(body.max_depth) || 20)),
+    })
+    if (res.error) {
+      return c.json({ code: 500, message: res.error, data: null }, 500)
+    }
+    return c.json({
+      code: 200,
+      message: res.busy ? "index update already in progress" : "success",
+      data: {
+        ...indexProgressFromMeta(res, c.env),
+        scanned: res.scanned,
+      },
+    })
+  } catch (e: any) {
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
+  }
+})
+
+// POST /api/admin/index/stop — 丢弃游标并标记完成
+adminRouter.post("/index/stop", async (c) => {
+  try {
+    await stopIndex(c.env)
+    const meta = await readIndexMeta(c.env)
+    return c.json({
+      code: 200,
+      message: "success",
+      data: indexProgressFromMeta(meta, c.env),
+    })
+  } catch (e: any) {
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
+  }
+})
+
+// POST /api/admin/index/clear — 清空索引（分片键一并删除）
+adminRouter.post("/index/clear", async (c) => {
+  try {
+    await clearSearchIndex(c.env)
+    return c.json({
+      code: 200,
+      message: "success",
+      data: indexProgressFromMeta(null, c.env),
+    })
+  } catch (e: any) {
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
+  }
+})
+
+// GET /api/admin/index/progress — 索引进度（轻量：只读 meta 键，不再拉全库）
+adminRouter.get("/index/progress", async (c) => {
+  try {
+    const meta = await readIndexMeta(c.env)
+    return c.json({
+      code: 200,
+      message: "success",
+      data: indexProgressFromMeta(meta, c.env),
+    })
+  } catch (e: any) {
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
+  }
+})
+
+// POST /api/admin/scan/start — 手动扫描与索引构建同源（共享底层 pass）
+adminRouter.post("/scan/start", async (c) => {
+  try {
+    const res = await runIndexPass(c.env, { max_depth: 20 })
+    const meta = await readIndexMeta(c.env)
+    const progress = indexProgressFromMeta(meta || res, c.env)
+    // db.scan_result 只保留轻量元数据，不再内嵌 items（历史上是第二份大存储）
+    const db = await getDb(c.env)
+    db.scan_result = {
+      items: [],
+      total: progress.obj_count,
+      is_done: progress.is_done,
+      updated_at: progress.last_done_time,
+      error: progress.error,
+    }
+    await saveDb(db, c.env)
+    return c.json({ code: 200, message: "success", data: progress })
+  } catch (e: any) {
+    return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
+  }
+})
+
+// POST /api/admin/scan/stop — 标记完成
 adminRouter.post("/scan/stop", async (c) => {
+  const db = await getDb(c.env)
+  if (db.scan_result) db.scan_result.is_done = true
+  await saveDb(db, c.env)
   return c.json({
     code: 200,
     message: "success",
-    data: { obj_count: 0, is_done: true, last_done_time: null, error: "" },
+    data: {
+      obj_count: db.scan_result?.total ?? 0,
+      is_done: true,
+      last_done_time: db.scan_result?.updated_at || null,
+      error: db.scan_result?.error || "",
+    },
   })
 })
 
-// GET /api/admin/scan/progress — 扫描进度
+// GET /api/admin/scan/progress — 扫描进度（读轻量元数据）
 adminRouter.get("/scan/progress", async (c) => {
   const db = await getDb(c.env)
   const scan = db.scan_result || {}
