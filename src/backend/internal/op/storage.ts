@@ -1844,3 +1844,115 @@ export async function putItem(
   // 上传/覆盖：该文件的旧直链与父目录列表缓存失效
   await invalidatePaths([virtualPath], requestContext?.env)
 }
+
+/**
+ * 媒体刮削读取文件内容的上限：任何一次读取都不得超过 32MB。
+ *
+ * 刮削只需要文件头（ID3/FLAC/图片头）或尾部（ID3v1 / ZIP 中央目录），
+ * 但少数存储不支持 Range，会退化成整文件下载，因此必须有硬上限。
+ */
+export const MAX_MEDIA_READ_BYTES = 32 * 1024 * 1024
+
+/**
+ * 读取 VFS 文件的指定区间（用于 ID3 标签、EPUB 封面、图片缩略图等）。
+ *
+ * 行为：
+ *   1. 通过驱动换链拿到 raw_url，再带 `Range` 请求；
+ *   2. 上游返回 206 时直接切片；
+ *   3. 上游忽略 Range 返回 200 时，流式丢弃 `offset` 字节后最多读 `length` 字节，
+ *      避免把整个大文件读进内存；
+ *   4. 任何失败返回 null（刮削属于尽力而为，不应中断主流程）。
+ */
+export async function readFileRange(
+  virtualPath: string,
+  offset: number,
+  length: number,
+  requestContext?: StorageRequestContext,
+): Promise<Uint8Array | null> {
+  const start = Math.max(0, Math.floor(offset) || 0)
+  const want = Math.min(
+    MAX_MEDIA_READ_BYTES,
+    Math.max(1, Math.floor(length) || 1),
+  )
+  let resolved: Awaited<ReturnType<typeof resolvePath>>
+  try {
+    resolved = await resolvePath(virtualPath, requestContext?.env)
+  } catch {
+    return null
+  }
+  if (resolved.isVirtual || !resolved.storage) return null
+
+  let item: FileItem
+  const driver = await getDriver(resolved.storage.driver, resolved.storage)
+  try {
+    item = await driver.get(virtualPath, resolved.physical!)
+  } catch (e: any) {
+    console.warn(`[op] read ${virtualPath} link failed:`, e?.message || e)
+    return null
+  } finally {
+    await flushPendingDriverState(
+      resolved.storage.driver,
+      resolved.storage,
+      driver,
+      requestContext,
+    )
+  }
+  if (!item?.raw_url) return null
+
+  const headers: Record<string, string> = {
+    ...(item.raw_url_headers || {}),
+    Range: `bytes=${start}-${start + want - 1}`,
+  }
+  try {
+    const res = await fetch(item.raw_url, { headers })
+    if (!res.ok && res.status !== 206) return null
+
+    if (res.status === 206) {
+      const buf = new Uint8Array(await res.arrayBuffer())
+      return buf.subarray(0, Math.min(buf.length, want))
+    }
+
+    // 200：上游忽略了 Range（或本地文件驱动）。流式跳过 offset。
+    if (!res.body) {
+      const buf = new Uint8Array(await res.arrayBuffer())
+      return buf.subarray(start, start + want)
+    }
+    const reader = res.body.getReader()
+    let skipped = 0
+    const chunks: Uint8Array[] = []
+    let received = 0
+    try {
+      while (received < want) {
+        const { done, value } = await reader.read()
+        if (done || !value) break
+        let chunk = value
+        if (skipped < start) {
+          const drop = Math.min(chunk.length, start - skipped)
+          skipped += drop
+          chunk = chunk.subarray(drop)
+          if (chunk.length === 0) continue
+        }
+        const take = Math.min(chunk.length, want - received)
+        chunks.push(chunk.subarray(0, take))
+        received += take
+      }
+    } finally {
+      try {
+        await reader.cancel()
+      } catch {
+        /* ignore */
+      }
+    }
+    if (chunks.length === 0) return null
+    const out = new Uint8Array(received)
+    let pos = 0
+    for (const c of chunks) {
+      out.set(c, pos)
+      pos += c.length
+    }
+    return out
+  } catch (e: any) {
+    console.warn(`[op] read ${virtualPath} range failed:`, e?.message || e)
+    return null
+  }
+}

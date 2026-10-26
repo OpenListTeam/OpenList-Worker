@@ -582,6 +582,29 @@ export async function readPersistedSecret(
 }
 
 /**
+ * 按前缀列出已持久化的键。
+ *
+ * 用于「索引只是缓存、键本身才是权威」的场景（如媒体库分片）：全局索引文档
+ * 会被多实例互相覆盖，按前缀枚举才能保证冷启动后一个分片都不漏。
+ * 驱动不支持 list 或调用失败时返回空数组，由调用方退回到索引。
+ */
+export async function listPersistedSecrets(
+  env: any,
+  prefix: string,
+): Promise<string[]> {
+  try {
+    const driver = await resolveSecretDriver(env)
+    const keys = await driver.list(prefix, env)
+    return Array.isArray(keys)
+      ? keys.map((k) => String(k)).filter((k) => k.startsWith(prefix))
+      : []
+  } catch (e) {
+    console.warn(`[Secret] list "${prefix}" failed:`, e)
+    return []
+  }
+}
+
+/**
  * 写入密钥。
  *
  * 调用方需自行保证「仅在不存在时调用」，本函数不检查现有值
@@ -594,7 +617,13 @@ export async function writePersistedSecret(
 ): Promise<boolean> {
   try {
     const driver = await resolveSecretDriver(env)
-    await driver.put(key, secret, env)
+    // 驱动契约是「失败即抛错」，但第三方/历史驱动可能以 false 表示失败；
+    // 这里把 false 也当作失败，避免调用方把未落盘的写入当成成功。
+    const result: any = await driver.put(key, secret, env)
+    if (result === false) {
+      console.warn(`[Secret] cannot persist "${key}": driver returned false`)
+      return false
+    }
     return true
   } catch (e) {
     console.warn(
