@@ -170,5 +170,8 @@ export function buildOtpauthUrl(
  * @returns Data URL 格式的 QR 码
  */
 export async function buildQrImageUrl(otpauthUrl: string): Promise<string> {
-  return QRCode.toDataURL(otpauthUrl)
+  // Workers / Edge 运行时没有 canvas，QRCode.toDataURL() 会抛 "no canvas element"；
+  // 改用 SVG 字符串生成 Data URL，纯 JS 实现，不依赖运行时能力
+  const svg = await QRCode.toString(otpauthUrl, { type: "svg", margin: 1 })
+  return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)))
 }

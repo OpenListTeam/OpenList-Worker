@@ -54,6 +54,6 @@ test("2fa/generate returns a resolved QR data URL", async () => {
   assert.equal(res.status, 200)
   const json: any = await res.json()
   assert.equal(json.code, 200)
-  assert.match(json.data.qr, /^data:image\/png;base64,/)
+  assert.match(json.data.qr, /^data:image\/svg\+xml;base64,/)
   assert.match(json.data.secret, /^[A-Z2-7]+$/)
 })
