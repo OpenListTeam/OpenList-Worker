@@ -183,6 +183,7 @@
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "4.0.1",
     "remark-math": "6.0.0",
+    "safer-buffer": "^2.1.2",
     "seemly": "^0.3.10",
     "sha256": "^0.2.0",
     "solid-contextmenu": "0.0.2",
