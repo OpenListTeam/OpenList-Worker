@@ -151,10 +151,21 @@ async function jsonBodyGuard(c: Context, next: () => Promise<void>) {
     try {
       text = await c.req.text()
     } catch {
-      return c.json(
-        { code: 400, message: "failed to read request body", data: null },
-        400,
-      )
+      // EdgeOne Node 运行时偶发丢失/截断请求体（见上方注释与 issue #112）。
+      // 严格路径（/api/fs、/api/share）必须返回 400：handler 的
+      // `body.path || "/"` 会把空 body 降级为根目录，导致子目录返回根内容。
+      // 非严格路径放行：handler 均有 .catch(() => ({})) 兜底，空 body
+      // 只会导致操作失败（如登录凭据为空 → 401），不会引发数据错乱，
+      // 且前端可重试。此前一律 400 导致 EdgeOne 上约 40% 的 POST 请求失败。
+      const strict =
+        path.startsWith("/api/fs") || path.startsWith("/api/share")
+      if (strict) {
+        return c.json(
+          { code: 400, message: "failed to read request body", data: null },
+          400,
+        )
+      }
+      return next()
     }
 
     if (text.trim() === "") {
