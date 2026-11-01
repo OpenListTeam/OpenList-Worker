@@ -31,7 +31,7 @@
 
 ## 一键部署
 
-下方按钮可将本项目部署到 EdgeOne。Cloudflare Workers 的 Deploy Button 目前会在 Cloudflare 服务侧报 Wrangler 配置解析错误，因此暂时移除；这不是通过改项目 Wrangler 配置即可绕开的构建错误。
+下方按钮可将本项目部署到 EdgeOne。Cloudflare Workers 的 Deploy Button 目前在 Wrangler 配置解析阶段报错；issue 尚未提供足以定位根因的日志，因此暂时移除按钮，避免给出未经验证的配置改动。
 <div align="center">
 
 | EdgeOne Makers · 国际站 | EdgeOne Makers · 中国站 |

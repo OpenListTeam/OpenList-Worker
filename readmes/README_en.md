@@ -31,7 +31,7 @@ English | [简体中文](../README.md) | [繁體中文](README_zh-TW.md) | [日�
 
 ## One-click Deploy
 
-Use the buttons below to deploy to EdgeOne. The Cloudflare Workers Deploy Button currently fails while parsing the Wrangler configuration in Cloudflare's deployment service, so it has been temporarily removed; this is not a build error that can be worked around by changing this project's Wrangler config.
+Use the buttons below to deploy to EdgeOne. The Cloudflare Workers Deploy Button currently reports an error while parsing the Wrangler config. The issue does not include enough diagnostics to determine whether the project config or Cloudflare's deployment service is responsible, so the button is temporarily removed rather than making speculative config changes.
 <div align="center">
 
 | EdgeOne Makers · International | EdgeOne Makers · China |
