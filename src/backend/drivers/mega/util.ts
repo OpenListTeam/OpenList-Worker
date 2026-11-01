@@ -20,6 +20,123 @@ export function strToWords(s: string): CryptoJS.lib.WordArray {
   return CryptoJS.enc.Utf8.parse(s)
 }
 
+const HASHCASH_TOKEN_BYTES = 48
+const HASHCASH_TOKEN_BLOCKS = 262_144
+const HASHCASH_BUFFER_BYTES = 4 + HASHCASH_TOKEN_BYTES * HASHCASH_TOKEN_BLOCKS
+const HASHCASH_MAX_ATTEMPTS = 4096
+const HASHCASH_MAX_DURATION_MS = 10_000
+
+export interface MegaHashcashOptions {
+  /** Test seam; production uses the Worker-compatible WebCrypto SHA-256 API. */
+  digest?: (data: Uint8Array) => Promise<ArrayBuffer | Uint8Array>
+  maxAttempts?: number
+  maxDurationMs?: number
+  now?: () => number
+}
+
+function decodeHashcashToken(token: string): Uint8Array {
+  if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(token)) {
+    throw new Error(
+      "MEGA Hashcash challenge contains an invalid token encoding",
+    )
+  }
+  const words = b64ToWords(token)
+  if (words.sigBytes !== HASHCASH_TOKEN_BYTES) {
+    throw new Error(
+      `MEGA Hashcash token must decode to ${HASHCASH_TOKEN_BYTES} bytes`,
+    )
+  }
+  const bytes = new Uint8Array(words.sigBytes)
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = (words.words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff
+  }
+  return bytes
+}
+
+/**
+ * Solve the MEGA 402 Hashcash challenge used by the official web client.
+ * The work factor is deliberately bounded for serverless runtimes; a challenge
+ * that exceeds the budget is reported instead of consuming unbounded CPU.
+ */
+export async function generateHashcashToken(
+  challenge: string,
+  options: MegaHashcashOptions = {},
+): Promise<string> {
+  if (!challenge || challenge.length > 512) {
+    throw new Error("MEGA Hashcash challenge is missing or too large")
+  }
+  const parts = challenge.split(":")
+  const version = Number(parts[0])
+  const easiness = Number(parts[1])
+  const tokenText = parts[3] || ""
+  if (
+    parts.length !== 4 ||
+    version !== 1 ||
+    !Number.isInteger(easiness) ||
+    easiness < 0 ||
+    easiness > 255
+  ) {
+    throw new Error("MEGA returned an unsupported Hashcash challenge")
+  }
+
+  const token = decodeHashcashToken(tokenText)
+  const base = ((easiness & 63) << 1) + 1
+  const shifts = (easiness >> 6) * 7 + 3
+  const threshold = base * 2 ** shifts
+  const buffer = new Uint8Array(HASHCASH_BUFFER_BYTES)
+  for (let i = 0; i < HASHCASH_TOKEN_BLOCKS; i++) {
+    buffer.set(token, 4 + i * HASHCASH_TOKEN_BYTES)
+  }
+
+  const subtle = globalThis.crypto?.subtle
+  if (!options.digest && !subtle) {
+    throw new Error("WebCrypto SHA-256 is unavailable for MEGA Hashcash")
+  }
+  const digest =
+    options.digest ||
+    (async (data: Uint8Array) => subtle.digest("SHA-256", data as BufferSource))
+  const maxAttempts = Math.min(
+    Math.max(1, Math.floor(options.maxAttempts ?? HASHCASH_MAX_ATTEMPTS)),
+    HASHCASH_MAX_ATTEMPTS,
+  )
+  const maxDurationMs = Math.max(
+    1,
+    Math.floor(options.maxDurationMs ?? HASHCASH_MAX_DURATION_MS),
+  )
+  const now = options.now || Date.now
+  const startedAt = now()
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (now() - startedAt > maxDurationMs) break
+
+    // The official client increments the 4-byte prefix little-endian before
+    // hashing, then reads the first digest word as big-endian DataView does.
+    for (let byte = 0; byte < 4; byte++) {
+      buffer[byte] = (buffer[byte] + 1) & 0xff
+      if (buffer[byte] !== 0) break
+    }
+
+    const result = await digest(buffer)
+    const hash = result instanceof Uint8Array ? result : new Uint8Array(result)
+    if (hash.length < 4) {
+      throw new Error("SHA-256 digest returned fewer than four bytes")
+    }
+    const firstWord =
+      hash[0] * 0x1000000 + (hash[1] << 16) + (hash[2] << 8) + hash[3]
+    if (firstWord <= threshold) {
+      const prefix = CryptoJS.lib.WordArray.create(
+        [(buffer[0] << 24) | (buffer[1] << 16) | (buffer[2] << 8) | buffer[3]],
+        4,
+      )
+      return `1:${tokenText}:${wordsToB64(prefix)}`
+    }
+  }
+
+  throw new Error(
+    `MEGA Hashcash proof exceeded the serverless work budget (${maxAttempts} attempts or ${maxDurationMs} ms)`,
+  )
+}
+
 export function prepareKey(password: string): CryptoJS.lib.WordArray {
   const pWords = strToWords(password)
   const key = [0x93c467e3, 0x7db0c7a4, 0xd1be3f81, 0x0152cb56]
@@ -36,16 +153,25 @@ export function prepareKey(password: string): CryptoJS.lib.WordArray {
   return keyWords
 }
 
+const MAX_HASHCASH_RETRIES = 1
+
 export class MegaApiClient {
   private addition: MegaAddition
+  private solveHashcash: (challenge: string) => Promise<string>
   private sid = ""
   private seq = Math.floor(Math.random() * 0x10000000)
   private masterKey: CryptoJS.lib.WordArray | null = null
   private nodes: Map<string, MegaNodeItem> = new Map()
   private rootId = ""
 
-  constructor(addition: MegaAddition) {
+  constructor(
+    addition: MegaAddition,
+    solveHashcash: (
+      challenge: string,
+    ) => Promise<string> = generateHashcashToken,
+  ) {
     this.addition = addition
+    this.solveHashcash = solveHashcash
   }
 
   private nextSeq(): number {
@@ -60,14 +186,44 @@ export class MegaApiClient {
       url += `&sid=${this.sid}`
     }
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    })
+    const bodyText = JSON.stringify(body)
+    let hashcashHeader: string | undefined
+    let res: Response
+
+    for (let retry = 0; ; retry++) {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      }
+      if (hashcashHeader) headers["X-Hashcash"] = hashcashHeader
+
+      res = await fetch(url, {
+        method: "POST",
+        headers,
+        body: bodyText,
+      })
+
+      // MEGA signals a proof-of-work challenge with HTTP 402 + X-Hashcash.
+      // Other 402 responses (for example, payment/account errors) keep the
+      // ordinary error path; challenges are bounded to one retry per request.
+      if (res.status !== 402) break
+      const challenge = res.headers.get("X-Hashcash")
+      if (!challenge) break
+      if (retry >= MAX_HASHCASH_RETRIES) {
+        throw new Error("Mega API repeated the Hashcash challenge after retry")
+      }
+      try {
+        await res.body?.cancel()
+      } catch {
+        // The response body is not needed after extracting its challenge header.
+      }
+      hashcashHeader = await this.solveHashcash(challenge)
+    }
 
     if (!res.ok) {
-      throw new Error(`Mega API HTTP error: ${res.status}`)
+      const detail = await res.text().catch(() => "")
+      throw new Error(
+        `Mega API HTTP error: ${res.status}${detail ? `: ${detail}` : ""}`,
+      )
     }
 
     const json = (await res.json()) as any
