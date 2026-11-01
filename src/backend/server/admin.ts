@@ -3455,6 +3455,13 @@ const driverConfigs: Record<string, any> = {
         required: true,
       },
       {
+        name: "user_domain_id",
+        type: "string",
+        default: "",
+        required: false,
+        help: "Optional. Enables automatic PC token refresh before the current 139 token expires.",
+      },
+      {
         name: "root_folder_id",
         type: "string",
         default: "",

@@ -174,6 +174,53 @@ test("Yun139 refreshes a near-expiry token with no Cookie header", async () => {
   }
 })
 
+test("Yun139 keeps a valid near-expiry token when user_domain_id is not configured", async () => {
+  const expiresAt = Date.now() + 5 * 24 * 60 * 60 * 1000
+  const token = `legacy-token|1|RCS|${expiresAt}|opaque`
+  const authorization = Buffer.from(`pc:13800138000:${token}`).toString("base64")
+  const originalFetch = globalThis.fetch
+  const calls: string[] = []
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input)
+    calls.push(url)
+    assert.equal(
+      url,
+      "https://user-njs.yun.139.com/user/route/qryRoutePolicy",
+      "missing user_domain_id must skip refresh and continue with the current token",
+    )
+    return new Response(
+      JSON.stringify({
+        success: true,
+        code: "0000",
+        data: {
+          routePolicyList: [
+            {
+              modName: "personal",
+              httpsUrl: "https://personal-kd-njs.yun.139.com/hcy",
+            },
+          ],
+        },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )
+  }) as typeof fetch
+
+  try {
+    const client = new Yun139ApiClient({ authorization, type: "personal_new" })
+    await client.init()
+
+    assert.deepEqual(calls, [
+      "https://user-njs.yun.139.com/user/route/qryRoutePolicy",
+    ])
+    assert.equal(
+      Buffer.from(client.getAuthString(), "base64").toString("utf8"),
+      `pc:13800138000:${token}`,
+    )
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test("Yun139Driver lists subdir contents; file path must not degrade to parent (issue #112)", async () => {
   const addition: Yun139Addition = {
     authorization: Buffer.from(
