@@ -77,6 +77,73 @@ test("Security: getUserFromContext returns null when guest is deleted or disable
   )
 })
 
+test("Security: allow_guest=false blocks anonymous guest fallback", async () => {
+  const env: any = {}
+  const admin = {
+    id: 1,
+    username: "admin",
+    password: await hashPasswordSHA256("admin123"),
+    role: 2,
+    permission: 0,
+    base_path: "/",
+    disabled: false,
+  }
+  const guest = {
+    id: 2,
+    username: "guest",
+    password: "",
+    role: 1,
+    permission: 0,
+    base_path: "/",
+    disabled: false,
+  }
+  const users = [admin, guest]
+  const context: any = {
+    req: {
+      header: () => undefined,
+      query: () => undefined,
+    },
+    env,
+  }
+
+  await saveDb({ settings: [], users, storages: [], shares: [] }, env)
+  assert.equal(
+    (await getUserFromContext(context))?.id,
+    guest.id,
+    "Guest fallback remains enabled by default",
+  )
+
+  await saveDb(
+    {
+      settings: [{ key: "allow_guest", value: "false" }],
+      users,
+      storages: [],
+      shares: [],
+    },
+    env,
+  )
+  assert.equal(
+    await getUserFromContext(context),
+    null,
+    "allow_guest=false must disable anonymous guest fallback",
+  )
+
+  const app = new Hono()
+  app.route("/api/fs", fsRouter)
+  const response = await app.request(
+    "/api/fs/list",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: "/" }),
+    },
+    env,
+  )
+  assert.equal(response.status, 401)
+  const responseBody: any = await response.json()
+  assert.equal(responseBody.code, 401)
+})
+
 test("Security: /api/me returns 401 when unauthenticated and guest is deleted or disabled", async () => {
   const env: any = {}
   const adminHash = await hashPasswordSHA256("admin123")

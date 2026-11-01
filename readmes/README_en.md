@@ -80,6 +80,7 @@ In addition to the real storages above, virtual/functional drivers such as `Loca
 ### Access Control
 
 - **Permissions**: role-based access control (RBAC), supporting user groups, directory-level read/write permissions and quotas.
+- **Guest access**: guest fallback is enabled by default, so unauthenticated requests use the guest user's permissions. To require sign-in before browsing, turn off guest access (`allow_guest=false`) in the OpenList application settings; this is not a Cloudflare environment variable.
 - **Authentication**: built-in account passwords with TOTP verification, WebAuthn/FIDO login, SSO single sign-on and LDAP directory authentication.
 - **Security hardening**: JWT sessions, CSRF protection, clickjacking protection (X-Frame-Options), Content Security Policy (CSP).
 - **Health checks**: provide `/health` liveness probe and `/healthz` readiness probe for monitoring and alerting.
