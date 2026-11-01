@@ -31,18 +31,17 @@ English | [简体中文](../README.md) | [繁體中文](README_zh-TW.md) | [日�
 
 ## One-click Deploy
 
-Click the button below to deploy this project to the corresponding platform with one click:
+Use the buttons below to deploy to EdgeOne. The Cloudflare Workers Deploy Button currently fails while parsing the Wrangler configuration in Cloudflare's deployment service, so it has been temporarily removed; this is not a build error that can be worked around by changing this project's Wrangler config.
 <div align="center">
 
-
-| EdgeOne Makers · International | EdgeOne Makers · China | Cloudflare Workers · Global |
-| :---: | :---: | :---: |
-| [![Deploy to EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
+| EdgeOne Makers · International | EdgeOne Makers · China |
+| :---: | :---: |
+| [![Deploy to EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) |
 
 </div>
 
 > [!IMPORTANT]
-> - If Cloudflare prompts `cannot fetch repository content`, [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork) this project first, then deploy by connecting to the GitHub repository
+> - For Cloudflare Workers, create an application under **Workers & Pages** in the Cloudflare Dashboard and use **Connect to Git**; you can fork this project first if needed, or run `pnpm run deploy` locally
 > - Set `JWT_SECRET` during deployment (a random string of ≥16 chars, e.g. `openssl rand -hex 32`): it signs JWTs and encrypts data; if unset, it is generated and persisted during initialization
 > - Storage automatically uses the platform's built-in persistent backend (`DB_DRIVER=auto`) — no configuration needed; for other variables see [Environment Variables](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 > - After deployment, the first visit opens the **install wizard**: set the admin account and password in the browser to finish initialization; set `ADMIN_PASS` to skip the wizard
@@ -89,7 +88,7 @@ In addition to the real storages above, virtual/functional drivers such as `Loca
 - **Runtime platforms**: Cloudflare Workers, Tencent Cloud EdgeOne Makers, Vercel, Serverless and Node.js container environments.
 - **Data storage**: Cloudflare D1 (SQLite) as primary, also supporting MySQL, MariaDB, PostgreSQL, SQL Server.
 - **Persistent cache**: Cloudflare KV / EdgeOne Blob (optional) for config persistence and caching.
-- **One-click deploy**: support one-click deploy buttons + initialization on EdgeOne, Cloudflare Workers and other platforms.
+- **One-click deploy**: EdgeOne deployment buttons are available; deploy to Cloudflare Workers through Dashboard Git integration or the local deploy command.
 
 ---
 

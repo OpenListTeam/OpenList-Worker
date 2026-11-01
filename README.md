@@ -31,18 +31,17 @@
 
 ## 一键部署
 
-点击下方按钮，即可将本项目一键部署到对应平台：
+下方按钮可将本项目部署到 EdgeOne。Cloudflare Workers 的 Deploy Button 目前会在 Cloudflare 服务侧报 Wrangler 配置解析错误，因此暂时移除；这不是通过改项目 Wrangler 配置即可绕开的构建错误。
 <div align="center">
 
-
-| EdgeOne Makers · 国际站 | EdgeOne Makers · 中国站 | Cloudflare Workers · 全球站 |
-| :---: | :---: | :---: |
-| [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
+| EdgeOne Makers · 国际站 | EdgeOne Makers · 中国站 |
+| :---: | :---: |
+| [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) |
 
 </div>
 
 > [!IMPORTANT]
-> - 若 Cloudflare 提示`无法获取存储库内容`，则您需要先 [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork) 本项目，再通过连接到 Github 仓库功能部署
+> - Cloudflare Workers 请在 Cloudflare Dashboard 的 **Workers & Pages** 中创建应用并通过 **Connect to Git** 连接仓库；也可 Fork 本项目后连接自己的 GitHub 仓库，或在本地运行 `pnpm run deploy`
 > - 部署时请填写 `JWT_SECRET`（≥16 字符的随机串，可用 `openssl rand -hex 32` 生成）：它用于 JWT 签名与数据加密；未配置时会在初始化时自动生成并持久化
 > - 数据存储默认自动选择平台自带的持久化后端（`DB_DRIVER=auto`），无需配置；其余变量见 [配置变量](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 > - 部署完成后首次访问站点，按**安装向导**在浏览器中设置管理员账号与密码即可完成初始化；如需跳过向导，可配置 `ADMIN_PASS`
@@ -89,7 +88,7 @@ OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTea
 
 - **运行平台**：Cloudflare Workers、腾讯云 EdgeOne Makers、阿里云 ESA、Vercel / AWS Lambda 及 Node.js 容器环境。
 - **数据存储**：Cloudflare D1（SQLite）为主，也支持 KV / Blob / Durable Objects 与外部 MySQL / MariaDB。
-- **一键部署**：支持 EdgeOne、Cloudflare Workers 的一键部署按钮 + 安装向导。
+- **一键部署**：提供 EdgeOne 部署按钮；Cloudflare Workers 支持通过 Dashboard 连接 GitHub 仓库部署或运行本地部署命令。
 
 ---
 
