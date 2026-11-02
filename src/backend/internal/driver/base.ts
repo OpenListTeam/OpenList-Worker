@@ -171,5 +171,10 @@ export interface StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void>
-  put(virtualPath: string, physicalPath: string, content: Buffer): Promise<void>
+  // 上传内容统一用 Uint8Array：ESA 边缘运行时没有全局 Buffer（Issue #169）
+  put(
+    virtualPath: string,
+    physicalPath: string,
+    content: Uint8Array,
+  ): Promise<void>
 }
