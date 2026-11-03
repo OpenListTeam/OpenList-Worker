@@ -446,4 +446,8 @@ test("STRM 输出根边界", () => {
   assert.equal(withinOutRoot("/out", "/other/a.strm"), false)
   // 输出根设为存储根时不能把所有目标都判成越界
   assert.equal(withinOutRoot("/", "/a/b.strm"), true)
+  // 目录穿越段必须先于前缀比较被拒绝
+  assert.equal(withinOutRoot("/out", "/out/../../etc/x.strm"), false)
+  assert.equal(withinOutRoot("/out", "/out/../x.strm"), false)
+  assert.equal(withinOutRoot("/", "/../etc/x.strm"), false)
 })

@@ -202,8 +202,12 @@ async function exists(env: any, path: string) {
  * outRoot 为 "/" 会变成 startsWith("//")，把所有目标都误判成越界。
  */
 export const withinOutRoot = (outRoot: string, dst: string): boolean => {
+  const segments = dst.split("/").filter(Boolean)
+  // `..` 段必须在比较前缀之前拒绝："/out/../../etc/x" 以 "/out/" 开头，
+  // 只做字符串前缀比较会把它当成根内路径，写到输出目录之外。
+  if (segments.includes("..")) return false
   if (!outRoot || outRoot === "/") return true
-  const normalized = "/" + dst.split("/").filter(Boolean).join("/")
+  const normalized = "/" + segments.join("/")
   return normalized === outRoot || normalized.startsWith(`${outRoot}/`)
 }
 
