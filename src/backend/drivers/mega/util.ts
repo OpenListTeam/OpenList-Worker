@@ -25,6 +25,12 @@ const HASHCASH_TOKEN_BLOCKS = 262_144
 const HASHCASH_BUFFER_BYTES = 4 + HASHCASH_TOKEN_BYTES * HASHCASH_TOKEN_BLOCKS
 const HASHCASH_MAX_ATTEMPTS = 4096
 const HASHCASH_MAX_DURATION_MS = 10_000
+/**
+ * 预算 = 期望尝试数 × 该倍数。取 4：命中率 1-(1-1/E)^(4E) ≈ 98.2%，
+ * 而 easiness=192（E=256）时 1024 次 × 7.5 ms ≈ 7.7 s，仍在 10 s 墙钟内。
+ * 2 倍只有 86.5%，为省尾部开销把失败率抬到 13.5% 不划算。
+ */
+const HASHCASH_BUDGET_MULTIPLIER = 4
 
 export interface MegaHashcashOptions {
   /** Test seam; production uses the Worker-compatible WebCrypto SHA-256 API. */
@@ -103,11 +109,11 @@ export async function generateHashcashToken(
     (async (data: Uint8Array) => subtle.digest("SHA-256", data as BufferSource))
   // 命中概率 ≈ (threshold + 1) / 2^32，故期望尝试次数 = 2^32 / (threshold + 1)。
   // 固定 4096 次在 easiness=192 时（期望 256 次）意味着 16 倍的无效哈希；
-  // 按期望值的 2 倍给预算，重试余量仍在，但不会把 CPU 预算耗在尾部概率上。
+  // 改成按期望值放大 4 倍：成功率约 98.2%，仍落在 10 s 墙钟内。
   const expectedAttempts = Math.ceil(2 ** 32 / (threshold + 1))
   const budgetAttempts = Math.min(
     HASHCASH_MAX_ATTEMPTS,
-    Math.max(1, expectedAttempts * 2),
+    Math.max(1, expectedAttempts * HASHCASH_BUDGET_MULTIPLIER),
   )
   const maxAttempts = Math.min(
     Math.max(1, Math.floor(options.maxAttempts ?? budgetAttempts)),
@@ -168,6 +174,45 @@ export function prepareKey(password: string): CryptoJS.lib.WordArray {
 }
 
 const MAX_HASHCASH_RETRIES = 1
+
+/**
+ * 只读响应体的前 limit 字节，读完立刻 cancel。
+ *
+ * 错误信息只用于日志与前端提示，但 res.text() 会把整页 HTML 完整缓冲进内存
+ * 再截断——截断输出并不等于截断读取。这里按流读取到上限就放弃剩余字节。
+ */
+async function readTextPrefix(res: Response, limit: number): Promise<string> {
+  const reader = res.body?.getReader()
+  if (!reader) return ""
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    while (total < limit) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (!value || value.length === 0) continue
+      const rest = limit - total
+      const part = value.length > rest ? value.subarray(0, rest) : value
+      chunks.push(part)
+      total += part.length
+    }
+  } catch {
+    // 读取中断时使用已读到的部分
+  } finally {
+    try {
+      await reader.cancel()
+    } catch {
+      // 已关闭的流 cancel 会抛错，忽略
+    }
+  }
+  const merged = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    merged.set(chunk, offset)
+    offset += chunk.length
+  }
+  return new TextDecoder().decode(merged)
+}
 
 export class MegaApiClient {
   private addition: MegaAddition
@@ -234,9 +279,9 @@ export class MegaApiClient {
     }
 
     if (!res.ok) {
-      // 上游异常时可能返回整页 HTML；错误信息会进日志与前端提示，必须截断，
-      // 否则一次失败就能把几百 KB 正文写进日志（并撑大响应）。
-      const detail = (await res.text().catch(() => "")).slice(0, 512)
+      // 上游异常时可能返回整页 HTML；错误信息会进日志与前端提示，必须截断。
+      // 用流式读取而不是 res.text().slice()：后者仍会把整页正文缓冲进内存。
+      const detail = await readTextPrefix(res, 512)
       throw new Error(
         `Mega API HTTP error: ${res.status}${detail ? `: ${detail}` : ""}`,
       )

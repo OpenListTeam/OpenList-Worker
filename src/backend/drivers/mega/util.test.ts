@@ -215,9 +215,9 @@ test("MEGA Hashcash accepts base64url tokens containing - and _", async () => {
 })
 
 test("MEGA Hashcash default budget scales with the challenge easiness", async () => {
-  // 不传 maxAttempts 时应按 2^32/(threshold+1)*2 收敛：
-  // easiness=255 → threshold=0x7f000000 → 期望 3 次 → 预算 6 次。
-  // 固定 4096 次的旧实现会白跑 4090 次 ~12 MiB 的 SHA-256。
+  // 不传 maxAttempts 时应按 2^32/(threshold+1)*4 收敛：
+  // easiness=255 → threshold=0x7f000000 → 期望 3 次 → 预算 12 次
+  // （成功率 1-(1-1/3)^12 ≈ 98.8%）。固定 4096 次的旧实现会白跑 4084 次。
   let calls = 0
   await assert.rejects(
     () =>
@@ -231,18 +231,25 @@ test("MEGA Hashcash default budget scales with the challenge easiness", async ()
       }),
     /exceeded the serverless work budget/,
   )
-  assert.equal(calls, 6)
+  assert.equal(calls, 12)
 })
 
-test("MegaApiClient truncates oversized upstream error bodies", async () => {
+test("MegaApiClient streams only the error prefix instead of buffering the body", async () => {
   const originalFetch = globalThis.fetch
   const client = new MegaApiClient({
     email: "user@example.com",
     password: "password",
   })
-  const huge = "<html>" + "x".repeat(4000) + "</html>"
+  let pulled = 0
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      pulled++
+      controller.enqueue(new Uint8Array(65_536).fill(0x78))
+      if (pulled >= 200) controller.close()
+    },
+  })
   globalThis.fetch = (async () =>
-    new Response(huge, { status: 500 })) as typeof fetch
+    new Response(body, { status: 500 })) as typeof fetch
 
   try {
     await assert.rejects(
@@ -254,6 +261,8 @@ test("MegaApiClient truncates oversized upstream error bodies", async () => {
         return true
       },
     )
+    // 512 字节上限只需一两个 64 KiB chunk；res.text() 会拉完整个 ~12 MiB。
+    assert.ok(pulled <= 2, `read too many chunks: ${pulled}`)
   } finally {
     globalThis.fetch = originalFetch
   }
