@@ -57,6 +57,12 @@ function decodeHashcashToken(token: string): Uint8Array {
  * Solve the MEGA 402 Hashcash challenge used by the official web client.
  * The work factor is deliberately bounded for serverless runtimes; a challenge
  * that exceeds the budget is reported instead of consuming unbounded CPU.
+ *
+ * 成本提示：每次尝试都要对 ~12 MiB 缓冲做一次完整 SHA-256。本地 Node
+ * （WebCrypto，单次约 7.5 ms）实测 easiness=192（期望 ~256 次）约需 2 s，
+ * 高于 Cloudflare Workers 免费版 10 ms 的 CPU 上限，付费版 30 s 内可完成。
+ * 因此这里的默认预算按「期望尝试数 × 2」收敛（而不是固定 4096），并保留
+ * 10 s 墙钟上限：预算耗尽时报错退出，不会把请求拖到平台超时。
  */
 export async function generateHashcashToken(
   challenge: string,
@@ -95,8 +101,16 @@ export async function generateHashcashToken(
   const digest =
     options.digest ||
     (async (data: Uint8Array) => subtle.digest("SHA-256", data as BufferSource))
+  // 命中概率 ≈ (threshold + 1) / 2^32，故期望尝试次数 = 2^32 / (threshold + 1)。
+  // 固定 4096 次在 easiness=192 时（期望 256 次）意味着 16 倍的无效哈希；
+  // 按期望值的 2 倍给预算，重试余量仍在，但不会把 CPU 预算耗在尾部概率上。
+  const expectedAttempts = Math.ceil(2 ** 32 / (threshold + 1))
+  const budgetAttempts = Math.min(
+    HASHCASH_MAX_ATTEMPTS,
+    Math.max(1, expectedAttempts * 2),
+  )
   const maxAttempts = Math.min(
-    Math.max(1, Math.floor(options.maxAttempts ?? HASHCASH_MAX_ATTEMPTS)),
+    Math.max(1, Math.floor(options.maxAttempts ?? budgetAttempts)),
     HASHCASH_MAX_ATTEMPTS,
   )
   const maxDurationMs = Math.max(
@@ -220,7 +234,9 @@ export class MegaApiClient {
     }
 
     if (!res.ok) {
-      const detail = await res.text().catch(() => "")
+      // 上游异常时可能返回整页 HTML；错误信息会进日志与前端提示，必须截断，
+      // 否则一次失败就能把几百 KB 正文写进日志（并撑大响应）。
+      const detail = (await res.text().catch(() => "")).slice(0, 512)
       throw new Error(
         `Mega API HTTP error: ${res.status}${detail ? `: ${detail}` : ""}`,
       )

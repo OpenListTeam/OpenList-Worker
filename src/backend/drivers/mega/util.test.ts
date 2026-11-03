@@ -198,3 +198,63 @@ test("MegaApiClient bounds repeated login Hashcash challenges", async () => {
     globalThis.fetch = originalFetch
   }
 })
+
+test("MEGA Hashcash accepts base64url tokens containing - and _", async () => {
+  // MEGA 下发的 token 用的是 base64url 变体；解码正则同时放行 +/ 与 -_，
+  // 这里锁住 -_ 分支，避免将来只按标准 base64 处理。
+  const token = Buffer.from(new Array(48).fill(0xfb)).toString("base64url")
+  assert.match(token, /[-_]/)
+
+  const response = await generateHashcashToken(`1:255:ignored:${token}`, {
+    digest: async () => digestWord(0),
+    maxAttempts: 1,
+    maxDurationMs: 1000,
+    now: () => 0,
+  })
+  assert.equal(response, `1:${token}:AQAAAA`)
+})
+
+test("MEGA Hashcash default budget scales with the challenge easiness", async () => {
+  // 不传 maxAttempts 时应按 2^32/(threshold+1)*2 收敛：
+  // easiness=255 → threshold=0x7f000000 → 期望 3 次 → 预算 6 次。
+  // 固定 4096 次的旧实现会白跑 4090 次 ~12 MiB 的 SHA-256。
+  let calls = 0
+  await assert.rejects(
+    () =>
+      generateHashcashToken(`1:255:ignored:${TOKEN}`, {
+        digest: async () => {
+          calls++
+          return digestWord(0xffffffff)
+        },
+        maxDurationMs: 60_000,
+        now: () => 0,
+      }),
+    /exceeded the serverless work budget/,
+  )
+  assert.equal(calls, 6)
+})
+
+test("MegaApiClient truncates oversized upstream error bodies", async () => {
+  const originalFetch = globalThis.fetch
+  const client = new MegaApiClient({
+    email: "user@example.com",
+    password: "password",
+  })
+  const huge = "<html>" + "x".repeat(4000) + "</html>"
+  globalThis.fetch = (async () =>
+    new Response(huge, { status: 500 })) as typeof fetch
+
+  try {
+    await assert.rejects(
+      () => client.request([{ a: "f" }]),
+      (err: any) => {
+        const message = String(err?.message || "")
+        assert.match(message, /Mega API HTTP error: 500/)
+        assert.ok(message.length < 600, `error message too long: ${message.length}`)
+        return true
+      },
+    )
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
