@@ -8,6 +8,7 @@
  * 自动检测环境并选择合适的模式。
  */
 import { sanitizeProxyOrigin } from "../proxy"
+import { readFormat } from "../config"
 import type { Driver, EnvContext } from "../types"
 
 /**
@@ -568,16 +569,9 @@ export const kvDriver: Driver = {
         // 只有 key 格式才探测 list，避免 map 格式部署被不支持的 list() 误判为
         // 存储不可用（issue #159）。对 key 格式仍检查 list，防止配额耗尽/接口异常
         // 导致 env_check 误报 ready（issue #125）。使用专用前缀，取回空页只耗 1 次。
-        // 与 backend.ts 的 readFormat() 保持相同 env 优先级、缺省值和 json 别名。
-        const config = env || (typeof process !== "undefined" ? process.env : {}) || {}
-        const configuredFormat = String(config.DB_FORMAT || "")
-          .trim()
-          .toLowerCase()
-        const dbFormat =
-          String(config.DB_DRIVER || "").trim().toLowerCase() === "json"
-            ? "map"
-            : configuredFormat || "map"
-        if (dbFormat === "key") {
+        // 直接复用后端的 readFormat()：健康检查与真实读写必须用同一份解析逻辑
+        // （env 优先级、缺省 map、DB_DRIVER=json 别名），复刻一份迟早漂移。
+        if (readFormat(env) === "key") {
           if (typeof kv.list !== "function") {
             throw new Error(
               "KV binding does not support list(), which is required by DB_FORMAT=key",

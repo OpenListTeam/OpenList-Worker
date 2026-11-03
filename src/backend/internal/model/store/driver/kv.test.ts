@@ -213,3 +213,23 @@ test("kv health (binding, key format) reports missing list support explicitly", 
   assert.equal(health.available, false)
   assert.match(String(health.error), /list\(\).*required by DB_FORMAT=key/)
 })
+
+test("kv health defaults to map when DB_FORMAT is unset (ESA EdgeKV shape)", async () => {
+  // 曾经的复刻实现自己解析 env，与 backend.ts 的 readFormat() 各写一份；
+  // 现在两者共用同一份实现，缺省格式必须是 map（而不是按驱动名猜 key），
+  // 因此没有 list() 的 EdgeKV 绑定在未配置 DB_FORMAT 时仍应判为可用。
+  let listCalls = 0
+  const health = await kvDriver.health({
+    KV: {
+      get: async () => null,
+      put: async () => {},
+      delete: async () => true,
+      list: async () => {
+        listCalls += 1
+        return { keys: [], list_complete: true }
+      },
+    },
+  })
+  assert.equal(health.available, true)
+  assert.equal(listCalls, 0, "map 格式不得探测 list")
+})

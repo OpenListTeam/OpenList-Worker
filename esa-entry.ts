@@ -96,17 +96,23 @@ function deleteModuleKvCache(key: string): void {
  * 包装 ESA EdgeKV 为项目通用的 { get, put, delete } 接口，并复用入口处的读探测结果。
  * @param edgeKv 原始 EdgeKV 实例
  * @param cache  请求级缓存 Map（每次请求新建），同 key 仅发起一次真实 KV 调用
- * @param healthProbe 入口处已完成的原始 EdgeKV 探测结果，避免健康检查重复消耗子请求
+ * @param healthProbe 入口处已完成的原始 EdgeKV 探测结果（可选）；缺省时
+ *                    健康检查自行做一次真实 get，而不是假定可用
  */
 function wrapEsaEdgeKV(
   edgeKv: any,
   cache: Map<string, string | null> | undefined,
-  healthProbe: { ok: boolean; error: string | null },
+  healthProbe?: { ok: boolean; error: string | null },
 ) {
   return {
     // 复用 fetch 入口刚完成的原始探测结果；不能走 get() 的 null 容错缓存，
-    // 也不能重复请求 EdgeKV（ESA 每请求有 KV 子请求配额）。
+    // 也不能重复请求 EdgeKV（ESA 每请求有 KV 子请求配额）。未传入探测结果时
+    // 退化为一次真实读取：宁可多花一个子请求，也不把未知状态报成可用。
     async healthCheck(): Promise<void> {
+      if (!healthProbe) {
+        await edgeKv.get("__openlist_probe__")
+        return
+      }
       if (!healthProbe.ok) {
         throw new Error(healthProbe.error || "ESA EdgeKV health probe failed")
       }
