@@ -200,7 +200,7 @@ export class BunnyStorageDriver implements StorageDriver {
   async put(
     virtualPath: string,
     physicalPath: string,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     const clean = cleanObjectPath(physicalPath)
     const url = storageURL(this.addition, clean, false)

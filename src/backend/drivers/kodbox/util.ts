@@ -96,7 +96,7 @@ export class ClientKodbox {
     })
   }
 
-  async put(dirPath: string, fileName: string, content: Buffer): Promise<void> {
+  async put(dirPath: string, fileName: string, content: Uint8Array): Promise<void> {
     const form = new FormData()
     form.append("accessToken", this.authorization)
     form.append("path", dirPath)

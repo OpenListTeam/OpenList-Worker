@@ -552,7 +552,7 @@ export class WeiyunClient {
     dirKey: string,
     fileName: string,
     fileSize: number,
-    content: Uint8Array | Buffer,
+    content: Uint8Array,
     channelCount = 4,
     fileExistOption = 1,
   ): Promise<PreUploadData> {

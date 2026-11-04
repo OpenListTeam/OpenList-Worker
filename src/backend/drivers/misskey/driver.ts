@@ -173,7 +173,7 @@ export class DriverMisskey implements StorageDriver {
   async put(
     _virtualPath: string,
     _physicalPath: string,
-    _content: Buffer,
+    _content: Uint8Array,
   ): Promise<void> {
     throw new Error("[Misskey] Direct put not supported in stateless environment")
   }

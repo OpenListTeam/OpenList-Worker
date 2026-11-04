@@ -193,7 +193,7 @@ export class AListV3Driver implements StorageDriver {
     })
   }
 
-  async put(_v: string, physicalPath: string, content: Buffer): Promise<void> {
+  async put(_v: string, physicalPath: string, content: Uint8Array): Promise<void> {
     const res = await fetch(`${this.baseUrl}/api/fs/put`, {
       method: "PUT",
       headers: {

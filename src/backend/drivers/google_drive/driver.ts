@@ -142,7 +142,7 @@ export class GoogleDrive implements StorageDriver {
   async put(
     _virtualPath: string,
     physicalPath: string,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     const { parentId, name } =
       await this.client.resolveParentAndName(physicalPath)

@@ -309,7 +309,7 @@ export class GoogleDriveClient {
   public async putFile(
     parentId: string,
     filename: string,
-    content: Buffer,
+    content: Uint8Array,
     mimeType = "application/octet-stream",
   ): Promise<void> {
     const chunkSize = (this.addition.chunk_size || 5) * 1024 * 1024

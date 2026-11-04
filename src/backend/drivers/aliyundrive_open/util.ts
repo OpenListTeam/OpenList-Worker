@@ -371,7 +371,7 @@ export class AliyunOpenClient {
   public async putFile(
     parentFileId: string,
     filename: string,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     const size = content.length
     const createResp = await this.openApiRequest<any>("/openFile/create", {

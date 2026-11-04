@@ -194,7 +194,7 @@ export class PikPakShareDriver implements StorageDriver {
   async put(
     virtualPath: string,
     physicalPath: string,
-    content: Buffer | Uint8Array,
+    content: Uint8Array,
   ): Promise<void> {
     throw new Error("PikPak Share is read-only")
   }

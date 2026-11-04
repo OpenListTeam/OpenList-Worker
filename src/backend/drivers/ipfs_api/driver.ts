@@ -165,7 +165,7 @@ export class DriverIpfs implements StorageDriver {
   async put(
     _virtualPath: string,
     physicalPath: string,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     if (!this.isMfs()) throw new Error("[IPFS] only write in mfs mode")
     const full = this.fullPath(physicalPath)

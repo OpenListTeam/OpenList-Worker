@@ -1823,7 +1823,7 @@ export async function copyItems(
 
 export async function putItem(
   virtualPath: string,
-  content: Buffer,
+  content: Uint8Array,
   requestContext?: StorageRequestContext,
 ): Promise<void> {
   const resolved = await resolvePath(virtualPath, requestContext?.env)

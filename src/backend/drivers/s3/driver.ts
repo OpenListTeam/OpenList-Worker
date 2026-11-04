@@ -330,7 +330,7 @@ export class S3Driver implements StorageDriver {
   async put(
     virtualPath: string,
     physicalPath: string,
-    content: Buffer | Uint8Array,
+    content: Uint8Array,
   ): Promise<void> {
     await this.checkDogeToken()
     const remotePath = this.getRemotePath(physicalPath)

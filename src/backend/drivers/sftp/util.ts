@@ -294,7 +294,7 @@ export class SFTPClientWrapper {
     }
   }
 
-  async writeFile(remotePath: string, content: Buffer): Promise<void> {
+  async writeFile(remotePath: string, content: Uint8Array): Promise<void> {
     const sftp = await this.getSFTP()
     return new Promise((resolve, reject) => {
       const ws = sftp.createWriteStream(remotePath)

@@ -609,7 +609,7 @@ export class R2Driver implements StorageDriver {
   async put(
     _virtualPath: string,
     physicalPath: string,
-    content: Buffer | Uint8Array,
+    content: Uint8Array,
   ): Promise<void> {
     if (this.resolveMode() === "api") {
       this.requireApiConfig()

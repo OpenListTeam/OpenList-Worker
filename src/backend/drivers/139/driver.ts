@@ -279,7 +279,7 @@ export class Yun139Driver implements StorageDriver {
   async put(
     virtualPath: string,
     physicalPath: string,
-    content: Buffer | Uint8Array,
+    content: Uint8Array,
   ): Promise<void> {
     console.warn(`[139] put for ${physicalPath}`)
   }

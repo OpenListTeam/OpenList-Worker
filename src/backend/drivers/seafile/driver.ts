@@ -341,7 +341,7 @@ export class SeafileDriver implements StorageDriver {
   async put(
     virtualPath: string,
     physicalPath: string,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     const { repoId, innerPath } = await this.resolveRepoAndPath(physicalPath)
     const parentPath = innerPath.split("/").slice(0, -1).join("/") || "/"

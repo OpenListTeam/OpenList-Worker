@@ -508,7 +508,7 @@ export class ProtonDriveDriver implements StorageDriver {
   async put(
     virtualPath: string,
     physicalPath: string,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     // TODO(未实现)：上传需走 Proton 的两阶段协议：
     //   1) POST /drive/volumes/{vol}/links/{parent}/draft 创建草稿，得到 revisionID

@@ -196,7 +196,7 @@ export class MegaDriver implements StorageDriver {
   async put(
     virtualPath: string,
     physicalPath: string,
-    content: Buffer | Uint8Array,
+    content: Uint8Array,
   ): Promise<void> {
     console.warn(`[Mega] put for ${physicalPath}`)
   }

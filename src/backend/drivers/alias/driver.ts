@@ -298,7 +298,7 @@ export class AliasDriver implements StorageDriver {
   async put(
     virtualPath: string,
     physicalPath: string,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     const targets = this.getTargetsForPath(physicalPath)
     if (targets.length === 0) {
