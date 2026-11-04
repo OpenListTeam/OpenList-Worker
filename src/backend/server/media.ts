@@ -22,6 +22,8 @@ import { getSignPolicy, signDownloadPath } from "../pkg/sign"
 import { isSafeUrl } from "../pkg/http"
 import { encrypt, decrypt } from "../pkg/crypto"
 import { getItem, putItem, readFileRange } from "../internal/op/storage"
+import { resolvePath } from "../internal/model/db"
+import { canUseProxyEndpoint, normalizeExtList } from "../internal/driver/proxy"
 import {
   baseNameOf,
   extOf,
@@ -533,11 +535,34 @@ mediaRouter.get("/stream_url", async (c) => {
   const sign = await signDownloadPath(c, path, expires)
   const origin = originOf(c)
   const url = `${origin}/d${encodeDownloadPath(path)}?sign=${encodeURIComponent(sign)}`
+  // 浏览器内播放用 /p（避免 302 跨域），但 /p 受存储的代理策略约束：
+  // 关闭 web_proxy 且扩展名不在 proxy_types/text_types 时，raw 路由会返回
+  // 403 proxy not allowed。这里按同一套规则判断，不可代理时退回 /d 直链，
+  // 否则播放器拿到的是一个必然 403 的地址。
+  let proxied = `${origin}/p${encodeDownloadPath(path)}?sign=${encodeURIComponent(sign)}`
+  try {
+    const resolved = await resolvePath(path, c.env)
+    if (resolved.storage) {
+      const settings = await getSettingsMap(c.env)
+      const allowProxy = canUseProxyEndpoint({
+        storage: resolved.storage,
+        driver: String(resolved.storage.driver || "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, ""),
+        filename: path,
+        proxyTypes: normalizeExtList(settings.proxy_types),
+        textTypes: normalizeExtList(settings.text_types),
+      })
+      if (!allowProxy) proxied = url
+    }
+  } catch {
+    // 存储解析失败时保持 /p：让 raw 路由给出真实错误，便于排查
+  }
   return ok(c, {
     url,
     path,
     name: name || baseNameOf(path),
-    proxied: `${origin}/p${encodeDownloadPath(path)}?sign=${encodeURIComponent(sign)}`,
+    proxied,
   })
 })
 
