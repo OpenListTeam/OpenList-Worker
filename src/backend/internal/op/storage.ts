@@ -1220,6 +1220,17 @@ async function createDriver(
         // captcha_token/send_code 等），空串用于显式清除一次性字段
         Object.assign(stAddition, changes)
         st.addition = JSON.stringify(stAddition)
+        // 把驱动回写同步给 in-flight 的 updatedStorage：/admin/storage/update 会用
+        // updatedStorage 覆盖 db，若不同步，驱动刚写入的登录态（verification_id 等）
+        // 会被提交前的旧快照覆盖。这里以本次提交的 addition 为基底叠加驱动改动，
+        // 既保留登录态，也不会把用户本次编辑的其它配置项回退成旧值。
+        if (deferredTokenPersistence.has(storageConfig)) {
+          storageConfig.addition = JSON.stringify({
+            ...parseAddition(storageConfig),
+            ...changes,
+          })
+          return
+        }
         await saveDb(db)
       } catch (e) {
         console.warn("[GuangYaPan] failed to persist changes:", e)
