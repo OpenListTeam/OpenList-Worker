@@ -20,6 +20,143 @@ export function strToWords(s: string): CryptoJS.lib.WordArray {
   return CryptoJS.enc.Utf8.parse(s)
 }
 
+const HASHCASH_TOKEN_BYTES = 48
+const HASHCASH_TOKEN_BLOCKS = 262_144
+const HASHCASH_BUFFER_BYTES = 4 + HASHCASH_TOKEN_BYTES * HASHCASH_TOKEN_BLOCKS
+const HASHCASH_MAX_ATTEMPTS = 4096
+const HASHCASH_MAX_DURATION_MS = 10_000
+/**
+ * 预算 = 期望尝试数 × 该倍数。取 4：命中率 1-(1-1/E)^(4E) ≈ 98.2%，
+ * 而 easiness=192（E=256）时 1024 次 × 7.5 ms ≈ 7.7 s，仍在 10 s 墙钟内。
+ * 2 倍只有 86.5%，为省尾部开销把失败率抬到 13.5% 不划算。
+ */
+const HASHCASH_BUDGET_MULTIPLIER = 4
+
+export interface MegaHashcashOptions {
+  /** Test seam; production uses the Worker-compatible WebCrypto SHA-256 API. */
+  digest?: (data: Uint8Array) => Promise<ArrayBuffer | Uint8Array>
+  maxAttempts?: number
+  maxDurationMs?: number
+  now?: () => number
+}
+
+function decodeHashcashToken(token: string): Uint8Array {
+  if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(token)) {
+    throw new Error(
+      "MEGA Hashcash challenge contains an invalid token encoding",
+    )
+  }
+  const words = b64ToWords(token)
+  if (words.sigBytes !== HASHCASH_TOKEN_BYTES) {
+    throw new Error(
+      `MEGA Hashcash token must decode to ${HASHCASH_TOKEN_BYTES} bytes`,
+    )
+  }
+  const bytes = new Uint8Array(words.sigBytes)
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = (words.words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff
+  }
+  return bytes
+}
+
+/**
+ * Solve the MEGA 402 Hashcash challenge used by the official web client.
+ * The work factor is deliberately bounded for serverless runtimes; a challenge
+ * that exceeds the budget is reported instead of consuming unbounded CPU.
+ *
+ * 成本提示：每次尝试都要对 ~12 MiB 缓冲做一次完整 SHA-256。本地 Node
+ * （WebCrypto，单次约 7.5 ms）实测 easiness=192（期望 ~256 次）约需 2 s，
+ * 高于 Cloudflare Workers 免费版 10 ms 的 CPU 上限，付费版 30 s 内可完成。
+ * 因此这里的默认预算按「期望尝试数 × 2」收敛（而不是固定 4096），并保留
+ * 10 s 墙钟上限：预算耗尽时报错退出，不会把请求拖到平台超时。
+ */
+export async function generateHashcashToken(
+  challenge: string,
+  options: MegaHashcashOptions = {},
+): Promise<string> {
+  if (!challenge || challenge.length > 512) {
+    throw new Error("MEGA Hashcash challenge is missing or too large")
+  }
+  const parts = challenge.split(":")
+  const version = Number(parts[0])
+  const easiness = Number(parts[1])
+  const tokenText = parts[3] || ""
+  if (
+    parts.length !== 4 ||
+    version !== 1 ||
+    !Number.isInteger(easiness) ||
+    easiness < 0 ||
+    easiness > 255
+  ) {
+    throw new Error("MEGA returned an unsupported Hashcash challenge")
+  }
+
+  const token = decodeHashcashToken(tokenText)
+  const base = ((easiness & 63) << 1) + 1
+  const shifts = (easiness >> 6) * 7 + 3
+  const threshold = base * 2 ** shifts
+  const buffer = new Uint8Array(HASHCASH_BUFFER_BYTES)
+  for (let i = 0; i < HASHCASH_TOKEN_BLOCKS; i++) {
+    buffer.set(token, 4 + i * HASHCASH_TOKEN_BYTES)
+  }
+
+  const subtle = globalThis.crypto?.subtle
+  if (!options.digest && !subtle) {
+    throw new Error("WebCrypto SHA-256 is unavailable for MEGA Hashcash")
+  }
+  const digest =
+    options.digest ||
+    (async (data: Uint8Array) => subtle.digest("SHA-256", data as BufferSource))
+  // 命中概率 ≈ (threshold + 1) / 2^32，故期望尝试次数 = 2^32 / (threshold + 1)。
+  // 固定 4096 次在 easiness=192 时（期望 256 次）意味着 16 倍的无效哈希；
+  // 改成按期望值放大 4 倍：成功率约 98.2%，仍落在 10 s 墙钟内。
+  const expectedAttempts = Math.ceil(2 ** 32 / (threshold + 1))
+  const budgetAttempts = Math.min(
+    HASHCASH_MAX_ATTEMPTS,
+    Math.max(1, expectedAttempts * HASHCASH_BUDGET_MULTIPLIER),
+  )
+  const maxAttempts = Math.min(
+    Math.max(1, Math.floor(options.maxAttempts ?? budgetAttempts)),
+    HASHCASH_MAX_ATTEMPTS,
+  )
+  const maxDurationMs = Math.max(
+    1,
+    Math.floor(options.maxDurationMs ?? HASHCASH_MAX_DURATION_MS),
+  )
+  const now = options.now || Date.now
+  const startedAt = now()
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (now() - startedAt > maxDurationMs) break
+
+    // The official client increments the 4-byte prefix little-endian before
+    // hashing, then reads the first digest word as big-endian DataView does.
+    for (let byte = 0; byte < 4; byte++) {
+      buffer[byte] = (buffer[byte] + 1) & 0xff
+      if (buffer[byte] !== 0) break
+    }
+
+    const result = await digest(buffer)
+    const hash = result instanceof Uint8Array ? result : new Uint8Array(result)
+    if (hash.length < 4) {
+      throw new Error("SHA-256 digest returned fewer than four bytes")
+    }
+    const firstWord =
+      hash[0] * 0x1000000 + (hash[1] << 16) + (hash[2] << 8) + hash[3]
+    if (firstWord <= threshold) {
+      const prefix = CryptoJS.lib.WordArray.create(
+        [(buffer[0] << 24) | (buffer[1] << 16) | (buffer[2] << 8) | buffer[3]],
+        4,
+      )
+      return `1:${tokenText}:${wordsToB64(prefix)}`
+    }
+  }
+
+  throw new Error(
+    `MEGA Hashcash proof exceeded the serverless work budget (${maxAttempts} attempts or ${maxDurationMs} ms)`,
+  )
+}
+
 export function prepareKey(password: string): CryptoJS.lib.WordArray {
   const pWords = strToWords(password)
   const key = [0x93c467e3, 0x7db0c7a4, 0xd1be3f81, 0x0152cb56]
@@ -36,16 +173,64 @@ export function prepareKey(password: string): CryptoJS.lib.WordArray {
   return keyWords
 }
 
+const MAX_HASHCASH_RETRIES = 1
+
+/**
+ * 只读响应体的前 limit 字节，读完立刻 cancel。
+ *
+ * 错误信息只用于日志与前端提示，但 res.text() 会把整页 HTML 完整缓冲进内存
+ * 再截断——截断输出并不等于截断读取。这里按流读取到上限就放弃剩余字节。
+ */
+async function readTextPrefix(res: Response, limit: number): Promise<string> {
+  const reader = res.body?.getReader()
+  if (!reader) return ""
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    while (total < limit) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (!value || value.length === 0) continue
+      const rest = limit - total
+      const part = value.length > rest ? value.subarray(0, rest) : value
+      chunks.push(part)
+      total += part.length
+    }
+  } catch {
+    // 读取中断时使用已读到的部分
+  } finally {
+    try {
+      await reader.cancel()
+    } catch {
+      // 已关闭的流 cancel 会抛错，忽略
+    }
+  }
+  const merged = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    merged.set(chunk, offset)
+    offset += chunk.length
+  }
+  return new TextDecoder().decode(merged)
+}
+
 export class MegaApiClient {
   private addition: MegaAddition
+  private solveHashcash: (challenge: string) => Promise<string>
   private sid = ""
   private seq = Math.floor(Math.random() * 0x10000000)
   private masterKey: CryptoJS.lib.WordArray | null = null
   private nodes: Map<string, MegaNodeItem> = new Map()
   private rootId = ""
 
-  constructor(addition: MegaAddition) {
+  constructor(
+    addition: MegaAddition,
+    solveHashcash: (
+      challenge: string,
+    ) => Promise<string> = generateHashcashToken,
+  ) {
     this.addition = addition
+    this.solveHashcash = solveHashcash
   }
 
   private nextSeq(): number {
@@ -60,14 +245,46 @@ export class MegaApiClient {
       url += `&sid=${this.sid}`
     }
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    })
+    const bodyText = JSON.stringify(body)
+    let hashcashHeader: string | undefined
+    let res: Response
+
+    for (let retry = 0; ; retry++) {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      }
+      if (hashcashHeader) headers["X-Hashcash"] = hashcashHeader
+
+      res = await fetch(url, {
+        method: "POST",
+        headers,
+        body: bodyText,
+      })
+
+      // MEGA signals a proof-of-work challenge with HTTP 402 + X-Hashcash.
+      // Other 402 responses (for example, payment/account errors) keep the
+      // ordinary error path; challenges are bounded to one retry per request.
+      if (res.status !== 402) break
+      const challenge = res.headers.get("X-Hashcash")
+      if (!challenge) break
+      if (retry >= MAX_HASHCASH_RETRIES) {
+        throw new Error("Mega API repeated the Hashcash challenge after retry")
+      }
+      try {
+        await res.body?.cancel()
+      } catch {
+        // The response body is not needed after extracting its challenge header.
+      }
+      hashcashHeader = await this.solveHashcash(challenge)
+    }
 
     if (!res.ok) {
-      throw new Error(`Mega API HTTP error: ${res.status}`)
+      // 上游异常时可能返回整页 HTML；错误信息会进日志与前端提示，必须截断。
+      // 用流式读取而不是 res.text().slice()：后者仍会把整页正文缓冲进内存。
+      const detail = await readTextPrefix(res, 512)
+      throw new Error(
+        `Mega API HTTP error: ${res.status}${detail ? `: ${detail}` : ""}`,
+      )
     }
 
     const json = (await res.json()) as any
