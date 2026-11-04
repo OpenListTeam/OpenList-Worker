@@ -11,13 +11,26 @@ import type { StorageFormat } from "./types"
 /**
  * 读取环境变量（支持 process.env 和 env 对象）。
  *
- * 优先级：显式传入的 env > process.env > 空对象。即 env 对象**没有**该键时
- * 会回退到 process.env（自托管场景依赖此行为），与 readFormat 的缺省值同源。
+ * 优先级：显式传入且为真值的 env > process.env > 空对象。
+ * 注意是**整体**回退：`env` 非空时只用 env，即使它没有该键也不会再去看
+ * process.env（`env || process.env` 只判 env 本身）。这条语义与
+ * backend.ts/readFormat 完全一致；若有人按「逐键回退」去"修正"它，
+ * 自托管场景下 KV/D1 配置的解析结果会变，属于破坏性变更。
  */
 export function readEnv(key: string, defaultValue: string, env?: any): string {
   const e = env || (typeof process !== "undefined" ? process.env : {}) || {}
   return String(e[key] || "").trim().toLowerCase() || defaultValue
 }
+
+/**
+ * KV 健康探测使用的键/前缀。
+ *
+ * 两处必须同名：kv 驱动的 health()（get + list 前缀）与 ESA 入口
+ * （esa-entry.ts 的原始 EdgeKV 探测，结果通过 healthCheck 复用）。
+ * 名字不一致会让排查「ESA 每请求 KV 子请求配额」时对不上账，
+ * 也容易让人误以为探测走了两个不同的键（PR #163 评审）。
+ */
+export const KV_HEALTH_PROBE_KEY = "__health_check__"
 
 /**
  * 读取存储格式配置。
