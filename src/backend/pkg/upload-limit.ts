@@ -68,6 +68,9 @@ export async function readBodyWithinLimit(
 ): Promise<{ ok: true; buffer: Uint8Array } | { ok: false; limit: number }> {
   const pre = exceedsUploadLimit(c, part)
   if (pre !== null) return { ok: false, limit: pre }
+  // 注意：这里只是对同一个 ArrayBuffer 建视图，**不额外拷贝**全量请求体。
+  // 曾有人误以为多了一次拷贝而改回 Buffer.from(...)，结果在无 Buffer 的
+  // 运行时（ESA）直接 500 —— 见 Issue #169。
   const buffer = new Uint8Array(await c.req.arrayBuffer())
   const max = getUploadSizeLimit(c, part)
   if (buffer.length > max) return { ok: false, limit: max }
