@@ -205,7 +205,17 @@ export const withinOutRoot = (outRoot: string, dst: string): boolean => {
   const segments = dst.split("/").filter(Boolean)
   // `..` 段必须在比较前缀之前拒绝："/out/../../etc/x" 以 "/out/" 开头，
   // 只做字符串前缀比较会把它当成根内路径，写到输出目录之外。
-  if (segments.includes("..")) return false
+  // 编码点段（%2e%2e）在存储层解码后同样会穿越，按解码结果判断。
+  const isDotSegment = (segment: string) => {
+    let decoded = segment
+    try {
+      decoded = decodeURIComponent(segment)
+    } catch {
+      // 非法百分号编码：按原文判断
+    }
+    return decoded === "." || decoded === ".."
+  }
+  if (segments.some(isDotSegment)) return false
   if (!outRoot || outRoot === "/") return true
   const normalized = "/" + segments.join("/")
   return normalized === outRoot || normalized.startsWith(`${outRoot}/`)

@@ -450,4 +450,7 @@ test("STRM 输出根边界", () => {
   assert.equal(withinOutRoot("/out", "/out/../../etc/x.strm"), false)
   assert.equal(withinOutRoot("/out", "/out/../x.strm"), false)
   assert.equal(withinOutRoot("/", "/../etc/x.strm"), false)
+  // 编码点段在存储层解码后同样会穿越
+  assert.equal(withinOutRoot("/out", "/out/%2e%2e/etc/x.strm"), false)
+  assert.equal(withinOutRoot("/out", "/out/%2E%2E/%2E%2E/etc/x.strm"), false)
 })
