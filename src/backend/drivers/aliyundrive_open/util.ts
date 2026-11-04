@@ -343,7 +343,7 @@ export class AliyunOpenClient {
   }
 
   public async remove(fileId: string): Promise<void> {
-    const way = this.addition.remove_way || "trash"
+    const way = this.addition.remove_way || "delete"
     await this.openApiRequest(
       way === "trash" ? "/openFile/recyclebin" : "/openFile/delete",
       { drive_id: this.driveId, file_id: fileId },
