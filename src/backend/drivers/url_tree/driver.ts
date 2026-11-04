@@ -349,10 +349,15 @@ export class UrlTreeDriver implements StorageDriver {
     this.persist()
   }
 
-  async put(_v: string, physicalPath: string, content: Buffer): Promise<void> {
+  async put(
+    _v: string,
+    physicalPath: string,
+    content: Uint8Array,
+  ): Promise<void> {
     if (!this.addition.writable) throw new Error("[UrlTree] not writable")
     // put 的内容应是一行 URL 定义（name:url）
-    const line = content.toString("utf8").trim()
+    // Uint8Array 没有 toString(encoding)，统一用 TextDecoder（ESA 无全局 Buffer）
+    const line = new TextDecoder().decode(content).trim()
     const parent = getNodeByPath(
       this.root,
       "/" + splitPath(physicalPath).slice(1, -1).join("/"),

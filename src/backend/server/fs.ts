@@ -1049,7 +1049,8 @@ fsRouter.put("/form", async (c) => {
         data: null,
       })
     }
-    const buffer = Buffer.from(await (file as File).arrayBuffer())
+    // 用 Uint8Array 而非 Buffer：ESA 边缘运行时没有全局 Buffer（Issue #169）
+    const buffer = new Uint8Array(await (file as File).arrayBuffer())
     // multipart 的 Content-Length 只覆盖整个表单，仍需按文件实际字节复核
     const max = getUploadSizeLimit(c, false)
     if (buffer.length > max) return tooLargeResponse(c, max)
@@ -2030,7 +2031,7 @@ fsRouter.post("/archive/decompress", async (c) => {
           continue
         }
         const content = await extractZipEntry(bytes, entry)
-        await putItem(targetPath, Buffer.from(content), getStorageRequestContext(c))
+        await putItem(targetPath, content, getStorageRequestContext(c))
         count++
       }
     }

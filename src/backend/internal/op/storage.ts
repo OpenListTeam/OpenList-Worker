@@ -1823,7 +1823,8 @@ export async function copyItems(
 
 export async function putItem(
   virtualPath: string,
-  content: Buffer,
+  // Uint8Array 而非 Node Buffer：ESA 等边缘运行时没有全局 Buffer（Issue #169）
+  content: Uint8Array,
   requestContext?: StorageRequestContext,
 ): Promise<void> {
   const resolved = await resolvePath(virtualPath, requestContext?.env)
