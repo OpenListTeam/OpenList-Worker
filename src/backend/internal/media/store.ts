@@ -548,8 +548,17 @@ async function remapConflictingIds(
 ): Promise<void> {
   const baseNext = Number(state.baseNextId) || 0
   if (!baseNext || (Number(target.next_id) || 1) <= baseNext) return
-  const merged = await mergeMetaForCommit(env, buildMetaPayload(target))
-  const persistedNext = Number(merged.next_id) || 1
+  // 读**原始**持久化水位，而不是 mergeMetaForCommit 的结果：后者取的是
+  // max(本地, 持久化)，会把「本实例刚分配、还没写下去」的 id 当成冲突，
+  // 于是每次扫描都白重映射一遍。
+  const rawMeta = await readPersistedSecret(env, META_KEY).catch(() => null)
+  if (!rawMeta) return
+  let persistedNext = 0
+  try {
+    persistedNext = Number(JSON.parse(rawMeta)?.next_id) || 0
+  } catch {
+    return
+  }
   if (persistedNext <= baseNext) return
 
   const known = new Set<number>()
@@ -575,7 +584,7 @@ async function remapConflictingIds(
     if (nid !== undefined) row.item_id = nid
   }
   target.next_id = Math.max(Number(target.next_id) || 1, next)
-  state.baseNextId = persistedNext
+  state.baseNextId = Number(target.next_id) || 1
   console.warn(`[media] remapped ${remap.size} ids to avoid a cross-isolate collision`)
 }
 
@@ -674,6 +683,9 @@ export function saveMediaDb(env: any, db?: MediaDb): Promise<void> {
           // 采纳其它实例推进过的 id 水位，避免后续分配复用已被占用的 id
           const nextId = Number(meta.next_id) || 1
           if (nextId > (Number(target.next_id) || 1)) target.next_id = nextId
+          // 本次已把自己的水位写下去：下次保存的冲突基准要跟上，
+          // 否则会把自己的推进误判成「别的 isolate 占了 id」。
+          state.baseNextId = Number(target.next_id) || 1
         }
         // 只有全部写成功才推进快照；失败时保持旧值，重试会重新写入
         for (const w of itemWrites) {

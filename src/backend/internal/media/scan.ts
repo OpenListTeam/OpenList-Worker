@@ -51,6 +51,8 @@ const MAX_DEPTH = 12
 const MAX_ITEMS = 20000
 /** 标签读取：头部 2MB（覆盖 FLAC PICTURE）+ 尾部 128B（ID3v1） */
 const TAG_HEAD_BYTES = 2 * 1024 * 1024
+/** 首轮读取的标签窗口：命中即不再读满 TAG_HEAD_BYTES */
+const INITIAL_HEAD_BYTES = 256 * 1024
 const TAG_TAIL_BYTES = 128
 const LRC_MAX_BYTES = 512 * 1024
 const BOOK_MAX_BYTES = 16 * 1024 * 1024
@@ -311,9 +313,16 @@ async function readMusicTag(
   ext: string,
   fileSize: number,
 ): Promise<MusicTag> {
-  const head = await readFileRange(filePath, 0, TAG_HEAD_BYTES, { env })
+  // 先只读 256KB：绝大多数 MP3/FLAC 的标签都在这个范围内，而每次
+  // readFileRange 都要换链 + 下载。旧实现无条件读 2MB，1142 首歌就是
+  // 2.2GB 流量，扫描要跑几小时（用户实测约 20s/首）。
+  const firstLen = Math.min(
+    INITIAL_HEAD_BYTES,
+    fileSize > 0 ? fileSize : INITIAL_HEAD_BYTES,
+  )
+  let head = await readFileRange(filePath, 0, firstLen, { env })
   let tailBytes: Uint8Array | null = null
-  if (fileSize > TAG_HEAD_BYTES && fileSize > TAG_TAIL_BYTES) {
+  if (fileSize > (head?.length || 0) && fileSize > TAG_TAIL_BYTES) {
     tailBytes = await readFileRange(
       filePath,
       fileSize - TAG_TAIL_BYTES,
@@ -323,7 +332,15 @@ async function readMusicTag(
   } else if (head && head.length >= TAG_TAIL_BYTES) {
     tailBytes = head.subarray(head.length - TAG_TAIL_BYTES)
   }
-  return parseMusicTags(ext, head, tailBytes)
+  let tag = parseMusicTags(ext, head, tailBytes)
+  const hasCore = tag.title || tag.artist || tag.album
+  // 关键字段全空且文件还有后续内容：很可能是标签较大（内嵌封面）或
+  // 标签不在文件开头，再补读完整的 2MB。
+  if (!hasCore && fileSize > (head?.length || 0) && (head?.length || 0) < TAG_HEAD_BYTES) {
+    head = await readFileRange(filePath, 0, TAG_HEAD_BYTES, { env })
+    tag = parseMusicTags(ext, head, tailBytes)
+  }
+  return tag
 }
 
 /** 读取同目录同名 .lrc（限制 512KB） */
@@ -677,6 +694,28 @@ function findExisting(db: any, type: MediaType, folder: string, name: string) {
   )
 }
 
+/**
+ * 小并发池。扫描是纯 I/O（换链 + Range 读取），串行时 1000 首要跑几小时；
+ * 并发度按类型配置的 scrape_concurrency 取，默认 4，上限 6，避免打爆网盘限流。
+ */
+async function mapPool<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  if (items.length === 0) return
+  const width = Math.max(1, Math.min(limit, items.length))
+  let cursor = 0
+  const runners = Array.from({ length: width }, async () => {
+    while (true) {
+      const idx = cursor++
+      if (idx >= items.length) return
+      await worker(items[idx])
+    }
+  })
+  await Promise.all(runners)
+}
+
 export async function scanMedia(
   env: any,
   type: MediaType,
@@ -724,7 +763,12 @@ export async function scanMedia(
       }
       progress.total = targets.length
 
-      for (const target of targets) {
+      const scanConcurrency = Math.min(
+        6,
+        Math.max(1, Number((cfg as any).scrape_concurrency) || 4),
+      )
+      let sinceSave = 0
+      await mapPool(targets, scanConcurrency, async (target) => {
         progress.current += 1
         progress.message = `已扫描: ${target.name}`
         try {
@@ -775,8 +819,23 @@ export async function scanMedia(
             }
             produced += 1
           }
-          if (produced === 0) skipped += 1
-          else scanned += produced
+          if (produced === 0) {
+            skipped += 1
+          } else {
+            scanned += produced
+            sinceSave += produced
+            // 每 30 条落盘一次：旧实现只在扫描结束保存，用户看到的是
+            // 「跑了半天列表还是空的」，中途失败还会丢掉全部结果。
+            if (sinceSave >= 30) {
+              sinceSave = 0
+              await saveMediaDb(env, db).catch((err: any) =>
+                console.warn(
+                  "[media] scan incremental save failed:",
+                  err?.message || err,
+                ),
+              )
+            }
+          }
         } catch (e: any) {
           skipped += 1
           console.warn(
@@ -784,7 +843,7 @@ export async function scanMedia(
             e?.message || e,
           )
         }
-      }
+      })
 
       sp.last_scan_at = new Date().toISOString()
       cfg.last_scan_at = sp.last_scan_at
