@@ -8,6 +8,7 @@
  * 自动检测环境并选择合适的模式。
  */
 import { sanitizeProxyOrigin } from "../proxy"
+import { readFormat } from "../config"
 import type { Driver, EnvContext } from "../types"
 
 /**
@@ -556,14 +557,28 @@ export const kvDriver: Driver = {
     // 模式1: Binding 模式
     if (kv) {
       try {
-        await kv.get("__health_check__")
-        // list 探测：list 是最稀缺的配额（Cloudflare 免费版仅 1000 次/天），
-        // 且 DB_FORMAT=key 的 load/save 依赖它。只探测 get 会让「list 配额
-        // 耗尽 / list 接口异常」的环境误报为就绪（issue #125：env_check
-        // 全绿但初始化 500）。prefix 不会命中真实键，取回空页即 1 次操作；
-        // 且 health 只在手动诊断路径（env_check / debug / admin）被调用，
-        // 不在每请求路径上，不会放大配额消耗。
-        await kv.list({ prefix: "__health_check__", cursor: "", limit: 256 })
+        // ESA wrapper 的业务 get 为兼容缓存会把底层错误映射成 null；若它提供
+        // 直连探测方法，健康检查必须绕开该容错，以免把读取故障误报成可用。
+        if (typeof kv.healthCheck === "function") {
+          await kv.healthCheck()
+        } else {
+          await kv.get("__health_check__")
+        }
+        // key 格式的 load/save 依赖 list；map 格式只读写固定的 openlist_config,
+        // 不要求 EdgeKV 暴露 list API（ESA EdgeKV 内置 API 仅提供 get/put/delete）。
+        // 只有 key 格式才探测 list，避免 map 格式部署被不支持的 list() 误判为
+        // 存储不可用（issue #159）。对 key 格式仍检查 list，防止配额耗尽/接口异常
+        // 导致 env_check 误报 ready（issue #125）。使用专用前缀，取回空页只耗 1 次。
+        // 直接复用后端的 readFormat()：健康检查与真实读写必须用同一份解析逻辑
+        // （env 优先级、缺省 map、DB_DRIVER=json 别名），复刻一份迟早漂移。
+        if (readFormat(env) === "key") {
+          if (typeof kv.list !== "function") {
+            throw new Error(
+              "KV binding does not support list(), which is required by DB_FORMAT=key",
+            )
+          }
+          await kv.list({ prefix: "__health_check__", cursor: "", limit: 256 })
+        }
         return {
           driver: "kv",
           mode: "binding",

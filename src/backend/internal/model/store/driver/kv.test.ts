@@ -107,9 +107,10 @@ test("kv binding list stops when cursor cannot advance (quota-burn guard)", asyn
   assert.equal(calls, 2)
 })
 
-test("kv health (binding) exercises list so exhausted quota is not reported ready", async () => {
-  // list 抛错（Cloudflare 免费版耗尽 list 配额时的行为）→ 必须报不可用
+test("kv health (binding, key format) exercises list so exhausted quota is not reported ready", async () => {
+  // DB_FORMAT=key 依赖 list；list 抛错（如 Cloudflare 配额耗尽）必须报不可用。
   const badEnv = {
+    DB_FORMAT: "key",
     KV: {
       get: async () => null,
       put: async () => {},
@@ -126,6 +127,7 @@ test("kv health (binding) exercises list so exhausted quota is not reported read
   // 健康时：list 探测恰好消耗 1 次操作，且不用空前缀（不拉全量键）
   let listCalls = 0
   const okEnv = {
+    DB_FORMAT: "key",
     KV: {
       get: async () => null,
       put: async () => {},
@@ -140,4 +142,94 @@ test("kv health (binding) exercises list so exhausted quota is not reported read
   const ok = await kvDriver.health(okEnv)
   assert.equal(ok.available, true)
   assert.equal(listCalls, 1)
+})
+
+test("kv health (binding, map format) does not require an unsupported list API", async () => {
+  // ESA EdgeKV exposes get/put/delete but no list. Map format only needs the
+  // single openlist_config key, so it must still be considered healthy.
+  let getCalls = 0
+  let healthCheckCalls = 0
+  const env = {
+    DB_FORMAT: "map",
+    KV: {
+      get: async () => {
+        getCalls += 1
+        return undefined
+      },
+      put: async () => {},
+      delete: async () => true,
+      // esa-entry has already performed this raw probe for the current request.
+      healthCheck: async () => {
+        healthCheckCalls += 1
+      },
+    },
+  }
+
+  const health = await kvDriver.health(env)
+  assert.equal(health.available, true)
+  assert.equal(health.mode, "binding")
+  assert.equal(getCalls, 0, "health must reuse the ESA entry probe")
+  assert.equal(healthCheckCalls, 1)
+
+  const failedProbe = await kvDriver.health({
+    DB_FORMAT: "map",
+    KV: {
+      get: async () => null,
+      put: async () => {},
+      delete: async () => true,
+      healthCheck: async () => {
+        throw new Error("EdgeKV read unavailable")
+      },
+    },
+  })
+  assert.equal(failedProbe.available, false)
+  assert.match(String(failedProbe.error), /EdgeKV read unavailable/)
+})
+
+test("kv health (binding) honors the legacy DB_DRIVER=json map alias", async () => {
+  const health = await kvDriver.health({
+    DB_DRIVER: "json",
+    DB_FORMAT: "key",
+    KV: {
+      get: async () => null,
+      put: async () => {},
+      delete: async () => true,
+    },
+  })
+  assert.equal(health.available, true)
+})
+
+test("kv health (binding, key format) reports missing list support explicitly", async () => {
+  const env = {
+    DB_FORMAT: "key",
+    KV: {
+      get: async () => undefined,
+      put: async () => {},
+      delete: async () => true,
+    },
+  }
+
+  const health = await kvDriver.health(env)
+  assert.equal(health.available, false)
+  assert.match(String(health.error), /list\(\).*required by DB_FORMAT=key/)
+})
+
+test("kv health defaults to map when DB_FORMAT is unset (ESA EdgeKV shape)", async () => {
+  // 曾经的复刻实现自己解析 env，与 backend.ts 的 readFormat() 各写一份；
+  // 现在两者共用同一份实现，缺省格式必须是 map（而不是按驱动名猜 key），
+  // 因此没有 list() 的 EdgeKV 绑定在未配置 DB_FORMAT 时仍应判为可用。
+  let listCalls = 0
+  const health = await kvDriver.health({
+    KV: {
+      get: async () => null,
+      put: async () => {},
+      delete: async () => true,
+      list: async () => {
+        listCalls += 1
+        return { keys: [], list_complete: true }
+      },
+    },
+  })
+  assert.equal(health.available, true)
+  assert.equal(listCalls, 0, "map 格式不得探测 list")
 })
