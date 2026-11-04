@@ -54,6 +54,8 @@ const TAG_HEAD_BYTES = 2 * 1024 * 1024
 const TAG_TAIL_BYTES = 128
 const LRC_MAX_BYTES = 512 * 1024
 const BOOK_MAX_BYTES = 16 * 1024 * 1024
+/** 封面缓存上限：超过则不入封面，避免把整张大图读进内存 */
+const IMAGE_MAX_BYTES = 8 * 1024 * 1024
 
 export interface ScanProgress {
   media_type: MediaType
@@ -384,7 +386,10 @@ async function buildItem(
         scan_path_id: sp.id,
         folder_path: folder,
         file_name: target.name,
-        scraped_name: existing?.scraped_name || ep.title,
+        // 剧名与集名分开存：scraped_name 用于 Series 身份，episode_title 是本集标题。
+        // 把集名写进 scraped_name 会让同一部剧的每集各自成为一个 Series。
+        scraped_name: existing?.scraped_name || "",
+        episode_title: existing?.episode_title || ep.title,
         original_name: target.name,
         file_size: size,
         mime_type: mimeOfFile(target.name),
@@ -422,19 +427,28 @@ async function buildItem(
   let thumb = existing?.thumb || ""
   let thumbMime = existing?.thumb_mime || ""
 
-  // 图片：按魔数校验 + 生成可缓存的缩略图（Worker 缩放不了，直接缓存原图）
+  // 图片：按魔数校验真实格式，缓存**完整**图片作为封面。
+  // 只读头部会让大图被截断，而 cover 一旦非空就不会再被刮削替换，
+  // 于是缩略图永远是残缺的（见 PR #148 评审）。
   if (sp.media_type === "image" && !target.isDir) {
-    const head = await readFileRange(fullPath, 0, 256 * 1024, { env })
+    const head = await readFileRange(fullPath, 0, 64 * 1024, { env })
     const mime = head ? sniffImageMime(head) : ""
-    if (!cover && head && mime) {
-      const stored = await persistCover(env, head, opts.thumb)
-      cover = stored.cover
-      thumb = stored.thumb
-      thumbMime = stored.thumb_mime
-    }
     if (!mime) {
       // 伪造扩展名的非图片文件不入库
       return {}
+    }
+    const size = Number(target.size) || 0
+    if (!cover && (size === 0 ? true : size <= IMAGE_MAX_BYTES)) {
+      const readLen = size > 0 ? size : IMAGE_MAX_BYTES
+      const full = await readFileRange(fullPath, 0, readLen, { env })
+      // size 未知时只有「读到的字节少于上限」才能确认是完整图片
+      const complete = !!full && (size > 0 ? full.length === size : full.length < IMAGE_MAX_BYTES)
+      if (complete) {
+        const stored = await persistCover(env, full!, opts.thumb)
+        cover = stored.cover
+        thumb = stored.thumb
+        thumbMime = stored.thumb_mime
+      }
     }
     if (!releaseDate) {
       const d = (target.modified || "").slice(0, 10)

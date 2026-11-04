@@ -243,11 +243,12 @@ test("FLAC vorbis comment", () => {
     ...le32(entries.length),
     ...entries.flatMap((e) => [...le32(e.length), ...utf8(e)]),
   ]
+  // metadata block 头部的 24 位长度按规范是大端（载荷内部长度才是小端）
   const header = [
     0x84, // last + type 4
-    body.length & 0xff,
-    (body.length >> 8) & 0xff,
     (body.length >> 16) & 0xff,
+    (body.length >> 8) & 0xff,
+    body.length & 0xff,
   ]
   const flac = new Uint8Array([...utf8("fLaC"), ...header, ...body])
   const tag = parseFLAC(flac)
@@ -412,6 +413,70 @@ test("STRM targets follow Emby/Jellyfin layout", () => {
     season: 0,
   })
   assert.match(movie[0].relPath, /Movie \(2020\)\/Movie \(2020\)\.strm$/)
+})
+
+test("STRM 多季合并与音乐专辑逐曲导出", () => {
+  const multi: MediaItem = {
+    id: 2,
+    media_type: "video",
+    scan_path_id: 1,
+    folder_path: "/tv",
+    file_name: "Show",
+    scraped_name: "Show",
+    cover: "",
+    authors: "",
+    plot: "",
+    description: "",
+    genre: "",
+    release_date: "",
+    rating: 0,
+    file_size: 0,
+    duration: 0,
+    season: 1,
+    episode: 0,
+    episodes: JSON.stringify([
+      { index: 1, season: 1, title: "Pilot", file_name: "S01E01.mkv" },
+      { index: 1, season: 2, title: "Return", file_name: "S02E01.mkv" },
+    ]),
+    album_name: "",
+    album_artist: "",
+    track_number: 0,
+    publisher: "",
+    isbn: "",
+    external_id: "",
+    hidden: false,
+    scraper_source: "",
+    created_at: "",
+    updated_at: "",
+    video_type: "tv",
+    is_folder: true,
+  }
+  const tv = buildStrmTargets(multi)
+  assert.equal(tv.length, 2)
+  // 合并文件夹里 S02E01 不能被写到 Season 01
+  assert.match(tv[0].relPath, /Season 01\/Show S01E01 - Pilot\.strm$/)
+  assert.match(tv[1].relPath, /Season 02\/Show S02E01 - Return\.strm$/)
+
+  const album: MediaItem = {
+    ...multi,
+    id: 3,
+    media_type: "music",
+    video_type: "",
+    folder_path: "/music",
+    file_name: "Album",
+    scraped_name: "Album",
+    album_name: "Record",
+    album_artist: "Artist",
+    episodes: JSON.stringify([
+      { index: 1, title: "One", file_name: "01.flac" },
+      { index: 2, title: "Two", file_name: "02.flac" },
+    ]),
+  }
+  const tracks = buildStrmTargets(album)
+  assert.equal(tracks.length, 2)
+  // 合并专辑必须指向每一首歌，而不是专辑目录
+  assert.equal(tracks[1].rawPath, "/music/Album/02.flac")
+  assert.match(tracks[1].relPath, /Artist\/Record\/02 - Two\.strm$/)
 })
 
 test("封面只认魔数，声明成 SVG 的内容会被丢弃", async () => {

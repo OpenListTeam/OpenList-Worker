@@ -20,6 +20,7 @@
 import {
   listPersistedSecrets,
   readPersistedSecret,
+  readPersistedSecretStrict,
   writePersistedSecret,
 } from "../model/store/json"
 import {
@@ -55,11 +56,15 @@ interface CacheState {
   itemSnapshots: Map<string, string>
   userSnapshots: Map<string, string>
   metaSnapshot: string
+  /** 本次加载时的 id 水位：保存时用它区分「本地新增」与「持久化已有」 */
+  baseNextId?: number
 }
 
 let cache: CacheState | null = null
 let loadPromise: Promise<MediaDb> | null = null
 let saveChain: Promise<void> = Promise.resolve()
+/** 最近一次加载是否失败：失败期间禁止写回，避免用空库覆盖真实数据 */
+let loadFailed = false
 
 const normalizeItem = (raw: any): MediaItem => ({
   id: Number(raw?.id) || 0,
@@ -97,6 +102,7 @@ const normalizeItem = (raw: any): MediaItem => ({
   is_folder: !!raw?.is_folder,
   scraped_at: raw?.scraped_at || null,
   original_name: String(raw?.original_name || ""),
+  episode_title: String(raw?.episode_title || ""),
   thumb: String(raw?.thumb || ""),
   thumb_mime: String(raw?.thumb_mime || ""),
 })
@@ -136,6 +142,7 @@ const normalizeUserData = (raw: any): MediaUserData => ({
   user_id: Number(raw?.user_id) || 0,
   item_id: Number(raw?.item_id) || 0,
   episode_index: Number(raw?.episode_index) || 0,
+  season: Number(raw?.season) || 0,
   position_ticks: Number(raw?.position_ticks) || 0,
   duration_ticks: Number(raw?.duration_ticks) || 0,
   played: !!raw?.played,
@@ -252,6 +259,74 @@ const mergeShardIds = (...lists: any[]) => {
  * 分片本身还会在 getMediaDb 里按前缀枚举（见 listPersistedSecrets），
  * 因此即使索引仍然写丢，数据也不会不可见。
  */
+type MetaRecord = Record<string, any>
+
+const timeOf = (value: any) => {
+  const t = Date.parse(String(value || ""))
+  return Number.isFinite(t) ? t : 0
+}
+
+/**
+ * 按主键合并两个数组：以持久化为基准，本地新增并入，同键取 updated_at 较新者。
+ *
+ * 不能简单地「本地数组整体覆盖」——另一个 isolate 可能刚撤销过密钥、改过配置，
+ * 用几分钟前读到的快照写回就会把它们复活（PR #148 评审 #4/#5/#6）。
+ */
+function mergeRecords<T extends MetaRecord>(
+  local: T[] | undefined,
+  persisted: T[] | undefined,
+  key: string,
+  timeKey = "updated_at",
+): T[] | undefined {
+  if (!Array.isArray(local)) return persisted
+  if (!Array.isArray(persisted)) return local
+  const out = new Map<string, T>()
+  for (const row of persisted) out.set(String(row?.[key]), row)
+  for (const row of local) {
+    const k = String(row?.[key])
+    const cur = out.get(k)
+    if (!cur) {
+      out.set(k, row)
+      continue
+    }
+    if (timeOf(row?.[timeKey]) >= timeOf(cur?.[timeKey])) out.set(k, row)
+  }
+  return Array.from(out.values())
+}
+
+/** 把旧快照的增量合并进最新缓存对象（就地修改 base 并返回） */
+function mergeDbForSave(base: MediaDb, incoming: MediaDb): MediaDb {
+  const byId = new Map(base.items.map((item) => [item.id, item]))
+  for (const item of incoming.items) {
+    const cur = byId.get(item.id)
+    if (!cur) {
+      base.items.push(item)
+      byId.set(item.id, item)
+      continue
+    }
+    if (timeOf(item.updated_at) >= timeOf(cur.updated_at)) {
+      Object.assign(cur, item)
+    }
+  }
+  const rowKey = (row: MediaUserData) =>
+    `${row.user_id}\u0000${row.item_id}\u0000${row.episode_index}\u0000${Number(row.season) || 1}`
+  const rowByKey = new Map(base.user_data.map((row) => [rowKey(row), row]))
+  for (const row of incoming.user_data) {
+    const k = rowKey(row)
+    const cur = rowByKey.get(k)
+    if (!cur) {
+      base.user_data.push(row)
+      rowByKey.set(k, row)
+      continue
+    }
+    if (timeOf(row.updated_at) >= timeOf(cur.updated_at)) {
+      Object.assign(cur, row)
+    }
+  }
+  base.next_id = Math.max(Number(base.next_id) || 1, Number(incoming.next_id) || 1)
+  return base
+}
+
 async function mergeMetaForCommit(
   env: any,
   local: Record<string, any>,
@@ -270,6 +345,12 @@ async function mergeMetaForCommit(
       ),
       item_shards: mergeShardIds(local.item_shards, persisted.item_shards),
       user_shards: mergeShardIds(local.user_shards, persisted.user_shards),
+      // 其余集合逐项合并，而不是整份快照覆盖
+      configs: mergeRecords(local.configs, persisted.configs, "media_type"),
+      scan_paths: mergeRecords(local.scan_paths, persisted.scan_paths, "id"),
+      app_keys: mergeRecords(local.app_keys, persisted.app_keys, "id"),
+      devices: mergeRecords(local.devices, persisted.devices, "id"),
+      playlists: mergeRecords(local.playlists, persisted.playlists, "id"),
     }
   } catch {
     // 持久化内容损坏：按本地快照提交，至少不让本次写入失败
@@ -289,27 +370,25 @@ function ensureConfigs(db: MediaDb) {
  * 读取单个分片；分片内容可能因手工编辑/版本升级损坏，统一静默降级。
  */
 async function readShardItems(env: any, sid: string): Promise<MediaItem[]> {
-  try {
-    const raw = await readPersistedSecret(env, itemShardKey(Number(sid)))
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.map(normalizeItem) : []
-  } catch (e: any) {
-    console.warn(`[media] read items shard ${sid} failed:`, e?.message || e)
-    return []
+  // 读取失败必须抛出而不是返回 []：否则「后端超时」会被当成「空分片」，
+  // 下一次普通保存就把空数据写回去，真实条目与配置被永久覆盖。
+  const raw = await readPersistedSecretStrict(env, itemShardKey(Number(sid)))
+  if (!raw) return []
+  const parsed = JSON.parse(raw)
+  if (!Array.isArray(parsed)) {
+    throw new Error(`media items shard ${sid} is not an array`)
   }
+  return parsed.map(normalizeItem)
 }
 
 async function readShardUserData(env: any, uid: string): Promise<MediaUserData[]> {
-  try {
-    const raw = await readPersistedSecret(env, userShardKey(Number(uid)))
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.map(normalizeUserData) : []
-  } catch (e: any) {
-    console.warn(`[media] read userdata shard ${uid} failed:`, e?.message || e)
-    return []
+  const raw = await readPersistedSecretStrict(env, userShardKey(Number(uid)))
+  if (!raw) return []
+  const parsed = JSON.parse(raw)
+  if (!Array.isArray(parsed)) {
+    throw new Error(`media userdata shard ${uid} is not an array`)
   }
+  return parsed.map(normalizeUserData)
 }
 
 export async function getMediaDb(env: any): Promise<MediaDb> {
@@ -357,12 +436,18 @@ export async function getMediaDb(env: any): Promise<MediaDb> {
     db.item_shards = itemShardIds
     db.user_shards = userShardIds
 
+    // 快照记录「本次真正读到的持久化内容」：保存时的 diff 与「清空分片写 []」
+    // 都依赖它。旧实现从不填充，冷启动后删条目不会写 []，旧分片下次加载复活。
+    const itemSnapshots = new Map<string, string>()
+    const userSnapshots = new Map<string, string>()
     const itemGroups: MediaItem[] = []
     if (legacyItems.length > 0) {
       itemGroups.push(...legacyItems)
     } else {
       for (const sid of itemShardIds) {
-        itemGroups.push(...(await readShardItems(env, sid)))
+        const list = await readShardItems(env, sid)
+        itemGroups.push(...list)
+        itemSnapshots.set(String(sid), serializeItems(list))
       }
     }
     const userRows: MediaUserData[] = []
@@ -370,7 +455,9 @@ export async function getMediaDb(env: any): Promise<MediaDb> {
       userRows.push(...legacyUserData)
     } else {
       for (const uid of userShardIds) {
-        userRows.push(...(await readShardUserData(env, uid)))
+        const rows = await readShardUserData(env, uid)
+        userRows.push(...rows)
+        userSnapshots.set(String(uid), serializeUsers(rows))
       }
     }
     db.items = itemGroups
@@ -397,14 +484,19 @@ export async function getMediaDb(env: any): Promise<MediaDb> {
     cache = {
       db,
       loadedAt: Date.now(),
-      itemSnapshots: cache?.itemSnapshots || new Map(),
-      userSnapshots: cache?.userSnapshots || new Map(),
-      metaSnapshot: cache?.metaSnapshot || "",
+      itemSnapshots,
+      userSnapshots,
+      metaSnapshot: "",
+      baseNextId: Number(db.next_id) || 1,
     }
+    loadFailed = false
     return db
   })()
     .catch((e) => {
       console.warn("[media] load db failed, fallback to empty:", e?.message || e)
+      // 标记「这次的库不完整」：后续保存一律拒绝，直到某次加载成功。
+      // 否则一次 KV/D1 读取失败就会把空库写回去，覆盖真实数据。
+      loadFailed = true
       cache = {
         db: emptyMediaDb(),
         loadedAt: Date.now(),
@@ -441,9 +533,66 @@ const serializeUsers = (list: MediaUserData[]) => JSON.stringify(list)
  *
  * 注意：`db` 若与缓存不是同一对象，会先合并（调用方通常是同一个）。
  */
+/**
+ * 跨 isolate 的 id 水位冲突处理。
+ *
+ * 两个 isolate 都从 next_id=100 出发时，各自新增的条目会拿到相同 id；
+ * 后保存的一方在这里把「本实例新分配、且持久化未知」的 id 整体搬到
+ * 持久化水位之后，并同步 user_data 引用。窗口仍在「读水位 → 写分片」之间，
+ * 但比整段扫描持有时短了几个数量级。
+ */
+async function remapConflictingIds(
+  env: any,
+  state: CacheState,
+  target: MediaDb,
+): Promise<void> {
+  const baseNext = Number(state.baseNextId) || 0
+  if (!baseNext || (Number(target.next_id) || 1) <= baseNext) return
+  const merged = await mergeMetaForCommit(env, buildMetaPayload(target))
+  const persistedNext = Number(merged.next_id) || 1
+  if (persistedNext <= baseNext) return
+
+  const known = new Set<number>()
+  for (const payload of state.itemSnapshots.values()) {
+    try {
+      for (const row of JSON.parse(payload)) known.add(Number(row.id))
+    } catch {
+      // 快照损坏时保守处理：当作全是新增
+    }
+  }
+  let next = persistedNext
+  const remap = new Map<number, number>()
+  for (const item of target.items) {
+    if (item.id >= baseNext && !known.has(item.id)) remap.set(item.id, next++)
+  }
+  if (remap.size === 0) return
+  for (const item of target.items) {
+    const nid = remap.get(item.id)
+    if (nid !== undefined) item.id = nid
+  }
+  for (const row of target.user_data) {
+    const nid = remap.get(row.item_id)
+    if (nid !== undefined) row.item_id = nid
+  }
+  target.next_id = Math.max(Number(target.next_id) || 1, next)
+  state.baseNextId = persistedNext
+  console.warn(`[media] remapped ${remap.size} ids to avoid a cross-isolate collision`)
+}
+
 export function saveMediaDb(env: any, db?: MediaDb): Promise<void> {
-  const target = db ?? cache?.db
+  let target = db ?? cache?.db
   if (!target) return Promise.resolve()
+  if (loadFailed) {
+    // 上次加载不完整：任何写回都可能用空数据覆盖真实库
+    return Promise.reject(
+      new Error("media db load failed; refusing to overwrite persisted data"),
+    )
+  }
+  if (cache?.db && cache.db !== target) {
+    // 长任务（扫描/刮削）持有的是旧快照：先合并进最新缓存，
+    // 否则它会把别人刚写入的进度、密钥、配置整份覆盖掉。
+    target = mergeDbForSave(cache.db, target)
+  }
   const state: CacheState =
     cache ??
     ({
@@ -462,6 +611,7 @@ export function saveMediaDb(env: any, db?: MediaDb): Promise<void> {
   saveChain = saveChain
     .catch(() => undefined)
     .then(async () => {
+      await remapConflictingIds(env, state, target)
       const itemGroups = groupItems(target.items)
       const userGroups = groupUserData(target.user_data)
 
@@ -552,6 +702,11 @@ export function saveMediaDb(env: any, db?: MediaDb): Promise<void> {
  * 失败语义同 saveMediaDb：抛错 + 不推进快照 + 失效缓存，下一次保存重试。
  */
 export function saveMediaMeta(env: any, db: MediaDb): Promise<void> {
+  if (loadFailed) {
+    return Promise.reject(
+      new Error("media db load failed; refusing to overwrite persisted meta"),
+    )
+  }
   const state: CacheState =
     cache ??
     ({
@@ -787,17 +942,23 @@ export function upsertItem(
   return item
 }
 
+/** 缺省季号按 1 处理：旧数据没有 season 字段，语义上就是第一季 */
+const seasonOfRow = (row: MediaUserData) => Number(row.season) || 1
+
 export function getUserData(
   db: MediaDb,
   userId: number,
   itemId: number,
   episodeIndex = 0,
+  season = 0,
 ) {
+  const wantSeason = Number(season) || 1
   return db.user_data.find(
     (d) =>
       d.user_id === userId &&
       d.item_id === itemId &&
-      d.episode_index === episodeIndex,
+      d.episode_index === episodeIndex &&
+      seasonOfRow(d) === wantSeason,
   )
 }
 
@@ -806,14 +967,16 @@ export function ensureUserData(
   userId: number,
   itemId: number,
   episodeIndex = 0,
+  season = 0,
 ): MediaUserData {
-  let row = getUserData(db, userId, itemId, episodeIndex)
+  let row = getUserData(db, userId, itemId, episodeIndex, season)
   if (!row) {
     row = {
       id: nextId(db),
       user_id: userId,
       item_id: itemId,
       episode_index: episodeIndex,
+      season: Number(season) || 1,
       position_ticks: 0,
       duration_ticks: 0,
       played: false,

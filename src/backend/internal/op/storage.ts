@@ -1,4 +1,5 @@
 import { resolvePath, getDb, getSettings, saveDb } from "../model/db"
+import { isSafeUrl } from "../../pkg/http"
 import { encodeDownloadPath } from "../../pkg/path"
 import { singleflight } from "../../pkg/singleflight"
 import { canUseProxyEndpoint, normalizeExtList } from "../driver/proxy"
@@ -1858,6 +1859,30 @@ export async function putItem(
  */
 export const MAX_MEDIA_READ_BYTES = 32 * 1024 * 1024
 
+/** 本地存储的区间读取（Node 运行时；Worker 下 import 会失败并返回 null） */
+async function readLocalRange(
+  physicalPath: string,
+  start: number,
+  want: number,
+): Promise<Uint8Array | null> {
+  try {
+    const fs = await import("node:fs/promises")
+    const fh = await fs.open(physicalPath, "r")
+    try {
+      const size = (await fh.stat()).size
+      if (start >= size) return new Uint8Array(0)
+      const len = Math.min(want, size - start)
+      const buf = new Uint8Array(len)
+      const { bytesRead } = await fh.read(buf, 0, len, start)
+      return buf.subarray(0, bytesRead)
+    } finally {
+      await fh.close()
+    }
+  } catch {
+    return null
+  }
+}
+
 /**
  * 读取 VFS 文件的指定区间（用于 ID3 标签、EPUB 封面、图片缩略图等）。
  *
@@ -1902,14 +1927,62 @@ export async function readFileRange(
       requestContext,
     )
   }
-  if (!item?.raw_url) return null
+  if (!item?.raw_url) {
+    // LocalDriver 没有 raw_url（本地文件不走 HTTP）。Node 运行时直接读区间，
+    // 否则本地存储的音频/图片永远读不到标签与封面（PR #148 评审 #25）。
+    if (resolved.storage.driver === "local") {
+      return readLocalRange(resolved.physical!, start, want)
+    }
+    return null
+  }
 
   const headers: Record<string, string> = {
     ...(item.raw_url_headers || {}),
     Range: `bytes=${start}-${start + want - 1}`,
   }
   try {
-    const res = await fetch(item.raw_url, { headers })
+    // 手动跟随重定向：默认 fetch 会自动跳转，既绕过 SSRF 校验，也会把
+    // raw_url_headers（Cookie/Authorization）原样带给第三方。每一跳都重新
+    // 校验目标地址，跨域时丢弃凭据头（对齐 server/raw.ts 的 safeProxyFetch）。
+    let currentUrl = item.raw_url
+    let currentHeaders: Record<string, string> = { ...headers }
+    let res: Response | null = null
+    for (let hop = 0; hop < 5; hop++) {
+      // 首跳地址来自管理员配置的驱动（可能是有意为之的内网存储），不做
+      // SSRF 拦截；后续每一跳都必须重新校验，防止公网地址 302 到内网。
+      if (hop > 0) {
+        let safe = false
+        try {
+          safe = isSafeUrl(currentUrl)
+        } catch {
+          safe = false
+        }
+        if (!safe) return null
+      }
+      res = await fetch(currentUrl, {
+        headers: currentHeaders,
+        redirect: "manual",
+      })
+      if (res.status < 300 || res.status >= 400) break
+      const loc = res.headers.get("location")
+      if (!loc) return null
+      let next: URL
+      try {
+        next = new URL(loc, currentUrl)
+      } catch {
+        return null
+      }
+      if (next.origin !== new URL(currentUrl).origin) {
+        currentHeaders = { Range: currentHeaders.Range }
+      }
+      try {
+        await res.body?.cancel()
+      } catch {
+        /* ignore */
+      }
+      currentUrl = next.toString()
+    }
+    if (!res) return null
     if (!res.ok && res.status !== 206) return null
 
     if (res.status === 206) {

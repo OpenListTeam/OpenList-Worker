@@ -109,8 +109,8 @@ const beUint32 = (b: Uint8Array, off: number): number =>
 const leUint32 = (b: Uint8Array, off: number): number =>
   (b[off] | (b[off + 1] << 8) | (b[off + 2] << 16) | (b[off + 3] << 24)) >>> 0
 
-const leUint24 = (b: Uint8Array, off: number): number =>
-  b[off] | (b[off + 1] << 8) | (b[off + 2] << 16)
+const beUint24 = (b: Uint8Array, off: number): number =>
+  (b[off] << 16) | (b[off + 1] << 8) | b[off + 2]
 
 /** ID3v2 去同步（0xFF 0x00 -> 0xFF） */
 function deUnsynchronise(bytes: Uint8Array): Uint8Array {
@@ -316,7 +316,8 @@ export function parseFLAC(bytes: Uint8Array): MusicTag | null {
     const header = bytes[off]
     const last = (header & 0x80) !== 0
     const type = header & 0x7f
-    const len = leUint24(bytes, off + 1)
+    // metadata block 的 24 位长度是**大端**；只有块内的 Vorbis 载荷长度是小端
+    const len = beUint24(bytes, off + 1)
     off += 4
     if (len < 0 || off + len > bytes.length) break
     const block = bytes.subarray(off, off + len)

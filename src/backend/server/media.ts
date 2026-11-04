@@ -10,7 +10,11 @@
 
 import { Hono } from "hono"
 
-import { getUserFromContext, getJwtSecret } from "./middlewares"
+import {
+  adminAuthMiddleware,
+  getUserFromContext,
+  getJwtSecret,
+} from "./middlewares"
 import { getNearestMeta, canAccess } from "../pkg/meta"
 import { isAdmin, isWithinUserRoot, UserRole } from "../pkg/permission"
 import { encodeDownloadPath } from "../pkg/path"
@@ -43,7 +47,6 @@ import {
   getMediaDb,
   getSettingsMap,
   getUserData,
-  invalidateMediaCache,
   isTypeEnabled,
   listFavorites,
   listResume,
@@ -127,17 +130,23 @@ async function accessibleItems(env: any, user: any, items: MediaItem[]) {
   return out
 }
 
-/** 条目对应的实际文件路径（剧集取第 ep 集） */
-export const itemPath = (item: MediaItem, ep?: number) => {
+/** 条目对应的实际文件路径（剧集取第 season 季第 ep 集） */
+export const itemPath = (item: MediaItem, ep?: number, season?: number) => {
   const folder = item.folder_path.replace(/\/+$/, "") || ""
   let path = `${folder}/${item.file_name}`.replace(/\/+/g, "/")
   if (!item.episodes) return path
   try {
     const eps: EpisodeInfo[] = JSON.parse(item.episodes)
     if (!Array.isArray(eps) || eps.length === 0) return path
+    const wantSeason = Number(season) || 0
     const found =
       ep && ep > 0
-        ? eps.find((e) => e.index === ep || e.index === Number(ep))
+        ? eps.find(
+            (e) =>
+              (e.index === ep || e.index === Number(ep)) &&
+              (!wantSeason ||
+                (Number(e.season) || Number(item.season) || 1) === wantSeason),
+          ) || eps.find((e) => e.index === ep || e.index === Number(ep))
         : eps[0]
     if (found?.file_name) {
       path = `${folder}/${item.file_name}/${found.file_name}`.replace(/\/+/g, "/")
@@ -151,6 +160,7 @@ export const itemPath = (item: MediaItem, ep?: number) => {
 const mapUserData = (row: MediaUserData) => ({
   item_id: row.item_id,
   episode_index: row.episode_index,
+  season: row.season || 1,
   played: row.played,
   play_count: row.play_count,
   is_favorite: row.is_favorite,
@@ -257,14 +267,26 @@ mediaRouter.get("/albums", async (c) => {
         (i.album_name || "").toLowerCase().includes(keyword)),
   )
   const map = new Map<string, any>()
+  // 鉴权缓存按「实际校验路径」去重：合并专辑的每首歌 file_name 不同，
+  // 但 canAccessItem 校验的是 directory/<file_name>，同一专辑命中同一键，
+  // 因此逐曲过滤不会比原来「取首曲」多花 meta 查询。
+  const accessCache = new Map<string, boolean>()
+  const allowed = async (item: MediaItem) => {
+    const key = `${item.folder_path}/${item.file_name}`
+    if (!accessCache.has(key)) {
+      accessCache.set(key, await canAccessItem(c.env, user, item))
+    }
+    return accessCache.get(key)!
+  }
   for (const item of items) {
     const album = item.album_name || "未知专辑"
     const artist = item.album_artist || "未知艺术家"
     const key = `${album}\u0000${artist}`
     let row = map.get(key)
+    // 每一首都要通过鉴权：只看首曲会让同一专辑里被限制的曲目
+    // 仍然贡献时长/数量甚至封面（PR #148 评审 #12）。
+    if (!(await allowed(item))) continue
     if (!row) {
-      // 每个专辑只做一次 meta 校验（逐曲校验在上万首时会明显超时）
-      if (!(await canAccessItem(c.env, user, item))) continue
       row = {
         album_name: album,
         album_artist: artist,
@@ -382,6 +404,7 @@ mediaRouter.get("/progress", async (c) => {
     user.id,
     itemId,
     Number(c.req.query("episode_index") || 0),
+    Number(c.req.query("season") || 0),
   )
   return ok(c, row ? mapUserData(row) : null)
 })
@@ -400,6 +423,7 @@ mediaRouter.post("/progress", async (c) => {
     user.id,
     item.id,
     Number(body.episode_index) || 0,
+    Number(body.season) || 0,
   )
   applyProgress(
     row,
@@ -425,6 +449,7 @@ mediaRouter.post("/favorite", async (c) => {
     user.id,
     item.id,
     Number(body.episode_index) || 0,
+    Number(body.season) || 0,
   )
   row.is_favorite = !!body.favorite
   row.updated_at = new Date().toISOString()
@@ -526,16 +551,25 @@ mediaRouter.get("/strm", async (c) => {
   }
   const settings = await getSettingsMap(c.env)
   const ep = Number(c.req.query("episode") || 0)
-  const path = itemPath(item, ep)
+  const season = Number(c.req.query("season") || 0) || Number(item.season) || 1
+  const path = itemPath(item, ep, season)
+  // 合并条目只校验了目录，itemPath 选中的子文件可能另有 password/read_users，
+  // 必须对最终播放路径再校验一次（与 /stream_url 一致）。
+  if (!(await pathReadable(c.env, user, path))) {
+    return fail(c, "资源不存在", 404)
+  }
+  // 按用户签发的链接必须遵守 link_expiration，不能给永久签名
+  const policy = await getSignPolicy(c)
   const content = await renderStrmContent(
     c.env,
     settings.media_strm_template || "{site_url}/d{path}?sign={sign}",
     originOf(c),
     path,
+    policy.expiresIn,
   )
   const title =
     item.video_type === "tv" && ep > 0
-      ? `${item.scraped_name || item.file_name} S${String(item.season || 1).padStart(2, "0")}E${String(ep).padStart(2, "0")}.strm`
+      ? `${item.scraped_name || item.file_name} S${String(season).padStart(2, "0")}E${String(ep).padStart(2, "0")}.strm`
       : `${item.scraped_name || baseNameOf(item.file_name)}.strm`
   c.header("Content-Type", "text/plain; charset=utf-8")
   c.header(
@@ -559,11 +593,10 @@ async function pathReadable(env: any, user: any, path: string) {
 
 export const mediaAdminRouter = new Hono()
 
-mediaAdminRouter.use("*", async (c, next) => {
-  const user = await getUserFromContext(c)
-  if (!isAdmin(user)) return fail(c, "Permission denied", 403)
-  await next()
-})
+// 与 /api/admin 其余路由一致：只接受 Authorization 头。
+// getUserFromContext 还会从 ?token= 取 JWT，管理端把令牌放进 URL 会泄漏到
+// 日志/历史/Referer（PR #148 评审 #15）。
+mediaAdminRouter.use("*", adminAuthMiddleware)
 
 mediaAdminRouter.get("/config/list", async (c) => {
   const db = await getMediaDb(c.env)
@@ -650,8 +683,16 @@ mediaAdminRouter.post("/scan_paths/update", async (c) => {
   return ok(c)
 })
 
+/** 解析管理端必填 id：缺失/非法一律 400，绝不能当成 0 去匹配孤儿数据 */
+const requireId = (raw: string | undefined): number | null => {
+  if (raw === undefined || raw === "") return null
+  const n = Number(raw)
+  return Number.isInteger(n) && n > 0 ? n : null
+}
+
 mediaAdminRouter.post("/scan_paths/delete", async (c) => {
-  const id = Number(c.req.query("id") || 0)
+  const id = requireId(c.req.query("id"))
+  if (id === null) return fail(c, "invalid id")
   const db = await getMediaDb(c.env)
   db.scan_paths = db.scan_paths.filter((p) => p.id !== id)
   db.items = db.items.filter((i) => i.scan_path_id !== id)
@@ -661,7 +702,8 @@ mediaAdminRouter.post("/scan_paths/delete", async (c) => {
 })
 
 mediaAdminRouter.post("/scan_paths/clear", async (c) => {
-  const id = Number(c.req.query("id") || 0)
+  const id = requireId(c.req.query("id"))
+  if (id === null) return fail(c, "invalid id")
   const db = await getMediaDb(c.env)
   db.items = db.items.filter((i) => i.scan_path_id !== id)
   repairItemScanPath(db)
@@ -834,10 +876,11 @@ mediaAdminRouter.post("/delete_invalid", async (c) => {
   const type = c.req.query("media_type") as MediaType | undefined
   // 每条都要向存储换链 + 探测，Worker 单请求时间有限，默认只查 200 条
   const limit = Math.min(Number(c.req.query("limit") || 200) || 200, 1000)
+  // 游标分页：固定拿前 N 条会让后面的坏记录永远检查不到
+  const cursor = Math.max(0, Math.floor(Number(c.req.query("cursor") || 0)) || 0)
   const db = await getMediaDb(c.env)
-  const candidates = db.items
-    .filter((i) => !type || i.media_type === type)
-    .slice(0, limit)
+  const pool = db.items.filter((i) => !type || i.media_type === type)
+  const candidates = pool.slice(cursor, cursor + limit)
   const gone = new Set<number>()
   for (const item of candidates) {
     const path = item.is_folder
@@ -852,8 +895,10 @@ mediaAdminRouter.post("/delete_invalid", async (c) => {
           const { listItems } = await import("../internal/op/storage")
           await listItems(path, { env: c.env })
           continue
-        } catch {
-          gone.add(item.id)
+        } catch (listErr: any) {
+          // 只有明确的「不存在」才删；鉴权过期/超时/上游故障一律保留
+          const lmsg = String(listErr?.message || "")
+          if (/not\s*found|不存在|404/i.test(lmsg)) gone.add(item.id)
           continue
         }
       }
@@ -868,10 +913,12 @@ mediaAdminRouter.post("/delete_invalid", async (c) => {
     repairItemScanPath(db)
     await saveMediaDb(c.env, db)
   }
+  const nextCursor = cursor + candidates.length
   return ok(c, {
     checked: candidates.length,
     deleted: before - db.items.length,
     remaining: db.items.length,
+    next_cursor: candidates.length > 0 && nextCursor < pool.length ? nextCursor : null,
   })
 })
 
@@ -1013,7 +1060,9 @@ mediaAdminRouter.post("/import", async (c) => {
   }
 
   repairItemScanPath(db)
-  invalidateMediaCache()
+  // 不要在这里 invalidate：saveMediaDb 会立刻把 db 重新装回缓存，
+  // 唯一效果是丢掉分片快照，导致本次保存重写全部分片、且被清空的分片
+  // 不会写入 []，被移动的条目下次加载时复活（PR #148 评审 #17）。
   await saveMediaDb(c.env, db)
   return ok(c, {
     scan_paths_created: spCreated,
@@ -1206,6 +1255,9 @@ const COVER_HOSTS = [
   "books.googleusercontent.com",
 ]
 
+/** 公共图片网关（仅 media_cover_gateway 开启时使用，原始 URL 仍受 COVER_HOSTS 约束） */
+const COVER_GATEWAY_HOSTS = ["wsrv.nl"]
+
 const coverHostAllowed = (host: string) => {
   const h = host.toLowerCase().replace(/\.$/, "")
   if (!h) return false
@@ -1251,6 +1303,38 @@ async function fetchCoverSafely(
   return null
 }
 
+/**
+ * 公共图片网关的封面拉取。
+ *
+ * 网关域名（wsrv.nl）不在 COVER_HOSTS 里，直接复用 fetchCoverSafely 会被
+ * 域名白名单拒绝，导致 media_cover_gateway 打开后仍然是 502。这里给网关
+ * 单独的白名单，并且要求原始地址本身先通过可信封面源校验——否则网关会
+ * 变成任意 URL 的反向代理。
+ */
+async function fetchCoverFromGateway(
+  rawUrl: string,
+): Promise<{ data: Uint8Array; mime: string } | null> {
+  let u: URL
+  try {
+    u = new URL(rawUrl)
+  } catch {
+    return null
+  }
+  if (!/^https?:$/.test(u.protocol)) return null
+  if (!COVER_GATEWAY_HOSTS.includes(u.hostname.toLowerCase())) return null
+
+  const res = await fetch(rawUrl, {
+    headers: { "User-Agent": "OpenList-Media/1.0", Accept: "image/*" },
+    redirect: "manual",
+    signal: AbortSignal.timeout(20_000),
+  }).catch(() => null)
+  if (!res || !res.ok) return null
+  const data = new Uint8Array(await res.arrayBuffer())
+  if (data.length === 0 || data.length > 8 * 1024 * 1024) return null
+  const mime = sniffImageMime(data)
+  return mime ? { data, mime } : null
+}
+
 mediaPublicRouter.get("/media/proxy", async (c) => {
   const settings = await getSettingsMap(c.env)
   if (!mediaEnabled(settings)) return c.body(null, 404)
@@ -1258,10 +1342,20 @@ mediaPublicRouter.get("/media/proxy", async (c) => {
   if (!raw) return c.body(null, 400)
 
   let found = await fetchCoverSafely(raw)
-  // 直连失败时可选回退公共图片网关（默认关闭，涉及第三方）
+  // 直连失败时可选回退公共图片网关（默认关闭，涉及第三方）。
+  // 原始地址必须先通过可信封面源校验，网关域名单独白名单，
+  // 否则 media_cover_gateway 打开后这个分支永远 502（wsrv.nl 不在 COVER_HOSTS）。
   if (!found && settingBool(settings, "media_cover_gateway", false)) {
-    const gateway = `https://wsrv.nl/?url=${encodeURIComponent(raw.replace(/^https?:\/\//, ""))}`
-    found = await fetchCoverSafely(gateway)
+    let originalTrusted = false
+    try {
+      originalTrusted = isSafeUrl(raw, COVER_HOSTS)
+    } catch {
+      originalTrusted = false
+    }
+    if (originalTrusted) {
+      const gateway = `https://wsrv.nl/?url=${encodeURIComponent(raw.replace(/^https?:\/\//, ""))}`
+      found = await fetchCoverFromGateway(gateway)
+    }
   }
   if (!found) return c.body(null, 502)
 

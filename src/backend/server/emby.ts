@@ -125,11 +125,23 @@ interface EmbyLibrary {
 const isSeriesItem = (item: MediaItem) =>
   !!item.is_folder || item.video_type === "tv"
 
+// Series 身份按**目录**而不是 scraped_name：
+// 单集文件刮削后 scraped_name 是剧名、未刮削时是集名，拿它做 key 会让
+// 同一部剧随刮削进度/集数裂成多个 Series（PR #148 评审 #1）。
 const seriesKeyOf = (item: MediaItem) =>
-  hashKey(`series:${(item.scraped_name || item.folder_path).toLowerCase()}`)
+  hashKey(
+    `series:${(item.is_folder
+      ? `${item.folder_path.replace(/\/+$/, "")}/${item.file_name}`
+      : item.folder_path
+    ).toLowerCase()}`,
+  )
 
-const seriesNameOf = (item: MediaItem) =>
-  item.scraped_name || item.file_name.replace(/\.[^.]+$/, "")
+const seriesNameOf = (item: MediaItem) => {
+  if (item.scraped_name) return item.scraped_name
+  if (item.is_folder) return item.file_name.replace(/\.[^.]+$/, "")
+  const dir = item.folder_path.split("/").filter(Boolean).pop()
+  return dir || item.file_name.replace(/\.[^.]+$/, "")
+}
 
 const albumKeyOf = (item: MediaItem) =>
   hashKey(
@@ -284,13 +296,20 @@ const embyServerId = (c: any) =>
 const ticks = (seconds: number) => Math.round((Number(seconds) || 0) * 10_000_000)
 const yearOf = (date: string) => Number(String(date || "").slice(0, 4)) || 0
 
-const userDataOf = (lib: EmbyLibrary, itemId: number, episode = 0) => {
+const userDataOf = (
+  lib: EmbyLibrary,
+  itemId: number,
+  episode = 0,
+  season = 0,
+) => {
+  const wantSeason = Number(season) || 1
   const row = lib.user
     ? lib.db.user_data.find(
         (d) =>
           d.user_id === lib.user.id &&
           d.item_id === itemId &&
-          d.episode_index === episode,
+          d.episode_index === episode &&
+          (Number(d.season) || 1) === wantSeason,
       )
     : undefined
   return {
@@ -438,7 +457,10 @@ function episodesOf(s: EmbySeries, season = 0): EmbyEpisode[] {
         item,
         index: Number(item.episode) || 1,
         season: sn,
-        title: item.scraped_name || item.file_name.replace(/\.[^.]+$/, ""),
+        // 单集标题优先用刮削到的集名；scraped_name 是剧名，不能拿来当集名
+        title:
+          item.episode_title ||
+          item.file_name.replace(/\.[^.]+$/, ""),
         fileName: item.file_name,
       })
     }
@@ -479,7 +501,8 @@ function episodeDto(c: any, lib: EmbyLibrary, s: EmbySeries, ep: EmbyEpisode) {
     Name: ep.title,
     SortName: ep.title,
     ServerId: embyServerId(c),
-    Id: numericId(`ep-${ep.item.id}-${ep.index}`),
+    // 季号参与 id：同一条目下 S01E01 与 S02E01 的 index 相同，必须靠 season 区分
+    Id: numericId(`ep-${ep.item.id}-${ep.season}-${ep.index}`),
     ParentId: numericId(`sn-${s.key}-${ep.season}`),
     SeriesId: numericId(`sr-${s.key}`),
     SeriesName: s.name,
@@ -497,7 +520,7 @@ function episodeDto(c: any, lib: EmbyLibrary, s: EmbySeries, ep: EmbyEpisode) {
     Path: path,
     Container: ep.fileName.split(".").pop() || "mp4",
     LocationType: "FileSystem",
-    UserData: userDataOf(lib, ep.item.id, ep.index),
+    UserData: userDataOf(lib, ep.item.id, ep.index, ep.season),
   }
 }
 
@@ -1457,13 +1480,16 @@ const handleResume = async (c: any) => {
       const s = lib.series.find((x) => x.items.some((i) => i.id === item.id))
       if (!s) continue
       const ep = episodesOf(s, 0).find(
-        (e) => e.item.id === item.id && e.index === row.episode_index,
+        (e) =>
+          e.item.id === item.id &&
+          e.index === row.episode_index &&
+          (Number(e.season) || 1) === (Number(row.season) || 1),
       )
       if (ep) {
         items.push({
           ...episodeDto(c, lib, s, ep),
           UserData: {
-            ...userDataOf(lib, item.id, row.episode_index),
+            ...userDataOf(lib, item.id, row.episode_index, row.season),
             PlaybackPositionTicks: row.position_ticks,
           },
         })
@@ -1657,17 +1683,37 @@ async function playTarget(c: any, idRaw: string) {
       duration: item.duration,
     }
   }
-  const epMatch = id.match(/^ep-(\d+)-(\d+)$/)
+  const epMatch = id.match(/^ep-(\d+)-(?:(\d+)-)?(\d+)$/)
   if (epMatch) {
     const item = findItem(lib.db, Number(epMatch[1]))
     if (!item || !(await mediaHelpers.canAccessItem(c.env, user, item))) return null
+    const seasonNum = epMatch[2] ? Number(epMatch[2]) : 0
+    const indexNum = Number(epMatch[3])
     const eps = parseEpisodesOf(item)
-    const ep = eps.find((e) => Number(e.index) === Number(epMatch[2]))
-    if (!ep) return null
+    const ep = eps.find(
+      (e) =>
+        Number(e.index) === indexNum &&
+        (!seasonNum || (Number(e.season) || Number(item.season) || 1) === seasonNum),
+    )
+    if (!ep) {
+      // 未做目录合并的单集文件没有 episodes 列表，但 episodesOf() 仍会为它
+      // 暴露 ep-<item>-<season>-<episode>，这里必须能解析，否则播放 404。
+      if (eps.length === 0 && (!item.episode || Number(item.episode) === indexNum)) {
+        return {
+          item,
+          episode: null as EpisodeInfo | null,
+          rawPath: mediaHelpers.itemPath(item),
+          name: item.episode_title || item.scraped_name || item.file_name,
+          container: item.file_name.split(".").pop() || "mp4",
+          duration: item.duration,
+        }
+      }
+      return null
+    }
     return {
       item,
       episode: ep,
-      rawPath: mediaHelpers.itemPath(item, ep.index),
+      rawPath: mediaHelpers.itemPath(item, ep.index, Number(ep.season) || seasonNum),
       name: ep.title || ep.file_name,
       container: ep.file_name.split(".").pop() || "mp4",
       duration: ep.duration || item.duration,
@@ -1849,7 +1895,8 @@ embyRouter.get("/Shows/NextUp", async (c) => {
         (d) =>
           d.user_id === user.id &&
           d.item_id === ep.item.id &&
-          d.episode_index === ep.index,
+          d.episode_index === ep.index &&
+          (Number(d.season) || 1) === (Number(ep.season) || 1),
       )
       return !row?.played
     })
@@ -2010,14 +2057,16 @@ async function readUserData(c: any, idRaw: string) {
   const lib = await loadLibrary(c.env, user)
   const id = origId(lib, idRaw)
   const numeric = id.match(/^(?:mv|so)-(\d+)$/)
-  const epMatch = id.match(/^ep-(\d+)-(\d+)$/)
+  // 新格式 ep-<item>-<season>-<index>；旧格式 ep-<item>-<index> 仍兼容
+  const epMatch = id.match(/^ep-(\d+)-(?:(\d+)-)?(\d+)$/)
   const itemId = numeric ? Number(numeric[1]) : epMatch ? Number(epMatch[1]) : 0
-  const ep = epMatch ? Number(epMatch[2]) : 0
+  const season = epMatch?.[2] ? Number(epMatch[2]) : 0
+  const ep = epMatch ? Number(epMatch[3]) : 0
   const item = findItem(lib.db, itemId)
   if (!item || !(await mediaHelpers.canAccessItem(c.env, user, item))) {
     return null
   }
-  return { item, ep, data: userDataOf(lib, itemId, ep) }
+  return { item, ep, season, data: userDataOf(lib, itemId, ep, season) }
 }
 
 embyRouter.get("/Users/:id/Items/:itemId/UserData", async (c) => {
@@ -2032,7 +2081,7 @@ embyRouter.post("/Users/:id/Items/:itemId/UserData", async (c) => {
   if (!found) return c.json({ Error: "Not Found" }, 404)
   const body = await c.req.json().catch(() => ({}))
   const db = await getMediaDb(c.env)
-  const row = ensureUserData(db, user.id, found.item.id, found.ep)
+  const row = ensureUserData(db, user.id, found.item.id, found.ep, found.season)
   if (body.Played !== undefined) row.played = !!body.Played
   if (body.IsFavorite !== undefined) row.is_favorite = !!body.IsFavorite
   if (body.PlaybackPositionTicks !== undefined) {
@@ -2059,7 +2108,7 @@ async function applySessionProgress(c: any, action: "start" | "progress" | "stop
   const found = await readUserData(c, idRaw)
   if (!found) return c.json({})
   const db = await getMediaDb(c.env)
-  const row = ensureUserData(db, user.id, found.item.id, found.ep)
+  const row = ensureUserData(db, user.id, found.item.id, found.ep, found.season)
   const ticksIn = Number(body.PositionTicks) || 0
   row.position_ticks = Math.max(0, ticksIn)
   if (ticksIn > 0) {

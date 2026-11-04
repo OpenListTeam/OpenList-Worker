@@ -567,18 +567,31 @@ export async function readPersistedSecret(
   key: string,
 ): Promise<string | null> {
   try {
-    const driver = await resolveSecretDriver(env)
-    const val = await driver.get(key, env)
-    if (val === null || val === undefined) return null
-    // 部分绑定的 get() 可能返回 Response 形态，兼容 text() 取值。
-    const resolved: any =
-      typeof (val as any)?.text === "function" ? await (val as any).text() : val
-    const str = String(resolved).trim()
-    return str || null
+    return await readPersistedSecretStrict(env, key)
   } catch (e) {
     console.warn(`[Secret] read "${key}" failed:`, e)
     return null
   }
+}
+
+/**
+ * 同 readPersistedSecret，但**不吞异常**：读取失败会抛出。
+ *
+ * 需要区分「键不存在」与「后端读取失败」的场景必须用它——例如媒体库分片：
+ * 把一次 KV/D1 超时当成空分片，会让随后的普通保存用空数据覆盖真实配置。
+ */
+export async function readPersistedSecretStrict(
+  env: any,
+  key: string,
+): Promise<string | null> {
+  const driver = await resolveSecretDriver(env)
+  const val = await driver.get(key, env)
+  if (val === null || val === undefined) return null
+  // 部分绑定的 get() 可能返回 Response 形态，兼容 text() 取值。
+  const resolved: any =
+    typeof (val as any)?.text === "function" ? await (val as any).text() : val
+  const str = String(resolved).trim()
+  return str || null
 }
 
 /**

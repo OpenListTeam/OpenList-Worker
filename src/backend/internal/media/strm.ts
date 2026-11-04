@@ -86,13 +86,16 @@ export function buildStrmTargets(item: MediaItem): StrmTarget[] {
         const out: StrmTarget[] = []
         parseEpisodes(item).forEach((ep, idx) => {
           const num = ep.index > 0 ? ep.index : idx + 1
+          // 合并文件夹里可能同时有 S01E01 与 S02E01：必须用每一集自己的季号，
+          // 否则第二季会被导出到 Season 01 并撞名。
+          const epSeason = Number(ep.season) > 0 ? Number(ep.season) : season
           const epTitle = sanitizeName(ep.title || ep.file_name)
           const epRaw = joinPath([folder, item.file_name, ep.file_name])
           out.push({
             relPath: joinPath([
               series,
-              `Season ${String(season).padStart(2, "0")}`,
-              `${series} S${String(season).padStart(2, "0")}E${String(num).padStart(2, "0")} - ${epTitle}.strm`,
+              `Season ${String(epSeason).padStart(2, "0")}`,
+              `${series} S${String(epSeason).padStart(2, "0")}E${String(num).padStart(2, "0")} - ${epTitle}.strm`,
             ]),
             rawPath: epRaw,
             sameDirPath: strmSibling(epRaw, false),
@@ -128,6 +131,25 @@ export function buildStrmTargets(item: MediaItem): StrmTarget[] {
   if (item.media_type === "music") {
     const artist = sanitizeName(item.album_artist || "Unknown Artist")
     const album = sanitizeName(item.album_name || "Unknown Album")
+    // path_merge 的专辑条目：file_name 是目录，曲目在 episodes 里。
+    // 必须逐曲生成 STRM，否则写出的链接指向目录、播放器无法播放。
+    const tracks = item.is_folder ? parseEpisodes(item) : []
+    if (tracks.length > 0) {
+      return tracks.map((ep, idx) => {
+        const num = ep.index > 0 ? ep.index : idx + 1
+        const trackTitle = sanitizeName(ep.title || ep.file_name)
+        const raw = joinPath([folder, item.file_name, ep.file_name])
+        return {
+          relPath: joinPath([
+            artist,
+            album,
+            `${String(num).padStart(2, "0")} - ${trackTitle}.strm`,
+          ]),
+          rawPath: raw,
+          sameDirPath: strmSibling(raw, false),
+        }
+      })
+    }
     const track = item.track_number > 0 ? item.track_number : 1
     const raw = joinPath([folder, item.file_name])
     return [
@@ -152,11 +174,17 @@ export async function renderStrmContent(
   template: string,
   apiRoot: string,
   rawPath: string,
+  /**
+   * 签名有效期（秒）。生成到存储里的 .strm 文件用 0（永不过期，由文件本身
+   * 长期存在）；按用户请求即时下载的接口应传管理员的 link_expiration，
+   * 否则任何能看到条目的人都能拿走一条永久链接。
+   */
+  expiresIn = 0,
 ): Promise<string> {
   const tpl = template || "{site_url}/d{path}?sign={sign}"
   const base = (apiRoot || "").replace(/\/+$/, "")
   const p = rawPath.startsWith("/") ? rawPath : `/${rawPath}`
-  const expires = 0
+  const expires = Math.max(0, Math.floor(expiresIn) || 0)
   let sign = ""
   try {
     sign = await signDownloadPath({ env }, rawPath, expires)

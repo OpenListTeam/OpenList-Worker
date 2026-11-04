@@ -58,6 +58,9 @@ export interface MediaItem {
   scraped_at?: string | null
   /** 原始文件名（目录合并模式下 file_name 是目录名） */
   original_name?: string
+  /** 单集文件刮削到的**集名**：与 scraped_name（剧名）分开存放， */
+  /** 否则同一部剧的每一集会各自成为一个 Series（见 PR #148 评审） */
+  episode_title?: string
   /** 提示：前端可直接用 thumb 显示（Worker 侧原图缓存） */
   thumb?: string
   thumb_mime?: string
@@ -119,6 +122,8 @@ export interface MediaUserData {
   user_id: number
   item_id: number
   episode_index: number
+  /** 季号：同一 item 下 S01E01 与 S02E01 的进度必须分开存（缺省按 1 处理） */
+  season?: number
   position_ticks: number
   duration_ticks: number
   played: boolean

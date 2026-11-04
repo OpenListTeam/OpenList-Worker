@@ -258,7 +258,9 @@ async function scrapeTmdb(
           `${api}/tv/${hit.id}/season/${s}/episode/${e}?api_key=${encodeURIComponent(key)}&language=${encodeURIComponent(language)}`,
         )
         if (ep?.name) {
-          item.scraped_name = ep.name
+          // 集名不能覆盖 scraped_name：Series 身份由 scraped_name 决定，
+          // 覆盖会让同一部剧的每集各自变成一个 Series。
+          item.episode_title = ep.name
           if (ep.overview) item.plot = ep.overview
           if (ep.still_path) {
             item.cover = `https://image.tmdb.org/t/p/w500${ep.still_path}`
@@ -290,7 +292,9 @@ async function scrapeDiscogs(ctx: ScrapeContext, item: MediaItem) {
   const hit = (res?.results || [])[0]
   if (!hit) return false
 
-  item.scraped_name = hit.title || item.scraped_name
+  // Discogs 搜索返回的是**发行版/专辑**标题。单曲条目已有 ID3 标题时必须保留，
+  // 否则整张专辑的歌会被写成同一个名字，在 Subsonic/Emby 里无法区分。
+  if (item.is_folder) item.scraped_name = hit.title || item.scraped_name
   item.cover = hit.cover_image || hit.thumb || item.cover
   if (hit.year) item.release_date = `${hit.year}-01-01`
   if (hit.genre?.length) item.genre = hit.genre.join(",")
@@ -713,13 +717,15 @@ export async function scrapeMedia(
     list = list.filter((i) => !i.scraped_at)
   }
 
+  const pathsOfType = db.scan_paths.filter((p) => p.media_type === type)
   const enabledPaths = new Set(
-    db.scan_paths
-      .filter((p) => p.media_type === type && p.enable_scrape !== false)
-      .map((p) => p.id),
+    pathsOfType.filter((p) => p.enable_scrape !== false).map((p) => p.id),
   )
+  // 只有「完全没有配置扫描路径」才不做限制；只要配置了路径，
+  // 显式关闭刮削的路径就必须排除。旧实现把「空集」当作放行，
+  // 于是把唯一路径的 enable_scrape 关掉反而触发整库刮削。
   list = list.filter(
-    (i) => enabledPaths.size === 0 || enabledPaths.has(i.scan_path_id),
+    (i) => pathsOfType.length === 0 || enabledPaths.has(i.scan_path_id),
   )
 
   let scraped = 0
@@ -728,44 +734,48 @@ export async function scrapeMedia(
   let noMatch = 0
   let sinceSave = 0
 
-  await runPool(list, concurrency, async (item) => {
-    stats.total_scraped += 1
-    const outcome = await scrapeItem(ctx, item)
-    if (outcome.ok) {
-      item.updated_at = new Date().toISOString()
-      // 本地兜底（ID3/lrc/EPUB 封面）不写 scraped_at，便于下次继续尝试远端刮削
-      if (!outcome.low) item.scraped_at = new Date().toISOString()
-      scraped += 1
-      hit += 1
-      if (outcome.low) low += 1
-    } else {
-      noMatch += 1
-      // 本地兜底已经写入了内容：保留数据但不标记 scraped_at
-      if (item.cover || item.lyrics || item.album_name || item.album_artist) {
+  try {
+    await runPool(list, concurrency, async (item) => {
+      stats.total_scraped += 1
+      const outcome = await scrapeItem(ctx, item)
+      if (outcome.ok) {
         item.updated_at = new Date().toISOString()
+        // 本地兜底（ID3/lrc/EPUB 封面）不写 scraped_at，便于下次继续尝试远端刮削
+        if (!outcome.low) item.scraped_at = new Date().toISOString()
+        scraped += 1
+        hit += 1
+        if (outcome.low) low += 1
+      } else {
+        noMatch += 1
+        // 本地兜底已经写入了内容：保留数据但不标记 scraped_at
+        if (item.cover || item.lyrics || item.album_name || item.album_artist) {
+          item.updated_at = new Date().toISOString()
+        }
       }
+      sinceSave += 1
+      if (sinceSave >= 20) {
+        sinceSave = 0
+        await saveMediaDb(env, db)
+      }
+    })
+
+    if (cfg) cfg.last_scrape_at = new Date().toISOString()
+    await saveMediaDb(env, db)
+
+    return {
+      scraped,
+      total: list.length,
+      hit,
+      low_confidence: low,
+      no_match: noMatch,
     }
-    sinceSave += 1
-    if (sinceSave >= 20) {
-      sinceSave = 0
-      await saveMediaDb(env, db)
-    }
-  })
-
-  if (cfg) cfg.last_scrape_at = new Date().toISOString()
-  await saveMediaDb(env, db)
-
-  stats.running = false
-  stats.hit_count = stats.hit_count + hit
-  stats.low_confidence_count = stats.low_confidence_count + low
-  stats.no_match_count = stats.no_match_count + noMatch
-  stats.finished_at = new Date().toISOString()
-
-  return {
-    scraped,
-    total: list.length,
-    hit,
-    low_confidence: low,
-    no_match: noMatch,
+  } finally {
+    // 保存失败（saveMediaDb 会抛错）也必须清掉运行态，否则该类型会永远
+    // 卡在 "scrape already running"，存储恢复后也无法重试。
+    stats.running = false
+    stats.hit_count = stats.hit_count + hit
+    stats.low_confidence_count = stats.low_confidence_count + low
+    stats.no_match_count = stats.no_match_count + noMatch
+    stats.finished_at = new Date().toISOString()
   }
 }
