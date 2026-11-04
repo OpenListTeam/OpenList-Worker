@@ -36,6 +36,7 @@ import {
 import { buildStrmTargets, withinOutRoot } from "./strm"
 import { emptyCover, persistCover } from "./thumb"
 import { __scanTest } from "./scan"
+import { parseMediaTitle } from "./scrape"
 
 test("media extension mapping", () => {
   assert.equal(extOf("movie.2024.MKV"), "mkv")
@@ -477,6 +478,30 @@ test("STRM 多季合并与音乐专辑逐曲导出", () => {
   // 合并专辑必须指向每一首歌，而不是专辑目录
   assert.equal(tracks[1].rawPath, "/music/Album/02.flac")
   assert.match(tracks[1].relPath, /Artist\/Record\/02 - Two\.strm$/)
+})
+
+test("parseMediaTitle 生成可搜索的候选（对齐 Go scraper）", () => {
+  // 旧实现把整个文件名当 query（含 SxxExx / 双语字幕 / HR-HDTV），TMDB 搜不到
+  const film = parseMediaTitle(
+    "Harry.Potter.and.the.Deathly.Hallows.Part.2.2011.哈利·波特与死亡圣器(下).双语字幕.HR-HDTV.AC3.1024X576.x264.mkv",
+  )
+  assert.equal(film.year, "2011")
+  assert.ok(
+    film.candidates.some((c) => c.includes("哈利·波特与死亡圣器")),
+    `missing chinese title: ${JSON.stringify(film.candidates)}`,
+  )
+  assert.ok(
+    !film.candidates.some((c) => /HR-HDTV|双语字幕|x264|AC3/i.test(c)),
+    `noise leaked: ${JSON.stringify(film.candidates)}`,
+  )
+
+  const episode = parseMediaTitle("群星.S01E05.HD1080P.中英双字.霸王龙压制组T-Rex.mp4")
+  assert.equal(episode.candidates[0], "群星")
+  assert.equal(episode.year, "")
+
+  // 片名本身就是年份时不能被年份清理吃掉
+  const numeric = parseMediaTitle("2012.2009.1080p.BluRay.x264.mkv")
+  assert.ok(numeric.candidates.some((c) => c.includes("2012")))
 })
 
 test("封面只认魔数，声明成 SVG 的内容会被丢弃", async () => {

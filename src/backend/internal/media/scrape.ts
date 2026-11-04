@@ -91,6 +91,63 @@ export const cleanName = (name: string) => {
   return s.replace(/[._]/g, " ").replace(/\s+/g, " ").trim()
 }
 
+/** 中文发布信息噪声：字幕/语言/版本/压制组 */
+const CN_NOISE_RE =
+  /(双语字幕|中英字幕|中英双字|中英双语|国英双语|国英双轨|国粤双语|粤语中字|国语中字|英语中字|日语中字|韩语中字|内封字幕|外挂字幕|简繁字幕|完整版|未删减版|加长版|导演剪辑版|蓝光版|高清版|公映版|译制版|国配版|台配版|港配版|原声版|原盘|国语|粤语|英语|日语|韩语|中字|双语|字幕|压制组|字幕组|发布组|高清影视|高清电影)/g
+
+/** 英文发布信息噪声：分辨率/编码/音轨/发布组 */
+const EN_NOISE_RE =
+  /(?<![a-z0-9])(2160p|1080p|720p|480p|bluray|blu-?ray|bdrip|web-?dl|webrip|hdrip|dvdrip|remux|uhd|x264|x265|h\.?264|h\.?265|hevc|avc|aac|ac3|eac3|dts|truehd|atmos|10bit|8bit|hdr10|hdr|sdr|repack|proper|extended|uncut|multi|chs|cht|eng|yyets|frds|rarbg|yify|yts)(?![a-z0-9])/gi
+
+/**
+ * 从文件名/目录名解析出可搜索的标题候选（对齐 Go scraper 的 parsedVideoTitle）。
+ *
+ * Go 的实现会生成「中文标题 / 英文标题 / 关键词」多组候选并逐个尝试；
+ * TS 之前直接把整个文件名（含 SxxExx、中英双字、压制组）当 query，
+ * TMDB 基本搜不到，于是刮削表现为「全部失败」。
+ */
+export function parseMediaTitle(raw: string): {
+  primary: string
+  candidates: string[]
+  year: string
+} {
+  let s = String(raw || "").replace(/\.[^.]+$/, "")
+  // 括号里的中文通常是片名别名，留作候选后再从主串里去掉
+  const bracket: string[] = []
+  s = s.replace(/[\(（\[【]([^\)）\]】]{2,40})[\)）\]】]/g, (_m, inner: string) => {
+    if (/[\u4e00-\u9fff]/.test(inner)) bracket.push(inner)
+    return " "
+  })
+  const year = (s.match(/(?<!\d)((?:19|20)\d{2})(?!\d)/) || [])[1] || ""
+  s = s
+    // 集号标记：S01E05 / 第5集 / EP05
+    .replace(/(?<![a-z0-9])s\d{1,2}[\s._-]*e\d{1,4}(?![0-9])/gi, " ")
+    .replace(/第\s*[0-9一二三四五六七八九十百零两]{1,4}\s*[集话話期季]/g, " ")
+    .replace(/(?:^|[\s._-])ep?\s*\d{1,4}(?=$|[\s._-])/gi, " ")
+    .replace(CN_NOISE_RE, " ")
+    .replace(EN_NOISE_RE, " ")
+    .replace(/[._\-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  // 年份通常不是片名的一部分；但「2012」「1917」这类片名要保留原串作为兜底
+  const withoutYear = s
+    .replace(/(?<!\d)(?:19|20)\d{2}(?!\d)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  const candidates: string[] = []
+  const push = (value: string) => {
+    const t = value.replace(/\s+/g, " ").trim()
+    if (t && !candidates.includes(t)) candidates.push(t)
+  }
+  // 中文片段优先：TMDB 的 zh-CN 数据对中文片名命中率最高
+  const cn = withoutYear.match(/[\u4e00-\u9fff][\u4e00-\u9fff0-9：:·\s]*/)
+  if (cn) push(cn[0])
+  for (const b of bracket) push(b)
+  push(withoutYear)
+  push(s)
+  return { primary: candidates[0] || s, candidates, year }
+}
+
 const normalizeTitle = (value: string) =>
   cleanName(value)
     .toLowerCase()
@@ -161,48 +218,74 @@ async function tmdbSearch(
   const key = (ctx.settings.media_tmdb_key || "").trim()
   if (!key) return null
   const type = isTvItem(item) ? "tv" : "movie"
-  const query = cleanName(item.scraped_name || item.file_name)
-  if (!query) return null
+  const parsed = parseMediaTitle(item.scraped_name || item.file_name)
+  if (parsed.candidates.length === 0) return null
   const api = tmdbBase(ctx.settings)
-  const language = lang(ctx.settings)
-  const started = Date.now()
+  const preferred = lang(ctx.settings)
+  // 先用配置语言，再退到「不限定语言」：TMDB 不带 language 时会用所有别名
+  // 匹配，中文片名/港台译名搜不到时的召回明显更高。
+  const languages = preferred ? [preferred, ""] : [""]
   const stats = statsMap.get(item.media_type)
-  try {
-    const search = await jsonFetch(
-      `${api}/search/${type}?api_key=${encodeURIComponent(key)}&language=${encodeURIComponent(language)}&query=${encodeURIComponent(query)}&include_adult=false`,
-    )
-    if (stats) {
-      stats.total_attempts += 1
-      stats.total_search_millis += Date.now() - started
-    }
-    const results: any[] = Array.isArray(search?.results) ? search.results : []
-    if (results.length === 0) return null
+  const wantYear =
+    Number((item.release_date || "").slice(0, 4)) || Number(parsed.year) || 0
+  let best: { hit: any; score: number } | null = null
+  const tried = new Set<string>()
 
-    const wantYear = Number((item.release_date || "").slice(0, 4)) || 0
-    let best: { hit: any; score: number } | null = null
-    for (const hit of results.slice(0, 8)) {
-      const title = hit.title || hit.name || hit.original_title || hit.original_name || ""
-      let score = similarity(query, title)
-      const year = Number(
-        String(hit.release_date || hit.first_air_date || "").slice(0, 4),
-      )
-      if (wantYear && year) {
-        if (year === wantYear) score += 0.15
-        else if (Math.abs(year - wantYear) <= 1) score += 0.05
+  for (const query of parsed.candidates.slice(0, 3)) {
+    for (const language of languages) {
+      // 年份过滤会让「文件名年份写错」直接零结果，所以先不带年份搜一遍
+      for (const withYear of parsed.year ? [false, true] : [false]) {
+        const cacheKey = `${query}\u0000${language}\u0000${withYear}`
+        if (tried.has(cacheKey)) continue
+        tried.add(cacheKey)
+        try {
+          const params = new URLSearchParams({
+            api_key: key,
+            query,
+            include_adult: "false",
+          })
+          if (language) params.set("language", language)
+          if (withYear) {
+            if (type === "movie") params.set("primary_release_year", parsed.year)
+            else params.set("first_air_date_year", parsed.year)
+          }
+          const started = Date.now()
+          const search = await jsonFetch(
+            `${api}/search/${type}?${params.toString()}`,
+          )
+          if (stats) {
+            stats.total_attempts += 1
+            stats.total_search_millis += Date.now() - started
+          }
+          const results: any[] = Array.isArray(search?.results)
+            ? search.results
+            : []
+          for (const hit of results.slice(0, 8)) {
+            const title =
+              hit.title || hit.name || hit.original_title || hit.original_name || ""
+            let score = similarity(query, title)
+            const year = Number(
+              String(hit.release_date || hit.first_air_date || "").slice(0, 4),
+            )
+            if (wantYear && year) {
+              if (year === wantYear) score += 0.15
+              else if (Math.abs(year - wantYear) <= 1) score += 0.05
+            }
+            if (type === "tv" && hit.first_air_date) score += 0.05
+            if (type === "movie" && hit.release_date) score += 0.05
+            score += Math.min(0.05, (Number(hit.popularity) || 0) / 2000)
+            if (!best || score > best.score) best = { hit, score }
+          }
+          // 已经足够强就不再枚举剩余候选，避免刮削把请求数打满
+          if (best && best.score >= 0.6) return { ...best, type }
+        } catch (e: any) {
+          if (stats) stats.last_error = e?.message || String(e)
+        }
       }
-      // 类型匹配
-      if (type === "tv" && hit.first_air_date) score += 0.05
-      if (type === "movie" && hit.release_date) score += 0.05
-      // 人气作为弱权重（0-0.05）
-      score += Math.min(0.05, (Number(hit.popularity) || 0) / 2000)
-      if (!best || score > best.score) best = { hit, score }
     }
-    if (!best || best.score < 0.35) return null
-    return { ...best, type }
-  } catch (e: any) {
-    if (stats) stats.last_error = e?.message || String(e)
-    return null
   }
+  if (!best || best.score < 0.35) return null
+  return { ...best, type }
 }
 
 async function scrapeTmdb(
@@ -210,7 +293,16 @@ async function scrapeTmdb(
   item: MediaItem,
 ): Promise<{ ok: boolean; low: boolean }> {
   const key = (ctx.settings.media_tmdb_key || "").trim()
-  if (!key) return { ok: false, low: false }
+  if (!key) {
+    // 静默失败是「刮削全部失败」最常见的误报来源：把原因写进 stats，
+    // 前端统计面板才能显示「未配置 Key」而不是一片 0。
+    const stats = statsMap.get(item.media_type)
+    if (stats && !stats.last_error) {
+      stats.last_error =
+        "未配置 TMDB API Key（管理 → 媒体库 → media_tmdb_key），已回退豆瓣"
+    }
+    return { ok: false, low: false }
+  }
   const found = await tmdbSearch(ctx, item)
   if (!found) return { ok: false, low: false }
   const { hit, score, type } = found
@@ -330,7 +422,9 @@ async function scrapeDiscogs(ctx: ScrapeContext, item: MediaItem) {
 
 async function scrapeGoogleBooks(ctx: ScrapeContext, item: MediaItem) {
   const key = (ctx.settings.media_google_books_key || "").trim()
-  const q = encodeURIComponent(cleanName(item.scraped_name || item.file_name))
+  const q = encodeURIComponent(
+    parseMediaTitle(item.scraped_name || item.file_name).primary,
+  )
   const url = `https://www.googleapis.com/books/v1/volumes?maxResults=3&printType=books&langRestrict=${encodeURIComponent(lang(ctx.settings))}&q=${q}${key ? `&key=${encodeURIComponent(key)}` : ""}`
   const res = await jsonFetch(url)
   const items: any[] = Array.isArray(res?.items) ? res.items : []
@@ -368,7 +462,9 @@ async function scrapeGoogleBooks(ctx: ScrapeContext, item: MediaItem) {
 }
 
 async function scrapeOpenLibrary(ctx: ScrapeContext, item: MediaItem) {
-  const q = encodeURIComponent(cleanName(item.scraped_name || item.file_name))
+  const q = encodeURIComponent(
+    parseMediaTitle(item.scraped_name || item.file_name).primary,
+  )
   const res = await jsonFetch(
     `https://openlibrary.org/search.json?q=${q}&limit=3`,
   )
@@ -402,8 +498,13 @@ async function scrapeOpenLibrary(ctx: ScrapeContext, item: MediaItem) {
 const stripTags = (html: string) => html.replace(/<[^>]+>/g, "").trim()
 
 async function scrapeDouban(ctx: ScrapeContext, item: MediaItem) {
-  const q = encodeURIComponent(cleanName(item.scraped_name || item.file_name))
-  const res = await fetch(`https://www.douban.com/search?cat=1002&q=${q}`, {
+  const q = encodeURIComponent(
+    parseMediaTitle(item.scraped_name || item.file_name).primary,
+  )
+  // 豆瓣搜索分类：1001 书籍 / 1002 电影。旧实现一律用 1002 搜书，
+  // 结果里全是同名电影，解析出的「作者/出版社/ISBN」自然为空。
+  const cat = item.media_type === "book" ? 1001 : 1002
+  const res = await fetch(`https://www.douban.com/search?cat=${cat}&q=${q}`, {
     headers: {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122 Safari/537.36",
@@ -441,7 +542,14 @@ async function scrapeDouban(ctx: ScrapeContext, item: MediaItem) {
     if (author) item.authors = author
     const publisher = part("出版社")
     if (publisher) item.publisher = publisher
-    const year = part("出版年")
+    // 豆瓣电影条目的字段是「导演 / 主演 / 年份 / 类型」，与书籍不同
+    const director = part("导演")
+    const actors = part("主演")
+    const cast = [director, actors].filter(Boolean).join(",").trim()
+    if (cast) item.authors = cast
+    const genre = part("类型")
+    if (genre) item.genre = genre.replace(/\s*\/\s*/g, ",")
+    const year = part("出版年") || part("年份")
     const ym = year.match(/(\d{4})/)
     if (ym) item.release_date = `${ym[1]}-01-01`
     const isbn = part("ISBN")
@@ -603,6 +711,17 @@ export async function scrapeItem(
       if (res.ok) {
         await maybeDownloadCover(ctx, item)
         return res
+      }
+      // TMDB 没命中（未配 key、中文片名、冷门片）时用豆瓣兜底：
+      // Go 的视频刮削同样是 TMDB + 豆瓣双源，只挂 TMDB 会导致国产片全灭。
+      try {
+        const ok = await scrapeDouban(ctx, item)
+        if (ok) {
+          await maybeDownloadCover(ctx, item)
+          return { ok: true, low: true }
+        }
+      } catch (e: any) {
+        console.warn("[media] douban fallback failed:", e?.message || e)
       }
       return { ok: false, low: false }
     }
