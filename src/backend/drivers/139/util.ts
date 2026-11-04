@@ -110,6 +110,7 @@ export class Yun139ApiClient {
   public groupHost = YUN139_DEFAULT_HOST
   public account = ""
   private onAuthorizationRefresh?: (authorization: string) => Promise<void>
+  private warnedMissingUserDomainId = false
 
   constructor(
     addition: Yun139Addition,
@@ -410,9 +411,16 @@ export class Yun139ApiClient {
 
     const userDomainId = (this.addition.user_domain_id || "").trim()
     if (!userDomainId) {
-      throw new Error(
-        "139 Cloud token is near expiry; configure user_domain_id to use the PC refreshToken API",
-      )
+      // The PC refreshToken endpoint requires user_domain_id, but existing auth
+      // tokens remain usable until the service expires them. Do not make an
+      // optional refresh prerequisite break otherwise-valid legacy configs.
+      if (!this.warnedMissingUserDomainId) {
+        console.warn(
+          "[139] token is near expiry; skipping automatic refresh because user_domain_id is not configured",
+        )
+        this.warnedMissingUserDomainId = true
+      }
+      return
     }
 
     const authHeader = `Basic ${auth}`
