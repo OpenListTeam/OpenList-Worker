@@ -62,7 +62,11 @@ import {
 import { getScanProgress, isScanRunning, scanMedia } from "../internal/media/scan"
 import { getScrapeStats, isScrapeRunning, scrapeMedia } from "../internal/media/scrape"
 import { generateStrmForType, renderStrmContent } from "../internal/media/strm"
-import { resolveCoverUrl, thumbOptionsOf } from "../internal/media/thumb"
+import {
+  persistCover,
+  resolveCoverUrl,
+  thumbOptionsOf,
+} from "../internal/media/thumb"
 import { sniffImageMime } from "../internal/media/tag"
 import {
   authFailed,
@@ -532,32 +536,15 @@ mediaRouter.get("/stream_url", async (c) => {
   }
   const policy = await getSignPolicy(c)
   const expires = policy.expiresIn
-  const sign = await signDownloadPath(c, path, expires)
   const origin = originOf(c)
-  const url = `${origin}/d${encodeDownloadPath(path)}?sign=${encodeURIComponent(sign)}`
-  // 浏览器内播放用 /p（避免 302 跨域），但 /p 受存储的代理策略约束：
-  // 关闭 web_proxy 且扩展名不在 proxy_types/text_types 时，raw 路由会返回
-  // 403 proxy not allowed。这里按同一套规则判断，不可代理时退回 /d 直链，
-  // 否则播放器拿到的是一个必然 403 的地址。
-  let proxied = `${origin}/p${encodeDownloadPath(path)}?sign=${encodeURIComponent(sign)}`
-  try {
-    const resolved = await resolvePath(path, c.env)
-    if (resolved.storage) {
-      const settings = await getSettingsMap(c.env)
-      const allowProxy = canUseProxyEndpoint({
-        storage: resolved.storage,
-        driver: String(resolved.storage.driver || "")
-          .toLowerCase()
-          .replace(/[^a-z0-9]/g, ""),
-        filename: path,
-        proxyTypes: normalizeExtList(settings.proxy_types),
-        textTypes: normalizeExtList(settings.text_types),
-      })
-      if (!allowProxy) proxied = url
-    }
-  } catch {
-    // 存储解析失败时保持 /p：让 raw 路由给出真实错误，便于排查
-  }
+  const downloadPath = encodeDownloadPath(path)
+  // /d 用普通签名；/p 用 scope=media 的签名 —— raw 路由据此跳过
+  // web_proxy=false 的代理限制。浏览器内播放/阅读必须走 /p：
+  // 只有同源代理才能保证 Content-Type、Range，以及 MediaBunny 的音频回退。
+  const directSign = await signDownloadPath(c, path, expires)
+  const mediaSign = await signDownloadPath(c, path, expires, "media")
+  const url = `${origin}/d${downloadPath}?sign=${encodeURIComponent(directSign)}`
+  const proxied = `${origin}/p${downloadPath}?sign=${encodeURIComponent(mediaSign)}&scope=media`
   return ok(c, {
     url,
     path,
@@ -754,6 +741,158 @@ mediaAdminRouter.get("/items", async (c) => {
     ...result,
     content: result.content.map((i) => serializeItem(i, origin)),
   })
+})
+
+/**
+ * 后台专辑聚合列表。
+ *
+ * 前端管理页（MediaAlbumTable）从 /admin/media/albums 取数据，但后端一直
+ * 只有用户侧的 /fs/media/albums，管理页请求落到 SPA 兜底拿到 HTML，
+ * 于是「扫描完了、管理端却是空的」。管理员视角不做逐条权限过滤。
+ */
+mediaAdminRouter.get("/albums", async (c) => {
+  const db = await getMediaDb(c.env)
+  const scanPathId = Number(c.req.query("scan_path_id") || 0)
+  const keyword = (c.req.query("keyword") || "").toLowerCase()
+  const page = Math.max(1, Number(c.req.query("page") || 1))
+  const pageSize = Math.min(Number(c.req.query("page_size") || 40), 200)
+  const items = db.items.filter(
+    (i) =>
+      i.media_type === "music" &&
+      (!scanPathId || i.scan_path_id === scanPathId) &&
+      (!keyword ||
+        i.file_name.toLowerCase().includes(keyword) ||
+        (i.album_name || "").toLowerCase().includes(keyword) ||
+        (i.scraped_name || "").toLowerCase().includes(keyword) ||
+        (i.album_artist || "").toLowerCase().includes(keyword)),
+  )
+  const map = new Map<string, any>()
+  for (const item of items) {
+    const album = item.album_name || "未知专辑"
+    const artist = item.album_artist || "未知艺术家"
+    const key = `${album}\u0000${artist}`
+    let row = map.get(key)
+    if (!row) {
+      row = {
+        album_name: album,
+        album_artist: artist,
+        cover: resolveCoverUrl(item.cover || "", originOf(c)),
+        release_date: item.release_date,
+        genre: item.genre,
+        track_count: 0,
+        duration: 0,
+      }
+      map.set(key, row)
+    }
+    row.track_count += 1
+    row.duration += item.duration || 0
+    if (!row.cover && item.cover) {
+      row.cover = resolveCoverUrl(item.cover, originOf(c))
+    }
+  }
+  const all = Array.from(map.values()).sort((a, b) =>
+    String(a.album_name).localeCompare(String(b.album_name), "zh-CN"),
+  )
+  return ok(c, {
+    content: all.slice((page - 1) * pageSize, page * pageSize),
+    total: all.length,
+  })
+})
+
+/** 某专辑下的真实条目（含 id，供管理端逐条编辑） */
+mediaAdminRouter.get("/album/items", async (c) => {
+  const db = await getMediaDb(c.env)
+  const album = c.req.query("album_name") || ""
+  const artist = c.req.query("album_artist") || ""
+  const scanPathId = Number(c.req.query("scan_path_id") || 0)
+  const list = db.items.filter(
+    (i) =>
+      i.media_type === "music" &&
+      i.album_name === album &&
+      (!artist || i.album_artist === artist) &&
+      (!scanPathId || i.scan_path_id === scanPathId),
+  )
+  return ok(c, list)
+})
+
+/** 按专辑批量更新（封面 / 简介 / 年份 / 类型 / 专辑名 / 艺术家） */
+mediaAdminRouter.post("/album/update", async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const album = String(body.album_name || "")
+  const artist = String(body.album_artist || "")
+  if (!album) return fail(c, "album_name is required")
+  const scanPathId = Number(body.scan_path_id || 0)
+  const db = await getMediaDb(c.env)
+  const now = new Date().toISOString()
+  let affected = 0
+  for (const item of db.items) {
+    if (item.media_type !== "music") continue
+    if (item.album_name !== album) continue
+    if (artist && item.album_artist !== artist) continue
+    if (scanPathId && item.scan_path_id !== scanPathId) continue
+    if (body.new_album_name !== undefined) {
+      item.album_name = String(body.new_album_name)
+    }
+    if (body.new_album_artist !== undefined) {
+      item.album_artist = String(body.new_album_artist)
+    }
+    if (body.cover !== undefined) item.cover = String(body.cover)
+    if (body.release_date !== undefined) item.release_date = String(body.release_date)
+    if (body.genre !== undefined) item.genre = String(body.genre)
+    if (body.plot !== undefined) item.plot = String(body.plot)
+    if (body.description !== undefined) {
+      item.description = String(body.description)
+    }
+    item.updated_at = now
+    affected += 1
+  }
+  if (affected > 0) await saveMediaDb(c.env, db)
+  return ok(c, { affected })
+})
+
+/** 上传/丢弃自定义封面（multipart：id + file，或 id + discard） */
+mediaAdminRouter.post("/items/cover", async (c) => {
+  let form: FormData
+  try {
+    form = await c.req.formData()
+  } catch {
+    return fail(c, "invalid form data")
+  }
+  const id = Number(form.get("id") || 0)
+  const db = await getMediaDb(c.env)
+  const item = findItem(db, id)
+  if (!item) return fail(c, "not found", 404)
+
+  // 回收暂存封面：仅当条目仍引用它时才清空，避免误删已保存的封面
+  const discard = String(form.get("discard") || "")
+  if (discard) {
+    if (item.cover === discard) {
+      item.cover = ""
+      item.updated_at = new Date().toISOString()
+      await saveMediaDb(c.env, db)
+    }
+    return ok(c, null)
+  }
+
+  const file = form.get("file")
+  if (!(file instanceof File)) return fail(c, "file is required")
+  if (file.size <= 0 || file.size > 8 * 1024 * 1024) {
+    return fail(c, "cover must be between 1 byte and 8 MB")
+  }
+  const data = new Uint8Array(await file.arrayBuffer())
+  // 只信魔数：声明为 image/* 的 SVG/HTML 一律拒绝
+  if (!sniffImageMime(data)) return fail(c, "unsupported image format")
+
+  const cfg = getConfig(db, item.media_type)
+  const stored = await persistCover(c.env, data, thumbOptionsOf(cfg))
+  // deferred：先返回暂存地址，等用户点保存再写进条目
+  if (String(form.get("deferred") || "") === "true") {
+    return ok(c, { cover: stored.cover })
+  }
+  item.cover = stored.cover
+  item.updated_at = new Date().toISOString()
+  await saveMediaDb(c.env, db)
+  return ok(c, { cover: stored.cover })
 })
 
 mediaAdminRouter.post("/items/update", async (c) => {
