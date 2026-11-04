@@ -208,6 +208,11 @@ const EP_RE = /(?:^|[^a-z0-9])e(?:p|pisode)?[\s._-]*(\d{1,4})(?:[^0-9]|$)/i
 const CHINESE_EP_RE = /第\s*([0-9一二三四五六七八九十百零两]{1,6})\s*[集话話期]/
 const LEADING_NUM_RE = /^(\d{1,4})[、.\-\s_]+(.*)$/
 const SEASON_DIR_RE = /(?:^|[/\s._-])(?:season|s)\s*(\d{1,2})(?:[^0-9]|$)/i
+/** 中文季目录：第二季 / 第2季 */
+const CN_SEASON_DIR_RE = /第\s*([0-9一二三四五六七八九十百零两]{1,4})\s*季/
+/** 发布信息噪声：命中就不把它当集标题 */
+const RELEASE_NOISE_RE =
+  /(1080p|720p|2160p|4k|web[-_. ]?dl|bluray|blu-ray|hdtv|remux|x264|x265|h\.?264|h\.?265|hevc|aac|ac3|dts|中英|中字|双语|简繁|字幕|压制|压制组)/i
 
 const CN_DIGITS: Record<string, number> = {
   零: 0,
@@ -260,7 +265,12 @@ export function parseEpisodeInfo(
   if (se) {
     season = parseInt(se[1], 10) || season
     index = parseInt(se[2], 10) || 0
-    title = base.slice(se.index! + se[0].length).trim() || base
+    // SxxExx 之后通常是发布信息（1080p / WEB-DL / 中英双字），不能当集标题；
+    // 这时回退到 SxxExx 之前的部分（剧名）。
+    const before = base.slice(0, se.index!).replace(/[\s._-]+$/, "").trim()
+    const after = base.slice(se.index! + se[0].length).trim()
+    title =
+      after && !RELEASE_NOISE_RE.test(after) ? after : before || after || base
   } else {
     const ep = base.match(EP_RE)
     const cn = base.match(CHINESE_EP_RE)
@@ -299,6 +309,14 @@ export function parseSeasonFromPath(path: string): number {
     const m = segs[i].match(SEASON_DIR_RE)
     if (m) {
       const n = parseInt(m[1], 10)
+      if (Number.isFinite(n) && n > 0) return n
+    }
+    // 中文目录（第二季）在中文资源里非常常见，旧实现只认 S02/Season 2
+    const cn = segs[i].match(CN_SEASON_DIR_RE)
+    if (cn) {
+      const n = /^\d+$/.test(cn[1])
+        ? parseInt(cn[1], 10)
+        : chineseNumberToInt(cn[1])
       if (Number.isFinite(n) && n > 0) return n
     }
   }
@@ -381,11 +399,29 @@ async function buildItem(
   if (target.isDir) {
     const files = await listDirMedia(env, fullPath, sp.media_type)
     if (files.length === 0) return {}
-    videoType = "tv"
-    const season = parseSeasonFromPath(fullPath)
+    // 扫描路径的 type_tag 决定电影/剧集归属（对齐 Go scanner.go:1244-1250）：
+    // 打成「电影」时即使开了 path_merge 也按电影展示，不能一律当剧集。
+    const tag = String(sp.type_tag || "").trim().toLowerCase()
+    videoType =
+      tag === "movie" || tag === "电影" || tag === "影片" || tag === "film"
+        ? "movie"
+        : "tv"
+    const baseSeason = parseSeasonFromPath(fullPath)
     episodes = files
-      .sort((a, b) => a.name.localeCompare(b.name, "zh-CN", { numeric: true }))
-      .map((f, idx) => parseEpisodeInfo(f.name, idx + 1, season))
+      .sort((a, b) => a.rel.localeCompare(b.rel, "zh-CN", { numeric: true }))
+      .map((f, idx) => {
+        // 只从**目录部分**取季号：文件名里的 S01 常被压制组统一写死，
+        // 而「第二季」「Season 2」这类目录才是权威。
+        const relDir = f.rel.split("/").slice(0, -1).join("/")
+        const dirSeason = relDir ? parseSeasonFromPath(joinPath(fullPath, relDir)) : 0
+        const ep = parseEpisodeInfo(f.name, idx + 1, baseSeason)
+        // file_name 用相对路径：播放时要拼 <目录>/<子目录>/<文件>
+        return {
+          ...ep,
+          file_name: f.rel,
+          season: dirSeason > 0 ? dirSeason : ep.season,
+        }
+      })
     size = files.reduce((sum, f) => sum + f.size, 0)
   } else if (sp.media_type === "video") {
     videoType = SEASON_EP_RE.test(target.name) || EP_RE.test(target.name) || CHINESE_EP_RE.test(target.name)
@@ -536,19 +572,57 @@ async function buildItem(
   }
 }
 
-async function listDirMedia(env: any, dir: string, type: MediaType) {
+/**
+ * 列目录内的媒体文件，**递归**子目录（对齐 Go buildEpisodesFromFolder 的
+ * recursive 语义）。
+ *
+ * 旧实现只列一层：`/影视资源/电影/哈利波特电影/*.mkv` 这种「分类目录 →
+ * 剧名目录 → 文件」的常见布局会在剧名目录这一层拿到 0 个文件，
+ * buildItem 直接返回空，扫描结果是「跳过 N 条」。
+ *
+ * 返回的 rel 是相对目录的路径（`S01/ep01.mkv`），episode 的 file_name 用它，
+ * 否则播放路径会拼成 `<剧名>/ep01.mkv` 而丢掉中间目录。
+ */
+async function listDirMedia(
+  env: any,
+  dir: string,
+  type: MediaType,
+  prefix = "",
+  depth = 0,
+): Promise<Array<{ rel: string; name: string; size: number; modified: string }>> {
+  if (depth > 3) return []
+  let content: any[] = []
   try {
     const res = await listItems(dir, { env })
-    return (res.content || [])
-      .filter((i: any) => !i.is_dir && mediaTypeOfFile(i.name) === type)
-      .map((i: any) => ({
-        name: String(i.name),
-        size: Number(i.size) || 0,
-        modified: i.modified || "",
-      }))
+    content = res.content || []
   } catch {
     return []
   }
+  const out: Array<{ rel: string; name: string; size: number; modified: string }> = []
+  for (const item of content) {
+    const name = String(item.name || "")
+    if (!name || name.startsWith(".")) continue
+    if (item.is_dir) {
+      out.push(
+        ...(await listDirMedia(
+          env,
+          joinPath(dir, name),
+          type,
+          prefix ? `${prefix}/${name}` : name,
+          depth + 1,
+        )),
+      )
+      continue
+    }
+    if (mediaTypeOfFile(name) !== type) continue
+    out.push({
+      rel: prefix ? `${prefix}/${name}` : name,
+      name,
+      size: Number(item.size) || 0,
+      modified: item.modified || "",
+    })
+  }
+  return out
 }
 
 /** 构建音乐条目：merge=true 时目录整体为专辑，false 时每首独立 */
@@ -563,9 +637,10 @@ async function buildMusicItems(
   if (target.isDir) {
     const files = await listDirMedia(env, joinPath(target.path, target.name), "music")
     if (files.length === 0) return out
-    files.sort((a, b) => a.name.localeCompare(b.name, "zh-CN", { numeric: true }))
+    files.sort((a, b) => a.rel.localeCompare(b.rel, "zh-CN", { numeric: true }))
 
-    const firstPath = joinPath(joinPath(target.path, target.name), files[0].name)
+    // 用相对路径拼：专辑目录可能被再套一层（CD1/Disc1）
+    const firstPath = joinPath(joinPath(target.path, target.name), files[0].rel)
     const tag = await readMusicTag(
       env,
       firstPath,
@@ -584,9 +659,11 @@ async function buildMusicItems(
     }
     const lyrics = await readLyrics(env, firstPath, tag)
 
-    const episodes: EpisodeInfo[] = files.map((f, idx) =>
-      parseEpisodeInfo(f.name, idx + 1, 1),
-    )
+    const episodes: EpisodeInfo[] = files.map((f, idx) => ({
+      ...parseEpisodeInfo(f.name, idx + 1, 1),
+      // 同上：file_name 保留相对路径，播放时才不会丢子目录
+      file_name: f.rel,
+    }))
     const prev = opts.existing[0]
     out.push({
       media_type: "music",
