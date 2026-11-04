@@ -85,12 +85,25 @@ export async function persistCover(
   return { cover: stored, thumb: hash, thumb_mime: realMime }
 }
 
-/** `thumb:<hash>` / `data:` / `http(s):` 统一解析为可直接访问的 URL */
-export function resolveCoverUrl(cover: string, origin: string): string {
+/**
+ * `thumb:<hash>` / `data:` / `http(s):` 统一解析为可直接访问的 URL。
+ *
+ * 外链封面默认走站内代理：豆瓣/部分图床有防盗链（空 Referer 或跨站
+ * Referer 直接 403），TMDB 图片在国内也常不可达。直连时表现为「刮削成功
+ * 但封面裂图」。代理端点带可信 Referer 与域名白名单，命中率明显更高。
+ */
+export function resolveCoverUrl(
+  cover: string,
+  origin: string,
+  proxyExternal = true,
+): string {
   if (!cover) return ""
   if (cover.startsWith("thumb:")) {
     const hash = cover.slice("thumb:".length)
     return `${origin}/api/public/media/thumb?path=${encodeURIComponent(hash)}`
+  }
+  if (proxyExternal && /^https?:\/\//i.test(cover)) {
+    return `${origin}/api/public/media/proxy?url=${encodeURIComponent(cover)}`
   }
   return cover
 }

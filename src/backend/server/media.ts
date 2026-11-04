@@ -1445,8 +1445,17 @@ async function fetchCoverSafely(
     if (!coverHostAllowed(u.hostname)) return null
     if (!isSafeUrl(current, COVER_HOSTS)) return null
 
+    // 豆瓣图床靠 Referer 防盗链：空 Referer 直接 403，带站点 Referer 才放行
+    const referer = /(?:^|\.)douban(?:io)?\.com$/i.test(u.hostname)
+      ? "https://www.douban.com/"
+      : ""
     const res = await fetch(current, {
-      headers: { "User-Agent": "OpenList-Media/1.0", Accept: "image/*" },
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122 Safari/537.36",
+        Accept: "image/*",
+        ...(referer ? { Referer: referer } : {}),
+      },
       redirect: "manual",
       signal: AbortSignal.timeout(20_000),
     }).catch(() => null)
