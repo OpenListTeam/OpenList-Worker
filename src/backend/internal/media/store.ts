@@ -46,8 +46,15 @@ const THUMB_PREFIX = "openlist_media_thumb_v1:"
 /** 内存缓存 TTL：缩短跨 isolate 的陈旧窗口（写操作会立即刷新本地缓存） */
 const CACHE_TTL_MS = 5_000
 
-/** 单条缩略图上限，防止把几十 MB 的 base64 写进 KV */
-export const MAX_THUMB_BYTES = 512 * 1024
+/**
+ * 单条缩略图上限，防止把几十 MB 的 base64 写进 KV。
+ *
+ * 512KB 太小：FLAC/MP3 内嵌封面动辄 0.6~1.2MB，超限会被静默丢弃，
+ * 表现就是「有的歌有封面、有的没有」（同一批文件里只有小封面能存下来）。
+ * 缩略图按内容 hash 去重，同一张专辑封面只存一份，2MB 的上限实际占用
+ * 远小于「曲目数 × 2MB」。
+ */
+export const MAX_THUMB_BYTES = 2 * 1024 * 1024
 
 interface CacheState {
   db: MediaDb
@@ -1147,7 +1154,14 @@ export async function saveThumb(
   bytes: Uint8Array,
   mime: string,
 ): Promise<string> {
-  if (!hash || bytes.length === 0 || bytes.length > MAX_THUMB_BYTES) return ""
+  if (!hash || bytes.length === 0) return ""
+  if (bytes.length > MAX_THUMB_BYTES) {
+    // 超限不再静默：这是「封面缺失」最常见的原因，留一条可通过日志发现的记录
+    console.warn(
+      `[media] thumbnail ${hash} skipped: ${bytes.length} bytes > ${MAX_THUMB_BYTES}`,
+    )
+    return ""
+  }
   const payload = JSON.stringify({
     mime,
     data: bytesToBase64(bytes),

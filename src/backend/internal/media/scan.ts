@@ -325,6 +325,44 @@ export function parseSeasonFromPath(path: string): number {
 
 // ==================== 标签读取 ====================
 
+/**
+ * 容器头里声明的「标签实际占用字节数」，用于精确补读。
+ *
+ * - MP3：ID3v2 = 10 字节头 + syncsafe 28 位长度；
+ * - FLAC：'fLaC' 后是 metadata block 链（4 字节头 + 24 位大端长度），
+ *   遇到 last-block 标志即结束。
+ * 其它容器返回 0，由调用方退回「按需读满 2MB」。
+ */
+function metadataSpan(head: Uint8Array | null): number {
+  if (!head || head.length < 10) return 0
+  if (head[0] === 0x49 && head[1] === 0x44 && head[2] === 0x33) {
+    const size =
+      ((head[6] & 0x7f) << 21) |
+      ((head[7] & 0x7f) << 14) |
+      ((head[8] & 0x7f) << 7) |
+      (head[9] & 0x7f)
+    return 10 + size
+  }
+  if (
+    head[0] === 0x66 &&
+    head[1] === 0x4c &&
+    head[2] === 0x61 &&
+    head[3] === 0x43
+  ) {
+    let off = 4
+    for (let i = 0; i < 32; i++) {
+      if (off + 4 > head.length) return 0
+      const isLast = (head[off] & 0x80) !== 0
+      const len =
+        (head[off + 1] << 16) | (head[off + 2] << 8) | head[off + 3]
+      off += 4 + len
+      if (isLast) return off
+    }
+    return off
+  }
+  return 0
+}
+
 async function readMusicTag(
   env: any,
   filePath: string,
@@ -352,10 +390,26 @@ async function readMusicTag(
   }
   let tag = parseMusicTags(ext, head, tailBytes)
   const hasCore = tag.title || tag.artist || tag.album
-  // 关键字段全空且文件还有后续内容：很可能是标签较大（内嵌封面）或
-  // 标签不在文件开头，再补读完整的 2MB。
-  if (!hasCore && fileSize > (head?.length || 0) && (head?.length || 0) < TAG_HEAD_BYTES) {
-    head = await readFileRange(filePath, 0, TAG_HEAD_BYTES, { env })
+  // 补读条件不能只看文本字段：标签里最占空间的是内嵌封面（APIC/PICTURE），
+  // 一段 300KB+ 的封面足以让文本字段落在前 256KB、封面落在窗口之外。
+  // 只判 hasCore 会让这类文件永远拿不到封面（表现为「有的歌有封面、有的没有」）。
+  const span = metadataSpan(head)
+  const needCover = !tag.coverData
+  // span === 0 表示「容器头解析不出来或还没解析完」：FLAC 的 metadata block
+  // 链一旦越过 256KB 窗口就会走到这个分支，不能因为文本字段已命中就放弃补读，
+  // 否则大封面永远读不到。span > head.length 表示标签确实比已读窗口长。
+  const needMore = needCover && (span === 0 || span > (head?.length || 0))
+  if (
+    needMore &&
+    fileSize > (head?.length || 0) &&
+    (head?.length || 0) < TAG_HEAD_BYTES
+  ) {
+    // 已知精确长度时只补读到标签末尾，未知时退回完整 2MB 窗口
+    const want =
+      span > (head?.length || 0) && span <= TAG_HEAD_BYTES
+        ? span
+        : TAG_HEAD_BYTES
+    head = await readFileRange(filePath, 0, want, { env })
     tag = parseMusicTags(ext, head, tailBytes)
   }
   return tag
