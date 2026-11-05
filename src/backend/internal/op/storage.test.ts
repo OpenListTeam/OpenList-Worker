@@ -2,12 +2,25 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import type { StorageDriver } from "../driver/base"
+import { PikPakShareDriver } from "../../drivers/pikpak_share/driver"
 import { getDb, saveDb } from "../model/db"
 import {
+  getDriver,
   getItem,
   getOrCreateDriver,
   scheduleStoragePersistence,
 } from "./storage"
+
+test("PikPakShare factory does not use account-login driver (issue #129)", async () => {
+  const driver = await getDriver("PikPakShare", {
+    id: "issue-129-pikpak-share-factory",
+    modified: "2026-11-01T23:00:00.000Z",
+    driver: "PikPakShare",
+    addition: JSON.stringify({ share_id: "share-only-id" }),
+  })
+
+  assert.ok(driver instanceof PikPakShareDriver)
+})
 
 test("concurrent driver initialization shares one Promise", async () => {
   let calls = 0
