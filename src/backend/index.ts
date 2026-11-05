@@ -1,10 +1,16 @@
 import { Hono } from "hono"
 import { setupRouter } from "./server/router"
 import { rawRouter } from "./server/raw"
-import { assetsRouter, getIndexHtmlWithCdn, isCdnConfigured, cdnAssetRedirect } from "./server/assets"
+import {
+  assetsRouter,
+  getIndexHtmlWithCdn,
+  isCdnConfigured,
+  cdnAssetRedirect,
+} from "./server/assets"
 import { webdavRouter } from "./server/webdav"
 import { s3Router } from "./server/s3"
 import { setEnvCtx } from "./internal/model/db"
+import { embyRouter, subsonicRouter } from "./server/emby"
 import { getStoreConfigErrorDetail } from "./internal/model/store/backend"
 import { storageErrorSummary, uiStorageError } from "./server/storage-error"
 
@@ -14,7 +20,11 @@ const app = new Hono()
  * 静态资源 / SPA 壳路径：这些请求不应被存储配置错误拦截，
  * 否则前端连提示页面都加载不出来。
  */
-function isStaticOrShell(pathname: string, accept: string, method: string): boolean {
+function isStaticOrShell(
+  pathname: string,
+  accept: string,
+  method: string,
+): boolean {
   // 带扩展名的静态文件
   if (/\.[a-zA-Z0-9]+$/.test(pathname)) return true
   // 浏览器导航请求（HTML）由 SPA 壳承载
@@ -162,6 +172,10 @@ app.route("/api", api)
 app.route("/d", rawRouter)
 app.route("/sd", rawRouter)
 app.route("/p", rawRouter)
+
+// 媒体库协议端点：/@emby 与 /@rest，避免与用户目录冲突
+app.route("/@emby", embyRouter)
+app.route("/@rest", subsonicRouter)
 
 // 内嵌品牌资源（logo/favicon），必须在 SPA 兜底 app.all("*") 之前挂载
 app.route("/", assetsRouter)

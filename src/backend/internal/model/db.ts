@@ -810,6 +810,203 @@ export const defaultDb = {
       group: 14,
       flag: 0,
     },
+
+    // Group 12: MEDIA (媒体库)
+    {
+      key: "media_enabled",
+      value: "false",
+      type: "bool",
+      help: "Enable media library (master switch)",
+      group: 12,
+      flag: 0,
+    },
+    {
+      key: "media_emby_enabled",
+      value: "false",
+      type: "bool",
+      help: "Expose an Emby-compatible API at /@emby",
+      group: 12,
+      flag: 0,
+    },
+    {
+      key: "media_subsonic_enabled",
+      value: "false",
+      type: "bool",
+      help: "Expose an OpenSubsonic API at /@rest",
+      group: 12,
+      flag: 0,
+    },
+    {
+      key: "media_tmdb_key",
+      value: "",
+      type: "string",
+      help: "TMDB API key",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_tmdb_api_url",
+      value: "https://api.themoviedb.org/3",
+      type: "string",
+      help: "TMDB API base URL",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_discogs_token",
+      value: "",
+      type: "string",
+      help: "Discogs personal access token",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_discogs_api_url",
+      value: "https://api.discogs.com",
+      type: "string",
+      help: "Discogs API base URL",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_book_source",
+      value: "douban",
+      type: "select",
+      options: "douban,google,openlibrary",
+      help: "Book metadata source",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_google_books_key",
+      value: "",
+      type: "string",
+      help: "Google Books API key (optional)",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_store_thumbnail",
+      value: "true",
+      type: "bool",
+      help: "Store thumbnails while scraping",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_thumbnail_mode",
+      value: "runtime",
+      type: "select",
+      options: "base64,runtime,local",
+      help: "Thumbnail storage mode",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_thumbnail_path",
+      value: "imgs",
+      type: "string",
+      help: "Thumbnail storage path",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_scrape_concurrency",
+      value: "5",
+      type: "number",
+      help: "Scrape concurrency",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_scrape_language",
+      value: "zh-CN",
+      type: "select",
+      options: "zh-CN,zh-TW,en-US,ja-JP,ko-KR,fr-FR,de-DE,es-ES,ru-RU,pt-BR",
+      help: "Preferred metadata language",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_proxy_cover",
+      value: "false",
+      type: "bool",
+      help: "Proxy external cover images through the server",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_subsonic_proxy_stream",
+      value: "false",
+      type: "bool",
+      help: "Proxy Subsonic streams instead of redirecting",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_subsonic_allow_password_auth",
+      value: "false",
+      type: "bool",
+      help: "Allow Subsonic u+p authentication with the OpenList password",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_cover_gateway",
+      value: "false",
+      type: "bool",
+      help: "Fallback to a third-party image gateway when cover fetch fails",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_download_cover",
+      value: "false",
+      type: "bool",
+      help: "Download covers into thumbnail storage",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_strm_on_scan",
+      value: "false",
+      type: "bool",
+      help: "Write .strm files automatically after scanning",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_strm_overwrite",
+      value: "false",
+      type: "bool",
+      help: "Overwrite existing .strm files",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_strm_same_dir",
+      value: "true",
+      type: "bool",
+      help: "Write .strm next to media files",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_strm_path",
+      value: "",
+      type: "string",
+      help: "STRM output directory",
+      group: 12,
+      flag: 1,
+    },
+    {
+      key: "media_strm_template",
+      value: "{site_url}/d{path}?sign={sign}",
+      type: "text",
+      help: "STRM content template",
+      group: 12,
+      flag: 1,
+    },
   ],
   storages: [],
   users: [
@@ -2018,7 +2215,11 @@ async function unsealDb(
       const sealedValue = target.otp_secret
       const identity = `users:${u.id ?? i}:otp_secret`
       tasks.push(async () => {
-        target.otp_secret = await unsealValue(sealedValue, fieldCipher, identity)
+        target.otp_secret = await unsealValue(
+          sealedValue,
+          fieldCipher,
+          identity,
+        )
       })
     }
     // 密码解密
@@ -2033,7 +2234,9 @@ async function unsealDb(
   }
 
   for (let i = 0; i < tasks.length; i += UNSEAL_CONCURRENCY) {
-    await Promise.all(tasks.slice(i, i + UNSEAL_CONCURRENCY).map((run) => run()))
+    await Promise.all(
+      tasks.slice(i, i + UNSEAL_CONCURRENCY).map((run) => run()),
+    )
   }
 }
 
@@ -2117,7 +2320,8 @@ export const saveDb = async (
     console.log(
       `[DB] saveDb: cipher=${cipher}, persisting to ${backend.name}, storages=${data.storages?.length || 0}`,
     )
-    const fieldCipher = cipher === "none" ? null : await resolveFieldCipher(activeEnv)
+    const fieldCipher =
+      cipher === "none" ? null : await resolveFieldCipher(activeEnv)
     if (cipher !== "none" && !fieldCipher && !sealKeyMissingWarned) {
       // 只在首次告警：密钥缺失会持续到密钥可用为止，逐次写入都打印只会刷屏。
       sealKeyMissingWarned = true
@@ -2363,7 +2567,9 @@ export async function getSettings() {
       settingsObj[s.key] = s.value
     })
   }
-  return settingsObj
+  // Worker 无 ffmpeg：即使有人直接改库，也不允许转码开关生效
+  const { disableTranscodeSettings } = await import("./transcode-guard")
+  return disableTranscodeSettings(settingsObj)
 }
 
 export async function getUsers() {

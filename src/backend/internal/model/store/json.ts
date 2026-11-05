@@ -567,17 +567,53 @@ export async function readPersistedSecret(
   key: string,
 ): Promise<string | null> {
   try {
-    const driver = await resolveSecretDriver(env)
-    const val = await driver.get(key, env)
-    if (val === null || val === undefined) return null
-    // 部分绑定的 get() 可能返回 Response 形态，兼容 text() 取值。
-    const resolved: any =
-      typeof (val as any)?.text === "function" ? await (val as any).text() : val
-    const str = String(resolved).trim()
-    return str || null
+    return await readPersistedSecretStrict(env, key)
   } catch (e) {
     console.warn(`[Secret] read "${key}" failed:`, e)
     return null
+  }
+}
+
+/**
+ * 同 readPersistedSecret，但**不吞异常**：读取失败会抛出。
+ *
+ * 需要区分「键不存在」与「后端读取失败」的场景必须用它——例如媒体库分片：
+ * 把一次 KV/D1 超时当成空分片，会让随后的普通保存用空数据覆盖真实配置。
+ */
+export async function readPersistedSecretStrict(
+  env: any,
+  key: string,
+): Promise<string | null> {
+  const driver = await resolveSecretDriver(env)
+  const val = await driver.get(key, env)
+  if (val === null || val === undefined) return null
+  // 部分绑定的 get() 可能返回 Response 形态，兼容 text() 取值。
+  const resolved: any =
+    typeof (val as any)?.text === "function" ? await (val as any).text() : val
+  const str = String(resolved).trim()
+  return str || null
+}
+
+/**
+ * 按前缀列出已持久化的键。
+ *
+ * 用于「索引只是缓存、键本身才是权威」的场景（如媒体库分片）：全局索引文档
+ * 会被多实例互相覆盖，按前缀枚举才能保证冷启动后一个分片都不漏。
+ * 驱动不支持 list 或调用失败时返回空数组，由调用方退回到索引。
+ */
+export async function listPersistedSecrets(
+  env: any,
+  prefix: string,
+): Promise<string[]> {
+  try {
+    const driver = await resolveSecretDriver(env)
+    const keys = await driver.list(prefix, env)
+    return Array.isArray(keys)
+      ? keys.map((k) => String(k)).filter((k) => k.startsWith(prefix))
+      : []
+  } catch (e) {
+    console.warn(`[Secret] list "${prefix}" failed:`, e)
+    return []
   }
 }
 
@@ -594,7 +630,13 @@ export async function writePersistedSecret(
 ): Promise<boolean> {
   try {
     const driver = await resolveSecretDriver(env)
-    await driver.put(key, secret, env)
+    // 驱动契约是「失败即抛错」，但第三方/历史驱动可能以 false 表示失败；
+    // 这里把 false 也当作失败，避免调用方把未落盘的写入当成成功。
+    const result: any = await driver.put(key, secret, env)
+    if (result === false) {
+      console.warn(`[Secret] cannot persist "${key}": driver returned false`)
+      return false
+    }
     return true
   } catch (e) {
     console.warn(
