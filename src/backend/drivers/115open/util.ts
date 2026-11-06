@@ -218,9 +218,11 @@ export class Pan115Client {
         if (retryState !== false && retryState !== undefined) {
           return body
         }
-        throw new Error(
+        const retryErr: any = new Error(
           `115 网盘 API 错误（code ${body?.code} ${body?.message}）`,
         )
+        retryErr.code = Number(body?.code ?? 0)
+        throw retryErr
       }
       // 对象不存在错误（430004）——SDK ErrObjectNotFound
       if (code === ERR_OBJECT_NOT_FOUND) {
@@ -228,9 +230,13 @@ export class Pan115Client {
         err.code = ERR_OBJECT_NOT_FOUND
         throw err
       }
-      throw new Error(
+      // 其余业务错误：把 code 挂到 Error 上，调用方才能判断是否需要回退
+      // （如 driver 的 resolveFolderId 需要按 990002/20001/430004 决定是否逐层解析）
+      const err: any = new Error(
         `115 网盘 API 错误（code ${code} ${body?.message || ""}）`,
       )
+      err.code = code
+      throw err
     }
     return body
   }

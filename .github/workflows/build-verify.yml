@@ -52,7 +52,9 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, which Playwright 1.56 can't
+    # install browsers on. Lift this when Playwright is upgraded.
+    runs-on: ubuntu-24.04
     name: Build and verify artifacts
     steps:
       - name: Checkout

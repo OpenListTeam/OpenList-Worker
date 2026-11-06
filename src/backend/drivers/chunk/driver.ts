@@ -311,7 +311,7 @@ export class ChunkDriver implements StorageDriver {
       const end = Math.min(offset + this.partSize, size)
       const partContent = content.subarray(offset, end)
       const partPath = joinPath(chunkDir, this.getPartName(partIndex))
-      await this.remoteDriver!.put("", partPath, Buffer.from(partContent))
+      await this.remoteDriver!.put("", partPath, partContent)
       offset = end
       partIndex++
     }

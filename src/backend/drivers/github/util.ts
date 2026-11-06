@@ -9,6 +9,21 @@ import {
   MessageTemplateVars,
 } from "./types"
 
+/**
+ * Uint8Array → base64，纯 JS 实现（不依赖全局 Buffer）。
+ *
+ * 分块转换避免 `String.fromCharCode(...bytes)` 在几百 KB 上传时爆栈；
+ * btoa 在 Cloudflare Workers 与 ESA 都可用。
+ */
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = ""
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  }
+  return btoa(binary)
+}
+
 export function cleanPath(p: string): string {
   if (!p) return "/"
   const normalized = p.replace(/\\/g, "/").replace(/\/+/g, "/")
@@ -266,7 +281,9 @@ export class GithubApiClient {
   }
 
   async putBlob(content: Buffer | Uint8Array): Promise<string> {
-    const base64Content = Buffer.from(content).toString("base64")
+    // 不用 Buffer.from(content).toString("base64")：ESA 等边缘运行时没有全局
+    // Buffer，上传路径会直接抛 "Buffer is not defined"（Issue #169 的同类问题）。
+    const base64Content = bytesToBase64(content)
     const res = await this.request<{ sha: string }>(
       `https://api.github.com/repos/${this.owner}/${this.repo}/git/blobs`,
       {

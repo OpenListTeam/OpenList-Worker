@@ -325,6 +325,35 @@ test("readBodyWithinLimit 按实际字节数生效（省略 Content-Length 也�
   assert.equal(partTooLarge.ok, false)
 })
 
+/**
+ * Issue #169：阿里云 ESA 边缘运行时没有 Node 的全局 Buffer（Cloudflare Workers
+ * 是靠 nodejs_compat 注入的），旧实现 `Buffer.from(await c.req.arrayBuffer())`
+ * 会在读请求体这一步直接抛 `Buffer is not defined`，上传/WebDAV PUT/S3 PutObject
+ * 全部 500。这里删掉全局 Buffer 复现该环境，确保读取链路只依赖 Uint8Array。
+ */
+test("readBodyWithinLimit 不依赖全局 Buffer（ESA 运行时）", async () => {
+  const g = globalThis as any
+  const saved = g.Buffer
+  delete g.Buffer
+  try {
+    const ctx = {
+      env: {},
+      req: {
+        header: () => undefined,
+        arrayBuffer: async () => new TextEncoder().encode("abcd").buffer,
+      },
+    }
+    const res = await readBodyWithinLimit(ctx)
+    assert.equal(res.ok, true)
+    if (res.ok) {
+      assert.equal(res.buffer.length, 4)
+      assert.equal(res.buffer.constructor.name, "Uint8Array")
+    }
+  } finally {
+    g.Buffer = saved
+  }
+})
+
 test("WebDAV: 受 meta 保护的路径返回带指引的 403（而不是裸 403）", async () => {
   const env: any = { JWT_SECRET: "test-only-jwt-secret-for-hardening" }
   const davUser: any = {
