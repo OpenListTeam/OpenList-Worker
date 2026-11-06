@@ -494,11 +494,16 @@ export async function getUserFromContext(c: Context): Promise<{
     }
   }
 
-  // 无 Authorization header：尝试使用 guest 用户作为后备
-  // 注意：guest 不可用时返回 null 是合理的，调用方应该正确处理
+  // 无 Authorization header：仅在允许访客访问时使用 guest 用户作为后备。
+  // allow_guest 是应用层安全设置，必须由后端鉴权路径执行，不能只作为前端显示提示。
   if (!authHeader) {
     try {
       const db = await getDb(c.env)
+      const allowGuest = (db.settings || []).find(
+        (setting: any) => setting.key === "allow_guest",
+      )?.value
+      if (allowGuest === "false") return null
+
       const guest = (db.users || []).find((u: any) => u.username === "guest")
       if (guest && !guest.disabled) {
         return {

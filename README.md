@@ -81,6 +81,7 @@ OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTea
 ### 权限管理
 
 - **权限管理**：基于角色的访问控制（RBAC），支持用户分组、目录级读写权限与配额。
+- **访客访问**：默认启用 guest 访客回退，未登录请求会按 guest 用户权限访问。若要要求登录后才能浏览，请在应用管理界面关闭“访客访问”（`allow_guest=false`）；这是 OpenList 的应用设置，不是在 Cloudflare 控制台配置的环境变量。
 - **认证方式**：内置账号密码，支持TOTP验证、WebAuthn/FIDO登录、SSO单点登录与 LDAP 目录认证。
 - **安全加固**：JWT 会话、CSRF 防护、点击劫持防护（X-Frame-Options）、内容安全策略（CSP）。
 - **健康检查**：提供 `/health` 存活探针与 `/healthz` 就绪探针，可用于监控与告警。
