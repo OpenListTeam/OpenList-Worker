@@ -181,7 +181,12 @@ export class Pan115Driver implements StorageDriver {
     if (cached) return cached
 
     // 用 GetFolderInfoByPath 一次性解析（Go Get 逻辑）
-    const fullPath = `/${rootId === "0" ? "" : rootId}${clean === "/" ? "" : clean}`
+    // 注意：115 的 folder/get_info 对 path 严格校验，必须是 "/xxx/yyy" 形式：
+    //   "/测试" → 正常；"//测试" → code 20001 目录名称不能为空；
+    //   "测试"（缺前导斜杠）→ code 990002 参数错误。
+    // 因此 root_id 为默认 "0" 时不能拼出前缀，否则会得到 "//xxx"。
+    const rootPrefix = rootId === "0" ? "" : `/${rootId}`
+    const fullPath = `${rootPrefix}${clean}`
     try {
       if (!this.reserve()) throw new Error("subrequest budget exceeded")
       const info = await this.client.getFolderInfoByPath(fullPath)
@@ -190,8 +195,14 @@ export class Pan115Driver implements StorageDriver {
         return info.file_id
       }
     } catch (e: any) {
-      // folder/get_info 只支持目录路径：参数错误(990002)/不存在(430004) → 回退逐层
-      if (e?.code !== ERR_OBJECT_NOT_FOUND && e?.code !== 990002) throw e
+      // folder/get_info 只支持目录路径：参数错误(990002)/空目录名(20001)/
+      // 不存在(430004) → 回退逐层解析（逐层用 ufile/files 列目录，不依赖 path 拼接）
+      if (
+        e?.code !== ERR_OBJECT_NOT_FOUND &&
+        e?.code !== 990002 &&
+        e?.code !== 20001
+      )
+        throw e
     }
     // 逐层解析
     const segs = clean.split("/").filter(Boolean)

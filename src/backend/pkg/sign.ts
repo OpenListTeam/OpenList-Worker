@@ -197,11 +197,21 @@ export async function signDownloadPath(
   c: any,
   virtualPath: string,
   expiresIn: number,
+  /**
+   * 授权范围。默认空串保持原签名格式（向后兼容）。
+   * "media" 由媒体库签发，表示「这条 /p 链接是媒体播放/阅读用的」，
+   * raw 路由据此跳过存储的代理策略限制（web_proxy=false 时 /p 会 403）。
+   * scope 参与 HMAC，无法由客户端追加伪造。
+   */
+  scope = "",
 ): Promise<string> {
   const secret = await getJwtSecret(c)
   const expires =
     expiresIn === 0 ? 0 : Math.floor(Date.now() / 1000) + expiresIn
-  const hmac = await hmacSha256(`${virtualPath}:${expires}`, secret)
+  const payload = scope
+    ? `${scope}:${virtualPath}:${expires}`
+    : `${virtualPath}:${expires}`
+  const hmac = await hmacSha256(payload, secret)
   return `${expires}.${hmac}`
 }
 
@@ -209,6 +219,7 @@ export async function verifyDownloadSign(
   c: any,
   virtualPath: string,
   sign: string,
+  scope = "",
 ): Promise<boolean> {
   const dot = sign.lastIndexOf(".")
   if (dot <= 0) return false
@@ -220,6 +231,9 @@ export async function verifyDownloadSign(
     return false
   }
   const secret = await getJwtSecret(c)
-  const expect = await hmacSha256(`${virtualPath}:${expires}`, secret)
+  const payload = scope
+    ? `${scope}:${virtualPath}:${expires}`
+    : `${virtualPath}:${expires}`
+  const expect = await hmacSha256(payload, secret)
   return constantTimeEqualHex(expect, hmac)
 }

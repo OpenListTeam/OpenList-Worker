@@ -177,13 +177,27 @@ export class PikPakDriver implements StorageDriver {
       thumbnail_size: "SIZE_LARGE",
     }
 
-    const f: PikPakFile = await this.client.request(
+    let f: PikPakFile = await this.client.request(
       `https://api-drive.mypikpak.net/drive/v1/files/${encodeURIComponent(fileId)}`,
       {
         method: "GET",
         params: queryParams,
       },
     )
+
+    // PikPak 服务端在 usage=CACHE 下对非媒体文件（txt/nfo/md5 等）不返回 web_content_link，
+    // 也没有 medias，导致下载接口拿不到直链；此时回退 usage=FETCH 重新获取一次
+    if (
+      queryParams.usage === "CACHE" &&
+      f.kind !== "drive#folder" &&
+      !f.web_content_link &&
+      !(f.medias && f.medias.length > 0 && f.medias[0].link?.url)
+    ) {
+      f = await this.client.request(
+        `https://api-drive.mypikpak.net/drive/v1/files/${encodeURIComponent(fileId)}`,
+        { method: "GET", params: { ...queryParams, usage: "FETCH" } },
+      )
+    }
 
     const isDir = f.kind === "drive#folder"
     let rawUrl = f.web_content_link || ""
