@@ -39,6 +39,11 @@ import {
 import { buildWebDavPropfindResponse } from "../internal/webdav/webdav"
 import { safeErrorMessage } from "../pkg/errs"
 import { encodeDownloadPath } from "../pkg/path"
+import {
+  needDownloadSign,
+  signDownloadPath,
+  getSignExpiresIn,
+} from "../pkg/sign"
 
 /**
  * WebDAV 协议服务（挂载于 /dav/*）。
@@ -375,10 +380,22 @@ webdavRouter.all("/*", async (c) => {
         // 端点前缀（/p 还是 /d）与路径编码都由 getItem 决定（见
         // op/storage.ts resolveRawUrlPrefix）：/p 受 Go canProxy() 限制，未开启
         // 代理的存储会 403 proxy not allowed，因此不能在这里硬编码 /p。
-        return c.redirect(
-          rawUrl || `/api/d${encodeDownloadPath(actualPath)}`,
-          302,
-        )
+        //
+        // 签名修复：当全局 sign_all 或 link_expiration 开启时，/api/d/ 与 /api/p/
+        // 端点会校验 HMAC 签名。WebDAV 已通过 Basic Auth 鉴权，但重定向 URL
+        // 此前不带签名，导致 rawRouter 返回 401 "sign verify failed"。
+        // 此处对重定向 URL 签发与 rawRouter 验签对称的签名，修复 WebDAV 下载。
+        let downloadUrl = rawUrl || `/api/d${encodeDownloadPath(actualPath)}`
+        if (await needDownloadSign(c, actualPath)) {
+          const sign = await signDownloadPath(
+            c,
+            actualPath,
+            await getSignExpiresIn(c),
+          )
+          downloadUrl +=
+            (downloadUrl.includes("?") ? "&" : "?") + "sign=" + sign
+        }
+        return c.redirect(downloadUrl, 302)
       }
 
       case "PUT": {
