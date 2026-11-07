@@ -26,6 +26,7 @@
     "dropbox-home.patch",
     "dropbox-login.patch",
     "b2-folder-jobs.patch",
-    "pro-layout.patch"
+    "pro-layout.patch",
+    "pro-mobile.patch"
   ]
 }

@@ -1,0 +1,968 @@
+diff --git a/src/pages/home/DrivePro.tsx b/src/pages/home/DrivePro.tsx
+index 56cc124..c184868 100644
+--- a/src/pages/home/DrivePro.tsx
++++ b/src/pages/home/DrivePro.tsx
+@@ -8,9 +8,11 @@ import {
+   createMemo,
+   createSignal,
+   on,
++  onCleanup,
++  onMount,
+   useContext,
+ } from "solid-js"
+-import { createStore } from "solid-js/store"
++import { createStore, reconcile } from "solid-js/store"
+ import {
+   BsClockHistory,
+   BsCloudUploadFill,
+@@ -19,6 +21,7 @@ import {
+   BsGearFill,
+   BsInfoCircle,
+   BsLink45deg,
++  BsPersonCircle,
+   BsShare,
+ } from "solid-icons/bs"
+ import { currentLang } from "~/app/i18n"
+@@ -46,6 +49,7 @@ import { uploadStatus } from "~/utils/upload_status"
+ import { DriveUsage } from "./DriveUsage"
+ import { openItem } from "./folder/open-item"
+ import {
++  INSPECTOR_DOCK_WIDTH,
+   INSPECTOR_KEY,
+   ancestors,
+   childPath,
+@@ -63,8 +67,12 @@ const isFilesRoute = (path: string) => !["/@links", "/@recent"].includes(path)
+ /* Details panel open/closed state, shared by the toggle and the shell. */
+ 
+ export const InspectorContext = createContext<{
++  /** Visible at the current width. */
+   open: Accessor<boolean>
++  /** Wide screens dock it as a column; narrower ones show an overlay. */
++  wide: Accessor<boolean>
+   toggle: () => void
++  close: () => void
+ }>()
+ 
+ export const createInspectorState = () => {
+@@ -72,20 +80,34 @@ export const createInspectorState = () => {
+   try {
+     saved = localStorage.getItem(INSPECTOR_KEY)
+   } catch {}
+-  const [open, setOpen] = createSignal(
++  // The docked column remembers its state; the overlay never opens by itself.
++  const [docked, setDocked] = createSignal(
+     initialInspectorOpen(saved, window.innerWidth),
+   )
+-  const toggle = () => {
+-    const next = !open()
+-    setOpen(next)
++  const [overlay, setOverlay] = createSignal(false)
++  const media = window.matchMedia(`(min-width: ${INSPECTOR_DOCK_WIDTH}px)`)
++  const [wide, setWide] = createSignal(media.matches)
++  const resized = () => {
++    setWide(media.matches)
++    setOverlay(false)
++  }
++  media.addEventListener("change", resized)
++  onCleanup(() => media.removeEventListener("change", resized))
++  const dock = (next: boolean) => {
++    setDocked(next)
+     try {
+       localStorage.setItem(INSPECTOR_KEY, next ? "open" : "closed")
+     } catch {}
+   }
+-  return { open, toggle }
++  return {
++    open: () => (wide() ? docked() : overlay()),
++    wide,
++    toggle: () => (wide() ? dock(!docked()) : setOverlay(!overlay())),
++    close: () => (wide() ? dock(false) : setOverlay(false)),
++  }
+ }
+ 
+-export const DriveInspectorToggle = () => {
++export const DriveInspectorToggle = (props: { placement?: "header" }) => {
+   const inspector = useContext(InspectorContext)
+   const label = () =>
+     inspector?.open()
+@@ -96,6 +118,9 @@ export const DriveInspectorToggle = () => {
+       <button
+         type="button"
+         class="drive-icon-button drive-inspector-toggle"
++        classList={{
++          "drive-inspector-toggle-header": props.placement === "header",
++        }}
+         aria-label={label()}
+         title={label()}
+         aria-pressed={inspector!.open()}
+@@ -109,27 +134,18 @@ export const DriveInspectorToggle = () => {
+ }
+ 
+ /* ------------------------------------------------------------------ */
+-/* Icon rail */
++/* Navigation: icon rail (desktop) and tab bar (phone) share one list. */
+ 
+-const RailLink = (props: {
++type NavItem = {
++  key: string
+   label: string
+   icon: any
+-  current?: boolean
++  current: boolean
++  badge?: string
+   onClick: () => void
+-}) => (
+-  <button
+-    type="button"
+-    class="drive-icon-rail-item"
+-    classList={{ "drive-icon-rail-current": !!props.current }}
+-    aria-current={props.current ? "page" : undefined}
+-    onClick={props.onClick}
+-  >
+-    <Icon as={props.icon} />
+-    <span>{props.label}</span>
+-  </button>
+-)
++}
+ 
+-export const DriveIconRail = () => {
++const useNavItems = () => {
+   const { to, isShare, pathname } = useRouter()
+   const signedIn = () => !!me().id && !UserMethods.is_guest(me())
+   const canUpload = () =>
+@@ -137,6 +153,65 @@ export const DriveIconRail = () => {
+     !isShare() &&
+     (userCan("write_content") || objStore.write_content_bypass) &&
+     objStore.write
++  const items = createMemo(() => {
++    const list: NavItem[] = []
++    if (!isShare())
++      list.push({
++        key: "files",
++        label: text("文件", "Files"),
++        icon: BsFolder2,
++        current: isFilesRoute(pathname()),
++        onClick: () => to("/"),
++      })
++    if (!isShare() && signedIn())
++      list.push({
++        key: "recent",
++        label: text("最近", "Recent"),
++        icon: BsClockHistory,
++        current: pathname() === "/@recent",
++        onClick: () => to("/@recent"),
++      })
++    if (!isShare() && UserMethods.is_admin(me()))
++      list.push({
++        key: "shared",
++        label: text("分享", "Shared"),
++        icon: BsShare,
++        current: pathname() === "/@links",
++        onClick: () => to("/@links"),
++      })
++    if (canUpload())
++      list.push({
++        key: "transfers",
++        label: text("传输", "Transfers"),
++        icon: BsCloudUploadFill,
++        current: false,
++        badge:
++          uploadStatus().active > 0 ? `${uploadStatus().progress}%` : undefined,
++        onClick: () => bus.emit("tool", "upload"),
++      })
++    return list
++  })
++  return { items, signedIn, to }
++}
++
++const NavButton = (props: { item: NavItem; class: string }) => (
++  <button
++    type="button"
++    class={props.class}
++    classList={{ [`${props.class}-current`]: props.item.current }}
++    aria-current={props.item.current ? "page" : undefined}
++    onClick={props.item.onClick}
++  >
++    <Icon as={props.item.icon} />
++    <span>{props.item.label}</span>
++    <Show when={props.item.badge}>
++      <span class="drive-nav-badge">{props.item.badge}</span>
++    </Show>
++  </button>
++)
++
++export const DriveIconRail = () => {
++  const { items, signedIn, to } = useNavItems()
+   return (
+     <nav class="drive-icon-rail" aria-label={text("主导航", "Main")}>
+       <button
+@@ -147,43 +222,20 @@ export const DriveIconRail = () => {
+       >
+         O
+       </button>
+-      <Show when={!isShare()}>
+-        <RailLink
+-          label={text("文件", "Files")}
+-          icon={BsFolder2}
+-          current={isFilesRoute(pathname())}
+-          onClick={() => to("/")}
+-        />
+-      </Show>
+-      <Show when={!isShare() && signedIn()}>
+-        <RailLink
+-          label={text("最近", "Recent")}
+-          icon={BsClockHistory}
+-          current={pathname() === "/@recent"}
+-          onClick={() => to("/@recent")}
+-        />
+-      </Show>
+-      <Show when={!isShare() && UserMethods.is_admin(me())}>
+-        <RailLink
+-          label={text("分享", "Shared")}
+-          icon={BsShare}
+-          current={pathname() === "/@links"}
+-          onClick={() => to("/@links")}
+-        />
+-      </Show>
+-      <Show when={canUpload()}>
+-        <RailLink
+-          label={text("传输", "Transfers")}
+-          icon={BsCloudUploadFill}
+-          onClick={() => bus.emit("tool", "upload")}
+-        />
+-      </Show>
++      <For each={items()}>
++        {(item) => <NavButton item={item} class="drive-icon-rail-item" />}
++      </For>
+       <Show when={signedIn()}>
+         <div class="drive-icon-rail-end">
+-          <RailLink
+-            label={text("管理", "Manage")}
+-            icon={BsGearFill}
+-            onClick={() => to("/@manage")}
++          <NavButton
++            class="drive-icon-rail-item"
++            item={{
++              key: "manage",
++              label: text("管理", "Manage"),
++              icon: BsGearFill,
++              current: false,
++              onClick: () => to("/@manage"),
++            }}
+           />
+         </div>
+       </Show>
+@@ -191,6 +243,40 @@ export const DriveIconRail = () => {
+   )
+ }
+ 
++export const DriveTabBar = () => {
++  const { items, signedIn, to } = useNavItems()
++  // Lets floating panels outside the shell (the upload panel) clear the bar.
++  onMount(() => document.body.classList.add("drive-has-tabbar"))
++  onCleanup(() => document.body.classList.remove("drive-has-tabbar"))
++  return (
++    <nav class="drive-tab-bar" aria-label={text("主导航", "Main")}>
++      <For each={items()}>
++        {(item) => <NavButton item={item} class="drive-tab" />}
++      </For>
++      <NavButton
++        class="drive-tab"
++        item={
++          signedIn()
++            ? {
++                key: "me",
++                label: text("我的", "Me"),
++                icon: BsPersonCircle,
++                current: false,
++                onClick: () => to("/@manage"),
++              }
++            : {
++                key: "login",
++                label: text("登录", "Sign in"),
++                icon: BsPersonCircle,
++                current: false,
++                onClick: () => to("/@login"),
++              }
++        }
++      />
++    </nav>
++  )
++}
++
+ /* ------------------------------------------------------------------ */
+ /* Folder tree */
+ 
+@@ -213,58 +299,44 @@ const Chevron = (props: { open: boolean }) => (
+   </svg>
+ )
+ 
+-export const DriveTree = () => {
+-  const { pathname, to, isShare } = useRouter()
+-  const [children, setChildren] = createStore<
+-    Record<string, TreeNode[] | undefined>
+-  >({})
+-  const [expanded, setExpanded] = createStore<Record<string, boolean>>({})
+-  const loading = new Set<string>()
++// One store for the desktop tree and the phone drawer, so folders load once.
++const [treeChildren, setTreeChildren] = createStore<
++  Record<string, TreeNode[] | undefined>
++>({})
++const [treeExpanded, setTreeExpanded] = createStore<Record<string, boolean>>({})
++const treeLoading = new Set<string>()
++let treeGeneration = 0
+ 
+-  const load = async (path: string) => {
+-    if (children[path] || loading.has(path)) return
+-    loading.add(path)
+-    try {
+-      const resp: any = await fsDirs(path, password())
+-      const list: any[] =
+-        resp?.code === 200 && Array.isArray(resp.data) ? resp.data : []
+-      setChildren(
+-        path,
+-        list.map((obj) => ({
+-          path: childPath(path, obj.name),
+-          name: obj.name,
+-        })),
+-      )
+-    } catch {
+-      setChildren(path, [])
+-    } finally {
+-      loading.delete(path)
+-    }
++const loadTree = async (path: string) => {
++  if (treeChildren[path] || treeLoading.has(path)) return
++  const generation = treeGeneration
++  treeLoading.add(path)
++  try {
++    const resp: any = await fsDirs(path, password())
++    const list: any[] =
++      resp?.code === 200 && Array.isArray(resp.data) ? resp.data : []
++    if (generation !== treeGeneration) return
++    setTreeChildren(
++      path,
++      list.map((obj) => ({ path: childPath(path, obj.name), name: obj.name })),
++    )
++  } catch {
++    if (generation === treeGeneration) setTreeChildren(path, [])
++  } finally {
++    treeLoading.delete(path)
+   }
++}
+ 
+-  // Reveal the current folder: expand and load every ancestor.
+-  createEffect(
+-    on(pathname, (current) => {
+-      if (isShare() || !isFilesRoute(current)) return
+-      for (const path of ancestors(current)) {
+-        setExpanded(path, true)
+-        void load(path)
+-      }
+-    }),
+-  )
+-
+-  // The open listing is the freshest view of the current folder's children.
+-  createEffect(() => {
+-    if (objStore.state !== State.Folder || isShare()) return
+-    const current = pathname()
+-    setChildren(
+-      current,
+-      objStore.objs
+-        .filter((obj) => obj.is_dir)
+-        .map((obj) => ({ path: childPath(current, obj.name), name: obj.name })),
+-    )
+-  })
++/** Another account signed in: forget folders the previous one could see. */
++const resetTree = () => {
++  treeGeneration++
++  treeLoading.clear()
++  setTreeChildren(reconcile({}))
++  setTreeExpanded(reconcile({}))
++}
+ 
++const TreeBranch = (props: { path: string; depth: number }) => {
++  const { pathname, to } = useRouter()
+   const migration = (path: string) => {
+     const current = pathname()
+     const obj = objStore.objs.find(
+@@ -273,11 +345,10 @@ export const DriveTree = () => {
+     return obj?.migration as
+       { processed: number; discovered: number; state: string } | undefined
+   }
+-
+-  const Branch = (props: { path: string; depth: number }) => (
+-    <For each={children[props.path] ?? []}>
++  return (
++    <For each={treeChildren[props.path] ?? []}>
+       {(node) => {
+-        const open = () => !!expanded[node.path]
++        const open = () => !!treeExpanded[node.path]
+         const current = () => pathname() === node.path
+         const job = () => migration(node.path)
+         return (
+@@ -296,9 +367,8 @@ export const DriveTree = () => {
+                     : text(`展开 ${node.name}`, `Expand ${node.name}`)
+                 }
+                 onClick={() => {
+-                  setExpanded(node.path, !open())
+-                  if (!open()) return
+-                  void load(node.path)
++                  setTreeExpanded(node.path, !open())
++                  if (open()) void loadTree(node.path)
+                 }}
+               >
+                 <Chevron open={open()} />
+@@ -324,9 +394,9 @@ export const DriveTree = () => {
+                 </span>
+               </Show>
+             </div>
+-            <Show when={open() && (children[node.path]?.length ?? 0) > 0}>
++            <Show when={open() && (treeChildren[node.path]?.length ?? 0) > 0}>
+               <ul role="group" class="drive-tree-list">
+-                <Branch path={node.path} depth={props.depth + 1} />
++                <TreeBranch path={node.path} depth={props.depth + 1} />
+               </ul>
+             </Show>
+           </li>
+@@ -334,11 +404,53 @@ export const DriveTree = () => {
+       }}
+     </For>
+   )
++}
++
++/**
++ * Folder tree. The desktop column (always mounted) keeps the shared store in
++ * sync; the phone drawer (`drawer`) only renders it.
++ */
++export const DriveTree = (props: { drawer?: boolean }) => {
++  const { pathname, to, isShare } = useRouter()
++
++  if (!props.drawer) {
++    // Reveal the current folder: expand and load every ancestor.
++    createEffect(
++      on(pathname, (current) => {
++        if (isShare() || !isFilesRoute(current)) return
++        for (const path of ancestors(current)) {
++          setTreeExpanded(path, true)
++          void loadTree(path)
++        }
++      }),
++    )
++    // The open listing is the freshest view of the current folder's children.
++    createEffect(() => {
++      if (objStore.state !== State.Folder || isShare()) return
++      const current = pathname()
++      setTreeChildren(
++        current,
++        objStore.objs
++          .filter((obj) => obj.is_dir)
++          .map((obj) => ({
++            path: childPath(current, obj.name),
++            name: obj.name,
++          })),
++      )
++    })
++    onMount(() =>
++      window.addEventListener("openlist:identity-change", resetTree),
++    )
++    onCleanup(() =>
++      window.removeEventListener("openlist:identity-change", resetTree),
++    )
++  }
+ 
+   return (
+     <aside
+-      id="drive-desktop-navigation"
++      id={props.drawer ? "drive-drawer-tree" : "drive-desktop-navigation"}
+       class="drive-tree"
++      classList={{ "drive-tree-drawer": !!props.drawer }}
+       aria-label={text("目录", "Folders")}
+     >
+       <Show when={!isShare()}>
+@@ -360,12 +472,14 @@ export const DriveTree = () => {
+           class="drive-tree-list"
+           aria-label={text("目录树", "Folder tree")}
+         >
+-          <Branch path="/" depth={0} />
++          <TreeBranch path="/" depth={0} />
+         </ul>
+       </Show>
+-      <div class="drive-tree-footer">
+-        <DriveUsage />
+-      </div>
++      <Show when={!props.drawer}>
++        <div class="drive-tree-footer">
++          <DriveUsage />
++        </div>
++      </Show>
+     </aside>
+   )
+ }
+@@ -574,51 +688,95 @@ const SelectionDetails = () => {
+ 
+ export const DriveInspector = () => {
+   const inspector = useContext(InspectorContext)!
++  const { pathname } = useRouter()
+   const one = () =>
+     selectedObjs().length === 1 ? selectedObjs()[0] : undefined
++  const overlay = () => inspector.open() && !inspector.wide()
++  let closeButton: HTMLButtonElement | undefined
++  let returnFocus: HTMLElement | null = null
++  // An overlay takes focus while open and gives it back when it closes.
++  createEffect(
++    on(overlay, (shown) => {
++      if (shown) {
++        returnFocus = document.activeElement as HTMLElement | null
++        queueMicrotask(() => closeButton?.focus())
++      } else if (returnFocus) {
++        returnFocus.focus?.()
++        returnFocus = null
++      }
++    }),
++  )
++  createEffect(
++    on(
++      pathname,
++      () => {
++        if (!inspector.wide()) inspector.close()
++      },
++      { defer: true },
++    ),
++  )
+   return (
+-    <aside
+-      id="drive-inspector"
+-      class="drive-inspector"
+-      aria-label={text("详情", "Details")}
+-      hidden={!inspector.open()}
+-    >
+-      <div class="drive-inspector-head">
+-        <span>{text("详情", "Details")}</span>
++    <>
++      <Show when={overlay()}>
+         <button
+           type="button"
+-          class="drive-icon-button"
++          class="drive-inspector-backdrop"
++          tabIndex={-1}
+           aria-label={text("关闭详情", "Close details")}
+-          onClick={inspector.toggle}
+-        >
+-          <svg
+-            width="16"
+-            height="16"
+-            viewBox="0 0 24 24"
+-            fill="none"
+-            stroke="currentColor"
+-            stroke-width="2"
+-            stroke-linecap="round"
+-            aria-hidden="true"
++          onClick={inspector.close}
++        />
++      </Show>
++      <aside
++        id="drive-inspector"
++        class="drive-inspector"
++        aria-label={text("详情", "Details")}
++        role={overlay() ? "dialog" : undefined}
++        aria-modal={overlay() ? "true" : undefined}
++        hidden={!inspector.open()}
++        onKeyDown={(event: KeyboardEvent) => {
++          if (event.key === "Escape" && overlay()) inspector.close()
++        }}
++      >
++        <div class="drive-inspector-head">
++          <span>{text("详情", "Details")}</span>
++          <button
++            ref={closeButton}
++            type="button"
++            class="drive-icon-button"
++            aria-label={text("关闭详情", "Close details")}
++            onClick={inspector.close}
+           >
+-            <path d="M6 6l12 12M18 6 6 18" />
+-          </svg>
+-        </button>
+-      </div>
+-      <Show when={[State.Folder, State.FetchingMore].includes(objStore.state)}>
++            <svg
++              width="16"
++              height="16"
++              viewBox="0 0 24 24"
++              fill="none"
++              stroke="currentColor"
++              stroke-width="2"
++              stroke-linecap="round"
++              aria-hidden="true"
++            >
++              <path d="M6 6l12 12M18 6 6 18" />
++            </svg>
++          </button>
++        </div>
+         <Show
+-          when={one()}
+-          keyed
+-          fallback={
+-            <Show when={haveSelected()} fallback={<FolderDetails />}>
+-              <SelectionDetails />
+-            </Show>
+-          }
++          when={[State.Folder, State.FetchingMore].includes(objStore.state)}
+         >
+-          {(obj) => <ItemDetails obj={obj} />}
++          <Show
++            when={one()}
++            keyed
++            fallback={
++              <Show when={haveSelected()} fallback={<FolderDetails />}>
++                <SelectionDetails />
++              </Show>
++            }
++          >
++            {(obj) => <ItemDetails obj={obj} />}
++          </Show>
+         </Show>
+-      </Show>
+-    </aside>
++      </aside>
++    </>
+   )
+ }
+ 
+diff --git a/src/pages/home/Layout.tsx b/src/pages/home/Layout.tsx
+index 8dd1a8a..788990c 100644
+--- a/src/pages/home/Layout.tsx
++++ b/src/pages/home/Layout.tsx
+@@ -9,6 +9,7 @@ import {
+   DriveIconRail,
+   DriveInspector,
+   DriveStatusBar,
++  DriveTabBar,
+   DriveTree,
+   InspectorContext,
+   createInspectorState,
+@@ -78,6 +79,7 @@ const Index = () => {
+             <Show when={filesRoute()}>
+               <DriveInspector />
+             </Show>
++            <DriveTabBar />
+           </div>
+         </InspectorContext.Provider>
+       </DriveSidebarContext.Provider>
+diff --git a/src/pages/home/drive-pro-utils.ts b/src/pages/home/drive-pro-utils.ts
+index d21d9d4..0a296fe 100644
+--- a/src/pages/home/drive-pro-utils.ts
++++ b/src/pages/home/drive-pro-utils.ts
+@@ -40,6 +40,8 @@ export function summarize(items: SizedItem[]) {
+ 
+ export const INSPECTOR_KEY = "drive_inspector"
+ export const INSPECTOR_MIN_WIDTH = 1280
++/** From this width the details panel docks as a column (matches the CSS). */
++export const INSPECTOR_DOCK_WIDTH = 1101
+ 
+ /** Remembered choice wins; otherwise open on wide screens only. */
+ export function initialInspectorOpen(
+diff --git a/src/pages/home/drive-pro.css b/src/pages/home/drive-pro.css
+index 62eb2fe..48e3b30 100644
+--- a/src/pages/home/drive-pro.css
++++ b/src/pages/home/drive-pro.css
+@@ -1,5 +1,6 @@
+ /* Pro file browser: icon rail, folder tree, dense list, details panel. */
+-.drive-shell.drive-pro {
++.drive-shell.drive-pro,
++.drive-mobile-drawer {
+   --drive-bg: #ffffff;
+   --drive-rail: #fafafa;
+   --drive-text: #18181b;
+@@ -16,7 +17,8 @@
+   --drive-mono:
+     ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+ }
+-.drive-shell.drive-pro[data-drive-mode="dark"] {
++.drive-shell.drive-pro[data-drive-mode="dark"],
++.drive-mobile-drawer[data-drive-mode="dark"] {
+   --drive-bg: #141416;
+   --drive-rail: #1b1b1f;
+   --drive-text: #f4f4f5;
+@@ -128,7 +130,7 @@
+   background: #27272a;
+   color: #ffffff;
+ }
+-.drive-icon-rail-current {
++.drive-icon-rail-item-current {
+   background: #27272a;
+   color: #ffffff;
+ }
+@@ -258,26 +260,32 @@
+     min-height: 40px;
+     border-radius: 8px;
+   }
+-  .drive-pro .drive-button-primary {
+-    background: var(--drive-blue);
+-    border-color: var(--drive-blue);
+-  }
+-  .drive-pro[data-drive-mode="dark"] .drive-button-primary {
+-    color: #18181b;
+-  }
+ }
++.drive-pro .drive-button-primary {
++  background: var(--drive-blue);
++  border-color: var(--drive-blue);
++}
++.drive-pro[data-drive-mode="dark"] .drive-button-primary {
++  color: #18181b;
++}
++/* One toggle sits in the heading (docked panel), one in the header (overlay). */
+ .drive-inspector-toggle {
+   display: none;
+ }
+ @media (min-width: 1101px) {
+-  .drive-inspector-toggle {
++  .drive-inspector-toggle:not(.drive-inspector-toggle-header) {
+     display: inline-flex;
+   }
+-  .drive-pro.drive-inspector-open .drive-inspector-toggle {
+-    color: var(--drive-blue);
+-    background: var(--drive-selected);
++}
++@media (max-width: 1100px) {
++  .drive-inspector-toggle-header {
++    display: inline-flex;
+   }
+ }
++.drive-pro.drive-inspector-open .drive-inspector-toggle {
++  color: var(--drive-blue);
++  background: var(--drive-selected);
++}
+ 
+ /* ---------- Dense list ---------- */
+ @media (min-width: 761px) {
+@@ -504,12 +512,180 @@
+   white-space: nowrap;
+ }
+ 
+-/* ---------- Phone: the new columns arrive in phase 2 ---------- */
++/* ---------- Details as an overlay below the docking width ---------- */
++.drive-inspector-backdrop {
++  display: none;
++}
++@media (max-width: 1100px) {
++  .drive-pro .drive-inspector-backdrop {
++    position: fixed;
++    inset: 0;
++    z-index: 1240;
++    display: block;
++    border: 0;
++    background: rgba(9, 9, 11, 0.4);
++  }
++  .drive-pro.drive-inspector-open .drive-inspector:not([hidden]) {
++    position: fixed;
++    z-index: 1250;
++    box-sizing: border-box;
++    display: flex;
++    flex-direction: column;
++    gap: 16px;
++    padding: 12px 16px 20px;
++    background: var(--drive-bg);
++    overflow-y: auto;
++    overscroll-behavior: contain;
++    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.24);
++  }
++}
++@media (min-width: 761px) and (max-width: 1100px) {
++  .drive-pro.drive-inspector-open .drive-inspector:not([hidden]) {
++    top: 0;
++    right: 0;
++    bottom: 0;
++    width: min(360px, 90vw);
++    border-left: 1px solid var(--drive-line);
++  }
++}
++@media (max-width: 760px) {
++  /* Bottom sheet */
++  .drive-pro.drive-inspector-open .drive-inspector:not([hidden]) {
++    left: 0;
++    right: 0;
++    bottom: 0;
++    max-height: 85dvh;
++    padding-bottom: calc(20px + env(safe-area-inset-bottom));
++    border-radius: 16px 16px 0 0;
++  }
++  .drive-pro .drive-inspector-head::before {
++    content: "";
++    position: absolute;
++    top: 6px;
++    left: 50%;
++    width: 36px;
++    height: 4px;
++    margin-left: -18px;
++    border-radius: 2px;
++    background: var(--drive-line);
++  }
++  .drive-pro .drive-inspector-preview {
++    aspect-ratio: auto;
++    height: 120px;
++  }
++}
++
++/* ---------- Phone: tab bar and folder drawer ---------- */
++.drive-tab-bar {
++  display: none;
++}
++.drive-nav-badge {
++  font-family: var(--drive-mono);
++  font-size: 10px;
++  line-height: 1;
++}
++.drive-icon-rail-item .drive-nav-badge {
++  color: var(--drive-blue);
++}
+ @media (max-width: 760px) {
+   .drive-icon-rail,
+-  .drive-tree {
++  .drive-tree:not(.drive-tree-drawer) {
+     display: none;
+   }
++  .drive-pro .drive-main {
++    padding-bottom: calc(64px + env(safe-area-inset-bottom));
++  }
++  .drive-pro .drive-tab-bar {
++    position: fixed;
++    left: 0;
++    right: 0;
++    bottom: 0;
++    z-index: 1100;
++    display: flex;
++    justify-content: space-around;
++    min-height: 56px;
++    padding: 4px 4px env(safe-area-inset-bottom);
++    background: var(--drive-bg);
++    border-top: 1px solid var(--drive-line);
++  }
++  .drive-tab {
++    position: relative;
++    flex: 1 1 0;
++    min-width: 0;
++    min-height: 48px;
++    display: flex;
++    flex-direction: column;
++    align-items: center;
++    justify-content: center;
++    gap: 2px;
++    border: 0;
++    border-radius: 10px;
++    background: transparent;
++    color: var(--drive-muted);
++    font-size: 11px;
++  }
++  .drive-tab svg {
++    width: 22px;
++    height: 22px;
++  }
++  .drive-tab-current {
++    color: var(--drive-blue-hover);
++    font-weight: 600;
++  }
++  .drive-pro[data-drive-mode="dark"] .drive-tab-current {
++    color: var(--drive-blue);
++  }
++  .drive-tab .drive-nav-badge {
++    position: absolute;
++    top: 2px;
++    left: 50%;
++    margin-left: 8px;
++    padding: 2px 4px;
++    border-radius: 6px;
++    background: var(--drive-blue);
++    color: #ffffff;
++  }
++  .drive-pro[data-drive-mode="dark"] .drive-tab .drive-nav-badge {
++    color: #18181b;
++  }
++  /* Keep the floating upload panel above the tab bar. */
++  body.drive-has-tabbar .upload-center {
++    bottom: calc(68px + env(safe-area-inset-bottom));
++  }
++  /* Compact heading: the breadcrumb already says where you are. */
++  .drive-pro .drive-heading h1 {
++    font-size: 22px;
++    letter-spacing: 0;
++  }
++  .drive-pro .drive-heading-description {
++    display: none;
++  }
++  /* Rows: a little denser, with the same monospace numbers as desktop. */
++  .drive-pro .list-item .size,
++  .drive-pro .list-item .modified {
++    font-family: var(--drive-mono);
++    font-size: 12px;
++  }
++}
++/* The folder tree inside the phone drawer. */
++.drive-tree.drive-tree-drawer {
++  position: static;
++  height: auto;
++  padding: 0;
++  border: 0;
++  background: transparent;
++  overflow: visible;
++}
++.drive-tree-drawer .drive-tree-root,
++.drive-tree-drawer .drive-tree-row {
++  min-height: 44px;
++}
++.drive-tree-drawer .drive-tree-twisty {
++  flex-basis: 36px;
++  height: 40px;
++}
++.drive-tree-drawer .drive-tree-link {
++  line-height: 44px;
+ }
+ 
+ @media (prefers-reduced-motion: reduce) {
+diff --git a/src/pages/home/header/Header.tsx b/src/pages/home/header/Header.tsx
+index 5f0d8e4..f977d7e 100644
+--- a/src/pages/home/header/Header.tsx
++++ b/src/pages/home/header/Header.tsx
+@@ -6,6 +6,7 @@ import { BsPlusLg, BsFolderPlus, BsArrowUp } from "solid-icons/bs"
+ import { useT, useRouter } from "~/hooks"
+ import { Container } from "../Container"
+ import { DriveAccount, DriveSidebarToggle } from "../DriveChrome"
++import { DriveInspectorToggle } from "../DrivePro"
+ import { MobileNavigation } from "./MobileNavigation"
+ import { UserMethods } from "~/types"
+ import { bus } from "~/utils"
+@@ -69,6 +70,7 @@ export const Header = () => {
+             <SearchInput />
+           </Show>
+           <div class="drive-header-tools">
++            <DriveInspectorToggle placement="header" />
+             <DriveAccount />
+             <button
+               class="drive-mobile-account drive-avatar"
+diff --git a/src/pages/home/header/MobileNavigation.tsx b/src/pages/home/header/MobileNavigation.tsx
+index 19ef2fa..3b34831 100644
+--- a/src/pages/home/header/MobileNavigation.tsx
++++ b/src/pages/home/header/MobileNavigation.tsx
+@@ -12,7 +12,8 @@ import {
+ import { Show, createEffect, on, onCleanup, onMount } from "solid-js"
+ import { BsArrowClockwise, BsList } from "solid-icons/bs"
+ import { usePath, useRouter, useT } from "~/hooks"
+-import { DriveBrand, DriveNavigation, driveText } from "../DriveChrome"
++import { DriveBrand, driveText } from "../DriveChrome"
++import { DriveTree } from "../DrivePro"
+ 
+ export const MobileNavigation = () => {
+   const t = useT()
+@@ -70,8 +71,8 @@ export const MobileNavigation = () => {
+               <DriveBrand onNavigate={onClose} />
+             </DrawerHeader>
+             <DrawerBody class="drive-drawer-body">
+-              <div class="drive-rail-label">{driveText("workspace")}</div>
+-              <DriveNavigation onNavigate={onClose} />
++              {/* Sections live in the tab bar; the drawer holds the folders. */}
++              <DriveTree drawer />
+               <button
+                 type="button"
+                 class="drive-nav-item drive-drawer-refresh"
