@@ -29,6 +29,49 @@ test(
       await page.goto(`http://127.0.0.1:${fixture.server.address().port}/`)
       await page.locator(".drive-file-row").first().waitFor()
       assert.equal(await page.locator(".drive-item-count").innerText(), "2")
+      // Pro layout: folder tree, status bar and details panel.
+      await page
+        .locator(".drive-tree-link", { hasText: "Documents" })
+        .waitFor()
+      assert.match(
+        await page.locator(".drive-status-bar").innerText(),
+        /2 items/,
+      )
+      const inspector = page.locator("#drive-inspector")
+      assert.ok(await inspector.isVisible(), "details open on wide screens")
+      assert.match(await inspector.innerText(), /Current folder/)
+      const pdf = page.getByRole("checkbox", {
+        name: "Select original.pdf",
+        exact: true,
+      })
+      await pdf.press("Space")
+      await inspector.getByRole("heading", { name: "original.pdf" }).waitFor()
+      assert.ok(await inspector.getByLabel("Direct link", { exact: true }).isVisible())
+      assert.match(
+        await page.locator(".drive-status-bar").innerText(),
+        /1 selected/,
+      )
+      const screenshots = process.env.HOME_SCREENSHOT_DIR
+      if (screenshots) {
+        fs.mkdirSync(screenshots, { recursive: true })
+        await page.screenshot({
+          path: path.join(screenshots, "home-1440-selected.png"),
+        })
+      }
+      await pdf.press("Space")
+      const withDetails = await page.locator(".drive-main").boundingBox()
+      await page
+        .getByRole("button", { name: "Hide details", exact: true })
+        .click()
+      assert.ok(!(await inspector.isVisible()))
+      assert.ok(
+        (await page.locator(".drive-main").boundingBox()).width >
+          withDetails.width,
+      )
+      await page
+        .getByRole("button", { name: "Show details", exact: true })
+        .click()
+      assert.ok(await inspector.isVisible())
       const before = await page.locator(".drive-main").boundingBox()
       await page
         .getByRole("button", { name: "Collapse sidebar", exact: true })
