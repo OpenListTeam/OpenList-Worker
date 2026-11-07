@@ -1,0 +1,1469 @@
+diff --git a/src/pages/home/DriveChrome.tsx b/src/pages/home/DriveChrome.tsx
+index f4ed25d..463578e 100644
+--- a/src/pages/home/DriveChrome.tsx
++++ b/src/pages/home/DriveChrome.tsx
+@@ -16,6 +16,7 @@ import { UserMethods } from "~/types"
+ import { Layout } from "./header/layout"
+ import { bus } from "~/utils"
+ import { DriveUsage } from "./DriveUsage"
++import { DriveInspectorToggle } from "./DrivePro"
+ 
+ export const DriveSidebarContext = createContext<{
+   collapsed: Accessor<boolean>
+@@ -246,6 +247,7 @@ export const DriveHeading = () => {
+             <Layout />
+           </Show>
+         </div>
++        <DriveInspectorToggle />
+       </div>
+     </div>
+   )
+diff --git a/src/pages/home/DrivePro.tsx b/src/pages/home/DrivePro.tsx
+new file mode 100644
+index 0000000..56cc124
+--- /dev/null
++++ b/src/pages/home/DrivePro.tsx
+@@ -0,0 +1,675 @@
++import { Icon } from "@hope-ui/solid"
++import {
++  Accessor,
++  For,
++  Show,
++  createContext,
++  createEffect,
++  createMemo,
++  createSignal,
++  on,
++  useContext,
++} from "solid-js"
++import { createStore } from "solid-js/store"
++import {
++  BsClockHistory,
++  BsCloudUploadFill,
++  BsDownload,
++  BsFolder2,
++  BsGearFill,
++  BsInfoCircle,
++  BsLink45deg,
++  BsShare,
++} from "solid-icons/bs"
++import { currentLang } from "~/app/i18n"
++import { useLink, useRouter, useUtil } from "~/hooks"
++import {
++  State,
++  haveSelected,
++  me,
++  objStore,
++  password,
++  selectedObjs,
++  userCan,
++} from "~/store"
++import { StoreObj, UserMethods } from "~/types"
++import {
++  bus,
++  encodePath,
++  formatDate,
++  fsDirs,
++  getFileSize,
++  joinBase,
++} from "~/utils"
++import { getIconByObj } from "~/utils/icon"
++import { uploadStatus } from "~/utils/upload_status"
++import { DriveUsage } from "./DriveUsage"
++import { openItem } from "./folder/open-item"
++import {
++  INSPECTOR_KEY,
++  ancestors,
++  childPath,
++  countLabel,
++  initialInspectorOpen,
++  summarize,
++  typeLabel,
++} from "./drive-pro-utils"
++
++const zh = () => String(currentLang()).startsWith("zh")
++const text = (cn: string, en: string) => (zh() ? cn : en)
++const isFilesRoute = (path: string) => !["/@links", "/@recent"].includes(path)
++
++/* ------------------------------------------------------------------ */
++/* Details panel open/closed state, shared by the toggle and the shell. */
++
++export const InspectorContext = createContext<{
++  open: Accessor<boolean>
++  toggle: () => void
++}>()
++
++export const createInspectorState = () => {
++  let saved: string | null = null
++  try {
++    saved = localStorage.getItem(INSPECTOR_KEY)
++  } catch {}
++  const [open, setOpen] = createSignal(
++    initialInspectorOpen(saved, window.innerWidth),
++  )
++  const toggle = () => {
++    const next = !open()
++    setOpen(next)
++    try {
++      localStorage.setItem(INSPECTOR_KEY, next ? "open" : "closed")
++    } catch {}
++  }
++  return { open, toggle }
++}
++
++export const DriveInspectorToggle = () => {
++  const inspector = useContext(InspectorContext)
++  const label = () =>
++    inspector?.open()
++      ? text("隐藏详情", "Hide details")
++      : text("显示详情", "Show details")
++  return (
++    <Show when={inspector}>
++      <button
++        type="button"
++        class="drive-icon-button drive-inspector-toggle"
++        aria-label={label()}
++        title={label()}
++        aria-pressed={inspector!.open()}
++        aria-controls="drive-inspector"
++        onClick={inspector!.toggle}
++      >
++        <Icon as={BsInfoCircle} />
++      </button>
++    </Show>
++  )
++}
++
++/* ------------------------------------------------------------------ */
++/* Icon rail */
++
++const RailLink = (props: {
++  label: string
++  icon: any
++  current?: boolean
++  onClick: () => void
++}) => (
++  <button
++    type="button"
++    class="drive-icon-rail-item"
++    classList={{ "drive-icon-rail-current": !!props.current }}
++    aria-current={props.current ? "page" : undefined}
++    onClick={props.onClick}
++  >
++    <Icon as={props.icon} />
++    <span>{props.label}</span>
++  </button>
++)
++
++export const DriveIconRail = () => {
++  const { to, isShare, pathname } = useRouter()
++  const signedIn = () => !!me().id && !UserMethods.is_guest(me())
++  const canUpload = () =>
++    objStore.state === State.Folder &&
++    !isShare() &&
++    (userCan("write_content") || objStore.write_content_bypass) &&
++    objStore.write
++  return (
++    <nav class="drive-icon-rail" aria-label={text("主导航", "Main")}>
++      <button
++        type="button"
++        class="drive-icon-rail-brand"
++        aria-label={text("返回首页", "Go home")}
++        onClick={() => to("/")}
++      >
++        O
++      </button>
++      <Show when={!isShare()}>
++        <RailLink
++          label={text("文件", "Files")}
++          icon={BsFolder2}
++          current={isFilesRoute(pathname())}
++          onClick={() => to("/")}
++        />
++      </Show>
++      <Show when={!isShare() && signedIn()}>
++        <RailLink
++          label={text("最近", "Recent")}
++          icon={BsClockHistory}
++          current={pathname() === "/@recent"}
++          onClick={() => to("/@recent")}
++        />
++      </Show>
++      <Show when={!isShare() && UserMethods.is_admin(me())}>
++        <RailLink
++          label={text("分享", "Shared")}
++          icon={BsShare}
++          current={pathname() === "/@links"}
++          onClick={() => to("/@links")}
++        />
++      </Show>
++      <Show when={canUpload()}>
++        <RailLink
++          label={text("传输", "Transfers")}
++          icon={BsCloudUploadFill}
++          onClick={() => bus.emit("tool", "upload")}
++        />
++      </Show>
++      <Show when={signedIn()}>
++        <div class="drive-icon-rail-end">
++          <RailLink
++            label={text("管理", "Manage")}
++            icon={BsGearFill}
++            onClick={() => to("/@manage")}
++          />
++        </div>
++      </Show>
++    </nav>
++  )
++}
++
++/* ------------------------------------------------------------------ */
++/* Folder tree */
++
++type TreeNode = { path: string; name: string }
++
++const Chevron = (props: { open: boolean }) => (
++  <svg
++    width="12"
++    height="12"
++    viewBox="0 0 24 24"
++    fill="none"
++    stroke="currentColor"
++    stroke-width="2.4"
++    stroke-linecap="round"
++    stroke-linejoin="round"
++    aria-hidden="true"
++    style={{ transform: props.open ? "rotate(90deg)" : undefined }}
++  >
++    <path d="m9 6 6 6-6 6" />
++  </svg>
++)
++
++export const DriveTree = () => {
++  const { pathname, to, isShare } = useRouter()
++  const [children, setChildren] = createStore<
++    Record<string, TreeNode[] | undefined>
++  >({})
++  const [expanded, setExpanded] = createStore<Record<string, boolean>>({})
++  const loading = new Set<string>()
++
++  const load = async (path: string) => {
++    if (children[path] || loading.has(path)) return
++    loading.add(path)
++    try {
++      const resp: any = await fsDirs(path, password())
++      const list: any[] =
++        resp?.code === 200 && Array.isArray(resp.data) ? resp.data : []
++      setChildren(
++        path,
++        list.map((obj) => ({
++          path: childPath(path, obj.name),
++          name: obj.name,
++        })),
++      )
++    } catch {
++      setChildren(path, [])
++    } finally {
++      loading.delete(path)
++    }
++  }
++
++  // Reveal the current folder: expand and load every ancestor.
++  createEffect(
++    on(pathname, (current) => {
++      if (isShare() || !isFilesRoute(current)) return
++      for (const path of ancestors(current)) {
++        setExpanded(path, true)
++        void load(path)
++      }
++    }),
++  )
++
++  // The open listing is the freshest view of the current folder's children.
++  createEffect(() => {
++    if (objStore.state !== State.Folder || isShare()) return
++    const current = pathname()
++    setChildren(
++      current,
++      objStore.objs
++        .filter((obj) => obj.is_dir)
++        .map((obj) => ({ path: childPath(current, obj.name), name: obj.name })),
++    )
++  })
++
++  const migration = (path: string) => {
++    const current = pathname()
++    const obj = objStore.objs.find(
++      (item) => childPath(current, item.name) === path,
++    ) as any
++    return obj?.migration as
++      { processed: number; discovered: number; state: string } | undefined
++  }
++
++  const Branch = (props: { path: string; depth: number }) => (
++    <For each={children[props.path] ?? []}>
++      {(node) => {
++        const open = () => !!expanded[node.path]
++        const current = () => pathname() === node.path
++        const job = () => migration(node.path)
++        return (
++          <li role="treeitem" aria-expanded={open()}>
++            <div
++              class="drive-tree-row"
++              classList={{ "drive-tree-current": current() }}
++              style={{ "padding-left": `${8 + props.depth * 16}px` }}
++            >
++              <button
++                type="button"
++                class="drive-tree-twisty"
++                aria-label={
++                  open()
++                    ? text(`收起 ${node.name}`, `Collapse ${node.name}`)
++                    : text(`展开 ${node.name}`, `Expand ${node.name}`)
++                }
++                onClick={() => {
++                  setExpanded(node.path, !open())
++                  if (!open()) return
++                  void load(node.path)
++                }}
++              >
++                <Chevron open={open()} />
++              </button>
++              <a
++                class="drive-tree-link"
++                href={joinBase(encodePath(node.path))}
++                aria-current={current() ? "page" : undefined}
++                onClick={(event: MouseEvent) => {
++                  if (event.ctrlKey || event.metaKey || event.shiftKey) return
++                  event.preventDefault()
++                  to(encodePath(node.path))
++                }}
++              >
++                {node.name}
++              </a>
++              <Show when={job()}>
++                <span
++                  class="drive-tree-job"
++                  title={text("B2 同步中", "B2 syncing")}
++                >
++                  {job()!.processed}/{job()!.discovered}
++                </span>
++              </Show>
++            </div>
++            <Show when={open() && (children[node.path]?.length ?? 0) > 0}>
++              <ul role="group" class="drive-tree-list">
++                <Branch path={node.path} depth={props.depth + 1} />
++              </ul>
++            </Show>
++          </li>
++        )
++      }}
++    </For>
++  )
++
++  return (
++    <aside
++      id="drive-desktop-navigation"
++      class="drive-tree"
++      aria-label={text("目录", "Folders")}
++    >
++      <Show when={!isShare()}>
++        <a
++          class="drive-tree-root"
++          classList={{ "drive-tree-current": pathname() === "/" }}
++          href={joinBase("/")}
++          aria-current={pathname() === "/" ? "page" : undefined}
++          onClick={(event: MouseEvent) => {
++            if (event.ctrlKey || event.metaKey || event.shiftKey) return
++            event.preventDefault()
++            to("/")
++          }}
++        >
++          {text("所有文件", "All files")}
++        </a>
++        <ul
++          role="tree"
++          class="drive-tree-list"
++          aria-label={text("目录树", "Folder tree")}
++        >
++          <Branch path="/" depth={0} />
++        </ul>
++      </Show>
++      <div class="drive-tree-footer">
++        <DriveUsage />
++      </div>
++    </aside>
++  )
++}
++
++/* ------------------------------------------------------------------ */
++/* Details panel */
++
++const Meta = (props: { label: string; value: string; mono?: boolean }) => (
++  <>
++    <dt>{props.label}</dt>
++    <dd classList={{ "drive-mono": !!props.mono }}>{props.value}</dd>
++  </>
++)
++
++const ItemDetails = (props: { obj: StoreObj }) => {
++  const { rawLink } = useLink()
++  const { copy } = useUtil()
++  const { pathname, pushHref, to, isShare } = useRouter()
++  const link = () => (props.obj.is_dir ? "" : rawLink(props.obj, true))
++  const job = () => (props.obj as any).migration
++  return (
++    <>
++      <div class="drive-inspector-preview">
++        <Show
++          when={props.obj.thumb}
++          fallback={<Icon as={getIconByObj(props.obj)} boxSize="$16" />}
++        >
++          <img src={props.obj.thumb} alt="" loading="lazy" />
++        </Show>
++      </div>
++      <div class="drive-inspector-title">
++        <h2>{props.obj.name}</h2>
++        <span>{typeLabel(props.obj.name, props.obj.is_dir, zh())}</span>
++      </div>
++      <div class="drive-inspector-actions">
++        <button
++          type="button"
++          class="drive-button drive-button-primary"
++          onClick={() => openItem(props.obj, pushHref(props.obj.name), to)}
++        >
++          {text("打开", "Open")}
++        </button>
++        <Show when={!props.obj.is_dir}>
++          <a class="drive-button" href={link()} download={props.obj.name}>
++            <Icon as={BsDownload} />
++            {text("下载", "Download")}
++          </a>
++        </Show>
++        <Show when={userCan("share") && !isShare()}>
++          <button
++            type="button"
++            class="drive-button"
++            onClick={() => bus.emit("tool", "share")}
++          >
++            <Icon as={BsShare} />
++            {text("分享", "Share")}
++          </button>
++        </Show>
++      </div>
++      <dl class="drive-inspector-meta">
++        <Show when={!props.obj.is_dir}>
++          <Meta
++            label={text("大小", "Size")}
++            value={getFileSize(props.obj.size)}
++            mono
++          />
++        </Show>
++        <Meta
++          label={text("修改时间", "Modified")}
++          value={formatDate(props.obj.modified)}
++          mono
++        />
++        <Meta label={text("位置", "Location")} value={pathname()} mono />
++        <Show when={objStore.provider}>
++          <Meta label={text("存储", "Storage")} value={objStore.provider} />
++        </Show>
++      </dl>
++      <Show when={link()}>
++        <div class="drive-inspector-link">
++          <label for="drive-inspector-raw">{text("直链", "Direct link")}</label>
++          <div>
++            <input id="drive-inspector-raw" readonly value={link()} />
++            <button
++              type="button"
++              class="drive-button"
++              aria-label={text("复制直链", "Copy direct link")}
++              onClick={() => copy(link())}
++            >
++              <Icon as={BsLink45deg} />
++              {text("复制", "Copy")}
++            </button>
++          </div>
++        </div>
++      </Show>
++      <Show when={job()}>
++        <div class="drive-inspector-job" role="status">
++          <strong>
++            {job().state === "paused"
++              ? text("B2 同步已暂停", "B2 sync paused")
++              : text("B2 同步中", "B2 syncing")}
++          </strong>
++          <div class="drive-progress">
++            <span
++              style={{
++                width: `${job().discovered ? Math.round((job().processed / job().discovered) * 100) : 0}%`,
++              }}
++            />
++          </div>
++          <span>
++            {text(
++              `${job().processed} / ${job().discovered} 个文件 · 完成前该目录暂不可写入`,
++              `${job().processed} / ${job().discovered} files · writes are paused until it finishes`,
++            )}
++          </span>
++        </div>
++      </Show>
++    </>
++  )
++}
++
++const FolderDetails = () => {
++  const { pathname } = useRouter()
++  const totals = createMemo(() => summarize(objStore.objs))
++  const name = () => pathname().split("/").filter(Boolean).pop()
++  return (
++    <>
++      <div class="drive-inspector-preview">
++        <Icon as={BsFolder2} boxSize="$16" />
++      </div>
++      <div class="drive-inspector-title">
++        {/* The folder name is already the page heading; don't repeat it. */}
++        <p class="drive-inspector-name">
++          {name() || text("所有文件", "All files")}
++        </p>
++        <span>{text("当前文件夹", "Current folder")}</span>
++      </div>
++      <dl class="drive-inspector-meta">
++        <Meta
++          label={text("内容", "Contents")}
++          value={countLabel(totals().folders, totals().files, zh())}
++        />
++        <Show when={totals().files > 0}>
++          <Meta
++            label={text("文件大小", "Files size")}
++            value={getFileSize(totals().bytes)}
++            mono
++          />
++        </Show>
++        <Meta label={text("位置", "Location")} value={pathname()} mono />
++        <Show when={objStore.provider}>
++          <Meta label={text("存储", "Storage")} value={objStore.provider} />
++        </Show>
++      </dl>
++      <p class="drive-inspector-hint">
++        {text(
++          "选择一个文件即可查看详情和直链。",
++          "Select a file to see its details and direct link.",
++        )}
++      </p>
++    </>
++  )
++}
++
++const SelectionDetails = () => {
++  const totals = createMemo(() => summarize(selectedObjs()))
++  const { copy } = useUtil()
++  const { rawLink } = useLink()
++  const links = () =>
++    selectedObjs()
++      .filter((obj) => !obj.is_dir)
++      .map((obj) => rawLink(obj, true))
++      .join("\n")
++  return (
++    <>
++      <div class="drive-inspector-title">
++        <h2>
++          {text(
++            `已选 ${selectedObjs().length} 项`,
++            `${selectedObjs().length} selected`,
++          )}
++        </h2>
++        <span>{countLabel(totals().folders, totals().files, zh())}</span>
++      </div>
++      <dl class="drive-inspector-meta">
++        <Meta
++          label={text("文件大小", "Files size")}
++          value={getFileSize(totals().bytes)}
++          mono
++        />
++      </dl>
++      <Show when={totals().files > 0}>
++        <div class="drive-inspector-actions">
++          <button
++            type="button"
++            class="drive-button"
++            onClick={() => copy(links())}
++          >
++            <Icon as={BsLink45deg} />
++            {text("复制全部直链", "Copy all direct links")}
++          </button>
++        </div>
++      </Show>
++    </>
++  )
++}
++
++export const DriveInspector = () => {
++  const inspector = useContext(InspectorContext)!
++  const one = () =>
++    selectedObjs().length === 1 ? selectedObjs()[0] : undefined
++  return (
++    <aside
++      id="drive-inspector"
++      class="drive-inspector"
++      aria-label={text("详情", "Details")}
++      hidden={!inspector.open()}
++    >
++      <div class="drive-inspector-head">
++        <span>{text("详情", "Details")}</span>
++        <button
++          type="button"
++          class="drive-icon-button"
++          aria-label={text("关闭详情", "Close details")}
++          onClick={inspector.toggle}
++        >
++          <svg
++            width="16"
++            height="16"
++            viewBox="0 0 24 24"
++            fill="none"
++            stroke="currentColor"
++            stroke-width="2"
++            stroke-linecap="round"
++            aria-hidden="true"
++          >
++            <path d="M6 6l12 12M18 6 6 18" />
++          </svg>
++        </button>
++      </div>
++      <Show when={[State.Folder, State.FetchingMore].includes(objStore.state)}>
++        <Show
++          when={one()}
++          keyed
++          fallback={
++            <Show when={haveSelected()} fallback={<FolderDetails />}>
++              <SelectionDetails />
++            </Show>
++          }
++        >
++          {(obj) => <ItemDetails obj={obj} />}
++        </Show>
++      </Show>
++    </aside>
++  )
++}
++
++/* ------------------------------------------------------------------ */
++/* Status bar */
++
++export const DriveStatusBar = () => {
++  const selectedTotals = createMemo(() => summarize(selectedObjs()))
++  return (
++    <Show when={[State.Folder, State.FetchingMore].includes(objStore.state)}>
++      <footer class="drive-status-bar" role="status">
++        <span>{text(`${objStore.total} 项`, `${objStore.total} items`)}</span>
++        <Show when={haveSelected()}>
++          <span>
++            {text(
++              `已选 ${selectedObjs().length} 项`,
++              `${selectedObjs().length} selected`,
++            )}
++            <Show when={selectedTotals().files > 0}>
++              {" · "}
++              <span class="drive-mono">
++                {getFileSize(selectedTotals().bytes)}
++              </span>
++            </Show>
++          </span>
++        </Show>
++        <Show when={uploadStatus().active > 0}>
++          <button
++            type="button"
++            class="drive-status-upload"
++            onClick={() => bus.emit("tool", "upload")}
++          >
++            <span class="drive-status-upload-name">
++              {text(
++                `上传 ${uploadStatus().name}`,
++                `Uploading ${uploadStatus().name}`,
++              )}
++              <Show when={uploadStatus().active > 1}>
++                {text(
++                  ` 等 ${uploadStatus().active} 项`,
++                  ` +${uploadStatus().active - 1}`,
++                )}
++              </Show>
++            </span>
++            <span class="drive-progress" aria-hidden="true">
++              <span style={{ width: `${uploadStatus().progress}%` }} />
++            </span>
++            <span class="drive-mono">{uploadStatus().progress}%</span>
++          </button>
++        </Show>
++      </footer>
++    </Show>
++  )
++}
+diff --git a/src/pages/home/Layout.tsx b/src/pages/home/Layout.tsx
+index dc91c93..8dd1a8a 100644
+--- a/src/pages/home/Layout.tsx
++++ b/src/pages/home/Layout.tsx
+@@ -4,9 +4,18 @@ import { useRouter, useTitle } from "~/hooks"
+ import { createSignal, lazy, Match, Show, Switch } from "solid-js"
+ import { getSetting } from "~/store"
+ import { notify } from "~/utils"
+-import { DriveRail, DriveSidebarContext } from "./DriveChrome"
++import { DriveSidebarContext } from "./DriveChrome"
++import {
++  DriveIconRail,
++  DriveInspector,
++  DriveStatusBar,
++  DriveTree,
++  InspectorContext,
++  createInspectorState,
++} from "./DrivePro"
+ import "./drive.css"
+ import "./drive-home.css"
++import "./drive-pro.css"
+ import { Body } from "./Body"
+ import { Footer } from "./Footer"
+ import { Header } from "./header/Header"
+@@ -20,6 +29,8 @@ const Index = () => {
+   const mode = useColorModeValue("light", "dark")
+   const { pathname } = useRouter()
+   const [collapsed, setCollapsed] = createSignal(false)
++  const inspector = createInspectorState()
++  const filesRoute = () => !["/@links", "/@recent"].includes(pathname())
+   const search = createFileSearch()
+   useTitle(getSetting("site_title"))
+   const announcement = getSetting("announcement")
+@@ -31,34 +42,44 @@ const Index = () => {
+       <DriveSidebarContext.Provider
+         value={{ collapsed, toggle: () => setCollapsed((value) => !value) }}
+       >
+-        <div
+-          class="drive-shell"
+-          classList={{ "drive-sidebar-collapsed": collapsed() }}
+-          data-drive-mode={mode()}
+-        >
+-          <DriveRail />
+-          <main class="drive-main">
+-            <Switch>
+-              <Match when={pathname() === "/@links"}>
+-                <Shares />
+-              </Match>
+-              <Match when={pathname() === "/@recent"}>
+-                <Recent />
+-              </Match>
+-              <Match when={!["/@links", "/@recent"].includes(pathname())}>
+-                <Header />
+-                <Toolbar />
+-                <div hidden={search.active()}>
+-                  <Body />
+-                  <Footer />
+-                </div>
+-                <Show when={search.active()}>
+-                  <Search />
+-                </Show>
+-              </Match>
+-            </Switch>
+-          </main>
+-        </div>
++        <InspectorContext.Provider value={inspector}>
++          <div
++            class="drive-shell drive-pro"
++            classList={{
++              "drive-sidebar-collapsed": collapsed(),
++              "drive-inspector-open": inspector.open() && filesRoute(),
++            }}
++            data-drive-mode={mode()}
++          >
++            <DriveIconRail />
++            <DriveTree />
++            <main class="drive-main">
++              <Switch>
++                <Match when={pathname() === "/@links"}>
++                  <Shares />
++                </Match>
++                <Match when={pathname() === "/@recent"}>
++                  <Recent />
++                </Match>
++                <Match when={!["/@links", "/@recent"].includes(pathname())}>
++                  <Header />
++                  <Toolbar />
++                  <div hidden={search.active()}>
++                    <Body />
++                    <Footer />
++                  </div>
++                  <Show when={search.active()}>
++                    <Search />
++                  </Show>
++                  <DriveStatusBar />
++                </Match>
++              </Switch>
++            </main>
++            <Show when={filesRoute()}>
++              <DriveInspector />
++            </Show>
++          </div>
++        </InspectorContext.Provider>
+       </DriveSidebarContext.Provider>
+     </SearchContext.Provider>
+   )
+diff --git a/src/pages/home/drive-pro-utils.ts b/src/pages/home/drive-pro-utils.ts
+new file mode 100644
+index 0000000..d21d9d4
+--- /dev/null
++++ b/src/pages/home/drive-pro-utils.ts
+@@ -0,0 +1,60 @@
++/** Pure helpers for the pro file-browser layout (kept free of UI imports). */
++
++/** "/a/b" -> ["/", "/a", "/a/b"] */
++export function ancestors(path: string): string[] {
++  const parts = path.split("/").filter(Boolean)
++  return ["/", ...parts.map((_, i) => "/" + parts.slice(0, i + 1).join("/"))]
++}
++
++export function childPath(parent: string, name: string): string {
++  return parent === "/" ? `/${name}` : `${parent}/${name}`
++}
++
++/** File type label shown in the details panel, e.g. "MKV". */
++export function typeLabel(name: string, isDir: boolean, zh: boolean): string {
++  if (isDir) return zh ? "文件夹" : "Folder"
++  const dot = name.lastIndexOf(".")
++  if (dot > 0 && dot < name.length - 1) return name.slice(dot + 1).toUpperCase()
++  return zh ? "文件" : "File"
++}
++
++export interface SizedItem {
++  is_dir: boolean
++  size: number
++}
++
++/** Folder/file counts and the total size of the files among `items`. */
++export function summarize(items: SizedItem[]) {
++  let folders = 0
++  let files = 0
++  let bytes = 0
++  for (const item of items) {
++    if (item.is_dir) folders++
++    else {
++      files++
++      bytes += Number(item.size) || 0
++    }
++  }
++  return { folders, files, bytes }
++}
++
++export const INSPECTOR_KEY = "drive_inspector"
++export const INSPECTOR_MIN_WIDTH = 1280
++
++/** Remembered choice wins; otherwise open on wide screens only. */
++export function initialInspectorOpen(
++  saved: string | null,
++  width: number,
++): boolean {
++  if (saved === "open") return true
++  if (saved === "closed") return false
++  return width >= INSPECTOR_MIN_WIDTH
++}
++
++/** "3 个文件夹 · 1 个文件" / "3 folders · 1 file" */
++export function countLabel(folders: number, files: number, zh: boolean) {
++  if (zh) return `${folders} 个文件夹 · ${files} 个文件`
++  const plural = (n: number, word: string) =>
++    `${n} ${word}${n === 1 ? "" : "s"}`
++  return `${plural(folders, "folder")} · ${plural(files, "file")}`
++}
+diff --git a/src/pages/home/drive-pro.css b/src/pages/home/drive-pro.css
+new file mode 100644
+index 0000000..62eb2fe
+--- /dev/null
++++ b/src/pages/home/drive-pro.css
+@@ -0,0 +1,519 @@
++/* Pro file browser: icon rail, folder tree, dense list, details panel. */
++.drive-shell.drive-pro {
++  --drive-bg: #ffffff;
++  --drive-rail: #fafafa;
++  --drive-text: #18181b;
++  --drive-muted: #52525b;
++  --drive-line: #e4e4e7;
++  --drive-hover: #f4f4f5;
++  --drive-selected: #eef2ff;
++  --drive-blue: #4f46e5;
++  --drive-blue-hover: #4338ca;
++  --drive-icon-rail: #18181b;
++  --drive-job-bg: #fffbeb;
++  --drive-job-line: #fde68a;
++  --drive-job-text: #78350f;
++  --drive-mono:
++    ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
++}
++.drive-shell.drive-pro[data-drive-mode="dark"] {
++  --drive-bg: #141416;
++  --drive-rail: #1b1b1f;
++  --drive-text: #f4f4f5;
++  --drive-muted: #a1a1aa;
++  --drive-line: #2e2e33;
++  --drive-hover: #222226;
++  --drive-selected: #262a4a;
++  --drive-blue: #a5b4fc;
++  --drive-blue-hover: #c7d2fe;
++  --drive-icon-rail: #0c0c0e;
++  --drive-job-bg: #2a2111;
++  --drive-job-line: #5b4512;
++  --drive-job-text: #fcd34d;
++}
++.drive-shell.drive-pro {
++  font-family:
++    "IBM Plex Sans",
++    system-ui,
++    -apple-system,
++    "Segoe UI",
++    "PingFang SC",
++    "Hiragino Sans GB",
++    "Microsoft YaHei",
++    sans-serif;
++  font-size: 13px;
++}
++.drive-pro .drive-mono {
++  font-family: var(--drive-mono);
++  font-variant-numeric: tabular-nums;
++}
++
++/* ---------- Columns (desktop) ---------- */
++@media (min-width: 761px) {
++  .drive-shell.drive-pro {
++    display: grid;
++    grid-template-columns: 72px 240px minmax(0, 1fr);
++  }
++  .drive-shell.drive-pro.drive-sidebar-collapsed {
++    grid-template-columns: 72px minmax(0, 1fr);
++  }
++  .drive-pro.drive-sidebar-collapsed .drive-tree {
++    display: none;
++  }
++  .drive-pro .drive-main {
++    display: flex;
++    flex-direction: column;
++    min-height: 100vh;
++  }
++}
++@media (min-width: 761px) and (max-width: 1100px) {
++  .drive-shell.drive-pro {
++    grid-template-columns: 72px 200px minmax(0, 1fr);
++  }
++}
++@media (min-width: 1101px) {
++  .drive-shell.drive-pro.drive-inspector-open {
++    grid-template-columns: 72px 240px minmax(0, 1fr) 320px;
++  }
++  .drive-shell.drive-pro.drive-inspector-open.drive-sidebar-collapsed {
++    grid-template-columns: 72px minmax(0, 1fr) 320px;
++  }
++}
++
++/* ---------- Icon rail ---------- */
++.drive-icon-rail {
++  position: sticky;
++  top: 0;
++  height: 100vh;
++  box-sizing: border-box;
++  padding: 14px 6px;
++  display: flex;
++  flex-direction: column;
++  align-items: center;
++  gap: 6px;
++  background: var(--drive-icon-rail);
++}
++.drive-icon-rail-brand {
++  width: 36px;
++  height: 36px;
++  margin-bottom: 12px;
++  border: 0;
++  border-radius: 9px;
++  background: var(--drive-blue);
++  color: #ffffff;
++  font-weight: 600;
++}
++.drive-pro[data-drive-mode="dark"] .drive-icon-rail-brand {
++  color: #18181b;
++}
++.drive-icon-rail-item {
++  width: 60px;
++  min-height: 52px;
++  display: flex;
++  flex-direction: column;
++  align-items: center;
++  justify-content: center;
++  gap: 3px;
++  border: 0;
++  border-radius: 10px;
++  background: transparent;
++  color: #d4d4d8;
++  font-size: 11px;
++}
++.drive-icon-rail-item svg {
++  width: 20px;
++  height: 20px;
++}
++.drive-icon-rail-item:hover {
++  background: #27272a;
++  color: #ffffff;
++}
++.drive-icon-rail-current {
++  background: #27272a;
++  color: #ffffff;
++}
++.drive-icon-rail-end {
++  margin-top: auto;
++}
++
++/* ---------- Folder tree ---------- */
++.drive-tree {
++  position: sticky;
++  top: 0;
++  height: 100vh;
++  box-sizing: border-box;
++  display: flex;
++  flex-direction: column;
++  gap: 2px;
++  padding: 14px 8px 12px;
++  background: var(--drive-rail);
++  border-right: 1px solid var(--drive-line);
++  overflow-y: auto;
++}
++.drive-tree-root {
++  display: flex;
++  align-items: center;
++  min-height: 34px;
++  padding: 0 10px;
++  border-radius: 6px;
++  color: var(--drive-text);
++  font-weight: 600;
++  text-decoration: none;
++}
++.drive-tree-list {
++  margin: 0;
++  padding: 0;
++  list-style: none;
++}
++.drive-tree-row {
++  display: flex;
++  align-items: center;
++  gap: 2px;
++  min-height: 32px;
++  padding-right: 6px;
++  border-radius: 6px;
++  color: var(--drive-text);
++}
++.drive-tree-row:hover,
++.drive-tree-root:hover {
++  background: var(--drive-hover);
++}
++.drive-tree-current,
++.drive-tree-current:hover {
++  background: var(--drive-selected);
++  color: var(--drive-blue-hover);
++}
++.drive-pro[data-drive-mode="dark"] .drive-tree-current {
++  color: var(--drive-blue);
++}
++.drive-tree-twisty {
++  flex: 0 0 24px;
++  height: 28px;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  border: 0;
++  border-radius: 5px;
++  background: transparent;
++  color: var(--drive-muted);
++}
++.drive-tree-twisty svg {
++  transition: transform 120ms ease;
++}
++.drive-tree-link {
++  flex: 1;
++  min-width: 0;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++  color: inherit;
++  text-decoration: none;
++  line-height: 32px;
++}
++.drive-tree-current .drive-tree-link {
++  font-weight: 600;
++}
++.drive-tree-job {
++  flex-shrink: 0;
++  font-family: var(--drive-mono);
++  font-size: 11px;
++  color: var(--drive-job-text);
++}
++.drive-tree-footer {
++  margin-top: auto;
++}
++
++/* ---------- Header and heading: one compact toolbar ---------- */
++@media (min-width: 761px) {
++  .drive-pro .drive-container {
++    max-width: none;
++    padding-inline: 20px;
++  }
++  .drive-pro .drive-header {
++    border-bottom: 1px solid var(--drive-line);
++  }
++  .drive-pro .drive-header-inner {
++    height: 56px;
++    gap: 10px;
++  }
++  .drive-pro .body {
++    padding-top: 10px;
++    gap: 10px;
++    min-height: 0;
++  }
++  .drive-pro .drive-heading {
++    margin: 0;
++    gap: 12px;
++    flex-wrap: wrap;
++  }
++  .drive-pro .drive-heading h1 {
++    font-size: 18px;
++    font-weight: 600;
++    letter-spacing: 0;
++  }
++  .drive-pro .drive-heading-description {
++    display: none;
++  }
++  .drive-pro .drive-button {
++    min-height: 40px;
++    border-radius: 8px;
++  }
++  .drive-pro .drive-button-primary {
++    background: var(--drive-blue);
++    border-color: var(--drive-blue);
++  }
++  .drive-pro[data-drive-mode="dark"] .drive-button-primary {
++    color: #18181b;
++  }
++}
++.drive-inspector-toggle {
++  display: none;
++}
++@media (min-width: 1101px) {
++  .drive-inspector-toggle {
++    display: inline-flex;
++  }
++  .drive-pro.drive-inspector-open .drive-inspector-toggle {
++    color: var(--drive-blue);
++    background: var(--drive-selected);
++  }
++}
++
++/* ---------- Dense list ---------- */
++@media (min-width: 761px) {
++  .drive-pro .list .title,
++  .drive-pro .drive-list-title {
++    background: var(--drive-rail);
++  }
++  .drive-pro .list .title {
++    padding: 8px 12px;
++  }
++  .drive-pro .drive-file-row .list-item,
++  .drive-pro .list-item {
++    min-height: 36px;
++    padding: 6px 12px;
++  }
++  .drive-pro .list-item .icon {
++    width: 18px;
++    height: 18px;
++    margin-right: 8px;
++  }
++  .drive-pro .list-item .name {
++    font-weight: 400;
++  }
++  .drive-pro .list-item .size,
++  .drive-pro .list-item .modified {
++    font-family: var(--drive-mono);
++    font-size: 12px;
++  }
++  .drive-pro .drive-file-row-selected {
++    box-shadow: inset 2px 0 0 var(--drive-blue);
++  }
++  .drive-pro .drive-file-row-selected .list-item .name {
++    font-weight: 600;
++  }
++}
++
++/* ---------- Details panel ---------- */
++.drive-inspector {
++  display: none;
++}
++@media (min-width: 1101px) {
++  .drive-pro.drive-inspector-open .drive-inspector:not([hidden]) {
++    position: sticky;
++    top: 0;
++    height: 100vh;
++    box-sizing: border-box;
++    display: flex;
++    flex-direction: column;
++    gap: 16px;
++    padding: 12px 16px 20px;
++    border-left: 1px solid var(--drive-line);
++    background: var(--drive-bg);
++    overflow-y: auto;
++  }
++}
++.drive-inspector-head {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  min-height: 40px;
++  color: var(--drive-muted);
++  font-weight: 600;
++}
++.drive-inspector-preview {
++  aspect-ratio: 16 / 9;
++  border-radius: 10px;
++  background: var(--drive-hover);
++  color: var(--drive-muted);
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  overflow: hidden;
++}
++.drive-inspector-preview img {
++  width: 100%;
++  height: 100%;
++  object-fit: cover;
++}
++.drive-inspector-title {
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
++}
++.drive-inspector-title h2,
++.drive-inspector-name {
++  margin: 0;
++  font-size: 15px;
++  font-weight: 600;
++  word-break: break-all;
++}
++.drive-inspector-title span {
++  color: var(--drive-muted);
++}
++.drive-inspector-actions {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 8px;
++}
++.drive-inspector-actions .drive-button {
++  flex: 1 1 auto;
++  justify-content: center;
++  text-decoration: none;
++}
++.drive-inspector-meta {
++  margin: 0;
++  display: grid;
++  grid-template-columns: 72px minmax(0, 1fr);
++  row-gap: 10px;
++  column-gap: 12px;
++}
++.drive-inspector-meta dt {
++  color: var(--drive-muted);
++}
++.drive-inspector-meta dd {
++  margin: 0;
++  word-break: break-all;
++}
++.drive-inspector-link {
++  display: flex;
++  flex-direction: column;
++  gap: 6px;
++}
++.drive-inspector-link label {
++  color: var(--drive-muted);
++}
++.drive-inspector-link > div {
++  display: flex;
++  gap: 6px;
++}
++.drive-inspector-link input {
++  flex: 1;
++  min-width: 0;
++  height: 40px;
++  box-sizing: border-box;
++  padding: 0 10px;
++  border: 1px solid var(--drive-line);
++  border-radius: 8px;
++  background: var(--drive-rail);
++  color: var(--drive-text);
++  font: 12px var(--drive-mono);
++}
++.drive-inspector-job {
++  margin-top: auto;
++  padding: 12px;
++  border-radius: 10px;
++  background: var(--drive-job-bg);
++  border: 1px solid var(--drive-job-line);
++  color: var(--drive-job-text);
++  display: flex;
++  flex-direction: column;
++  gap: 6px;
++  font-size: 12px;
++}
++.drive-inspector-job strong {
++  font-size: 13px;
++}
++.drive-inspector-hint {
++  margin: 0;
++  color: var(--drive-muted);
++}
++
++/* ---------- Progress bar ---------- */
++.drive-progress {
++  display: block;
++  flex: 0 0 auto;
++  width: 80px;
++  height: 4px;
++  border-radius: 2px;
++  background: var(--drive-line);
++  overflow: hidden;
++}
++.drive-inspector .drive-progress {
++  width: 100%;
++  background: var(--drive-job-line);
++}
++.drive-progress > span {
++  display: block;
++  height: 100%;
++  border-radius: 2px;
++  background: var(--drive-blue);
++}
++.drive-inspector-job .drive-progress > span {
++  background: #b45309;
++}
++
++/* ---------- Status bar ---------- */
++.drive-status-bar {
++  display: none;
++}
++@media (min-width: 761px) {
++  .drive-pro .drive-status-bar {
++    position: sticky;
++    bottom: 0;
++    margin-top: auto;
++    display: flex;
++    align-items: center;
++    gap: 20px;
++    min-height: 32px;
++    padding: 0 20px;
++    border-top: 1px solid var(--drive-line);
++    background: var(--drive-rail);
++    color: var(--drive-muted);
++    font-size: 12px;
++  }
++}
++.drive-status-upload {
++  margin-left: auto;
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  min-width: 0;
++  min-height: 32px;
++  padding: 0 4px;
++  border: 0;
++  background: transparent;
++  color: inherit;
++  font-size: 12px;
++}
++.drive-status-upload-name {
++  min-width: 0;
++  max-width: 280px;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++}
++
++/* ---------- Phone: the new columns arrive in phase 2 ---------- */
++@media (max-width: 760px) {
++  .drive-icon-rail,
++  .drive-tree {
++    display: none;
++  }
++}
++
++@media (prefers-reduced-motion: reduce) {
++  .drive-tree-twisty svg {
++    transition: none;
++  }
++}
+diff --git a/src/pages/home/uploads/Upload.tsx b/src/pages/home/uploads/Upload.tsx
+index 2623a75..1eb28c0 100644
+--- a/src/pages/home/uploads/Upload.tsx
++++ b/src/pages/home/uploads/Upload.tsx
+@@ -22,6 +22,7 @@ import {
+ } from "~/store"
+ import { api, bus, getFileSize, joinBase, notify, r } from "~/utils"
+ import { setUnfinishedUploads } from "~/utils/module_recovery"
++import { setUploadStatus, summarizeUploads } from "~/utils/upload_status"
+ import { invalidateDirectories } from "~/utils/directory_snapshot"
+ import { traverseFileTree } from "./util"
+ import { getUploads, getUploader } from "./uploads"
+@@ -78,6 +79,7 @@ const Upload = () => {
+         tasks.filter((task) => !["success", "cancelled"].includes(task.status))
+           .length,
+       )
++      setUploadStatus(summarizeUploads(tasks))
+     },
+     (directory) => {
+       invalidateDirectories()
+diff --git a/src/utils/upload_status.ts b/src/utils/upload_status.ts
+new file mode 100644
+index 0000000..6b2d951
+--- /dev/null
++++ b/src/utils/upload_status.ts
+@@ -0,0 +1,45 @@
++import { createSignal } from "solid-js"
++
++export interface UploadStatus {
++  /** Tasks that still need work (not finished, cancelled or failed). */
++  active: number
++  /** The task currently transferring, or the next one waiting. */
++  name: string
++  /** Size-weighted progress of the active tasks, 0–100. */
++  progress: number
++}
++
++interface TaskLike {
++  name: string
++  size: number
++  progress: number
++  status: string
++}
++
++const DONE = ["success", "cancelled", "error"]
++const BUSY = ["uploading", "backending", "hashing", "verifying"]
++
++export function summarizeUploads(tasks: TaskLike[]): UploadStatus {
++  const active = tasks.filter((task) => !DONE.includes(task.status))
++  if (!active.length) return { active: 0, name: "", progress: 0 }
++  const current = active.find((task) => BUSY.includes(task.status)) ?? active[0]
++  const total = active.reduce((sum, task) => sum + (task.size || 0), 0)
++  const done = active.reduce(
++    (sum, task) => sum + ((task.size || 0) * (task.progress || 0)) / 100,
++    0,
++  )
++  const progress = total
++    ? Math.min(100, Math.round((done / total) * 100))
++    : Math.round(
++        active.reduce((sum, task) => sum + (task.progress || 0), 0) /
++          active.length,
++      )
++  return { active: active.length, name: current.name, progress }
++}
++
++const [uploadStatus, setUploadStatus] = createSignal<UploadStatus>({
++  active: 0,
++  name: "",
++  progress: 0,
++})
++export { uploadStatus, setUploadStatus }
