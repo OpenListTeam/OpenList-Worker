@@ -72,28 +72,45 @@ test(
 )
 
 test(
-  "transfers toggles the upload panel and never targets a non-folder page",
+  "navigation stays identical on every page; transfers never targets a non-folder page",
   { timeout: 60000 },
   async () => {
     const { page, base, errors, close } = await open(0)
     try {
+      const rail = () =>
+        page
+          .locator(".drive-icon-rail .drive-icon-rail-item > span:first-of-type")
+          .allInnerTexts()
+      const expected = ["Files", "Recent", "Shared", "Transfers", "Manage"]
+      const item = (label) =>
+        page.locator(".drive-icon-rail-item", { hasText: label })
+      const panel = page.locator(".upload-center")
+
       await page.goto(base + "/B2")
       await page.locator(".drive-file-row").first().waitFor()
-      const transfers = page.locator(".drive-icon-rail-item", {
-        hasText: "Transfers",
-      })
-      const panel = page.locator(".upload-center")
-      await transfers.click()
+      assert.deepEqual(await rail(), expected)
+      await item("Transfers").click()
       await panel.waitFor()
-      assert.match(await panel.innerText(), /\/B2/)
-      await transfers.click()
+      assert.match(await panel.innerText(), /Upload to \/B2/)
+      await item("Transfers").click()
       await panel.waitFor({ state: "detached" })
 
-      // Recent keeps the previous folder's state; uploading must not follow.
-      await page.locator(".drive-icon-rail-item", { hasText: "Recent" }).click()
-      await page.waitForURL(base + "/@recent")
-      assert.equal(await transfers.count(), 0)
-      assert.equal(await panel.count(), 0)
+      // Recent and Shared keep the previous folder's state; the rail must not
+      // change and uploading must not follow to these pages.
+      for (const [label, path] of [
+        ["Recent", "/@recent"],
+        ["Shared", "/@links"],
+      ]) {
+        await item(label).click()
+        await page.waitForURL(base + path)
+        assert.deepEqual(await rail(), expected, `rail on ${path}`)
+      }
+      await item("Transfers").click()
+      await panel.waitFor()
+      assert.match(await panel.innerText(), /No uploads yet/)
+      assert.equal(await panel.locator(".upload-picker").count(), 0)
+      await item("Transfers").click()
+      await panel.waitFor({ state: "detached" })
       assert.deepEqual(errors, [])
     } finally {
       await close()

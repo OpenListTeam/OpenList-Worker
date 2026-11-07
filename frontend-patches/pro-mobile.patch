@@ -1,5 +1,5 @@
 diff --git a/src/pages/home/DrivePro.tsx b/src/pages/home/DrivePro.tsx
-index 56cc124..d3ef7b0 100644
+index 56cc124..4a7187c 100644
 --- a/src/pages/home/DrivePro.tsx
 +++ b/src/pages/home/DrivePro.tsx
 @@ -8,9 +8,11 @@ import {
@@ -95,7 +95,7 @@ index 56cc124..d3ef7b0 100644
          aria-label={label()}
          title={label()}
          aria-pressed={inspector!.open()}
-@@ -109,34 +134,86 @@ export const DriveInspectorToggle = () => {
+@@ -109,34 +134,83 @@ export const DriveInspectorToggle = () => {
  }
  
  /* ------------------------------------------------------------------ */
@@ -112,29 +112,14 @@ index 56cc124..d3ef7b0 100644
 +  badge?: string
    onClick: () => void
 -}) => (
--  <button
--    type="button"
--    class="drive-icon-rail-item"
--    classList={{ "drive-icon-rail-current": !!props.current }}
--    aria-current={props.current ? "page" : undefined}
--    onClick={props.onClick}
--  >
--    <Icon as={props.icon} />
--    <span>{props.label}</span>
--  </button>
--)
 +}
- 
--export const DriveIconRail = () => {
++
 +const useNavItems = () => {
-   const { to, isShare, pathname } = useRouter()
-   const signedIn = () => !!me().id && !UserMethods.is_guest(me())
-   const canUpload = () =>
-+    isFilesRoute(pathname()) &&
-     objStore.state === State.Folder &&
-     !isShare() &&
-     (userCan("write_content") || objStore.write_content_bypass) &&
-     objStore.write
++  const { to, isShare, pathname } = useRouter()
++  const signedIn = () => !!me().id && !UserMethods.is_guest(me())
++  // Account-level, not per page, so the navigation never shifts between
++  // pages. Whether this page accepts uploads is the upload panel's call.
++  const mayUpload = () => !isShare() && userCan("write_content")
 +  const items = createMemo(() => {
 +    const list: NavItem[] = []
 +    if (!isShare())
@@ -162,7 +147,7 @@ index 56cc124..d3ef7b0 100644
 +        onClick: () => to("/@links"),
 +      })
 +    // Also reachable while uploads run, wherever you are, to check on them.
-+    if (canUpload() || uploadStatus().active > 0)
++    if (mayUpload() || uploadStatus().active > 0)
 +      list.push({
 +        key: "transfers",
 +        label: text("传输", "Transfers"),
@@ -178,27 +163,40 @@ index 56cc124..d3ef7b0 100644
 +}
 +
 +const NavButton = (props: { item: NavItem; class: string }) => (
-+  <button
-+    type="button"
+   <button
+     type="button"
+-    class="drive-icon-rail-item"
+-    classList={{ "drive-icon-rail-current": !!props.current }}
+-    aria-current={props.current ? "page" : undefined}
+-    onClick={props.onClick}
 +    class={props.class}
 +    classList={{ [`${props.class}-current`]: props.item.current }}
 +    aria-current={props.item.current ? "page" : undefined}
 +    onClick={props.item.onClick}
-+  >
+   >
+-    <Icon as={props.icon} />
+-    <span>{props.label}</span>
 +    <Icon as={props.item.icon} />
 +    <span>{props.item.label}</span>
 +    <Show when={props.item.badge}>
 +      <span class="drive-nav-badge">{props.item.badge}</span>
 +    </Show>
-+  </button>
-+)
-+
-+export const DriveIconRail = () => {
+   </button>
+ )
+ 
+ export const DriveIconRail = () => {
+-  const { to, isShare, pathname } = useRouter()
+-  const signedIn = () => !!me().id && !UserMethods.is_guest(me())
+-  const canUpload = () =>
+-    objStore.state === State.Folder &&
+-    !isShare() &&
+-    (userCan("write_content") || objStore.write_content_bypass) &&
+-    objStore.write
 +  const { items, signedIn, to } = useNavItems()
    return (
      <nav class="drive-icon-rail" aria-label={text("主导航", "Main")}>
        <button
-@@ -147,43 +224,20 @@ export const DriveIconRail = () => {
+@@ -147,43 +221,20 @@ export const DriveIconRail = () => {
        >
          O
        </button>
@@ -254,7 +252,7 @@ index 56cc124..d3ef7b0 100644
            />
          </div>
        </Show>
-@@ -191,6 +245,40 @@ export const DriveIconRail = () => {
+@@ -191,6 +242,40 @@ export const DriveIconRail = () => {
    )
  }
  
@@ -295,7 +293,7 @@ index 56cc124..d3ef7b0 100644
  /* ------------------------------------------------------------------ */
  /* Folder tree */
  
-@@ -213,58 +301,44 @@ const Chevron = (props: { open: boolean }) => (
+@@ -213,58 +298,44 @@ const Chevron = (props: { open: boolean }) => (
    </svg>
  )
  
@@ -388,7 +386,7 @@ index 56cc124..d3ef7b0 100644
    const migration = (path: string) => {
      const current = pathname()
      const obj = objStore.objs.find(
-@@ -273,11 +347,10 @@ export const DriveTree = () => {
+@@ -273,11 +344,10 @@ export const DriveTree = () => {
      return obj?.migration as
        { processed: number; discovered: number; state: string } | undefined
    }
@@ -403,7 +401,7 @@ index 56cc124..d3ef7b0 100644
          const current = () => pathname() === node.path
          const job = () => migration(node.path)
          return (
-@@ -296,9 +369,8 @@ export const DriveTree = () => {
+@@ -296,9 +366,8 @@ export const DriveTree = () => {
                      : text(`展开 ${node.name}`, `Expand ${node.name}`)
                  }
                  onClick={() => {
@@ -415,7 +413,7 @@ index 56cc124..d3ef7b0 100644
                  }}
                >
                  <Chevron open={open()} />
-@@ -324,9 +396,9 @@ export const DriveTree = () => {
+@@ -324,9 +393,9 @@ export const DriveTree = () => {
                  </span>
                </Show>
              </div>
@@ -427,7 +425,7 @@ index 56cc124..d3ef7b0 100644
                </ul>
              </Show>
            </li>
-@@ -334,11 +406,64 @@ export const DriveTree = () => {
+@@ -334,11 +403,64 @@ export const DriveTree = () => {
        }}
      </For>
    )
@@ -493,7 +491,7 @@ index 56cc124..d3ef7b0 100644
        aria-label={text("目录", "Folders")}
      >
        <Show when={!isShare()}>
-@@ -360,12 +485,14 @@ export const DriveTree = () => {
+@@ -360,12 +482,14 @@ export const DriveTree = () => {
            class="drive-tree-list"
            aria-label={text("目录树", "Folder tree")}
          >
@@ -512,7 +510,7 @@ index 56cc124..d3ef7b0 100644
      </aside>
    )
  }
-@@ -489,6 +616,8 @@ const ItemDetails = (props: { obj: StoreObj }) => {
+@@ -489,6 +613,8 @@ const ItemDetails = (props: { obj: StoreObj }) => {
  const FolderDetails = () => {
    const { pathname } = useRouter()
    const totals = createMemo(() => summarize(objStore.objs))
@@ -521,7 +519,7 @@ index 56cc124..d3ef7b0 100644
    const name = () => pathname().split("/").filter(Boolean).pop()
    return (
      <>
-@@ -505,9 +634,13 @@ const FolderDetails = () => {
+@@ -505,9 +631,13 @@ const FolderDetails = () => {
        <dl class="drive-inspector-meta">
          <Meta
            label={text("内容", "Contents")}
@@ -537,7 +535,7 @@ index 56cc124..d3ef7b0 100644
            <Meta
              label={text("文件大小", "Files size")}
              value={getFileSize(totals().bytes)}
-@@ -574,51 +707,95 @@ const SelectionDetails = () => {
+@@ -574,51 +704,95 @@ const SelectionDetails = () => {
  
  export const DriveInspector = () => {
    const inspector = useContext(InspectorContext)!
@@ -582,9 +580,7 @@ index 56cc124..d3ef7b0 100644
          <button
            type="button"
 -          class="drive-icon-button"
-+          class="drive-inspector-backdrop"
-+          tabIndex={-1}
-           aria-label={text("关闭详情", "Close details")}
+-          aria-label={text("关闭详情", "Close details")}
 -          onClick={inspector.toggle}
 -        >
 -          <svg
@@ -596,6 +592,9 @@ index 56cc124..d3ef7b0 100644
 -            stroke-width="2"
 -            stroke-linecap="round"
 -            aria-hidden="true"
++          class="drive-inspector-backdrop"
++          tabIndex={-1}
++          aria-hidden="true"
 +          onClick={inspector.close}
 +        />
 +      </Show>
@@ -1005,7 +1004,7 @@ index 19ef2fa..3b34831 100644
                  type="button"
                  class="drive-nav-item drive-drawer-refresh"
 diff --git a/src/pages/home/uploads/Upload.tsx b/src/pages/home/uploads/Upload.tsx
-index 1eb28c0..a433103 100644
+index 1eb28c0..2c8d937 100644
 --- a/src/pages/home/uploads/Upload.tsx
 +++ b/src/pages/home/uploads/Upload.tsx
 @@ -191,6 +191,8 @@ const Upload = () => {
@@ -1023,14 +1022,14 @@ index 1eb28c0..a433103 100644
    }
 -  bus.on("tool", open)
 +  // The transfers button: show the queue, then collapse (uploads still running)
-+  // or close it. Opens even where adding is not allowed, if there are tasks.
++  // or close it. It opens on any page; where adding is not allowed the panel
++  // shows the queue, or a hint when there is nothing to show.
 +  const toggleTransfers = () => {
 +    if (opened() && expanded()) {
 +      if (cancellable().length) setExpanded(false)
 +      else setOpened(false)
 +      return
 +    }
-+    if (!canAdd() && !tasks().length) return
 +    if (canAdd()) syncTarget()
 +    setOpened(true)
 +    setExpanded(true)
@@ -1050,3 +1049,27 @@ index 1eb28c0..a433103 100644
      window.removeEventListener("online", networkChanged)
      window.removeEventListener("offline", networkChanged)
      window.removeEventListener("beforeunload", beforeUnload)
+@@ -411,6 +428,14 @@ const Upload = () => {
+                   )}
+                 </p>
+               </Show>
++              <Show when={!canAdd() && !tasks().length}>
++                <p class="upload-empty-hint">
++                  {text(
++                    "暂无上传任务。打开一个可写入的文件夹即可添加文件。",
++                    "No uploads yet. Open a folder you can write to and add files there.",
++                  )}
++                </p>
++              </Show>
+               <Show when={canAdd()}>
+                 <section
+                   class="upload-picker"
+diff --git a/src/pages/home/uploads/upload-panel.css b/src/pages/home/uploads/upload-panel.css
+index 354f64a..a248b31 100644
+--- a/src/pages/home/uploads/upload-panel.css
++++ b/src/pages/home/uploads/upload-panel.css
+@@ -380,3 +380,4 @@
+   .upload-center-footer { margin: 8px; gap: 8px; padding: 10px; }
+   .upload-summary-text b { font-size: 12px; }
+ }
++.upload-empty-hint { margin: 0; padding: 20px 16px; color: var(--up-muted); text-align: center; line-height: 1.6; }
