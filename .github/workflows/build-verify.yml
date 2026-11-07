@@ -80,6 +80,7 @@ jobs:
           pnpm exec playwright install --with-deps chromium --only-shell
           command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
           node --test scripts/tests/frontend-search-browser.test.mjs
+          node --test scripts/tests/frontend-pro-layout-browser.test.mjs
           HOME_SCREENSHOT_DIR=home-screenshots node --test scripts/tests/frontend-home-browser.test.mjs
           LOGIN_SCREENSHOT_DIR=home-screenshots node --test scripts/tests/frontend-login-browser.test.mjs
           node --test scripts/tests/frontend-wake-browser.test.mjs

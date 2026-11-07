@@ -109,6 +109,31 @@ test(
             fullPage: true,
           })
       }
+      // Phone: tab bar, folder drawer and the details bottom sheet.
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.locator(".drive-tab-bar").waitFor()
+      assert.equal(
+        (await page.locator(".drive-tab-current").innerText()).trim(),
+        "Files",
+      )
+      await page.getByRole("button", { name: "Workspace", exact: true }).click()
+      await page
+        .locator("#drive-drawer-tree .drive-tree-link", { hasText: "Documents" })
+        .waitFor()
+      await page.keyboard.press("Escape")
+      await page.locator("#drive-drawer-tree").waitFor({ state: "detached" })
+      await page
+        .getByRole("button", { name: "Show details", exact: true })
+        .click()
+      const sheet = page.getByRole("dialog", { name: "Details" })
+      await sheet.waitFor()
+      assert.match(await sheet.innerText(), /Current folder/)
+      if (screenshotDir)
+        await page.screenshot({
+          path: path.join(screenshotDir, "home-390-details.png"),
+        })
+      await page.keyboard.press("Escape")
+      await sheet.waitFor({ state: "hidden" })
       await page.locator(".drive-heading-mkdir").click()
       await page.getByRole("dialog").waitFor()
       await page.keyboard.press("Escape")
