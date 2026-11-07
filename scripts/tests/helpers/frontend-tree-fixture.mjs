@@ -54,7 +54,8 @@ export function createFixture(dist, { pageSize = 0, permission = 0xffff } = {}) 
         const obj = p === "/" ? dir("root") : (tree[parent] ?? []).find((o) => o.name === name) ?? dir(name)
         data = { ...obj, thumb: "", sign: "", raw_url: "", readme: "", header: "", provider: "S3", related: [] }
       } else if (url.pathname.endsWith("/fs/usage")) data = { mounts: [] }
-      else if (url.pathname.includes("/recent")) data = { content: [], total: 0 }
+      else if (url.pathname.includes("/recent") || url.pathname.endsWith("/share/list"))
+        data = { content: [], total: 0 }
       res.setHeader("Content-Type", "application/json")
       res.end(JSON.stringify({ code: 200, message: "success", data }))
       return

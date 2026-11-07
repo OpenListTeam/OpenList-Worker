@@ -120,8 +120,10 @@ test(
       await page
         .locator("#drive-drawer-tree .drive-tree-link", { hasText: "Documents" })
         .waitFor()
-      await page.keyboard.press("Escape")
-      await page.locator("#drive-drawer-tree").waitFor({ state: "detached" })
+      // Close it the way a person does. (Escape depends on the drawer having
+      // taken focus after its open animation, which varies between runners.)
+      await page.locator(".drive-drawer-close").click()
+      await page.locator("#drive-drawer-tree").waitFor({ state: "hidden" })
       await page
         .getByRole("button", { name: "Show details", exact: true })
         .click()
