@@ -1,5 +1,5 @@
 diff --git a/src/pages/home/DrivePro.tsx b/src/pages/home/DrivePro.tsx
-index 56cc124..c184868 100644
+index 56cc124..d3ef7b0 100644
 --- a/src/pages/home/DrivePro.tsx
 +++ b/src/pages/home/DrivePro.tsx
 @@ -8,9 +8,11 @@ import {
@@ -95,7 +95,7 @@ index 56cc124..c184868 100644
          aria-label={label()}
          title={label()}
          aria-pressed={inspector!.open()}
-@@ -109,27 +134,18 @@ export const DriveInspectorToggle = () => {
+@@ -109,34 +134,86 @@ export const DriveInspectorToggle = () => {
  }
  
  /* ------------------------------------------------------------------ */
@@ -130,7 +130,8 @@ index 56cc124..c184868 100644
    const { to, isShare, pathname } = useRouter()
    const signedIn = () => !!me().id && !UserMethods.is_guest(me())
    const canUpload = () =>
-@@ -137,6 +153,65 @@ export const DriveIconRail = () => {
++    isFilesRoute(pathname()) &&
+     objStore.state === State.Folder &&
      !isShare() &&
      (userCan("write_content") || objStore.write_content_bypass) &&
      objStore.write
@@ -160,7 +161,8 @@ index 56cc124..c184868 100644
 +        current: pathname() === "/@links",
 +        onClick: () => to("/@links"),
 +      })
-+    if (canUpload())
++    // Also reachable while uploads run, wherever you are, to check on them.
++    if (canUpload() || uploadStatus().active > 0)
 +      list.push({
 +        key: "transfers",
 +        label: text("传输", "Transfers"),
@@ -168,7 +170,7 @@ index 56cc124..c184868 100644
 +        current: false,
 +        badge:
 +          uploadStatus().active > 0 ? `${uploadStatus().progress}%` : undefined,
-+        onClick: () => bus.emit("tool", "upload"),
++        onClick: () => bus.emit("tool", "transfers"),
 +      })
 +    return list
 +  })
@@ -196,7 +198,7 @@ index 56cc124..c184868 100644
    return (
      <nav class="drive-icon-rail" aria-label={text("主导航", "Main")}>
        <button
-@@ -147,43 +222,20 @@ export const DriveIconRail = () => {
+@@ -147,43 +224,20 @@ export const DriveIconRail = () => {
        >
          O
        </button>
@@ -252,7 +254,7 @@ index 56cc124..c184868 100644
            />
          </div>
        </Show>
-@@ -191,6 +243,40 @@ export const DriveIconRail = () => {
+@@ -191,6 +245,40 @@ export const DriveIconRail = () => {
    )
  }
  
@@ -293,7 +295,7 @@ index 56cc124..c184868 100644
  /* ------------------------------------------------------------------ */
  /* Folder tree */
  
-@@ -213,58 +299,44 @@ const Chevron = (props: { open: boolean }) => (
+@@ -213,58 +301,44 @@ const Chevron = (props: { open: boolean }) => (
    </svg>
  )
  
@@ -331,8 +333,8 @@ index 56cc124..c184868 100644
 -    } finally {
 -      loading.delete(path)
 -    }
-+const loadTree = async (path: string) => {
-+  if (treeChildren[path] || treeLoading.has(path)) return
++const loadTree = async (path: string, force = false) => {
++  if ((!force && treeChildren[path]) || treeLoading.has(path)) return
 +  const generation = treeGeneration
 +  treeLoading.add(path)
 +  try {
@@ -386,7 +388,7 @@ index 56cc124..c184868 100644
    const migration = (path: string) => {
      const current = pathname()
      const obj = objStore.objs.find(
-@@ -273,11 +345,10 @@ export const DriveTree = () => {
+@@ -273,11 +347,10 @@ export const DriveTree = () => {
      return obj?.migration as
        { processed: number; discovered: number; state: string } | undefined
    }
@@ -401,7 +403,7 @@ index 56cc124..c184868 100644
          const current = () => pathname() === node.path
          const job = () => migration(node.path)
          return (
-@@ -296,9 +367,8 @@ export const DriveTree = () => {
+@@ -296,9 +369,8 @@ export const DriveTree = () => {
                      : text(`展开 ${node.name}`, `Expand ${node.name}`)
                  }
                  onClick={() => {
@@ -413,7 +415,7 @@ index 56cc124..c184868 100644
                  }}
                >
                  <Chevron open={open()} />
-@@ -324,9 +394,9 @@ export const DriveTree = () => {
+@@ -324,9 +396,9 @@ export const DriveTree = () => {
                  </span>
                </Show>
              </div>
@@ -425,7 +427,7 @@ index 56cc124..c184868 100644
                </ul>
              </Show>
            </li>
-@@ -334,11 +404,53 @@ export const DriveTree = () => {
+@@ -334,11 +406,64 @@ export const DriveTree = () => {
        }}
      </For>
    )
@@ -449,19 +451,30 @@ index 56cc124..c184868 100644
 +        }
 +      }),
 +    )
-+    // The open listing is the freshest view of the current folder's children.
++    // Keep the current folder's children fresh after changes. A complete
++    // listing is used directly; a paginated one holds only one page, so the
++    // full list is fetched again whenever the folder's size changes.
++    let synced = ""
 +    createEffect(() => {
 +      if (objStore.state !== State.Folder || isShare()) return
 +      const current = pathname()
-+      setTreeChildren(
-+        current,
-+        objStore.objs
-+          .filter((obj) => obj.is_dir)
-+          .map((obj) => ({
-+            path: childPath(current, obj.name),
-+            name: obj.name,
-+          })),
-+      )
++      if (objStore.objs.length >= objStore.total) {
++        synced = ""
++        setTreeChildren(
++          current,
++          objStore.objs
++            .filter((obj) => obj.is_dir)
++            .map((obj) => ({
++              path: childPath(current, obj.name),
++              name: obj.name,
++            })),
++        )
++        return
++      }
++      const key = `${current}\n${objStore.total}`
++      if (key === synced) return
++      synced = key
++      void loadTree(current, true)
 +    })
 +    onMount(() =>
 +      window.addEventListener("openlist:identity-change", resetTree),
@@ -480,7 +493,7 @@ index 56cc124..c184868 100644
        aria-label={text("目录", "Folders")}
      >
        <Show when={!isShare()}>
-@@ -360,12 +472,14 @@ export const DriveTree = () => {
+@@ -360,12 +485,14 @@ export const DriveTree = () => {
            class="drive-tree-list"
            aria-label={text("目录树", "Folder tree")}
          >
@@ -499,7 +512,32 @@ index 56cc124..c184868 100644
      </aside>
    )
  }
-@@ -574,51 +688,95 @@ const SelectionDetails = () => {
+@@ -489,6 +616,8 @@ const ItemDetails = (props: { obj: StoreObj }) => {
+ const FolderDetails = () => {
+   const { pathname } = useRouter()
+   const totals = createMemo(() => summarize(objStore.objs))
++  // A paginated listing holds one page: only the total is known for sure.
++  const complete = () => objStore.objs.length >= objStore.total
+   const name = () => pathname().split("/").filter(Boolean).pop()
+   return (
+     <>
+@@ -505,9 +634,13 @@ const FolderDetails = () => {
+       <dl class="drive-inspector-meta">
+         <Meta
+           label={text("内容", "Contents")}
+-          value={countLabel(totals().folders, totals().files, zh())}
++          value={
++            complete()
++              ? countLabel(totals().folders, totals().files, zh())
++              : text(`共 ${objStore.total} 项`, `${objStore.total} items`)
++          }
+         />
+-        <Show when={totals().files > 0}>
++        <Show when={complete() && totals().files > 0}>
+           <Meta
+             label={text("文件大小", "Files size")}
+             value={getFileSize(totals().bytes)}
+@@ -574,51 +707,95 @@ const SelectionDetails = () => {
  
  export const DriveInspector = () => {
    const inspector = useContext(InspectorContext)!
@@ -966,3 +1004,49 @@ index 19ef2fa..3b34831 100644
                <button
                  type="button"
                  class="drive-nav-item drive-drawer-refresh"
+diff --git a/src/pages/home/uploads/Upload.tsx b/src/pages/home/uploads/Upload.tsx
+index 1eb28c0..a433103 100644
+--- a/src/pages/home/uploads/Upload.tsx
++++ b/src/pages/home/uploads/Upload.tsx
+@@ -191,6 +191,8 @@ const Upload = () => {
+                 : text("添加文件开始上传", "Add files to upload")
+   const canAdd = () =>
+     !isShare() &&
++    // Pages such as /@recent keep the previous folder's state; never upload there.
++    !pathname().startsWith("/@") &&
+     objStore.state === State.Folder &&
+     objStore.write &&
+     (userCan("write_content") || objStore.write_content_bypass)
+@@ -212,7 +214,22 @@ const Upload = () => {
+     setOpened(true)
+     setExpanded(true)
+   }
+-  bus.on("tool", open)
++  // The transfers button: show the queue, then collapse (uploads still running)
++  // or close it. Opens even where adding is not allowed, if there are tasks.
++  const toggleTransfers = () => {
++    if (opened() && expanded()) {
++      if (cancellable().length) setExpanded(false)
++      else setOpened(false)
++      return
++    }
++    if (!canAdd() && !tasks().length) return
++    if (canAdd()) syncTarget()
++    setOpened(true)
++    setExpanded(true)
++  }
++  const onTool = (name: string) =>
++    name === "transfers" ? toggleTransfers() : open(name)
++  bus.on("tool", onTool)
+   const identityChanged = () => {
+     staleIdentity = me()
+     queue.reset()
+@@ -240,7 +257,7 @@ const Upload = () => {
+   window.addEventListener("openlist:identity-change", identityChanged)
+   onCleanup(() => {
+     setUnfinishedUploads(0)
+-    bus.off("tool", open)
++    bus.off("tool", onTool)
+     window.removeEventListener("online", networkChanged)
+     window.removeEventListener("offline", networkChanged)
+     window.removeEventListener("beforeunload", beforeUnload)
