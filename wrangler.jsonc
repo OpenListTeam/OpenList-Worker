@@ -254,3 +254,5 @@
   //   { "binding": "R2", "bucket_name": "your-bucket" }
   // ],
 }
+// wrangler.jsonc
+"name": "openlist-worker",
