@@ -35,14 +35,15 @@
 <div align="center">
 
 
-| EdgeOne Makers · 國際站 | EdgeOne Makers · 中國站 | Cloudflare Workers · 全球站 |
-| :---: | :---: | :---: |
-| [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
+| EdgeOne Makers · 國際站 | EdgeOne Makers · 中國站 | Cloudflare Workers · 全球站 | 阿里雲 ESA · 中國站 |
+| :---: | :---: | :---: | :---: |
+| [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) | [![使用阿里雲 ESA 部署](assets/esa-deploy.svg)](https://esa.console.aliyun.com/edge/function/list) |
 
 </div>
 
 > [!IMPORTANT]
 > - 若 Cloudflare 提示`無法取得儲存庫內容`，則您需要先 [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork) 本專案，再透過連接到 Github 倉庫功能部署
+> - 阿里雲 ESA 請在控制台「邊緣運算和 AI → 函數和 Pages」中匯入本儲存庫：儲存庫內的 `esa.jsonc` 已包含安裝、建置與靜態資源目錄設定；部署後需設定 `JWT_SECRET` 與 `KV_NAMESPACE`（預設 `openlist`），並提前建立同名 EdgeKV 命名空間
 > - 部署時請填寫 `JWT_SECRET`（≥16 字元的隨機字串，可用 `openssl rand -hex 32` 產生）：用於 JWT 簽章與資料加密；未設定時會在初始化時自動產生並持久化
 > - 資料儲存預設自動選擇平台內建的持久化後端（`DB_DRIVER=auto`），無需設定；其餘變數見 [設定變數](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 > - 部署完成後首次造訪站點，依**安裝精靈**在瀏覽器中設定管理員帳號與密碼即可完成初始化；如需跳過精靈，可設定 `ADMIN_PASS`
@@ -76,6 +77,7 @@ OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTea
 - **離線任務**：後台任務佇列，支援批次操作與非同步處理。
 - **外部介面**：將聚合儲存以 WebDAV 或 S3 相容協定對外暴露，便於掛載到第三方工具。
 - **MCP 服務**：提供 Model Context Protocol 端點，可被 AI 助手等客戶端整合呼叫。
+- **並行去重**：同一時刻相同的目錄列表 / 中繼資料請求只會向上游網盤發起一次，其餘請求重用同一結果，避免無謂的限流與 CPU 消耗。
 
 ### 權限管理
 
@@ -86,10 +88,9 @@ OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTea
 
 ### 平台部署
 
-- **運行平台**：Cloudflare Workers、騰訊雲 EdgeOne Makers、Vercel、Serverless 及 Node.js 容器環境。
-- **資料儲存**：Cloudflare D1（SQLite）為主，同時支援 MySQL、MariaDB、PostgreSQL、SQL Server。
-- **持久快取**：Cloudflare KV / EdgeOne Blob（可選），用於配置持久化與快取。
-- **一鍵部署**：支援 EdgeOne、Cloudflare Workers 等平台的一鍵部署按鈕+初始化。
+- **運行平台**：Cloudflare Workers、騰訊雲 EdgeOne Makers、阿里雲 ESA、Vercel / AWS Lambda 及 Node.js 容器環境。
+- **資料儲存**：Cloudflare D1（SQLite）為主，也支援 KV / Blob / Durable Objects 與外部 MySQL / MariaDB。
+- **一鍵部署**：提供 EdgeOne、Cloudflare Workers 與阿里雲 ESA 的部署入口 + 安裝精靈。
 
 ---
 
@@ -106,7 +107,7 @@ OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTea
 # 1. 安裝依賴
 pnpm install
 
-# 2. 配置 wrangler.toml（填寫 JWT_SECRET、KV/D1 綁定）
+# 2. 按需設定 wrangler.jsonc 中的綁定與變數（JWT_SECRET 見 .dev.vars.example）
 
 # 3. 啟動開發伺服器（自動拉取官方前端並運行 Worker）
 pnpm run dev:unified
@@ -118,10 +119,10 @@ pnpm run dev:worker
 ### 生產部署
 
 ```bash
-# 一鍵部署：確保 KV namespace 存在 → 拉取官方前端 → 部署到 Cloudflare Workers
+# 一鍵部署：建置前端產物 → 部署到 Cloudflare Workers（KV 綁定由 wrangler 自動預配）
 pnpm run deploy
 
-# 或直接部署 Worker（跳過 KV 檢查與前端建置）
+# 或直接部署 Worker（跳過前端建置）
 pnpm run deploy:worker
 ```
 
@@ -131,21 +132,51 @@ pnpm run deploy:worker
 
 ### 後端
 
-- **運行環境**：Cloudflare Workers（Edge Computing）
+- **運行環境**：Cloudflare Workers / EdgeOne 雲函數 / 阿里雲 ESA（Edge Computing）
 - **Web 框架**：Hono.js
-- **資料庫**：Cloudflare D1（SQLite）/ 支援 MySQL、MariaDB、PostgreSQL、SQL Server
-- **快取**：Cloudflare KV（可選）
+- **資料庫**：Cloudflare D1（SQLite）/ KV / Blob / Durable Objects，或外部 MySQL / MariaDB
 - **語言**：TypeScript
 - **建置工具**：Wrangler、esbuild
 
 ### 前端
 
-- **框架**：React 19 + TypeScript
-- **UI 庫**：Ant Design / Material-UI
+- **框架**：SolidJS + TypeScript（官方 [OpenList-Frontend](https://github.com/OpenListTeam/OpenList-Frontend)）
+- **UI 庫**：Hope UI
 - **建置工具**：Vite
 
 ---
 
+## 設定
+
+部署完成後**首次造訪站點會自動進入安裝精靈**，在瀏覽器中設定管理員帳號與密碼即可完成初始化；如需跳過精靈，設定 `ADMIN_PASS` 即可自動初始化 admin。
+
+絕大多數部署**不需要任何額外設定**：資料儲存預設走 `DB_DRIVER=auto`，會自動選擇平台可用的持久化後端（Cloudflare Workers → KV / D1 / DO，EdgeOne / ESA → Blob）。建議顯式設定的只有一項：
+
+| 變數 | 說明 |
+| :--- | :--- |
+| `JWT_SECRET` | JWT 令牌簽章金鑰（≥16 字元，推薦 `openssl rand -hex 32` 產生），同時用於定時任務鑑權。未設定時會在初始化時自動產生並持久化 |
+
+> `JWT_SECRET` 請以 **Secret**（而非一般變數）方式設定：一般變數可能在平台重新部署時被儲存庫內的設定覆寫，Secret 不會被覆寫。
+
+其餘變數均有合理預設值，需要時再調整：
+
+| 變數 | 預設值 | 說明 |
+| :--- | :--- | :--- |
+| `ADMIN_PASS` | — | 跳過安裝精靈，以該密碼自動初始化 admin |
+| `DB_FORMAT` | `map` | 資料儲存格式：`map`（整物件 JSON）/ `key`（分 key）/ `sql`（關聯表，與 Go 後端一致） |
+| `DB_DRIVER` | `auto` | 儲存驅動：`auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql`；顯式指定後不做回退 |
+| `DB_CIPHER` | `none` | 敏感欄位落盤演算法（預設不加密），如 `aes-256-gcm` |
+| `ALLOW_URLS` | — | CORS 允許白名單（逗號分隔，不設則僅同源） |
+| `MAX_UPLOAD` / `MAX_UPPART` | 26214400 / 16777216 | 整體上傳 / 分片上傳大小上限（位元組） |
+| `ASSET_URLS` | — | 前端靜態資源 CDN 位址，支援 `$version` 佔位符 |
+
+目錄列表與下載直鏈每次都直接回源驅動，沒有跨請求快取（無 `CACHE_*` 變數），外部改動立即可見。
+
+完整環境變數（含欄位加密 `DB_CIPHER`、`cfkv` / MySQL 連線設定等）與各平台部署步驟，請參閱文件站：
+
+- [設定變數](https://doc.oplist.org/ecosystem/official_worker/guide_env)
+- [部署教學](https://doc.oplist.org/ecosystem/official_worker/guide)
+- [常見問題](https://doc.oplist.org/ecosystem/official_worker/about)
 
 ## 幫助支援
 

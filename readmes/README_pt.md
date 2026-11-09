@@ -35,14 +35,15 @@ Clique no botão abaixo para implantar este projeto na plataforma correspondente
 <div align="center">
 
 
-| EdgeOne Makers · Internacional | EdgeOne Makers · China | Cloudflare Workers · Global |
-| :---: | :---: | :---: |
-| [![Implantar no EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Implantar no EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
+| EdgeOne Makers · Internacional | EdgeOne Makers · China | Cloudflare Workers · Global | Alibaba Cloud ESA · China |
+| :---: | :---: | :---: | :---: |
+| [![Implantar no EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Implantar no EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) | [![Implantar no Alibaba Cloud ESA](assets/esa-deploy.svg)](https://esa.console.aliyun.com/edge/function/list) |
 
 </div>
 
 > [!IMPORTANT]
 > - Se o Cloudflare exibir `não é possível obter o conteúdo do repositório`, [bifurque](https://github.com/OpenListTeam/OpenList-Worker/fork) este projeto primeiro e depois implante conectando-se ao repositório do Github
+> - Para o Alibaba Cloud ESA, importe este repositório em **Computação de borda e IA → Funções e Pages** no console: o `esa.jsonc` incluído já define instalação, build e recursos estáticos. Após a implantação, configure `JWT_SECRET` e `KV_NAMESPACE` (padrão `openlist`) e crie previamente o namespace EdgeKV com o mesmo nome
 > - Na implantação, informe `JWT_SECRET` (string aleatória com 16+ caracteres, por exemplo `openssl rand -hex 32`): ela assina JWTs e criptografa dados; se não definida, é gerada e persistida durante a inicialização
 > - O armazenamento de dados usa automaticamente o backend persistente da plataforma (`DB_DRIVER=auto`) — sem configuração necessária; para as demais variáveis, consulte [Variáveis de ambiente](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 > - Após a implantação, o primeiro acesso abre o **assistente de instalação**: defina a conta e a senha do administrador no navegador para concluir a inicialização (defina `ADMIN_PASS` para pular o assistente)
@@ -76,6 +77,7 @@ Além dos armazenamentos reais acima, também são fornecidos drivers virtuais/f
 - **Tarefas offline**: fila de tarefas em segundo plano com suporte a operações em lote e processamento assíncrono.
 - **Interfaces externas**: expor o armazenamento agregado via protocolo WebDAV ou compatível com S3 para montagem em ferramentas de terceiros.
 - **Serviço MCP**: fornecer um endpoint de Model Context Protocol que pode ser integrado e chamado por assistentes de IA e outros clientes.
+- **Deduplicação de solicitações concorrentes**: solicitações idênticas de listagem de diretório / metadados no mesmo instante consultam o disco upstream apenas uma vez; as demais reutilizam o mesmo resultado, evitando limites de taxa e consumo de CPU desnecessários.
 
 ### Gestão de acesso
 
@@ -86,10 +88,9 @@ Além dos armazenamentos reais acima, também são fornecidos drivers virtuais/f
 
 ### Implantação em plataformas
 
-- **Plataformas de execução**: Cloudflare Workers, Tencent Cloud EdgeOne Makers, Vercel, Serverless e ambientes de contêiner Node.js.
-- **Armazenamento de dados**: Cloudflare D1 (SQLite) como principal, também compatível com MySQL, MariaDB, PostgreSQL, SQL Server.
-- **Cache persistente**: Cloudflare KV / EdgeOne Blob (opcional) para persistência de configuração e cache.
-- **Implantação em um clique**: suporta botões de implantação em um clique + inicialização no EdgeOne, Cloudflare Workers e outras plataformas.
+- **Plataformas de execução**: Cloudflare Workers, Tencent Cloud EdgeOne Makers, Alibaba Cloud ESA, Vercel / AWS Lambda e ambientes de contêiner Node.js.
+- **Armazenamento de dados**: Cloudflare D1 (SQLite) como principal, além de KV / Blob / Durable Objects e MySQL / MariaDB externos.
+- **Implantação em um clique**: entradas de implantação para EdgeOne, Cloudflare Workers e Alibaba Cloud ESA + assistente de instalação.
 
 ---
 
@@ -106,7 +107,7 @@ Além dos armazenamentos reais acima, também são fornecidos drivers virtuais/f
 # 1. Instalar dependências
 pnpm install
 
-# 2. Configurar o wrangler.toml (preencher JWT_SECRET, ligações KV/D1)
+# 2. Configurar as ligações e variáveis no wrangler.jsonc conforme necessário (JWT_SECRET veja .dev.vars.example)
 
 # 3. Iniciar o servidor de desenvolvimento (obtém automaticamente o frontend oficial e executa o Worker)
 pnpm run dev:unified
@@ -118,10 +119,10 @@ pnpm run dev:worker
 ### Implantação em produção
 
 ```bash
-# Implantação em um clique: garantir que o namespace KV exista → obter o frontend oficial → implantar no Cloudflare Workers
+# Implantação em um clique: compilar o frontend → implantar no Cloudflare Workers (as ligações KV são provisionadas automaticamente pelo wrangler)
 pnpm run deploy
 
-# Ou implantar diretamente o Worker (pular a verificação de KV e a compilação do frontend)
+# Ou implantar diretamente o Worker (pular a compilação do frontend)
 pnpm run deploy:worker
 ```
 
@@ -131,21 +132,51 @@ pnpm run deploy:worker
 
 ### Backend
 
-- **Ambiente de execução**: Cloudflare Workers (Edge Computing)
+- **Ambiente de execução**: Cloudflare Workers / EdgeOne Functions / Alibaba Cloud ESA (Edge Computing)
 - **Framework web**: Hono.js
-- **Banco de dados**: Cloudflare D1 (SQLite) / compatível com MySQL, MariaDB, PostgreSQL, SQL Server
-- **Cache**: Cloudflare KV (opcional)
+- **Banco de dados**: Cloudflare D1 (SQLite) / KV / Blob / Durable Objects ou MySQL / MariaDB externo
 - **Linguagem**: TypeScript
 - **Ferramentas de build**: Wrangler, esbuild
 
 ### Frontend
 
-- **Framework**: React 19 + TypeScript
-- **Bibliotecas UI**: Ant Design / Material-UI
+- **Framework**: SolidJS + TypeScript (oficial [OpenList-Frontend](https://github.com/OpenListTeam/OpenList-Frontend))
+- **Biblioteca UI**: Hope UI
 - **Ferramenta de build**: Vite
 
 ---
 
+## Configuração
+
+Após a implantação, o **primeiro acesso ao site abre automaticamente o assistente de instalação**: defina a conta e a senha do administrador no navegador para concluir a inicialização. Para pular o assistente, configure `ADMIN_PASS` para inicializar o admin automaticamente.
+
+A maioria das implantações **não precisa de configuração extra**: o armazenamento usa por padrão `DB_DRIVER=auto`, que seleciona automaticamente um backend persistente disponível (Cloudflare Workers → KV / D1 / DO, EdgeOne / ESA → Blob). A única variável que vale definir explicitamente é:
+
+| Variável | Descrição |
+| :--- | :--- |
+| `JWT_SECRET` | Chave de assinatura de tokens JWT (≥16 caracteres, recomendado: `openssl rand -hex 32`), também usada na autenticação de tarefas cron. Se não definida, é gerada e persistida durante a inicialização |
+
+> Configure `JWT_SECRET` como **Secret** (e não como variável comum): variáveis comuns podem ser sobrescritas pela configuração do repositório ao reimplantar, Secrets não.
+
+As demais variáveis têm valores padrão razoáveis:
+
+| Variável | Padrão | Descrição |
+| :--- | :--- | :--- |
+| `ADMIN_PASS` | — | Pula o assistente de instalação e inicializa o admin com esta senha |
+| `DB_FORMAT` | `map` | Formato de armazenamento: `map` (objeto JSON inteiro) / `key` (por chave) / `sql` (tabelas relacionais, compatível com o backend Go) |
+| `DB_DRIVER` | `auto` | Driver de armazenamento: `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql`; um driver explícito nunca é substituído automaticamente |
+| `DB_CIPHER` | `none` | Criptografia em repouso de campos sensíveis (nenhuma por padrão), por exemplo `aes-256-gcm` |
+| `ALLOW_URLS` | — | Lista de permissões CORS (separada por vírgulas; apenas mesma origem se não definida) |
+| `MAX_UPLOAD` / `MAX_UPPART` | 26214400 / 16777216 | Tamanho máximo (bytes) de um upload completo / de um fragmento multipart |
+| `ASSET_URLS` | — | URL base do CDN para recursos do frontend, aceita o marcador `$version` |
+
+As listagens de diretórios e os links de download são sempre obtidos diretamente do disco — não há cache entre requisições (sem variáveis `CACHE_*`), então mudanças externas ficam visíveis imediatamente.
+
+Para a lista completa de variáveis (criptografia de campos `DB_CIPHER`, ajustes de `cfkv` / MySQL etc.) e os passos de implantação por plataforma, consulte a documentação:
+
+- [Variáveis de ambiente](https://doc.oplist.org/ecosystem/official_worker/guide_env)
+- [Implantação](https://doc.oplist.org/ecosystem/official_worker/guide)
+- [FAQ](https://doc.oplist.org/ecosystem/official_worker/about)
 
 ## Suporte
 

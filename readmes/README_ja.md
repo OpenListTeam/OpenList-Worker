@@ -35,14 +35,15 @@
 <div align="center">
 
 
-| EdgeOne Makers · 国際版 | EdgeOne Makers · 中国版 | Cloudflare Workers · グローバル |
-| :---: | :---: | :---: |
-| [![EdgeOne にデプロイ](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![EdgeOne にデプロイ](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
+| EdgeOne Makers · 国際版 | EdgeOne Makers · 中国版 | Cloudflare Workers · グローバル | Alibaba Cloud ESA · 中国版 |
+| :---: | :---: | :---: | :---: |
+| [![EdgeOne にデプロイ](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![EdgeOne にデプロイ](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) | [![Alibaba Cloud ESA にデプロイ](assets/esa-deploy.svg)](https://esa.console.aliyun.com/edge/function/list) |
 
 </div>
 
 > [!IMPORTANT]
 > - Cloudflare が `ストレージリポジトリの内容を取得できません` と表示する場合、まず本プロジェクトを [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork) し、Github リポジトリへの接続からデプロイしてください
+> - Alibaba Cloud ESA の場合は、コンソールの **エッジコンピューティングと AI → 関数と Pages** から本リポジトリをインポートしてください。リポジトリ内の `esa.jsonc` にインストール・ビルド・静的アセットの設定が含まれています。デプロイ後に `JWT_SECRET` と `KV_NAMESPACE`（デフォルト `openlist`）を設定し、同名の EdgeKV 名前空間を事前に作成してください
 > - デプロイ時に `JWT_SECRET`（16 文字以上のランダム文字列、例：`openssl rand -hex 32`）を設定してください。JWT 署名とデータ暗号化に使われ、未設定の場合は初期化時に自動生成・永続化されます
 > - データ保存はプラットフォーム標準の永続化バックエンドを自動選択します（`DB_DRIVER=auto`）——通常は設定不要です。その他の変数は [環境変数](https://doc.oplist.org/ecosystem/official_worker/guide_env) を参照してください
 > - デプロイ後の初回アクセスでは**インストールウィザード**が開きます。ブラウザで管理者アカウントとパスワードを設定して初期化してください（`ADMIN_PASS` を設定するとウィザードをスキップできます）
@@ -76,6 +77,7 @@ OpenList-Worker は公式 [OpenListTeam/OpenList](https://github.com/OpenListTea
 - **オフラインタスク**：バックグラウンドタスクキューにより一括操作と非同期処理に対応。
 - **外部インターフェース**：集約ストレージを WebDAV または S3 互換プロトコルで公開し、サードパーティツールへのマウントが可能。
 - **MCP サービス**：Model Context Protocol エンドポイントを提供し、AI アシスタントなどのクライアントから統合・呼び出し可能。
+- **同時リクエストの重複排除**：同一瞬間の同一ディレクトリ一覧 / メタデータ要求は上流ドライブへ一度だけ送信され、他の要求は同じ結果を再利用するため、不要なレート制限や CPU 消費を避けられます。
 
 ### 権限管理
 
@@ -86,10 +88,9 @@ OpenList-Worker は公式 [OpenListTeam/OpenList](https://github.com/OpenListTea
 
 ### プラットフォームデプロイ
 
-- **実行プラットフォーム**：Cloudflare Workers、Tencent Cloud EdgeOne Makers、Vercel、Serverless、Node.js コンテナ環境。
-- **データストレージ**：Cloudflare D1（SQLite）を主とし、MySQL、MariaDB、PostgreSQL、SQL Server にも対応。
-- **永続キャッシュ**：Cloudflare KV / EdgeOne Blob（オプション）。設定の永続化とキャッシュに使用。
-- **ワンクリックデプロイ**：EdgeOne、Cloudflare Workers などのプラットフォームでワンクリックデプロイボタン+初期化に対応。
+- **実行プラットフォーム**：Cloudflare Workers、Tencent Cloud EdgeOne Makers、Alibaba Cloud ESA、Vercel / AWS Lambda、Node.js コンテナ環境。
+- **データストレージ**：Cloudflare D1（SQLite）を主とし、KV / Blob / Durable Objects および外部 MySQL / MariaDB にも対応。
+- **ワンクリックデプロイ**：EdgeOne、Cloudflare Workers、Alibaba Cloud ESA のデプロイ入口 + インストールウィザード。
 
 ---
 
@@ -106,7 +107,7 @@ OpenList-Worker は公式 [OpenListTeam/OpenList](https://github.com/OpenListTea
 # 1. 依存関係をインストール
 pnpm install
 
-# 2. wrangler.toml を設定（JWT_SECRET、KV/D1 バインディングを入力）
+# 2. 必要に応じて wrangler.jsonc のバインディングと変数を設定（JWT_SECRET は .dev.vars.example を参照）
 
 # 3. 開発サーバーを起動（公式フロントエンドを自動取得して Worker を実行）
 pnpm run dev:unified
@@ -118,10 +119,10 @@ pnpm run dev:worker
 ### 本番デプロイ
 
 ```bash
-# ワンクリックデプロイ：KV namespace の存在確認 → 公式フロントエンド取得 → Cloudflare Workers へデプロイ
+# ワンクリックデプロイ：フロントエンドをビルド → Cloudflare Workers へデプロイ（KV バインディングは wrangler が自動プロビジョニング）
 pnpm run deploy
 
-# または Worker を直接デプロイ（KV チェックとフロントエンドビルドをスキップ）
+# または Worker を直接デプロイ（フロントエンドのビルドをスキップ）
 pnpm run deploy:worker
 ```
 
@@ -131,21 +132,51 @@ pnpm run deploy:worker
 
 ### バックエンド
 
-- **実行環境**：Cloudflare Workers（Edge Computing）
+- **実行環境**：Cloudflare Workers / EdgeOne Functions / Alibaba Cloud ESA（Edge Computing）
 - **Web フレームワーク**：Hono.js
-- **データベース**：Cloudflare D1（SQLite）/ MySQL、MariaDB、PostgreSQL、SQL Server に対応
-- **キャッシュ**：Cloudflare KV（オプション）
+- **データベース**：Cloudflare D1（SQLite）/ KV / Blob / Durable Objects または外部 MySQL / MariaDB
 - **言語**：TypeScript
 - **ビルドツール**：Wrangler、esbuild
 
 ### フロントエンド
 
-- **フレームワーク**：React 19 + TypeScript
-- **UI ライブラリ**：Ant Design / Material-UI
+- **フレームワーク**：SolidJS + TypeScript（公式 [OpenList-Frontend](https://github.com/OpenListTeam/OpenList-Frontend)）
+- **UI ライブラリ**：Hope UI
 - **ビルドツール**：Vite
 
 ---
 
+## 設定
+
+デプロイ後、**サイトへの初回アクセス時にインストールウィザードが自動的に開きます**。ブラウザで管理者アカウントとパスワードを設定すると初期化が完了します。ウィザードをスキップするには `ADMIN_PASS` を設定すると、管理者が自動的に初期化されます。
+
+ほとんどのデプロイでは**追加設定は不要**です。データ保存はデフォルトで `DB_DRIVER=auto` を使用し、利用可能な永続化バックエンド（Cloudflare Workers → KV / D1 / DO、EdgeOne / ESA → Blob）を自動選択します。明示的に設定する価値があるのは次の 1 つだけです。
+
+| 変数 | 説明 |
+| :--- | :--- |
+| `JWT_SECRET` | JWT トークン署名キー（≥16 文字、`openssl rand -hex 32` 推奨）。cron タスクの認証にも使用されます。未設定の場合は初期化時に自動生成・永続化されます |
+
+> `JWT_SECRET` は**Secret**（通常の変数ではなく）として設定してください。通常の変数は再デプロイ時にリポジトリ設定で上書きされる可能性がありますが、Secret は上書きされません。
+
+その他の変数には適切なデフォルト値があります。
+
+| 変数 | デフォルト | 説明 |
+| :--- | :--- | :--- |
+| `ADMIN_PASS` | — | インストールウィザードをスキップし、このパスワードで管理者を自動初期化 |
+| `DB_FORMAT` | `map` | 保存形式：`map`（JSON 全体）/ `key`（キー単位）/ `sql`（リレーショナルテーブル、Go バックエンド互換） |
+| `DB_DRIVER` | `auto` | ストレージドライバー：`auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql`。明示指定したドライバーは自動的に置き換えられません |
+| `DB_CIPHER` | `none` | 機密フィールドの保存時暗号化（デフォルトは暗号化なし）、例：`aes-256-gcm` |
+| `ALLOW_URLS` | — | CORS 許可リスト（カンマ区切り、未設定時は同一オリジンのみ） |
+| `MAX_UPLOAD` / `MAX_UPPART` | 26214400 / 16777216 | 全体アップロード / マルチパートチャンクの最大サイズ（バイト） |
+| `ASSET_URLS` | — | フロントエンド静的アセットの CDN アドレス、`$version` プレースホルダー対応 |
+
+ディレクトリ一覧とダウンロード直リンクは常にドライブから直接取得され、リクエスト間キャッシュはありません（`CACHE_*` 変数なし）。そのため外部の変更は即座に反映されます。
+
+完全な環境変数（フィールド暗号化 `DB_CIPHER`、`cfkv` / MySQL 接続設定など）とプラットフォーム別のデプロイ手順は、ドキュメントサイトを参照してください。
+
+- [環境変数](https://doc.oplist.org/ecosystem/official_worker/guide_env)
+- [デプロイ](https://doc.oplist.org/ecosystem/official_worker/guide)
+- [FAQ](https://doc.oplist.org/ecosystem/official_worker/about)
 
 ## サポート
 

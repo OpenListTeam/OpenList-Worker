@@ -35,14 +35,15 @@
 <div align="center">
 
 
-| EdgeOne Makers · دولي | EdgeOne Makers · الصين | Cloudflare Workers · عالمي |
-| :---: | :---: | :---: |
-| [![النشر على EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![النشر على EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
+| EdgeOne Makers · دولي | EdgeOne Makers · الصين | Cloudflare Workers · عالمي | Alibaba Cloud ESA · الصين |
+| :---: | :---: | :---: | :---: |
+| [![النشر على EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![النشر على EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) | [![النشر على Alibaba Cloud ESA](assets/esa-deploy.svg)](https://esa.console.aliyun.com/edge/function/list) |
 
 </div>
 
 > [!IMPORTANT]
 > - إذا عرض Cloudflare رسالة `تعذّر جلب محتوى المستودع`، [قم بعمل fork](https://github.com/OpenListTeam/OpenList-Worker/fork) لهذا المشروع أولاً ثم انشر من خلال الاتصال بمستودع Github
+> - بالنسبة إلى Alibaba Cloud ESA، استورد هذا المستودع من **الحوسبة الطرفية والذكاء الاصطناعي ← الدوال وPages** في وحدة التحكم: ملف `esa.jsonc` المضمّن يحدد بالفعل أوامر التثبيت والبناء ومجلد الموارد الثابتة. بعد النشر، اضبط `JWT_SECRET` و`KV_NAMESPACE` (الافتراضي `openlist`) وأنشئ مسبقًا مساحة أسماء EdgeKV بالاسم نفسه
 > - عند النشر، املأ `JWT_SECRET` (سلسلة عشوائية من 16 حرفًا أو أكثر، مثل `openssl rand -hex 32`): تُستخدم لتوقيع JWT وتشفير البيانات؛ وإن لم تُضبط فسيتم توليدها وحفظها أثناء التهيئة
 > - يستخدم تخزين البيانات تلقائيًا الواجهة الخلفية الدائمة للمنصة (`DB_DRIVER=auto`) — لا حاجة لأي إعداد؛ ولمتغيرات أخرى راجع [متغيرات البيئة](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 > - بعد النشر، يظهر **معالج التثبيت** عند أول زيارة: عيّن حساب المسؤول وكلمة المرور في المتصفح لإكمال التهيئة (اضبط `ADMIN_PASS` لتخطي المعالج)
@@ -76,6 +77,7 @@ OpenList-Worker هو المنفذ الرسمي TypeScript + Serverless لمشر�
 - **المهام دون اتصال**: قائمة انتظار مهام في الخلفية تدعم العمليات الجماعية والمعالجة غير المتزامنة.
 - **الواجهات الخارجية**: كشف التخزين المجمّع عبر بروتوكول WebDAV أو بروتوكول متوافق مع S3 للتركيب في أدوات خارجية.
 - **خدمة MCP**: توفير نقطة نهاية Model Context Protocol يمكن دمجها واستدعاؤها من مساعدي الذكاء الاصطناعي والعملاء الآخرين.
+- **إزالة تكرار الطلبات المتزامنة**: طلبات قائمة الدليل / البيانات الوصفية المتطابقة في اللحظة نفسها تصل إلى القرص الأعلى مرة واحدة فقط؛ وتعيد الطلبات الأخرى استخدام النتيجة نفسها، مما يتجنب حدود المعدل واستهلاك المعالج غير الضروري.
 
 ### إدارة الوصول
 
@@ -86,10 +88,9 @@ OpenList-Worker هو المنفذ الرسمي TypeScript + Serverless لمشر�
 
 ### النشر على المنصات
 
-- **منصات التشغيل**: Cloudflare Workers وTencent Cloud EdgeOne Makers وVercel وServerless وبيئات حاويات Node.js.
-- **تخزين البيانات**: Cloudflare D1 (SQLite) كأساس، مع دعم MySQL وMariaDB وPostgreSQL وSQL Server.
-- **الذاكرة المؤقتة الدائمة**: Cloudflare KV / EdgeOne Blob (اختياري) لحفظ الإعدادات والتخزين المؤقت.
-- **النشر بنقرة واحدة**: دعم أزرار النشر بنقرة واحدة + التهيئة على EdgeOne وCloudflare Workers ومنصات أخرى.
+- **منصات التشغيل**: Cloudflare Workers وTencent Cloud EdgeOne Makers وAlibaba Cloud ESA وVercel / AWS Lambda وبيئات حاويات Node.js.
+- **تخزين البيانات**: Cloudflare D1 (SQLite) كأساس، بالإضافة إلى KV / Blob / Durable Objects وMySQL / MariaDB الخارجيين.
+- **النشر بنقرة واحدة**: مداخل نشر EdgeOne وCloudflare Workers وAlibaba Cloud ESA + معالج التثبيت.
 
 ---
 
@@ -106,7 +107,7 @@ OpenList-Worker هو المنفذ الرسمي TypeScript + Serverless لمشر�
 # 1. تثبيت التبعيات
 pnpm install
 
-# 2. إعداد wrangler.toml (تعبئة JWT_SECRET وارتباطات KV/D1)
+# 2. إعداد الارتباطات والمتغيرات في wrangler.jsonc حسب الحاجة (JWT_SECRET انظر .dev.vars.example)
 
 # 3. تشغيل خادم التطوير (يجلب الواجهة الأمامية الرسمية تلقائيًا ويشغّل Worker)
 pnpm run dev:unified
@@ -118,10 +119,10 @@ pnpm run dev:worker
 ### النشر في الإنتاج
 
 ```bash
-# النشر بنقرة واحدة: التأكد من وجود namespace الخاص بـ KV → جلب الواجهة الأمامية الرسمية → النشر على Cloudflare Workers
+# النشر بنقرة واحدة: بناء الواجهة الأمامية ← النشر على Cloudflare Workers (تُجهَّز ارتباطات KV تلقائيًا بواسطة wrangler)
 pnpm run deploy
 
-# أو نشر Worker مباشرة (تخطي فحص KV وبناء الواجهة الأمامية)
+# أو نشر Worker مباشرة (تخطي بناء الواجهة الأمامية)
 pnpm run deploy:worker
 ```
 
@@ -131,21 +132,51 @@ pnpm run deploy:worker
 
 ### الواجهة الخلفية
 
-- **بيئة التشغيل**: Cloudflare Workers (Edge Computing)
+- **بيئة التشغيل**: Cloudflare Workers / EdgeOne Functions / Alibaba Cloud ESA (Edge Computing)
 - **إطار الويب**: Hono.js
-- **قاعدة البيانات**: Cloudflare D1 (SQLite) / تدعم MySQL وMariaDB وPostgreSQL وSQL Server
-- **الذاكرة المؤقتة**: Cloudflare KV (اختياري)
+- **قاعدة البيانات**: Cloudflare D1 (SQLite) / KV / Blob / Durable Objects أو MySQL / MariaDB خارجي
 - **اللغة**: TypeScript
 - **أدوات البناء**: Wrangler وesbuild
 
 ### الواجهة الأمامية
 
-- **الإطار**: React 19 + TypeScript
-- **مكتبات الواجهة**: Ant Design / Material-UI
+- **الإطار**: SolidJS + TypeScript (الرسمي [OpenList-Frontend](https://github.com/OpenListTeam/OpenList-Frontend))
+- **مكتبة الواجهة**: Hope UI
 - **أداة البناء**: Vite
 
 ---
 
+## الإعداد
+
+بعد النشر، **تفتح أول زيارة للموقع معالج التثبيت تلقائيًا**: عيّن حساب المسؤول وكلمة المرور في المتصفح لإكمال التهيئة. لتخطي المعالج، اضبط `ADMIN_PASS` ليتم تهيئة المسؤول تلقائيًا.
+
+معظم عمليات النشر **لا تحتاج إلى أي إعداد إضافي**: يستخدم التخزين افتراضيًا `DB_DRIVER=auto`، الذي يختار تلقائيًا واجهة خلفية دائمة متاحة (Cloudflare Workers ← KV / D1 / DO، EdgeOne / ESA ← Blob). المتغير الوحيد الذي يُستحسن ضبطه صراحةً هو:
+
+| المتغير | الوصف |
+| :--- | :--- |
+| `JWT_SECRET` | مفتاح توقيع رموز JWT (≥16 حرفًا، يُوصى بـ `openssl rand -hex 32`)، ويُستخدم أيضًا لمصادقة مهام cron. إذا لم يُضبط، يُولَّد ويُحفظ أثناء التهيئة |
+
+> اضبط `JWT_SECRET` كـ **Secret** (وليس متغيرًا عاديًا): المتغيرات العادية قد تُستبدل بإعدادات المستودع عند إعادة النشر، أما Secrets فلا.
+
+المتغيرات الأخرى لها قيم افتراضية معقولة:
+
+| المتغير | الافتراضي | الوصف |
+| :--- | :--- | :--- |
+| `ADMIN_PASS` | — | تخطي معالج التثبيت وتهيئة المسؤول بهذه الكلمة |
+| `DB_FORMAT` | `map` | تنسيق التخزين: `map` (كائن JSON كامل) / `key` (لكل مفتاح) / `sql` (جداول علائقية، متوافق مع الواجهة الخلفية Go) |
+| `DB_DRIVER` | `auto` | برنامج تشغيل التخزين: `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql`؛ لا يُستبدل البرنامج المحدد صراحةً تلقائيًا |
+| `DB_CIPHER` | `none` | تشفير الحقول الحساسة عند التخزين (بلا تشفير افتراضيًا)، مثل `aes-256-gcm` |
+| `ALLOW_URLS` | — | قائمة CORS المسموح بها (مفصولة بفواصل؛ وعند عدم ضبطها يُسمح بالمصدر نفسه فقط) |
+| `MAX_UPLOAD` / `MAX_UPPART` | 26214400 / 16777216 | الحد الأقصى (بايت) للرفع الكامل / لجزء الرفع المتعدد |
+| `ASSET_URLS` | — | عنوان CDN الأساسي لموارد الواجهة الأمامية، يدعم العنصر النائب `$version` |
+
+تُجلب قوائم الأدلة وروابط التنزيل دائمًا مباشرة من القرص — لا يوجد تخزين مؤقت بين الطلبات (لا متغيرات `CACHE_*`)، لذا تظهر التغييرات الخارجية فورًا.
+
+للاطلاع على القائمة الكاملة للمتغيرات (تشفير الحقول `DB_CIPHER`، وإعدادات `cfkv` / MySQL، إلخ) وخطوات النشر لكل منصة، راجع التوثيق:
+
+- [متغيرات البيئة](https://doc.oplist.org/ecosystem/official_worker/guide_env)
+- [النشر](https://doc.oplist.org/ecosystem/official_worker/guide)
+- [الأسئلة الشائعة](https://doc.oplist.org/ecosystem/official_worker/about)
 
 ## الدعم
 

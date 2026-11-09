@@ -35,14 +35,15 @@ Click the button below to deploy this project to the corresponding platform with
 <div align="center">
 
 
-| EdgeOne Makers · International | EdgeOne Makers · China | Cloudflare Workers · Global |
-| :---: | :---: | :---: |
-| [![Deploy to EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
+| EdgeOne Makers · International | EdgeOne Makers · China | Cloudflare Workers · Global | Alibaba Cloud ESA · China |
+| :---: | :---: | :---: | :---: |
+| [![Deploy to EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) | [![Deploy to Alibaba Cloud ESA](assets/esa-deploy.svg)](https://esa.console.aliyun.com/edge/function/list) |
 
 </div>
 
 > [!IMPORTANT]
 > - If Cloudflare prompts `cannot fetch repository content`, [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork) this project first, then deploy by connecting to the GitHub repository
+> - For Alibaba Cloud ESA, import this repository from **Edge Computing and AI → Functions and Pages** in the console: the bundled `esa.jsonc` already defines the install, build and static asset settings; after deployment, set `JWT_SECRET` and `KV_NAMESPACE` (default `openlist`), and create the EdgeKV namespace with the same name in advance
 > - Set `JWT_SECRET` during deployment (a random string of ≥16 chars, e.g. `openssl rand -hex 32`): it signs JWTs and encrypts data; if unset, it is generated and persisted during initialization
 > - Storage automatically uses the platform's built-in persistent backend (`DB_DRIVER=auto`) — no configuration needed; for other variables see [Environment Variables](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 > - After deployment, the first visit opens the **install wizard**: set the admin account and password in the browser to finish initialization; set `ADMIN_PASS` to skip the wizard
@@ -76,6 +77,7 @@ In addition to the real storages above, virtual/functional drivers such as `Loca
 - **Offline tasks**: background task queue supporting batch operations and async processing.
 - **External interfaces**: expose aggregated storage via WebDAV or S3-compatible protocol for mounting into third-party tools.
 - **MCP service**: provide a Model Context Protocol endpoint that can be integrated and called by AI assistants and other clients.
+- **Concurrency deduplication**: identical directory listing / metadata requests at the same moment hit the upstream drive only once; the rest reuse the same result, avoiding unnecessary rate limits and CPU usage.
 
 ### Access Control
 
@@ -86,10 +88,9 @@ In addition to the real storages above, virtual/functional drivers such as `Loca
 
 ### Platform Deployment
 
-- **Runtime platforms**: Cloudflare Workers, Tencent Cloud EdgeOne Makers, Vercel, Serverless and Node.js container environments.
-- **Data storage**: Cloudflare D1 (SQLite) as primary, also supporting MySQL, MariaDB, PostgreSQL, SQL Server.
-- **Persistent cache**: Cloudflare KV / EdgeOne Blob (optional) for config persistence and caching.
-- **One-click deploy**: support one-click deploy buttons + initialization on EdgeOne, Cloudflare Workers and other platforms.
+- **Runtime platforms**: Cloudflare Workers, Tencent Cloud EdgeOne Makers, Alibaba Cloud ESA, Vercel / AWS Lambda and Node.js container environments.
+- **Data storage**: Cloudflare D1 (SQLite) as primary, also supporting KV / Blob / Durable Objects and external MySQL / MariaDB.
+- **One-click deploy**: deployment entries for EdgeOne, Cloudflare Workers and Alibaba Cloud ESA + install wizard.
 
 ---
 
@@ -106,7 +107,7 @@ In addition to the real storages above, virtual/functional drivers such as `Loca
 # 1. Install dependencies
 pnpm install
 
-# 2. Configure wrangler.toml (fill in JWT_SECRET, KV/D1 bindings)
+# 2. Configure bindings and variables in wrangler.jsonc as needed (see .dev.vars.example for JWT_SECRET)
 
 # 3. Start the dev server (auto-fetches the official frontend and runs the Worker)
 pnpm run dev:unified
@@ -118,10 +119,10 @@ pnpm run dev:worker
 ### Production Deployment
 
 ```bash
-# One-click deploy: ensure the KV namespace exists → fetch the official frontend → deploy to Cloudflare Workers
+# One-click deploy: build the frontend → deploy to Cloudflare Workers (KV bindings are provisioned automatically by wrangler)
 pnpm run deploy
 
-# Or deploy the Worker directly (skip KV check and frontend build)
+# Or deploy the Worker directly (skip the frontend build)
 pnpm run deploy:worker
 ```
 

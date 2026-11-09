@@ -35,14 +35,15 @@
 <div align="center">
 
 
-| EdgeOne Makers · 국제 | EdgeOne Makers · 중국 | Cloudflare Workers · 글로벌 |
-| :---: | :---: | :---: |
-| [![EdgeOne에 배포](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![EdgeOne에 배포](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
+| EdgeOne Makers · 국제 | EdgeOne Makers · 중국 | Cloudflare Workers · 글로벌 | Alibaba Cloud ESA · 중국 |
+| :---: | :---: | :---: | :---: |
+| [![EdgeOne에 배포](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![EdgeOne에 배포](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) | [![Alibaba Cloud ESA에 배포](assets/esa-deploy.svg)](https://esa.console.aliyun.com/edge/function/list) |
 
 </div>
 
 > [!IMPORTANT]
 > - Cloudflare에서 `저장소 콘텐츠를 가져올 수 없습니다`라고 표시되면, 먼저 이 프로젝트를 [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork)한 다음 Github 저장소 연결 기능으로 배포하세요
+> - Alibaba Cloud ESA의 경우 콘솔의 **엣지 컴퓨팅 및 AI → 함수 및 Pages**에서 이 저장소를 가져오세요. 저장소의 `esa.jsonc`에 설치, 빌드, 정적 자산 디렉터리 설정이 이미 포함되어 있습니다. 배포 후 `JWT_SECRET`과 `KV_NAMESPACE`(기본값 `openlist`)를 설정하고, 동일한 이름의 EdgeKV 네임스페이스를 미리 생성하세요
 > - 배포 시 `JWT_SECRET`(16자 이상의 임의 문자열, 예: `openssl rand -hex 32`)을 입력하세요. JWT 서명과 데이터 암호화에 사용되며, 미설정 시 초기화 단계에서 자동 생성·영구 저장됩니다
 > - 데이터 저장은 플랫폼 내장 영구 저장소를 자동으로 선택합니다(`DB_DRIVER=auto`) — 대부분 설정이 필요 없으며, 나머지 변수는 [환경 변수](https://doc.oplist.org/ecosystem/official_worker/guide_env)를 참고하세요
 > - 배포 후 첫 방문 시 **설치 마법사**가 열립니다. 브라우저에서 관리자 계정과 비밀번호를 설정하면 초기화가 완료됩니다(`ADMIN_PASS`를 설정하면 마법사를 건너뜁니다)
@@ -76,6 +77,7 @@ OpenList-Worker는 공식 [OpenListTeam/OpenList](https://github.com/OpenListTea
 - **오프라인 작업**：백그라운드 작업 큐로 일괄 작업 및 비동기 처리 지원.
 - **외부 인터페이스**：집계 스토리지를 WebDAV 또는 S3 호환 프로토콜로 노출하여 타사 도구에 마운트 가능.
 - **MCP 서비스**：Model Context Protocol 엔드포인트를 제공하여 AI 어시스턴트 등의 클라이언트에서 통합·호출 가능.
+- **동시 요청 중복 제거**：같은 순간의 동일한 디렉터리 목록 / 메타데이터 요청은 업스트림 드라이브에 한 번만 전달되고, 나머지 요청은 같은 결과를 재사용하여 불필요한 속도 제한과 CPU 소모를 피합니다.
 
 ### 권한 관리
 
@@ -86,10 +88,9 @@ OpenList-Worker는 공식 [OpenListTeam/OpenList](https://github.com/OpenListTea
 
 ### 플랫폼 배포
 
-- **실행 플랫폼**：Cloudflare Workers、Tencent Cloud EdgeOne Makers、Vercel、Serverless、Node.js 컨테이너 환경.
-- **데이터 스토리지**：Cloudflare D1（SQLite）을 주로 사용하며 MySQL、MariaDB、PostgreSQL、SQL Server도 지원.
-- **영속 캐시**：Cloudflare KV / EdgeOne Blob（선택）. 설정 영속화 및 캐시에 사용.
-- **원클릭 배포**：EdgeOne、Cloudflare Workers 등 플랫폼에서 원클릭 배포 버튼 + 초기화 지원.
+- **실행 플랫폼**：Cloudflare Workers、Tencent Cloud EdgeOne Makers、Alibaba Cloud ESA、Vercel / AWS Lambda 및 Node.js 컨테이너 환경.
+- **데이터 스토리지**：Cloudflare D1（SQLite）을 주로 사용하며 KV / Blob / Durable Objects 및 외부 MySQL / MariaDB도 지원.
+- **원클릭 배포**：EdgeOne、Cloudflare Workers、Alibaba Cloud ESA 배포 진입점 + 설치 마법사.
 
 ---
 
@@ -106,7 +107,7 @@ OpenList-Worker는 공식 [OpenListTeam/OpenList](https://github.com/OpenListTea
 # 1. 의존성 설치
 pnpm install
 
-# 2. wrangler.toml 설정（JWT_SECRET, KV/D1 바인딩 입력）
+# 2. 필요에 따라 wrangler.jsonc의 바인딩과 변수 설정（JWT_SECRET은 .dev.vars.example 참고）
 
 # 3. 개발 서버 시작（공식 프런트엔드를 자동으로 가져와 Worker 실행）
 pnpm run dev:unified
@@ -118,10 +119,10 @@ pnpm run dev:worker
 ### 프로덕션 배포
 
 ```bash
-# 원클릭 배포：KV namespace 존재 확인 → 공식 프런트엔드 가져오기 → Cloudflare Workers에 배포
+# 원클릭 배포：프런트엔드 빌드 → Cloudflare Workers에 배포（KV 바인딩은 wrangler가 자동으로 프로비저닝）
 pnpm run deploy
 
-# 또는 Worker 직접 배포（KV 확인 및 프런트엔드 빌드 건너뜀）
+# 또는 Worker 직접 배포（프런트엔드 빌드 건너뜀）
 pnpm run deploy:worker
 ```
 
@@ -131,21 +132,51 @@ pnpm run deploy:worker
 
 ### 백엔드
 
-- **실행 환경**：Cloudflare Workers（Edge Computing）
+- **실행 환경**：Cloudflare Workers / EdgeOne Functions / Alibaba Cloud ESA（Edge Computing）
 - **웹 프레임워크**：Hono.js
-- **데이터베이스**：Cloudflare D1（SQLite）/ MySQL、MariaDB、PostgreSQL、SQL Server 지원
-- **캐시**：Cloudflare KV（선택）
+- **데이터베이스**：Cloudflare D1（SQLite）/ KV / Blob / Durable Objects 또는 외부 MySQL / MariaDB
 - **언어**：TypeScript
 - **빌드 도구**：Wrangler、esbuild
 
 ### 프런트엔드
 
-- **프레임워크**：React 19 + TypeScript
-- **UI 라이브러리**：Ant Design / Material-UI
+- **프레임워크**：SolidJS + TypeScript（공식 [OpenList-Frontend](https://github.com/OpenListTeam/OpenList-Frontend)）
+- **UI 라이브러리**：Hope UI
 - **빌드 도구**：Vite
 
 ---
 
+## 설정
+
+배포 후 **사이트 첫 방문 시 설치 마법사가 자동으로 열립니다**. 브라우저에서 관리자 계정과 비밀번호를 설정하면 초기화가 완료됩니다. 마법사를 건너뛰려면 `ADMIN_PASS`를 설정하면 관리자가 자동으로 초기화됩니다.
+
+대부분의 배포는 **추가 설정이 필요하지 않습니다**. 데이터 저장은 기본적으로 `DB_DRIVER=auto`를 사용하여 사용 가능한 영구 백엔드（Cloudflare Workers → KV / D1 / DO, EdgeOne / ESA → Blob）를 자동으로 선택합니다. 명시적으로 설정할 가치가 있는 유일한 변수는 다음과 같습니다.
+
+| 변수 | 설명 |
+| :--- | :--- |
+| `JWT_SECRET` | JWT 토큰 서명 키（≥16자, `openssl rand -hex 32` 권장）. cron 작업 인증에도 사용됩니다. 미설정 시 초기화 단계에서 자동 생성·영구 저장됩니다 |
+
+> `JWT_SECRET`은 **Secret**(일반 변수가 아님)으로 설정하세요. 일반 변수는 재배포 시 저장소 설정으로 덮어쓸 수 있지만 Secret은 그렇지 않습니다.
+
+나머지 변수에는 합리적인 기본값이 있습니다.
+
+| 변수 | 기본값 | 설명 |
+| :--- | :--- | :--- |
+| `ADMIN_PASS` | — | 설치 마법사를 건너뛰고 이 비밀번호로 관리자를 자동 초기화 |
+| `DB_FORMAT` | `map` | 저장 형식：`map`(전체 JSON 객체) / `key`(키별) / `sql`(관계형 테이블, Go 백엔드 호환) |
+| `DB_DRIVER` | `auto` | 저장 드라이버：`auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql`; 명시적으로 지정한 드라이버는 자동으로 대체되지 않음 |
+| `DB_CIPHER` | `none` | 민감 필드 저장 시 암호화(기본 미암호화), 예: `aes-256-gcm` |
+| `ALLOW_URLS` | — | CORS 허용 목록(쉼표 구분, 미설정 시 동일 출처만 허용) |
+| `MAX_UPLOAD` / `MAX_UPPART` | 26214400 / 16777216 | 전체 업로드 / 멀티파트 청크 최대 크기(바이트) |
+| `ASSET_URLS` | — | 프런트엔드 정적 자산 CDN 주소, `$version` 자리표시자 지원 |
+
+디렉터리 목록과 다운로드 직링크는 항상 드라이브에서 직접 가져오며 요청 간 캐시가 없습니다(`CACHE_*` 변수 없음). 따라서 외부 변경 사항이 즉시 반영됩니다.
+
+전체 환경 변수(필드 암호화 `DB_CIPHER`, `cfkv` / MySQL 연결 설정 등)와 플랫폼별 배포 단계는 문서 사이트를 참고하세요.
+
+- [환경 변수](https://doc.oplist.org/ecosystem/official_worker/guide_env)
+- [배포](https://doc.oplist.org/ecosystem/official_worker/guide)
+- [FAQ](https://doc.oplist.org/ecosystem/official_worker/about)
 
 ## 도움말
 

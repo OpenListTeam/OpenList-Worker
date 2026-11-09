@@ -35,14 +35,15 @@
 <div align="center">
 
 
-| EdgeOne Makers · अंतर्राष्ट्रीय | EdgeOne Makers · चीन | Cloudflare Workers · वैश्विक |
-| :---: | :---: | :---: |
-| [![EdgeOne पर तैनात करें](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![EdgeOne पर तैनात करें](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
+| EdgeOne Makers · अंतर्राष्ट्रीय | EdgeOne Makers · चीन | Cloudflare Workers · वैश्विक | Alibaba Cloud ESA · चीन |
+| :---: | :---: | :---: | :---: |
+| [![EdgeOne पर तैनात करें](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![EdgeOne पर तैनात करें](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) | [![Alibaba Cloud ESA पर तैनात करें](assets/esa-deploy.svg)](https://esa.console.aliyun.com/edge/function/list) |
 
 </div>
 
 > [!IMPORTANT]
 > - यदि Cloudflare `रिपॉजिटरी सामग्री प्राप्त नहीं कर सकता` दिखाता है, तो पहले इस परियोजना को [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork) करें, फिर Github रिपॉजिटरी से कनेक्ट करके तैनात करें
+> - Alibaba Cloud ESA के लिए, कंसोल में **एज कंप्यूटिंग और AI → फ़ंक्शन और Pages** से इस रिपॉजिटरी को आयात करें: रिपॉजिटरी में मौजूद `esa.jsonc` पहले से इंस्टॉल, बिल्ड और स्टैटिक एसेट निर्देशिका निर्धारित करता है। तैनाती के बाद `JWT_SECRET` और `KV_NAMESPACE` (डिफ़ॉल्ट `openlist`) सेट करें, और पहले से उसी नाम का EdgeKV namespace बनाएँ
 > - तैनाती के समय `JWT_SECRET` भरें (16+ वर्णों की यादृच्छिक स्ट्रिंग, उदा. `openssl rand -hex 32`): यह JWT पर हस्ताक्षर और डेटा एन्क्रिप्शन के लिए उपयोग होता है; न दिया जाए तो इनिशियलाइज़ेशन के दौरान स्वतः बनाकर सहेजा जाता है
 > - डेटा संग्रहण स्वतः प्लेटफ़ॉर्म के स्थायी बैकएंड का चयन करता है (`DB_DRIVER=auto`) — कोई कॉन्फ़िगरेशन आवश्यक नहीं; शेष चरों के लिए [पर्यावरण चर](https://doc.oplist.org/ecosystem/official_worker/guide_env) देखें
 > - तैनाती के बाद पहली विज़िट पर **इंस्टॉल विज़ार्ड** खुलता है: इनिशियलाइज़ेशन पूरा करने के लिए ब्राउज़र में एडमिन खाता और पासवर्ड सेट करें (`ADMIN_PASS` सेट करने पर विज़ार्ड छूट जाता है)
@@ -76,6 +77,7 @@ OpenList-Worker आधिकारिक [OpenListTeam/OpenList](https://github.
 - **ऑफ़लाइन कार्य**: बैकग्राउंड कार्य कतार, बैच संचालन और अतुल्यकालिक प्रसंस्करण का समर्थन करती है।
 - **बाहरी इंटरफ़ेस**: एग्रीगेटेड स्टोरेज को WebDAV या S3-संगत प्रोटोकॉल के माध्यम से उजागर करना, ताकि तृतीय-पक्ष टूल में माउंट किया जा सके।
 - **MCP सेवा**: Model Context Protocol एंडपॉइंट प्रदान करता है, जिसे AI सहायक और अन्य क्लाइंट एकीकृत और कॉल कर सकते हैं।
+- **समवर्ती अनुरोध डिडुप्लिकेशन**: एक ही समय पर समान निर्देशिका सूची / मेटाडेटा अनुरोध अपस्ट्रीम ड्राइव पर केवल एक बार जाते हैं; बाकी अनुरोध वही परिणाम पुनः उपयोग करते हैं, जिससे अनावश्यक रेट लिमिट और CPU खपत से बचा जाता है।
 
 ### पहुंच प्रबंधन
 
@@ -86,10 +88,9 @@ OpenList-Worker आधिकारिक [OpenListTeam/OpenList](https://github.
 
 ### प्लेटफ़ॉर्म तैनाती
 
-- **रनटाइम प्लेटफ़ॉर्म**: Cloudflare Workers、Tencent Cloud EdgeOne Makers、Vercel、Serverless और Node.js कंटेनर वातावरण।
-- **डेटा स्टोरेज**: Cloudflare D1（SQLite）प्राथमिक, साथ ही MySQL、MariaDB、PostgreSQL、SQL Server का समर्थन करता है।
-- **स्थायी कैश**: Cloudflare KV / EdgeOne Blob（वैकल्पिक）, कॉन्फ़िगरेशन स्थायित्व और कैशिंग के लिए।
-- **एक-क्लिक तैनाती**: EdgeOne、Cloudflare Workers और अन्य प्लेटफ़ॉर्म पर एक-क्लिक तैनाती बटन + प्रारंभिकरण का समर्थन करता है।
+- **रनटाइम प्लेटफ़ॉर्म**: Cloudflare Workers、Tencent Cloud EdgeOne Makers、Alibaba Cloud ESA、Vercel / AWS Lambda और Node.js कंटेनर वातावरण।
+- **डेटा स्टोरेज**: Cloudflare D1（SQLite）प्राथमिक, साथ ही KV / Blob / Durable Objects और बाहरी MySQL / MariaDB।
+- **एक-क्लिक तैनाती**: EdgeOne、Cloudflare Workers और Alibaba Cloud ESA के लिए तैनाती प्रवेश + इंस्टॉल विज़ार्ड।
 
 ---
 
@@ -106,7 +107,7 @@ OpenList-Worker आधिकारिक [OpenListTeam/OpenList](https://github.
 # 1. निर्भरताएँ स्थापित करें
 pnpm install
 
-# 2. wrangler.toml कॉन्फ़िगर करें（JWT_SECRET, KV/D1 बाइंडिंग भरें）
+# 2. आवश्यकतानुसार wrangler.jsonc में बाइंडिंग और चर कॉन्फ़िगर करें（JWT_SECRET के लिए .dev.vars.example देखें）
 
 # 3. विकास सर्वर शुरू करें（आधिकारिक फ्रंटएंड को स्वचालित रूप से प्राप्त करता है और Worker चलाता है）
 pnpm run dev:unified
@@ -118,10 +119,10 @@ pnpm run dev:worker
 ### उत्पादन तैनाती
 
 ```bash
-# एक-क्लिक तैनाती: सुनिश्चित करें कि KV namespace मौजूद है → आधिकारिक फ्रंटएंड प्राप्त करें → Cloudflare Workers पर तैनात करें
+# एक-क्लिक तैनाती: फ्रंटएंड बिल्ड करें → Cloudflare Workers पर तैनात करें（KV बाइंडिंग wrangler द्वारा स्वतः प्रावधानित）
 pnpm run deploy
 
-# या Worker को सीधे तैनात करें（KV जाँच और फ्रंटएंड बिल्ड छोड़ें）
+# या Worker को सीधे तैनात करें（फ्रंटएंड बिल्ड छोड़ें）
 pnpm run deploy:worker
 ```
 
@@ -131,21 +132,51 @@ pnpm run deploy:worker
 
 ### बैकएंड
 
-- **रनटाइम वातावरण**: Cloudflare Workers（Edge Computing）
+- **रनटाइम वातावरण**: Cloudflare Workers / EdgeOne Functions / Alibaba Cloud ESA（Edge Computing）
 - **वेब फ्रेमवर्क**: Hono.js
-- **डेटाबेस**: Cloudflare D1（SQLite）/ MySQL、MariaDB、PostgreSQL、SQL Server का समर्थन करता है
-- **कैश**: Cloudflare KV（वैकल्पिक）
+- **डेटाबेस**: Cloudflare D1（SQLite）/ KV / Blob / Durable Objects या बाहरी MySQL / MariaDB
 - **भाषा**: TypeScript
 - **बिल्ड टूल**: Wrangler、esbuild
 
 ### फ्रंटएंड
 
-- **फ्रेमवर्क**: React 19 + TypeScript
-- **UI लाइब्रेरी**: Ant Design / Material-UI
+- **फ्रेमवर्क**: SolidJS + TypeScript（आधिकारिक [OpenList-Frontend](https://github.com/OpenListTeam/OpenList-Frontend)）
+- **UI लाइब्रेरी**: Hope UI
 - **बिल्ड टूल**: Vite
 
 ---
 
+## कॉन्फ़िगरेशन
+
+तैनाती के बाद **साइट पर पहली विज़िट स्वतः इंस्टॉल विज़ार्ड खोलती है**: इनिशियलाइज़ेशन पूरा करने के लिए ब्राउज़र में एडमिन खाता और पासवर्ड सेट करें। विज़ार्ड छोड़ने के लिए `ADMIN_PASS` सेट करें, ताकि एडमिन स्वतः इनिशियलाइज़ हो जाए।
+
+अधिकांश तैनातियों को **किसी अतिरिक्त कॉन्फ़िगरेशन की आवश्यकता नहीं** होती: स्टोरेज डिफ़ॉल्ट रूप से `DB_DRIVER=auto` का उपयोग करता है, जो उपलब्ध स्थायी बैकएंड स्वतः चुनता है（Cloudflare Workers → KV / D1 / DO, EdgeOne / ESA → Blob）。केवल एक चर स्पष्ट रूप से सेट करना उपयोगी है:
+
+| चर | विवरण |
+| :--- | :--- |
+| `JWT_SECRET` | JWT टोकन हस्ताक्षर कुंजी（≥16 वर्ण, अनुशंसित `openssl rand -hex 32`）, cron कार्य प्रमाणीकरण के लिए भी उपयोग होती है। न सेट होने पर इनिशियलाइज़ेशन के दौरान स्वतः बनाकर सहेजी जाती है |
+
+> `JWT_SECRET` को **Secret** के रूप में सेट करें（सामान्य चर के रूप में नहीं）: सामान्य चर पुनः तैनाती पर रिपॉजिटरी कॉन्फ़िगरेशन से अधिलेखित हो सकते हैं, Secrets नहीं।
+
+शेष चरों के लिए उचित डिफ़ॉल्ट मान हैं:
+
+| चर | डिफ़ॉल्ट | विवरण |
+| :--- | :--- | :--- |
+| `ADMIN_PASS` | — | इंस्टॉल विज़ार्ड छोड़कर इस पासवर्ड से एडमिन इनिशियलाइज़ करता है |
+| `DB_FORMAT` | `map` | स्टोरेज प्रारूप: `map`（पूरा JSON ऑब्जेक्ट）/ `key`（प्रति कुंजी）/ `sql`（संबंधपरक तालिकाएँ, Go बैकएंड के अनुरूप） |
+| `DB_DRIVER` | `auto` | स्टोरेज ड्राइवर: `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql`; स्पष्ट रूप से चुना गया ड्राइवर कभी स्वतः नहीं बदला जाता |
+| `DB_CIPHER` | `none` | संवेदनशील फ़ील्ड का एट-रेस्ट एन्क्रिप्शन（डिफ़ॉल्ट रूप से कोई नहीं）, जैसे `aes-256-gcm` |
+| `ALLOW_URLS` | — | CORS अनुमत सूची（कॉमा से अलग; न सेट होने पर केवल समान मूल） |
+| `MAX_UPLOAD` / `MAX_UPPART` | 26214400 / 16777216 | पूर्ण अपलोड / एक मल्टीपार्ट खंड का अधिकतम आकार（बाइट） |
+| `ASSET_URLS` | — | फ्रंटएंड एसेट का CDN आधार URL, `$version` प्लेसहोल्डर का समर्थन करता है |
+
+निर्देशिका सूचियाँ और डाउनलोड लिंक हमेशा सीधे ड्राइव से प्राप्त होते हैं — अनुरोधों के बीच कोई कैश नहीं（कोई `CACHE_*` चर नहीं）, इसलिए बाहरी परिवर्तन तुरंत दिखाई देते हैं।
+
+पूरी चर सूची（फ़ील्ड एन्क्रिप्शन `DB_CIPHER`, `cfkv` / MySQL सेटिंग्स आदि）और प्रत्येक प्लेटफ़ॉर्म के तैनाती चरणों के लिए दस्तावेज़ देखें:
+
+- [पर्यावरण चर](https://doc.oplist.org/ecosystem/official_worker/guide_env)
+- [तैनाती](https://doc.oplist.org/ecosystem/official_worker/guide)
+- [सामान्य प्रश्न](https://doc.oplist.org/ecosystem/official_worker/about)
 
 ## सहायता
 
