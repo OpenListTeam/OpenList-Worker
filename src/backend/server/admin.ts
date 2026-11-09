@@ -3459,7 +3459,7 @@ const driverConfigs: Record<string, any> = {
         type: "string",
         default: "",
         required: false,
-        help: "Optional. Enables automatic PC token refresh before the current 139 token expires.",
+        help: "Optional. ud_id cookie value for the PC refreshToken API; leave empty to refresh via the legacy endpoint.",
       },
       {
         name: "root_folder_id",

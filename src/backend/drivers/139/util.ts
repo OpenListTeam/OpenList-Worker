@@ -1,4 +1,5 @@
 import CryptoJS from "crypto-js"
+import { DOMParser } from "@xmldom/xmldom"
 import {
   Yun139Addition,
   QueryRoutePolicyResp,
@@ -58,6 +59,26 @@ export function formatTime(d: Date): string {
 // host 就是硬失败，绝不允许静默回退到这个占位域名。
 const YUN139_DEFAULT_HOST = "https://yun.139.com"
 
+/**
+ * 旧版 token 刷新接口，主项目 Go 驱动仍在用：只需要当前 token 与账号，
+ * 不要求 user_domain_id。用于替代 PC refreshToken 接口不可用时的硬失败。
+ */
+const YUN139_LEGACY_REFRESH_URL =
+  "https://aas.caiyun.feixin.10086.cn/tellin/authTokenRefresh.do"
+
+/** 旧接口失败或刚刷新后，至少隔这么久再试，避免每次文件操作都请求一次。 */
+const YUN139_LEGACY_REFRESH_COOLDOWN_MS = 30 * 60 * 1000
+
+/** 读取旧版刷新接口 XML 响应中第一个同名标签的文本。 */
+function readXmlTag(xml: string, tag: string): string {
+  try {
+    const doc = new DOMParser().parseFromString(xml, "text/xml")
+    return (doc.getElementsByTagName(tag)[0]?.textContent || "").trim()
+  } catch {
+    return ""
+  }
+}
+
 /** 139 目录 id 的"根"写法：这些父 id 不做内容归属校验（根列表出现什么都不奇怪）。 */
 const ROOT_PARENT_IDS = new Set(["/", "0", "root", "cloud139_root"])
 
@@ -110,7 +131,7 @@ export class Yun139ApiClient {
   public groupHost = YUN139_DEFAULT_HOST
   public account = ""
   private onAuthorizationRefresh?: (authorization: string) => Promise<void>
-  private warnedMissingUserDomainId = false
+  private legacyRefreshNextAttemptAt = 0
 
   constructor(
     addition: Yun139Addition,
@@ -402,27 +423,58 @@ export class Yun139ApiClient {
     if (pieces.length < 3) return
 
     const token = pieces.slice(2).join(":")
-    const tokenFields = token.split("|")
-    const expiresAt = Number(tokenFields[3])
-    if (!Number.isFinite(expiresAt) || expiresAt <= 0) return
+    const expiresAt = this.tokenExpiresAt(token)
+    if (expiresAt <= 0) return
 
     const refreshWindowMs = 15 * 24 * 60 * 60 * 1000
     if (expiresAt - Date.now() > refreshWindowMs) return
 
     const userDomainId = (this.addition.user_domain_id || "").trim()
-    if (!userDomainId) {
-      // The PC refreshToken endpoint requires user_domain_id, but existing auth
-      // tokens remain usable until the service expires them. Do not make an
-      // optional refresh prerequisite break otherwise-valid legacy configs.
-      if (!this.warnedMissingUserDomainId) {
-        console.warn(
-          "[139] token is near expiry; skipping automatic refresh because user_domain_id is not configured",
-        )
-        this.warnedMissingUserDomainId = true
-      }
+    if (userDomainId) {
+      await this.refreshWithPcApi(auth, pieces, userDomainId)
       return
     }
 
+    // user_domain_id 只是 PC refreshToken 接口的必填项，不是自动续期的前提。
+    // 留空时改走主项目仍在使用的旧版刷新接口（只需要当前 token）。旧接口
+    // 失败也静默保留现有 token：不再因为“即将过期”打断初始化或刷告警。
+    if (Date.now() < this.legacyRefreshNextAttemptAt) return
+    try {
+      const newToken = await this.refreshWithLegacyApi(token, expiresAt)
+      await this.applyRefreshedAuthorization(pieces, newToken)
+      this.legacyRefreshNextAttemptAt =
+        Date.now() + YUN139_LEGACY_REFRESH_COOLDOWN_MS
+    } catch (e) {
+      this.legacyRefreshNextAttemptAt =
+        Date.now() + YUN139_LEGACY_REFRESH_COOLDOWN_MS
+      console.debug(
+        "[139] automatic token refresh skipped:",
+        e instanceof Error ? e.message : String(e),
+      )
+    }
+  }
+
+  /** 从 `<token>|...|<expiresAt>|...` 中读取毫秒时间戳，非法时返回 0。 */
+  private tokenExpiresAt(token: string): number {
+    const expiresAt = Number(token.split("|")[3])
+    return Number.isFinite(expiresAt) && expiresAt > 0 ? expiresAt : 0
+  }
+
+  private async applyRefreshedAuthorization(
+    pieces: string[],
+    newToken: string,
+  ): Promise<void> {
+    this.addition.authorization = CryptoJS.enc.Base64.stringify(
+      CryptoJS.enc.Utf8.parse(`${pieces[0]}:${this.account}:${newToken}`),
+    )
+    await this.onAuthorizationRefresh?.(this.addition.authorization)
+  }
+
+  private async refreshWithPcApi(
+    auth: string,
+    pieces: string[],
+    userDomainId: string,
+  ): Promise<void> {
     const authHeader = `Basic ${auth}`
 
     // Match the minimal header set from the successful PowerShell request.
@@ -469,17 +521,66 @@ export class Yun139ApiClient {
         `139 Cloud PC token refresh failed: code=${result.code || "unknown"}, message=${result.message || "empty token"}`,
       )
     }
-    const newExpiresAt = Number(newToken.split("|")[3])
-    if (!Number.isFinite(newExpiresAt) || newExpiresAt <= Date.now()) {
+    if (this.tokenExpiresAt(newToken) <= Date.now()) {
       throw new Error(
         "139 Cloud PC refresh returned a token without a valid future expiry",
       )
     }
 
-    this.addition.authorization = CryptoJS.enc.Base64.stringify(
-      CryptoJS.enc.Utf8.parse(`${pieces[0]}:${this.account}:${newToken}`),
+    await this.applyRefreshedAuthorization(pieces, newToken)
+  }
+
+  /**
+   * 旧版刷新接口（对齐主项目 Go 驱动）：使用 XML 请求，不需要 user_domain_id。
+   * 响应里 `<token>` 与 `<accessToken>` 都可能是新 token，只接受过期时间比
+   * 旧 token 更晚的值，避免把原 token 或非 pipe 格式的字段写回 Authorization。
+   */
+  private async refreshWithLegacyApi(
+    token: string,
+    currentExpiresAt: number,
+  ): Promise<string> {
+    const body =
+      `<root><token>${token}</token><account>${this.account}</account>` +
+      "<clienttype>656</clienttype></root>"
+
+    const response = await fetch(YUN139_LEGACY_REFRESH_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/xml;charset=UTF-8",
+        Referer: "https://yun.139.com/",
+      },
+      body,
+    })
+
+    const text = await response.text()
+    if (!response.ok) {
+      throw new Error(
+        `139 Cloud legacy token refresh failed (${response.status}): ${text}`,
+      )
+    }
+
+    const code = readXmlTag(text, "return")
+    if (code !== "0") {
+      throw new Error(
+        `139 Cloud legacy token refresh failed: return=${code || "unknown"}, ` +
+          `desc=${readXmlTag(text, "desc") || "empty"}`,
+      )
+    }
+
+    for (const candidate of [
+      readXmlTag(text, "token"),
+      readXmlTag(text, "accessToken"),
+    ]) {
+      if (
+        this.tokenExpiresAt(candidate) > Math.max(currentExpiresAt, Date.now())
+      ) {
+        return candidate
+      }
+    }
+
+    throw new Error(
+      "139 Cloud legacy refresh returned no token with a valid future expiry",
     )
-    await this.onAuthorizationRefresh?.(this.addition.authorization)
   }
 
   async init(): Promise<void> {
