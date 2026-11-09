@@ -322,3 +322,73 @@ test("/raw/* returns 401 without sign when sign_all is enabled (parity with Go n
   const res = await app.request("/raw/some/file.txt", { method: "GET" })
   assert.equal(res.status, 401, "sign_all enabled must require a valid sign")
 })
+
+test("Security: allow_guest 的布尔/大小写/空白写法同样关闭访客", async () => {
+  const env: any = {}
+  const users = [
+    {
+      id: 1,
+      username: "admin",
+      password: await hashPasswordSHA256("admin123"),
+      role: 2,
+      permission: 0,
+      base_path: "/",
+      disabled: false,
+    },
+    {
+      id: 2,
+      username: "guest",
+      password: "",
+      role: 1,
+      permission: 0,
+      base_path: "/",
+      disabled: false,
+    },
+  ]
+  const context: any = {
+    req: { header: () => undefined, query: () => undefined },
+    env,
+  }
+  const app = new Hono()
+  app.route("/api/fs", fsRouter)
+  app.route("/api/public", publicRouter)
+
+  // 设置行可能由其它入口/历史版本写成布尔值或大小写不同的字符串，
+  // 这些写法都必须与 "false" 等价关闭访客，否则就是 fail-open。
+  for (const value of [false, "False", " FALSE "]) {
+    await saveDb(
+      {
+        settings: [{ key: "allow_guest", value }],
+        users: JSON.parse(JSON.stringify(users)),
+        storages: [],
+        shares: [],
+      } as any,
+      env,
+    )
+
+    assert.equal(
+      await getUserFromContext(context),
+      null,
+      `allow_guest=${JSON.stringify(value)} 时不应回退为 guest`,
+    )
+
+    const list = await app.request(
+      "/api/fs/list",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: "/" }),
+      },
+      env,
+    )
+    assert.equal(list.status, 401, `allow_guest=${JSON.stringify(value)}`)
+
+    const settings = await app.request("/api/public/settings", {}, env)
+    const settingsBody: any = await settings.json()
+    assert.equal(
+      settingsBody.data.allow_guest,
+      "false",
+      `allow_guest=${JSON.stringify(value)} 的展示值必须与鉴权一致`,
+    )
+  }
+})

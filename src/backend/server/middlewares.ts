@@ -1,6 +1,7 @@
 import { Context } from "hono"
 import { verify } from "hono/jwt"
 import { checkAdminAuth, isStaticApiToken } from "../pkg/utils"
+import { isGuestAllowed } from "../pkg/permission"
 import { getDb, readPersistedSecret, ENCRYPTION_SECRET_KV_KEY } from "../internal/model/db"
 import { isPasswordStampValid } from "../pkg/password"
 
@@ -499,10 +500,9 @@ export async function getUserFromContext(c: Context): Promise<{
   if (!authHeader) {
     try {
       const db = await getDb(c.env)
-      const allowGuest = (db.settings || []).find(
-        (setting: any) => setting.key === "allow_guest",
-      )?.value
-      if (allowGuest === "false") return null
+      // 统一走 isGuestAllowed：与 /api/public/settings 的展示规则同源，
+      // 并兼容布尔 false / 大小写等历史写法（裸 === "false" 会 fail-open）。
+      if (!isGuestAllowed(db.settings)) return null
 
       const guest = (db.users || []).find((u: any) => u.username === "guest")
       if (guest && !guest.disabled) {

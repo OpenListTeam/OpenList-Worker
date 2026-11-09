@@ -154,3 +154,26 @@ export function isWithinUserRoot(
   if (root === "/") return true
   return target === root || target.startsWith(root + "/")
 }
+
+/**
+ * 访客访问开关（应用设置 `allow_guest`）。
+ *
+ * 设置值来自应用设置（`db.settings`）。历史数据与第三方写入可能是字符串、
+ * 布尔值，或带空白/大小写差异（`"false"` / `"False"` / `false`）。统一按
+ * 「字符串化后 trim + 小写 === "false"」判定；缺失或其它值一律视为允许，
+ * 保持「未配置 = 旧行为」的兼容性。
+ *
+ * 为什么必须集中在这里：展示端（`/api/public/settings`）与鉴权端
+ * （`getUserFromContext`、Emby 匿名封面入口）各写一套比较时，只要一边改动，
+ * 就会出现「设置页显示已关闭、接口仍放行」的漂移。
+ */
+export function isGuestAllowed(settings: any): boolean {
+  let raw: any
+  if (Array.isArray(settings)) {
+    raw = settings.find((s: any) => s && s.key === "allow_guest")?.value
+  } else if (settings && typeof settings === "object") {
+    raw = settings.allow_guest
+  }
+  if (raw === undefined || raw === null) return true
+  return String(raw).trim().toLowerCase() !== "false"
+}

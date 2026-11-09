@@ -17,6 +17,7 @@ import {
   readFormat,
 } from "../internal/model/store/backend"
 import { setUserPassword } from "../pkg/password"
+import { isGuestAllowed } from "../pkg/permission"
 // 脱敏 / 截断：与全局 503 拦截（index.ts）共用同一套规则
 import { reasonLines, redact } from "./storage-error"
 
@@ -551,7 +552,9 @@ publicRouter.get("/settings", async (c) => {
   // 动态检查是否存在且启用了 guest 账号
   const guest = (db.users || []).find((u: any) => u.username === "guest")
   const isGuestActive = Boolean(guest && !guest.disabled)
-  if (!isGuestActive || settingsObj.allow_guest === "false") {
+  // 与鉴权路径（getUserFromContext / Emby 匿名入口）共用 isGuestAllowed，
+  // 避免「展示已关闭、实际仍放行」的规则漂移（布尔 false / "False" 等写法）。
+  if (!isGuestActive || !isGuestAllowed(settingsObj)) {
     settingsObj.allow_guest = "false"
   } else {
     settingsObj.allow_guest = "true"

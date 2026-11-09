@@ -333,3 +333,65 @@ test("Emby 封面：剧集封面同样经过 meta 校验", async () => {
   const denied = await app.request(path, {}, {})
   assert.equal(denied.status, 404)
 })
+
+/**
+ * 写入/删除 allow_guest 设置行。
+ *
+ * 该键在默认设置里没有对应条目（由应用设置动态产生），因此测试里需要
+ * 自行插入，结束后再删除，避免影响同文件其它用例。
+ */
+async function setAllowGuestRow(value: any) {
+  const db = await getDb()
+  if (!db.settings) db.settings = []
+  const row = (db.settings || []).find((s: any) => s.key === "allow_guest")
+  if (value === undefined) {
+    db.settings = (db.settings || []).filter((s: any) => s.key !== "allow_guest")
+  } else if (row) {
+    row.value = value
+  } else {
+    db.settings.push({
+      key: "allow_guest",
+      value,
+      type: "bool",
+      help: "",
+      group: 0,
+      flag: 0,
+    } as any)
+  }
+  await saveDb(db, undefined, { force: true } as any)
+}
+
+test("Emby 封面：allow_guest=false 时匿名封面请求返回 401", async () => {
+  await seedMediaEnv([
+    mediaItem({
+      id: 1,
+      media_type: "video",
+      folder_path: "/public",
+      file_name: "ok.mkv",
+      cover: "https://example.com/ok.jpg",
+    }),
+  ])
+  const app = buildApp()
+  const path = "/@emby/Items/mv-1/Images/Primary"
+
+  // 基线：访客访问开启时匿名可取封面（历史行为）
+  const allowed = await app.request(path, {}, {})
+  assert.equal(allowed.status, 302)
+
+  try {
+    for (const value of ["false", false, "False"]) {
+      await setAllowGuestRow(value)
+      const res = await app.request(path, {}, {})
+      assert.equal(
+        res.status,
+        401,
+        `allow_guest=${JSON.stringify(value)} 时匿名封面入口必须拒绝`,
+      )
+    }
+  } finally {
+    await setAllowGuestRow(undefined)
+  }
+
+  const restored = await app.request(path, {}, {})
+  assert.equal(restored.status, 302)
+})

@@ -30,7 +30,7 @@ import {
   type MediaDb,
   type MediaItem,
 } from "../internal/media/model"
-import { isWithinUserRoot } from "../pkg/permission"
+import { isWithinUserRoot, isGuestAllowed } from "../pkg/permission"
 import {
   createPlaylist,
   deletePlaylist,
@@ -174,9 +174,16 @@ function baseVisible(db: MediaDb, user: any, item: MediaItem) {
   }
 }
 
-/** 取 guest 用户（匿名入口用）；不存在或被禁用返回 null */
+/**
+ * 取 guest 用户（匿名入口用）。
+ *
+ * 匿名请求只有在「访客访问已开启」且「guest 存在且未禁用」时才回退成 guest。
+ * 历史缺陷：这里只看用户状态，不看 allow_guest —— 与 getUserFromContext 同类的
+ * fail-open：管理员把访客访问关掉后，Emby 封面等匿名入口仍按 guest 权限出数据。
+ */
 async function guestUserOf(env: any) {
   const db = await getDb(env)
+  if (!isGuestAllowed(db.settings)) return null
   const guest = (db.users || []).find((u: any) => u.username === "guest")
   return guest && !guest.disabled ? guest : null
 }
