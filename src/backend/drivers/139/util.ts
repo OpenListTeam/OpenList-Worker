@@ -501,6 +501,7 @@ export class Yun139ApiClient {
           mailCookies: e.mailCookies,
           smsCode: (this.addition.sms_code || "").trim(),
         })
+        throw e
       }
       console.debug(
         "[139] re-login after refresh failure skipped:",
