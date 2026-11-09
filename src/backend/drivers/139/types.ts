@@ -12,6 +12,7 @@ export interface Yun139Addition {
   authorization: string
   username?: string
   password?: string
+  sms_code?: string
   mail_cookies?: string
   root_folder_id?: string
   type?: "personal_new" | "family" | "group" | "personal" | "share"

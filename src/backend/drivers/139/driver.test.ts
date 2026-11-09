@@ -174,6 +174,158 @@ test("Yun139 refreshes a near-expiry token with no Cookie header", async () => {
   }
 })
 
+test("Yun139 keeps a valid near-expiry token and stays quiet when user_domain_id is not configured", async () => {
+  const expiresAt = Date.now() + 5 * 24 * 60 * 60 * 1000
+  const token = `legacy-token|1|RCS|${expiresAt}|opaque`
+  const authorization = Buffer.from(`pc:13800138000:${token}`).toString(
+    "base64",
+  )
+  const originalFetch = globalThis.fetch
+  const originalWarn = console.warn
+  const originalDebug = console.debug
+  const calls: string[] = []
+  const warnings: string[] = []
+  console.warn = (...args: any[]) => {
+    warnings.push(args.map((arg) => String(arg)).join(" "))
+  }
+  console.debug = () => {}
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input)
+    calls.push(url)
+    if (
+      url === "https://aas.caiyun.feixin.10086.cn/tellin/authTokenRefresh.do"
+    ) {
+      return new Response(
+        "<root><return>1</return><desc>unavailable</desc></root>",
+        { status: 200, headers: { "content-type": "application/xml" } },
+      )
+    }
+    assert.equal(
+      url,
+      "https://user-njs.yun.139.com/user/route/qryRoutePolicy",
+      "missing user_domain_id must not block the normal route policy request",
+    )
+    return new Response(
+      JSON.stringify({
+        success: true,
+        code: "0000",
+        data: {
+          routePolicyList: [
+            {
+              modName: "personal",
+              httpsUrl: "https://personal-kd-njs.yun.139.com/hcy",
+            },
+          ],
+        },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )
+  }) as typeof fetch
+
+  try {
+    const client = new Yun139ApiClient({ authorization, type: "personal_new" })
+    await client.init()
+
+    assert.deepEqual(calls, [
+      "https://aas.caiyun.feixin.10086.cn/tellin/authTokenRefresh.do",
+      "https://user-njs.yun.139.com/user/route/qryRoutePolicy",
+    ])
+    assert.deepEqual(warnings, [], "near-expiry warning must be suppressed")
+    assert.equal(
+      Buffer.from(client.getAuthString(), "base64").toString("utf8"),
+      `pc:13800138000:${token}`,
+    )
+  } finally {
+    globalThis.fetch = originalFetch
+    console.warn = originalWarn
+    console.debug = originalDebug
+  }
+})
+
+test("Yun139 refreshes a near-expiry token via the legacy endpoint when user_domain_id is absent", async () => {
+  const account = "13800138000"
+  const oldToken = `legacy-old|1|RCS|${Date.now() + 5 * 24 * 60 * 60 * 1000}|opaque`
+  const newToken = `legacy-new|1|RCS|${Date.now() + 30 * 24 * 60 * 60 * 1000}|opaque`
+  const addition: Yun139Addition = {
+    authorization: Buffer.from(`pc:${account}:${oldToken}`).toString("base64"),
+    type: "personal_new",
+  }
+  const originalFetch = globalThis.fetch
+  const calls: Array<{ url: string; init?: RequestInit }> = []
+  globalThis.fetch = (async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    const url = String(input)
+    calls.push({ url, init })
+
+    if (
+      url === "https://aas.caiyun.feixin.10086.cn/tellin/authTokenRefresh.do"
+    ) {
+      // `<token>` 可能仍是原 token，只有过期时间更晚的候选才能写回。
+      return new Response(
+        `<root><return>0</return><token>${oldToken}</token>` +
+          `<accessToken>${newToken}</accessToken>` +
+          "<expiretime>2592000</expiretime><desc></desc></root>",
+        { status: 200, headers: { "content-type": "application/xml" } },
+      )
+    }
+
+    if (url === "https://user-njs.yun.139.com/user/route/qryRoutePolicy") {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          code: "0000",
+          data: {
+            routePolicyList: [
+              {
+                modName: "personal",
+                httpsUrl: "https://personal-kd-njs.yun.139.com/hcy",
+              },
+            ],
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )
+    }
+
+    return new Response("unexpected URL", { status: 404 })
+  }) as typeof fetch
+
+  try {
+    const refreshedAuthorizations: string[] = []
+    const client = new Yun139ApiClient(addition, async (authorization) => {
+      refreshedAuthorizations.push(authorization)
+    })
+    await client.init()
+
+    assert.deepEqual(
+      calls.map((call) => call.url),
+      [
+        "https://aas.caiyun.feixin.10086.cn/tellin/authTokenRefresh.do",
+        "https://user-njs.yun.139.com/user/route/qryRoutePolicy",
+      ],
+    )
+    const refreshCall = calls[0]
+    assert.equal(refreshCall.init?.method, "POST")
+    const headers = refreshCall.init?.headers as Record<string, string>
+    assert.equal(headers["Content-Type"], "application/xml;charset=UTF-8")
+    assert.equal(headers.Referer, "https://yun.139.com/")
+    const body = String(refreshCall.init?.body)
+    assert.ok(body.includes(`<token>${oldToken}</token>`))
+    assert.ok(body.includes(`<account>${account}</account>`))
+    assert.ok(body.includes("<clienttype>656</clienttype>"))
+
+    assert.equal(
+      Buffer.from(addition.authorization, "base64").toString("utf8"),
+      `pc:${account}:${newToken}`,
+    )
+    assert.deepEqual(refreshedAuthorizations, [addition.authorization])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test("Yun139Driver lists subdir contents; file path must not degrade to parent (issue #112)", async () => {
   const addition: Yun139Addition = {
     authorization: Buffer.from(
