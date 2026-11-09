@@ -120,6 +120,20 @@ export const defaultDb = {
       flag: 0,
     },
     {
+      // 访客访问（匿名浏览）开关。
+      //
+      // 这里必须保留 "true"：ensureDefaultSettings() 会把缺失的默认项补进**存量**
+      // 数据库，若默认写成 "false"，升级瞬间所有老部署都会被静默改成「必须登录」。
+      // 新装由初始化的两条路径（init/setup、ADMIN_PASS 首启）显式写成 "false"，
+      // 见 setSettingValue() 的调用点。
+      key: "allow_guest",
+      value: "true",
+      type: "bool",
+      help: "Allow Anonymous Visitors to Browse as Guest",
+      group: 1,
+      flag: 0,
+    },
+    {
       key: "robots_txt",
       value: "User-agent: *\nDisallow: /",
       type: "text",
@@ -1029,7 +1043,10 @@ export const defaultDb = {
       role: 1,
       permission: 0,
       base_path: "/",
-      disabled: false,
+      // 新装默认不启用访客：旧行为是 guest 默认启用、匿名请求直接按 guest 浏览，
+      // 与「打开网页就要登录」的预期相反（issue #133）。存量部署的用户表存在
+      // 持久化存储里，不受这里影响；需要匿名只读时在用户管理中显式启用。
+      disabled: true,
       sso_id: "",
       allow_ldap: false,
       pwd_update_at: new Date().toISOString(),
@@ -1175,6 +1192,37 @@ const LEGACY_SETTING_MIGRATIONS: Record<string, { from: any[]; to: string }> = {
     from: ["", LEGACY_SHARE_SUMMARY_GO],
     to: DEFAULT_SHARE_SUMMARY_CONTENT,
   },
+}
+
+/**
+ * 写入/新增一个设置项（仅用于初始化路径，不落盘）。
+ *
+ * 为什么需要它：`allow_guest` 在 defaultDb 里必须是 "true"（否则存量部署升级时
+ * 会被 ensureDefaultSettings 静默改成「必须登录」），而新装又必须默认关闭访客。
+ * 两条初始化路径（`init/setup`、ADMIN_PASS 首启）因此需要显式把该行改成
+ * "false"，统一走这个函数避免两处写法漂移。
+ */
+export function setSettingValue(
+  db: any,
+  key: string,
+  value: string,
+  meta: { type?: string; help?: string; group?: number; flag?: number } = {},
+) {
+  if (!db) return
+  if (!Array.isArray(db.settings)) db.settings = []
+  const row = db.settings.find((s: any) => s && s.key === key)
+  if (row) {
+    row.value = value
+    return
+  }
+  db.settings.push({
+    key,
+    value,
+    type: meta.type || "string",
+    help: meta.help || "",
+    group: typeof meta.group === "number" ? meta.group : 0,
+    flag: typeof meta.flag === "number" ? meta.flag : 0,
+  })
 }
 
 const ensureDefaultSettings = (db: any) => {

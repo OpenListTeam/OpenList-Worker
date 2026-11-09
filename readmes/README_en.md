@@ -73,7 +73,7 @@ In addition to the real storages above, virtual/functional drivers such as `Loca
 - **File management**: unified directory tree browsing with online preview for images, videos, audio, documents, code and archives; cross-storage upload, batch download, streaming and direct-link redirect; share links with expiry, password and permission control.
 - **Search & tasks**: full-text search across indexed storages; background task queue for batch and async processing.
 - **External interfaces**: WebDAV, S3-compatible protocol, and an MCP endpoint for AI assistants.
-- **Guest access**: guest fallback is enabled by default, so unauthenticated requests use the guest user's permissions. To require sign-in before browsing, turn off guest access (`allow_guest=false`) in the OpenList application settings; this is not a Cloudflare environment variable.
+- **Guest access**: fresh installs require sign-in by default (the `guest` account is disabled and `allow_guest=false`). To allow anonymous read-only browsing, turn on "Allow Guest Access" in the site settings **and** enable the `guest` user (both steps); existing deployments keep their current behavior and can turn it off in the site settings at any time. This is an OpenList application setting, not a Cloudflare environment variable.
 - **Access & auth**: RBAC (user groups, directory-level read/write permissions, quotas), account passwords plus TOTP / WebAuthn / SSO / LDAP.
 - **Security & ops**: JWT sessions, CSRF, clickjacking (X-Frame-Options) and CSP protection, `/health` and `/healthz` probes.
 - **Concurrency deduplication**: identical directory listing / metadata requests hit the upstream drive only once; the rest reuse the result, reducing rate limits and CPU usage.

@@ -18,6 +18,7 @@ function buildApp() {
 
 const original = new Map<string, string>()
 let originalGuestBasePath: string | null = null
+let originalGuestDisabled: boolean | null = null
 let originalMetas: any[] | null = null
 
 async function setSetting(key: string, value: string) {
@@ -43,6 +44,7 @@ after(async () => {
   }
   const guest = (db.users || []).find((u: any) => u.username === "guest")
   if (guest && originalGuestBasePath !== null) guest.base_path = originalGuestBasePath
+  if (guest && originalGuestDisabled !== null) guest.disabled = originalGuestDisabled
   if (originalMetas !== null) db.metas = originalMetas
   await saveDb(db, undefined, { force: true } as any)
 })
@@ -101,6 +103,10 @@ async function seedMediaEnv(items: MediaItem[], metas: any[] = [], enabled = tru
       originalGuestBasePath = String(guest.base_path || "/")
     }
     guest.base_path = "/public"
+    // 新装默认禁用访客（issue #133），本文件验证的是「访客开启时」的封面语义，
+    // 因此显式启用；allow_guest 由 defaultDb 的默认行保持为 true。
+    if (originalGuestDisabled === null) originalGuestDisabled = !!guest.disabled
+    guest.disabled = false
   }
   if (originalMetas === null) originalMetas = JSON.parse(JSON.stringify(userDb.metas || []))
   userDb.metas = metas
