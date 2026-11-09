@@ -143,6 +143,7 @@ export class PikPakApiClient {
   private accessToken: string = ""
   private refreshTokenVal: string = ""
   private captchaTokenVal: string = ""
+  private skipVerification: boolean = false
   private onTokenRefreshed?: (tokens: {
     accessToken: string
     refreshToken: string
@@ -161,6 +162,10 @@ export class PikPakApiClient {
     this.onTokenRefreshed = onTokenRefreshed
     this.refreshTokenVal = addition.refresh_token || ""
     this.captchaTokenVal = addition.captcha_token || ""
+    // 表单/键值库可能把布尔值存成字符串，沿用仓库内 `=== true || === "true"` 口径
+    const skipVerification: unknown = (addition as any).skip_verification
+    this.skipVerification =
+      skipVerification === true || skipVerification === "true"
 
     const platform = addition.platform || "web"
     // 允许通过 addition 覆盖内置应用标识（产品化时使用自有应用）；
@@ -246,7 +251,9 @@ export class PikPakApiClient {
       )
     }
 
-    if (data.url) {
+    // 与 Go 版 refreshCaptchaToken 一致：返回验证链接默认即失败，
+    // 仅当 addition.skip_verification 显式开启时才忽略（可能触发风控）。
+    if (data.url && !this.skipVerification) {
       throw new Error(`PikPak requires captcha verification: ${data.url}`)
     }
 
@@ -404,9 +411,16 @@ export class PikPakApiClient {
 
     const data: PikPakTokenResp & PikPakErrResp = await res.json()
     if (data.error_code && data.error_code !== 0) {
-      if (data.error_code === 4126 && this.addition.username) {
-        await this.login()
-        return
+      // 与 Go 版一致：4126 = refresh_token 失效。有账号密码就自动重登，
+      // 否则只能提示用户重新提供 refresh_token。
+      if (data.error_code === 4126) {
+        if (this.addition.username && this.addition.password) {
+          await this.login()
+          return
+        }
+        throw new Error(
+          "PikPak refresh_token is invalid, please re-provide refresh_token",
+        )
       }
       throw new Error(
         `PikPak token refresh failed (${data.error_code}): ${data.error_description || data.error}`,

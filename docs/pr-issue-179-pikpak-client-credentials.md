@@ -41,9 +41,12 @@ Go 版 OpenList（`OpenList-Backends/drivers/pikpak/util.go`，上游 `e73a80c7`
   - `auth/signin` 只保留 `Content-Type` 与 `User-Agent`，去掉 `X-Device-ID` / `X-Captcha-Token`。
   - `auth/token` 改为空 `User-Agent` 且不带 `X-Device-ID`。
   - `captcha/init` 补上 `X-Captcha-Token` 请求头；`4126` 时用新验证码 token 重试一次（最多两轮，避免触发风控）。
+  - `refreshToken()` 的 `4126` 分支与 Go 版一致：有账号密码才自动重登，否则提示「请重新提供 refresh_token」。
+  - 新增 `skip_verification`（对齐 Go 版同名选项）：默认把 captcha 接口返回的验证链接视为失败，显式开启后忽略。
   - 服务端返回空 token 时直接报错，避免把空 token 持久化。
 - `src/backend/server/admin.ts`
   - PikPak 表单新增 `client_id` / `client_secret`（`required: false`），并写明留空使用内置默认值。
+  - PikPak 表单新增 `skip_verification`（`type: bool`，默认 `false`）。
 
 
 ### 与 Go 版对齐
@@ -56,6 +59,23 @@ Go 版 OpenList（`OpenList-Backends/drivers/pikpak/util.go`，上游 `e73a80c7`
 
 client_secret 同样与 Go 的 `WebClientSecret` / `AndroidClientSecret` / `PCClientSecret` 逐字一致。
 
+登录/换号链路逐点对照（Go 侧为 `OpenList-Backends/drivers/pikpak/util.go`，上游提交 `e73a80c7`）：
+
+| 行为 | Go 版 | 本 PR |
+| --- | --- | --- |
+| 登录前刷新验证码 | `login()` 无条件调用 `RefreshCaptchaTokenInLogin`（注释：token 可能已过期） | ✅ 每次都刷新，不再复用持久化的旧 token |
+| 清掉旧 Bearer | `d.AccessToken = ""`，注释：避免验证码请求带失效 bearer | ✅ `this.accessToken = ""` |
+| 登录 metas | `email/phone_number/username` + `client_version` + `package_name` + `timestamp` + `captcha_sign` | ✅ 同 |
+| signin 请求头 | resty 默认 UA + JSON body，无 `X-Device-ID` / `X-Captcha-Token` | ✅ 仅 `Content-Type` + `User-Agent` |
+| 换发 refresh_token | `SetHeader("user-agent", "")`，无 device 头 | ✅ 空 UA、无 `X-Device-ID` |
+| 空 token 校验 | `login`/`refreshToken` 返回空 token 即报错 | ✅ 同 |
+| `4126` 处理 | 有账号密码 → `login()`；否则提示重新提供 refresh_token | ✅ 同（并额外用新验证码 token 重试一次） |
+| 验证链接 | `resp.Url != "" && !SkipVerification` 才报错 | ✅ `skip_verification` |
+| `init()` 后的 captcha 刷新 | 失败直接中止 `Init()` | 仍为「记录告警后继续」，留给后续错误码 9 的刷新重试兜底 |
+
+> 唯一保留的差异：Go 在 `Init()` 里把登录后的验证码刷新失败当作致命错误；TS 侧保持宽容（仅告警），避免一次临时失败就让整块存储挂载失败，真正的过期会由请求错误码 9 触发刷新重试。
+
+
 ## Related Issues / 关联 Issue
 
 Fixes #179
@@ -63,12 +83,13 @@ Fixes #179
 ## Testing / 测试
 
 ```bash
-npx tsx --test "src/backend/drivers/pikpak/*.test.ts"   # 13/13 通过
-npm run test:drivers                                    # 205/205 通过
+npx tsx --test "src/backend/drivers/pikpak/*.test.ts"   # 15/15 通过
+npm run test:drivers                                    # 207/207 通过
+npm run test:server                                     # 220/220 通过
 npm run lint                                            # tsc --noEmit，exit 0
 ```
 
-新增 `src/backend/drivers/pikpak/util.test.ts`（8 个用例）：
+新增 `src/backend/drivers/pikpak/util.test.ts`（10 个用例）：
 
 - 未提供 `client_id` 时，web / android / pc 三个平台分别落到对应的内置凭据。
 - 空白覆盖值（`"   "`、`""`）回退默认值；显式覆盖值优先生效。
@@ -78,6 +99,8 @@ npm run lint                                            # tsc --noEmit，exit 0
 - 新增：`auth/signin` 不带 `X-Device-ID` / `X-Captcha-Token`，只带 web UA。
 - 新增：首次 signin 返回 `4126` 时，会用第二个验证码 token 重试并成功。
 - 新增：`auth/token` 的 UA 为空且不带 `X-Device-ID`。
+- 新增：`captcha/init` 返回验证链接时默认报错，`skip_verification: true` 时放行。
+- 新增：`auth/token` 返回 `4126` 时有账号密码自动重登（signin 一次），没有则提示重新提供 refresh_token（不发起 signin）。
 
 > **未做的验证**：未使用真实 PikPak 账号跑端到端登录（CI 环境无凭据，且登录会触发风控/验证码）。建议合并前用测试账号手动添加一次存储并浏览目录。
 > 若真实账号仍返回 `4126`，说明是出口 IP 被 PikPak 风控（Cloudflare Workers 数据中心 IP 常见），与本次代码无关，可改用 `refresh_token` 或更换出口网络复测。

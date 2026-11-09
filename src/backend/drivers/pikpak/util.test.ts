@@ -346,3 +346,93 @@ test("PikPak refresh_token exchange omits UA and X-Device-ID", async () => {
     mock.restore()
   }
 })
+
+test("PikPak fails on a captcha verification url unless skip_verification is set", async () => {
+  const mock = installFetchMock((url) => {
+    if (url.includes("/v1/shield/captcha/init")) {
+      return jsonResponse({
+        captcha_token: "ct",
+        expires_in: 300,
+        url: "https://user.mypikpak.net/forbidden/test",
+      })
+    }
+    if (url.includes("/v1/auth/signin")) {
+      return jsonResponse({
+        access_token: "access-token",
+        refresh_token: "refresh-token",
+        sub: "user-id",
+      })
+    }
+    return undefined
+  })
+
+  try {
+    const strict = new PikPakApiClient({
+      username: "user@example.com",
+      password: "password123",
+    }) as any
+    await assert.rejects(() => strict.login(), /requires captcha verification/)
+
+    const relaxed = new PikPakApiClient({
+      username: "user@example.com",
+      password: "password123",
+      skip_verification: true,
+    }) as any
+    await relaxed.login()
+    assert.equal(relaxed.accessToken, "access-token")
+  } finally {
+    mock.restore()
+  }
+})
+
+test("PikPak refresh 4126 re-logins with credentials, else asks for a new refresh_token", async () => {
+  const mock = installFetchMock((url) => {
+    if (url.includes("/v1/auth/token")) {
+      return jsonResponse({
+        error_code: 4126,
+        error: "invalid_grant",
+        error_description: "invalid_grant",
+      })
+    }
+    if (url.includes("/v1/shield/captcha/init")) {
+      return jsonResponse({ captcha_token: "ct", expires_in: 300 })
+    }
+    if (url.includes("/v1/auth/signin")) {
+      return jsonResponse({
+        access_token: "access-token",
+        refresh_token: "refresh-token",
+        sub: "user-id",
+      })
+    }
+    return undefined
+  })
+
+  try {
+    const withCredentials = new PikPakApiClient({
+      username: "user@example.com",
+      password: "password123",
+      refresh_token: "stale-refresh",
+    }) as any
+    await withCredentials.refreshToken()
+    assert.equal(
+      mock.calls.filter((c) => c.url.includes("/v1/auth/signin")).length,
+      1,
+    )
+    assert.equal(withCredentials.accessToken, "access-token")
+
+    mock.calls.length = 0
+    const withoutCredentials = new PikPakApiClient({
+      refresh_token: "stale-refresh",
+    }) as any
+    await assert.rejects(
+      () => withoutCredentials.refreshToken(),
+      /re-provide refresh_token/,
+    )
+    assert.equal(
+      mock.calls.filter((c) => c.url.includes("/v1/auth/signin")).length,
+      0,
+    )
+  } finally {
+    mock.restore()
+  }
+})

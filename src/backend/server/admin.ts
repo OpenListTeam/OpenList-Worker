@@ -2931,6 +2931,13 @@ const driverConfigs: Record<string, any> = {
         required: false,
       },
       {
+        name: "skip_verification",
+        type: "bool",
+        default: "false",
+        required: false,
+        help: "忽略 captcha 接口返回的人工验证链接（默认视为失败）；开启后可能触发 PikPak 风控。",
+      },
+      {
         name: "order_by",
         type: "select",
         options: "name,size,modified",
