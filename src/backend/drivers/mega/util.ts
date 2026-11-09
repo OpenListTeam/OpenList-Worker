@@ -1,4 +1,19 @@
 import CryptoJS from "crypto-js"
+import {
+  aesCbcDecrypt,
+  aesCbcEncrypt,
+  aesEcbDecrypt,
+  aesEcbEncrypt,
+  b64ToBytes,
+  bytesToB64Url,
+  decodeMegaPrivateKey,
+  decryptSessionId,
+  nodeCipherKey,
+  prepareKey,
+  prepareKeyV2,
+  stringhash,
+  utf8ToBytes,
+} from "./crypto"
 import { MegaAddition, MegaNodeItem } from "./types"
 
 export function b64ToWords(s: string): CryptoJS.lib.WordArray {
@@ -65,9 +80,10 @@ function decodeHashcashToken(token: string): Uint8Array {
  * that exceeds the budget is reported instead of consuming unbounded CPU.
  *
  * 成本提示：每次尝试都要对 ~12 MiB 缓冲做一次完整 SHA-256。本地 Node
- * （WebCrypto，单次约 7.5 ms）实测 easiness=192（期望 ~256 次）约需 2 s，
- * 高于 Cloudflare Workers 免费版 10 ms 的 CPU 上限，付费版 30 s 内可完成。
- * 因此这里的默认预算按「期望尝试数 × 2」收敛（而不是固定 4096），并保留
+ * （WebCrypto）实测 easiness=192（期望 ~256 次）约需 0.4–2 s。真正的 CPU
+ * 开销发生在原生 crypto.subtle 里（Workers 的 cpuTime 基本不增长，参考
+ * wallTime 53 s / cpuTime 61 ms 的日志），免费版 10 ms CPU 仍然不可用，
+ * 付费版 30 s 内可以完成。这里的预算按「期望尝试数 × 4」收敛，并保留
  * 10 s 墙钟上限：预算耗尽时报错退出，不会把请求拖到平台超时。
  */
 export async function generateHashcashToken(
@@ -157,22 +173,6 @@ export async function generateHashcashToken(
   )
 }
 
-export function prepareKey(password: string): CryptoJS.lib.WordArray {
-  const pWords = strToWords(password)
-  const key = [0x93c467e3, 0x7db0c7a4, 0xd1be3f81, 0x0152cb56]
-
-  // In Mega crypto, string is converted to words and iterated
-  const len = Math.max(pWords.sigBytes, 16)
-  const p: number[] = []
-  for (let i = 0; i < len; i += 4) {
-    p.push(((pWords.words[i >> 2] || 0) >> (24 - (i % 4) * 8)) & 0xff)
-  }
-
-  // Key derivation using AES ECB
-  const keyWords = CryptoJS.lib.WordArray.create(key)
-  return keyWords
-}
-
 const MAX_HASHCASH_RETRIES = 1
 
 /**
@@ -214,12 +214,24 @@ async function readTextPrefix(res: Response, limit: number): Promise<string> {
   return new TextDecoder().decode(merged)
 }
 
+/** MEGA 的节点属性结构是 "MEGA" + JSON，末尾用 NUL 补齐到 16 字节。 */
+function packAttributes(attributes: Record<string, unknown>): Uint8Array {
+  const text = `MEGA${JSON.stringify(attributes)}`
+  const bytes = utf8ToBytes(text)
+  const length = Math.max(16, Math.ceil(bytes.length / 16) * 16)
+  const padded = new Uint8Array(length)
+  padded.set(bytes)
+  return padded
+}
+
+const ZERO_IV = new Uint8Array(16)
+
 export class MegaApiClient {
   private addition: MegaAddition
   private solveHashcash: (challenge: string) => Promise<string>
   private sid = ""
   private seq = Math.floor(Math.random() * 0x10000000)
-  private masterKey: CryptoJS.lib.WordArray | null = null
+  private masterKey: Uint8Array | null = null
   private nodes: Map<string, MegaNodeItem> = new Map()
   private rootId = ""
 
@@ -264,6 +276,7 @@ export class MegaApiClient {
       // MEGA signals a proof-of-work challenge with HTTP 402 + X-Hashcash.
       // Other 402 responses (for example, payment/account errors) keep the
       // ordinary error path; challenges are bounded to one retry per request.
+      // 注意：挑战绑定本次请求的 id，重试必须复用同一个 url/seq，不能重新生成。
       if (res.status !== 402) break
       const challenge = res.headers.get("X-Hashcash")
       if (!challenge) break
@@ -294,34 +307,91 @@ export class MegaApiClient {
     return json as T
   }
 
+  /**
+   * 完整登录流程（与官方客户端 / megajs 一致）：
+   *   us0 预登录拿到账号版本（v1/v2）→ 派生用户密钥与 uh → us 登录 →
+   *   用用户密钥解出 master key → 解 privk → RSA 解 csid 得到 sid。
+   *
+   * 旧实现只发 `us` 且把 uh 写成 base64url(email)，402 消失后服务端就会
+   * 回 -9（ENOENT / 用户不存在），这就是 issue #150 里 PR #166 之后的报错。
+   */
   async init(): Promise<void> {
     if (!this.addition.email || !this.addition.password) {
       throw new Error("Mega email and password are required")
     }
 
-    const userHash = CryptoJS.enc.Base64.stringify(
-      CryptoJS.enc.Utf8.parse(this.addition.email.toLowerCase()),
-    )
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "")
+    const email = this.addition.email.trim().toLowerCase()
+    const password = this.addition.password
 
-    // Step 1: user challenge 'us'
-    const res = await this.request<any[]>([
-      {
-        a: "us",
-        user: this.addition.email.toLowerCase(),
-        uh: userHash,
-      },
-    ])
+    this.sid = ""
+    this.masterKey = null
+    this.nodes.clear()
+    this.rootId = ""
 
-    const authResp = res[0]
-    if (typeof authResp === "number" && authResp < 0) {
-      throw new Error(`Mega authentication failed: ${authResp}`)
+    const prelogin = await this.request<any[]>([{ a: "us0", user: email }])
+    const preloginResp = prelogin[0]
+    if (typeof preloginResp === "number" && preloginResp < 0) {
+      throw new Error(`Mega prelogin failed: ${preloginResp}`)
     }
 
-    this.sid = authResp.sid || ""
+    const version = preloginResp?.v
+    let userKey: Uint8Array
+    let userHandle: string
+    if (version === 1) {
+      userKey = prepareKey(password)
+      userHandle = bytesToB64Url(stringhash(email, userKey))
+    } else if (version === 2) {
+      if (!preloginResp?.s) {
+        throw new Error("Mega prelogin did not return an account salt")
+      }
+      const derived = await prepareKeyV2(password, b64ToBytes(preloginResp.s))
+      userKey = derived.subarray(0, 16)
+      userHandle = bytesToB64Url(derived.subarray(16, 32))
+    } else {
+      throw new Error(`Mega account version not supported: ${version}`)
+    }
+
+    const loginBody: Record<string, unknown> = {
+      a: "us",
+      user: email,
+      uh: userHandle,
+    }
+    const twoFa = this.addition.two_fa_code?.trim()
+    if (twoFa) loginBody.mfa = twoFa
+
+    const login = await this.request<any[]>([loginBody])
+    const authResp = login[0]
+    if (typeof authResp === "number" && authResp < 0) {
+      throw new Error(this.authErrorMessage(authResp))
+    }
+    if (!authResp?.k || !authResp?.privk || !authResp?.csid) {
+      throw new Error("Mega login response is missing session keys")
+    }
+
+    // k: 账号 master key，用用户密钥 AES-ECB 解出；privk/csid 再用 master key
+    // 解出 RSA 私钥与密文，最终 sid 只能通过 RSA 解密得到，响应里没有现成 sid。
+    this.masterKey = aesEcbDecrypt(userKey, b64ToBytes(String(authResp.k)))
+    if (this.masterKey.length !== 16) {
+      throw new Error("Mega login returned an invalid master key")
+    }
+    const privateKey = decodeMegaPrivateKey(
+      aesEcbDecrypt(this.masterKey, b64ToBytes(String(authResp.privk))),
+    )
+    this.sid = decryptSessionId(privateKey, b64ToBytes(String(authResp.csid)))
     await this.fetchNodes()
+  }
+
+  private authErrorMessage(code: number): string {
+    switch (code) {
+      case -9:
+        return "Mega authentication failed: -9 (wrong email or password)"
+      case -16:
+        return "Mega authentication failed: -16 (account blocked)"
+      case -26:
+        return "Mega authentication failed: -26 (2FA code required or invalid)"
+      default:
+        return `Mega authentication failed: ${code}`
+    }
   }
 
   async fetchNodes(): Promise<void> {
@@ -329,68 +399,80 @@ export class MegaApiClient {
 
     const res = await this.request<any[]>([{ a: "f", c: 1 }])
     const filesResp = res[0]
-    if (filesResp?.f && Array.isArray(filesResp.f)) {
-      this.nodes.clear()
-      for (const node of filesResp.f) {
-        // Node type: 0=file, 1=folder, 2=root, 3=inbox, 4=trash
-        const isDir =
-          node.t === 1 || node.t === 2 || node.t === 3 || node.t === 4
-        if (node.t === 2) {
-          this.rootId = node.h
-        }
+    this.nodes.clear()
+    this.rootId = ""
+    if (!Array.isArray(filesResp?.f)) return
 
-        let name = "unnamed"
-        if (node.a) {
-          try {
-            // Decrypt attribute string
-            const decrypted = this.decryptAttributes(node.a, node.k)
-            if (decrypted?.n) {
-              name = decrypted.n
-            }
-          } catch {
-            name = node.h
-          }
-        }
-
-        const item: MegaNodeItem = {
-          id: node.h,
-          parent_id: node.p,
-          name,
-          size: node.s || 0,
-          is_dir: isDir,
-          modified: node.ts
-            ? new Date(node.ts * 1000).toISOString()
-            : new Date().toISOString(),
-          type: node.t,
-          key: node.k,
-        }
-        this.nodes.set(node.h, item)
+    for (const node of filesResp.f) {
+      // Node type: 0=file, 1=folder, 2=root, 3=inbox, 4=trash
+      const isDir = node.t === 1 || node.t === 2 || node.t === 3 || node.t === 4
+      if (node.t === 2) {
+        this.rootId = node.h
       }
+
+      const nodeKey = this.decryptNodeKey(node.k)
+      let name = node.h
+      const attributes = this.decryptAttributes(node.a, nodeKey)
+      if (attributes?.n) name = attributes.n
+
+      const item: MegaNodeItem = {
+        id: node.h,
+        parent_id: node.p,
+        name,
+        size: node.s || 0,
+        is_dir: isDir,
+        modified: node.ts
+          ? new Date(node.ts * 1000).toISOString()
+          : new Date().toISOString(),
+        type: node.t,
+        key: node.k,
+        file_key: nodeKey ? bytesToB64Url(nodeKey) : undefined,
+      }
+      this.nodes.set(node.h, item)
+    }
+  }
+
+  /** 节点 k 可能是 "handle:key"；共享节点是 RSA 密钥（>32 字节），这里跳过。 */
+  private decryptNodeKey(keyText?: string): Uint8Array | null {
+    if (!keyText || !this.masterKey) return null
+    try {
+      const parts = keyText.split(":")
+      const key = b64ToBytes(parts[parts.length - 1])
+      if (key.length !== 16 && key.length !== 32) return null
+      return aesEcbDecrypt(this.masterKey, key)
+    } catch {
+      return null
     }
   }
 
   private decryptAttributes(
-    attrB64: string,
-    keyStr?: string,
+    attrB64?: string,
+    nodeKey?: Uint8Array | null,
   ): { n?: string } | null {
+    if (!attrB64 || !nodeKey) return null
     try {
-      const words = b64ToWords(attrB64)
-      const text = CryptoJS.enc.Utf8.stringify(words)
-      if (text.startsWith("MEGA{")) {
-        const jsonStr = text.substring(4)
-        return JSON.parse(jsonStr)
-      }
+      const plain = aesCbcDecrypt(
+        nodeCipherKey(nodeKey),
+        ZERO_IV,
+        b64ToBytes(attrB64),
+      )
+      let end = 0
+      while (end < plain.length && plain[end] !== 0) end++
+      const text = new TextDecoder().decode(plain.subarray(0, end))
+      if (!text.startsWith("MEGA{")) return null
+      const parsed = JSON.parse(text.substring(4))
+      return typeof parsed?.n === "string" ? parsed : null
     } catch {
-      // Ignored
+      return null
     }
-    return null
   }
 
   getChildren(parentId?: string): MegaNodeItem[] {
     const targetParent = parentId || this.rootId
     const result: MegaNodeItem[] = []
     for (const node of this.nodes.values()) {
-      if (node.parent_id === targetParent) {
+      // 根节点的 parent 指向自身，列目录时必须排除它，否则根目录会把自己列出来。
+      if (node.id !== targetParent && node.parent_id === targetParent) {
         result.push(node)
       }
     }
@@ -415,9 +497,17 @@ export class MegaApiClient {
   }
 
   async createFolder(name: string, parentId?: string): Promise<string> {
+    if (!this.masterKey) throw new Error("Mega client is not logged in")
     const pid = parentId || this.rootId
-    const attrJson = JSON.stringify({ n: name })
-    const attrB64 = wordsToB64(strToWords(`MEGA${attrJson}`))
+    // 新目录需要一把随机 16 字节密钥，属性用它加密，密钥本身再用账号
+    // master key 加密后随节点一起提交，服务端不参与明文。
+    const folderKey = globalThis.crypto.getRandomValues(new Uint8Array(16))
+    const encryptedKey = aesEcbEncrypt(this.masterKey, folderKey)
+    const encryptedAttrs = aesCbcEncrypt(
+      nodeCipherKey(folderKey),
+      ZERO_IV,
+      packAttributes({ n: name }),
+    )
 
     const res = await this.request<any[]>([
       {
@@ -427,8 +517,8 @@ export class MegaApiClient {
           {
             h: "xxxxxxxx",
             t: 1,
-            a: attrB64,
-            k: "dummy_key",
+            a: bytesToB64Url(encryptedAttrs),
+            k: bytesToB64Url(encryptedKey),
           },
         ],
       },

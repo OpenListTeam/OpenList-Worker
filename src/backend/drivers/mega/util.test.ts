@@ -1,6 +1,17 @@
 import assert from "node:assert/strict"
+import crypto from "node:crypto"
 import test from "node:test"
+import {
+  aesCbcEncrypt,
+  aesEcbEncrypt,
+  bytesToB64Url,
+  encodeMpi,
+  nodeCipherKey,
+  prepareKey,
+  stringhash,
+} from "./crypto"
 import { MegaApiClient, generateHashcashToken } from "./util"
+import type { MegaAddition } from "./types"
 
 const TOKEN = "A".repeat(64) // 48 zero bytes encoded as unpadded base64url
 
@@ -257,12 +268,238 @@ test("MegaApiClient streams only the error prefix instead of buffering the body"
       (err: any) => {
         const message = String(err?.message || "")
         assert.match(message, /Mega API HTTP error: 500/)
-        assert.ok(message.length < 600, `error message too long: ${message.length}`)
+        assert.ok(
+          message.length < 600,
+          `error message too long: ${message.length}`,
+        )
         return true
       },
     )
     // 512 字节上限只需一两个 64 KiB chunk；res.text() 会拉完整个 ~12 MiB。
     assert.ok(pulled <= 2, `read too many chunks: ${pulled}`)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+function jsonResponse(value: unknown): Response {
+  return new Response(JSON.stringify(value), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  })
+}
+
+function pad16(bytes: Uint8Array): Uint8Array {
+  const padded = new Uint8Array(Math.max(16, Math.ceil(bytes.length / 16) * 16))
+  padded.set(bytes)
+  return padded
+}
+
+function modPow(base: bigint, exponent: bigint, modulus: bigint): bigint {
+  let result = 1n
+  let b = base % modulus
+  let e = exponent
+  while (e > 0n) {
+    if (e & 1n) result = (result * b) % modulus
+    b = (b * b) % modulus
+    e >>= 1n
+  }
+  return result
+}
+
+function readDer(
+  buffer: Uint8Array,
+  offset: number,
+): { value: Uint8Array; next: number } {
+  let length = buffer[offset + 1]
+  let cursor = offset + 2
+  if (length & 0x80) {
+    const count = length & 0x7f
+    length = 0
+    for (let i = 0; i < count; i++) length = (length << 8) | buffer[cursor++]
+  }
+  return {
+    value: buffer.subarray(cursor, cursor + length),
+    next: cursor + length,
+  }
+}
+
+/** 用 node:crypto 生成一套与真实响应同构的登录材料（k/privk/csid/sid）。 */
+function buildLoginFixture(userKey: Uint8Array) {
+  const { privateKey } = crypto.generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+  })
+  const der = privateKey.export({ type: "pkcs1", format: "der" })
+  const sequence = readDer(der, 0)
+  const integers: bigint[] = []
+  let cursor = 0
+  while (cursor < sequence.value.length) {
+    const item = readDer(sequence.value, cursor)
+    integers.push(BigInt(`0x${Buffer.from(item.value).toString("hex") || "0"}`))
+    cursor = item.next
+  }
+  const [, n, e, d, p, q] = integers
+
+  const masterKey = crypto.randomBytes(16)
+  const sidBytes = crypto.randomBytes(43)
+  const cipher = modPow(BigInt(`0x${sidBytes.toString("hex")}`), e, n)
+  const privkPlain = Buffer.concat([
+    encodeMpi(p),
+    encodeMpi(q),
+    encodeMpi(d),
+    encodeMpi(0n),
+  ])
+
+  return {
+    masterKey,
+    sid: sidBytes.toString("base64url"),
+    response: {
+      k: bytesToB64Url(aesEcbEncrypt(userKey, masterKey)),
+      privk: bytesToB64Url(aesEcbEncrypt(masterKey, pad16(privkPlain))),
+      csid: bytesToB64Url(encodeMpi(cipher)),
+    },
+  }
+}
+
+function buildFolderNode(
+  masterKey: Uint8Array,
+  handle: string,
+  parent: string,
+  name: string,
+) {
+  const folderKey = crypto.randomBytes(16)
+  const plain = pad16(
+    new TextEncoder().encode(`MEGA${JSON.stringify({ n: name })}`),
+  )
+  const encryptedAttrs = aesCbcEncrypt(
+    nodeCipherKey(folderKey),
+    new Uint8Array(16),
+    plain,
+  )
+  return {
+    folderKey,
+    node: {
+      h: handle,
+      p: parent,
+      t: 1,
+      ts: 1_700_000_000,
+      k: bytesToB64Url(aesEcbEncrypt(masterKey, folderKey)),
+      a: bytesToB64Url(encryptedAttrs),
+    },
+  }
+}
+
+test("MegaApiClient logs in with the v1 password key and decrypts nodes", async () => {
+  const originalFetch = globalThis.fetch
+  const email = "User@Example.com "
+  const password = "password123"
+  const userKey = prepareKey(password)
+  const fixture = buildLoginFixture(userKey)
+  const folder = buildFolderNode(fixture.masterKey, "folder", "root", "文档")
+  const calls: Array<{ url: string; body: any }> = []
+
+  globalThis.fetch = (async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    const body = JSON.parse(String(init?.body))[0]
+    calls.push({ url: String(input), body })
+    if (body.a === "us0") return jsonResponse([{ v: 1 }])
+    if (body.a === "us") return jsonResponse([fixture.response])
+    if (body.a === "f") {
+      return jsonResponse([
+        {
+          f: [{ h: "root", p: "root", t: 2, ts: 1 }, folder.node],
+        },
+      ])
+    }
+    throw new Error(`unexpected action ${body.a}`)
+  }) as typeof fetch
+
+  try {
+    const client = new MegaApiClient({ email, password })
+    await client.init()
+
+    assert.deepEqual(
+      calls.map((call) => call.body.a),
+      ["us0", "us", "f"],
+    )
+    assert.equal(calls[1].body.user, "user@example.com")
+    assert.equal(
+      calls[1].body.uh,
+      bytesToB64Url(stringhash("user@example.com", userKey)),
+    )
+    assert.equal(calls[1].body.uh, "9QPYw6nl-n2fsLSTCyxrqg")
+    assert.match(calls[2].url, new RegExp(`&sid=${fixture.sid}$`))
+
+    assert.equal(client.getRootId(), "root")
+    const children = client.getChildren("root")
+    assert.equal(children.length, 1)
+    assert.equal(children[0].name, "文档")
+    assert.equal(children[0].file_key, bytesToB64Url(folder.folderKey))
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("MegaApiClient supports v2 accounts and forwards the 2FA code", async () => {
+  const originalFetch = globalThis.fetch
+  const password = "password123"
+  const salt = crypto.randomBytes(16)
+  const derived = crypto.pbkdf2Sync(password, salt, 100_000, 32, "sha512")
+  const userKey = new Uint8Array(derived.subarray(0, 16))
+  const fixture = buildLoginFixture(userKey)
+  const calls: any[] = []
+
+  globalThis.fetch = (async (
+    _input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    const body = JSON.parse(String(init?.body))[0]
+    calls.push(body)
+    if (body.a === "us0") {
+      return jsonResponse([{ v: 2, s: salt.toString("base64url") }])
+    }
+    if (body.a === "us") return jsonResponse([fixture.response])
+    if (body.a === "f") return jsonResponse([{ f: [] }])
+    throw new Error(`unexpected action ${body.a}`)
+  }) as typeof fetch
+
+  try {
+    const client = new MegaApiClient({
+      email: "user@example.com",
+      password,
+      two_fa_code: " 123456 ",
+    } satisfies MegaAddition)
+    await client.init()
+
+    assert.equal(calls[1].uh, bytesToB64Url(derived.subarray(16, 32)))
+    assert.equal(calls[1].mfa, "123456")
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("MegaApiClient reports MEGA -9 as a credential error", async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (
+    _input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    const body = JSON.parse(String(init?.body))[0]
+    if (body.a === "us0") return jsonResponse([{ v: 1 }])
+    return jsonResponse([-9])
+  }) as typeof fetch
+
+  try {
+    const client = new MegaApiClient({
+      email: "user@example.com",
+      password: "wrong-password",
+    })
+    await assert.rejects(
+      () => client.init(),
+      /Mega authentication failed: -9 \(wrong email or password\)/,
+    )
   } finally {
     globalThis.fetch = originalFetch
   }

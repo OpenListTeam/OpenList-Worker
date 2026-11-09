@@ -19,6 +19,8 @@ export interface MegaNodeItem {
   type: number // 0=file, 1=folder, 2=root, 3=inbox, 4=trash
   raw_url?: string
   key?: string
+  /** 解密后的节点密钥（16/32 字节，base64url），下载客户端解密时使用 */
+  file_key?: string
 }
 
 export interface MegaQuotaResp {
