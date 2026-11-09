@@ -39,6 +39,7 @@ import {
 import { buildWebDavPropfindResponse } from "../internal/webdav/webdav"
 import { safeErrorMessage } from "../pkg/errs"
 import { encodeDownloadPath } from "../pkg/path"
+import { appendDownloadSignToRawUrl } from "../pkg/sign"
 
 /**
  * WebDAV 协议服务（挂载于 /dav/*）。
@@ -375,8 +376,14 @@ webdavRouter.all("/*", async (c) => {
         // 端点前缀（/p 还是 /d）与路径编码都由 getItem 决定（见
         // op/storage.ts resolveRawUrlPrefix）：/p 受 Go canProxy() 限制，未开启
         // 代理的存储会 403 proxy not allowed，因此不能在这里硬编码 /p。
+        //
+        // raw 端点没有 Auth 中间件、要靠签名放行：sign_all / link_expiration /
+        // 存储级 enable_sign / 密码 meta 任一命中时，裸链接会被判 401
+        // "sign verify failed"。WebDAV 客户端（Infuse、rclone 等）不会自己补签名，
+        // 因此必须在这里签好（与 /fs/get 的处理一致，Issues #66 / #175）。
+        const target = rawUrl || `/api/d${encodeDownloadPath(actualPath)}`
         return c.redirect(
-          rawUrl || `/api/d${encodeDownloadPath(actualPath)}`,
+          await appendDownloadSignToRawUrl(c, target, actualPath),
           302,
         )
       }

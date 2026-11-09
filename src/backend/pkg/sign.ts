@@ -215,6 +215,32 @@ export async function signDownloadPath(
   return `${expires}.${hmac}`
 }
 
+/**
+ * 给 raw 下载链接补上签名（幂等：已带 sign 时原样返回）。
+ *
+ * 适用于「服务端自己生成 raw 链接再交给客户端」的入口。这类链接指向的
+ * /d、/p 端点没有 Auth 中间件，是否放行只看 `needDownloadSign`：sign_all、
+ * link_expiration、存储级 enable_sign、密码 meta 任一命中就必须带签名，
+ * 否则直接 401 `sign verify failed`。
+ *
+ * 与 fs.ts 里 /fs/get 的处理保持同一语义（对齐 Go FsGet 拼 `?sign=`）。
+ */
+export async function appendDownloadSignToRawUrl(
+  c: any,
+  rawUrl: string,
+  virtualPath: string,
+): Promise<string> {
+  if (!rawUrl) return rawUrl
+  if (/[?&]sign=/.test(rawUrl)) return rawUrl
+  if (!(await needDownloadSign(c, virtualPath))) return rawUrl
+  const sign = await signDownloadPath(
+    c,
+    virtualPath,
+    await getSignExpiresIn(c),
+  )
+  return `${rawUrl}${rawUrl.includes("?") ? "&" : "?"}sign=${sign}`
+}
+
 export async function verifyDownloadSign(
   c: any,
   virtualPath: string,
