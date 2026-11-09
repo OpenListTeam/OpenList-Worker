@@ -48,15 +48,24 @@ export const PC_ALGORITHMS = [
   "vk7hBjawK/rOSrSWajtbMk95nfgf3",
 ]
 
-// client_id / client_secret 已移除内置默认值，须通过 addition.client_id / addition.client_secret 提供自有 OAuth 应用凭据。
+// client_id / client_secret：PikPak 官方客户端内置的应用标识，服务端按固定值校验、
+// 由所有第三方客户端共用（Go 版 OpenList 与上游驱动同样内置），并非可申请替换的
+// 用户私有凭据。清空会让登录/换号请求带空 client_id 而被服务端拒绝（Issue #179），
+// 因此这里保留默认值，仅允许通过 addition.client_id / addition.client_secret 覆盖。
+export const ANDROID_CLIENT_ID = "YNxT9w7GMdWvEOKa"
+export const ANDROID_CLIENT_SECRET = "dbw2OtmVEeuUvIptb1Coyg"
 export const ANDROID_CLIENT_VERSION = "1.53.2"
 export const ANDROID_PACKAGE_NAME = "com.pikcloud.pikpak"
 export const ANDROID_SDK_VERSION = "2.0.6.206003"
 
+export const WEB_CLIENT_ID = "YUMx5nI8ZU8Ap8pm"
+export const WEB_CLIENT_SECRET = "dbw2OtmVEeuUvIptb1Coyg"
 export const WEB_CLIENT_VERSION = "2.0.0"
 export const WEB_PACKAGE_NAME = "mypikpak.com"
 export const WEB_SDK_VERSION = "8.0.3"
 
+export const PC_CLIENT_ID = "YvtoWO6GNHiuCl7x"
+export const PC_CLIENT_SECRET = "1NIH5R1IEe2pAxZE3hv3uA"
 export const PC_CLIENT_VERSION = "undefined"
 export const PC_PACKAGE_NAME = "mypikpak.com"
 export const PC_SDK_VERSION = "8.0.3"
@@ -154,19 +163,20 @@ export class PikPakApiClient {
     this.captchaTokenVal = addition.captcha_token || ""
 
     const platform = addition.platform || "web"
-    // 支持通过 addition 覆盖内置 OAuth 凭据（产品化时使用自有应用）
-    const overrideClientId = addition.client_id
-    const overrideClientSecret = addition.client_secret
+    // 允许通过 addition 覆盖内置应用标识（产品化时使用自有应用）；
+    // 留空或仅含空白时回退到官方客户端默认值，保证「只填账号密码」即可添加（Issue #179）。
+    const overrideClientId = (addition.client_id || "").trim()
+    const overrideClientSecret = (addition.client_secret || "").trim()
     if (platform === "android") {
-      this.clientId = overrideClientId || ""
-      this.clientSecret = overrideClientSecret || ""
+      this.clientId = overrideClientId || ANDROID_CLIENT_ID
+      this.clientSecret = overrideClientSecret || ANDROID_CLIENT_SECRET
       this.clientVersion = ANDROID_CLIENT_VERSION
       this.packageName = ANDROID_PACKAGE_NAME
       this.sdkVersion = ANDROID_SDK_VERSION
       this.algorithms = ANDROID_ALGORITHMS
     } else if (platform === "pc") {
-      this.clientId = overrideClientId || ""
-      this.clientSecret = overrideClientSecret || ""
+      this.clientId = overrideClientId || PC_CLIENT_ID
+      this.clientSecret = overrideClientSecret || PC_CLIENT_SECRET
       this.clientVersion = PC_CLIENT_VERSION
       this.packageName = PC_PACKAGE_NAME
       this.sdkVersion = PC_SDK_VERSION
@@ -175,8 +185,8 @@ export class PikPakApiClient {
         "MainWindow Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) PikPak/2.6.11.4955 Chrome/100.0.4896.160 Electron/18.3.15 Safari/537.36"
     } else {
       // web
-      this.clientId = overrideClientId || ""
-      this.clientSecret = overrideClientSecret || ""
+      this.clientId = overrideClientId || WEB_CLIENT_ID
+      this.clientSecret = overrideClientSecret || WEB_CLIENT_SECRET
       this.clientVersion = WEB_CLIENT_VERSION
       this.packageName = WEB_PACKAGE_NAME
       this.sdkVersion = WEB_SDK_VERSION

@@ -2911,6 +2911,20 @@ const driverConfigs: Record<string, any> = {
         required: false,
       },
       {
+        name: "client_id",
+        type: "string",
+        default: "",
+        required: false,
+        help: "可选。留空使用内置 PikPak 官方客户端应用标识；仅在自有 PikPak 应用场景填写。",
+      },
+      {
+        name: "client_secret",
+        type: "string",
+        default: "",
+        required: false,
+        help: "可选。与 client_id 配套，留空使用内置默认值。",
+      },
+      {
         name: "disable_media_link",
         type: "bool",
         default: "true",
