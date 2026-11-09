@@ -126,19 +126,85 @@ async function rateLimitMiddleware(c: any, next: () => Promise<void>) {
   }
 }
 
-// JSON 请求体校验中间件 (添加日期: 2026-10-20)
-// 背景：EdgeOne Node 运行时偶发丢失/截断请求体，各 handler 的
-// `c.req.json().catch(() => ({}))` 会把解析失败静默吞掉，随后
+// JSON 请求体校验中间件 (添加日期: 2026-10-20；2026-11-09 按 issue #170 修订)
+//
+// 背景：EdgeOne Node 云函数运行时会把请求体在**平台层**提前消费掉，
+// 表现为对 POST 请求 `c.req.text()` 时好时坏：有的直接抛异常，有的读到
+// 空串（实测失败率 30%~45%，与传输编码无关，GET 不受影响，同代码在
+// Cloudflare Workers 上 0 失败）。各 handler 的
+// `c.req.json().catch(() => ({}))` 会把它静默吞掉，随后
 // `body.path || "/"` 降级为根目录，导致"访问子目录返回根目录内容"
-// （issue #112）。此处把空 body / 非法 JSON 显式转为 400，让前端
-// 立刻看到错误并可重试，而不是收到错误的成功响应。
-// - /api/fs/* 与 /api/share/*（POST/PUT/PATCH/DELETE）：
-//   空 body 或非法 JSON 一律 400（对齐 Go 版 OpenList 必填 path）；
-// - 其余 /api/*：空 body 放行（兼容无 body 调用），非空但非法 → 400；
-// - 跳过：非 JSON content-type（multipart 上传等）、/api/task/*
-//   （EdgeOne Schedules 定时调度）与非 /api 路径。
+// （issue #112）。因此这里在 handler 之前预读校验。
+//
+// 三类结果的语义必须严格区分：
+// - **读不到 body**（平台故障：bodyUsed / 读取抛异常 / Content-Length
+//   与实际长度不符）→ **503 + Retry-After**。这是服务端暂时不可用，不是
+//   客户端的请求写错了；而且此时 handler 尚未执行，客户端重试不会产生
+//   重复副作用。此前一律回 400，既误导用户又让前端不重试，把 40% 的
+//   丢包放大成 40% 的硬报错（issue #170 的直接症状）。
+// - **读到了但为空 / 非法 JSON** → 400（真正的客户端问题）；
+//   /api/fs/* 与 /api/share/* 空 body 仍是 400（对齐 Go 版必填 path）。
+// - 其余 /api/* 空 body 放行（兼容无 body 调用）。
+// 跳过：非 JSON content-type（multipart 上传等）、/api/task/*
+// （EdgeOne Schedules 定时调度，payload 由平台注入）与非 /api 路径。
+//
 // Hono 会缓存已读取的 body 文本（bodyCache.text），此处预读后
-// handler 里的 c.req.json() 复用缓存，不会二次消费请求流。
+// handler 里的 c.req.json() 复用缓存，不会二次消费请求流；反过来，
+// 读取失败时缓存里留下的是 rejected Promise，所以**绝不能**放行到
+// handler 去"再试一次"——只能返回 503 让客户端重发新请求。
+const BODY_RETRY_MESSAGE = "request body unavailable, please retry"
+
+/** 空 body 会被当成"根目录/空对象"执行业务的路径，需要严格校验。 */
+function isStrictBodyPath(path: string): boolean {
+  return (
+    path === "/api/fs" ||
+    path.startsWith("/api/fs/") ||
+    path === "/api/share" ||
+    path.startsWith("/api/share/")
+  )
+}
+
+type BodyReadResult =
+  | { ok: true; text: string }
+  | { ok: false; reason: string; declared: number }
+
+/**
+ * 预读 JSON body，并把"读不到"（平台故障）与"读到了"彻底分开。
+ * 只有读到确定的文本才交给后续的合法性校验，避免把平台故障误判成 400。
+ */
+async function readJsonBody(c: Context): Promise<BodyReadResult> {
+  const declared = Number(c.req.header("content-length") ?? -1)
+
+  // 平台/上游已经把流读掉了：再读只会抛 "Body is unusable"。
+  if (c.req.raw.bodyUsed) {
+    return { ok: false, reason: "body-used", declared }
+  }
+
+  let text: string
+  try {
+    text = await c.req.text()
+  } catch (err) {
+    const message = (err as Error)?.message ?? String(err)
+    return { ok: false, reason: `read-failed:${message}`, declared }
+  }
+
+  // Content-Length 声明了字节数却读到更少 = 流被提前 EOF（截断）。
+  // 有 content-encoding 时长度不可比（读到的可能是解压后文本），跳过该判定。
+  // UTF-8 字节数恒 >= JS 字符串长度，故 declared <= text.length 时不可能被截断，
+  // 免掉常见 ASCII 请求上的一次全量编码。
+  const encoding = (
+    c.req.header("content-encoding") || "identity"
+  ).toLowerCase()
+  if (declared > 0 && encoding === "identity" && declared > text.length) {
+    const actual = text ? new TextEncoder().encode(text).byteLength : 0
+    if (actual < declared) {
+      return { ok: false, reason: `truncated:${actual}/${declared}`, declared }
+    }
+  }
+
+  return { ok: true, text }
+}
+
 async function jsonBodyGuard(c: Context, next: () => Promise<void>) {
   const path = c.req.path
   const method = c.req.method.toUpperCase()
@@ -147,51 +213,64 @@ async function jsonBodyGuard(c: Context, next: () => Promise<void>) {
     .toLowerCase()
     .includes("application/json")
 
-  if (isMutable && isJson && path.startsWith("/api")) {
-    // 显式跳过的路径：/api/task/*（EdgeOne Schedules 定时调度通道）。
-    // 其 payload 由平台注入、鉴权走 matchCronSecret，语义独立于业务
-    // 请求且历史上 body 可缺省；body 丢弃时也无需让调度通道可自愈，
-    // 保持宽松。其余端点一律校验。
-    if (path.startsWith("/api/task/")) {
-      return next()
-    }
+  if (!isMutable || !isJson || !path.startsWith("/api")) {
+    return next()
+  }
 
-    let text: string
-    try {
-      text = await c.req.text()
-    } catch {
+  // 显式跳过的路径：/api/task/*（EdgeOne Schedules 定时调度通道）。
+  // 其 payload 由平台注入、鉴权走 matchCronSecret，语义独立于业务
+  // 请求且历史上 body 可缺省；body 丢弃时也无需让调度通道可自愈，
+  // 保持宽松。其余端点一律校验。
+  if (path.startsWith("/api/task/")) {
+    return next()
+  }
+
+  // 诊断快照必须在读取之前取：读过之后 bodyUsed 恒为 true，日志会失真。
+  const hadBody = !!c.req.raw.body
+  const wasUsedBeforeRead = c.req.raw.bodyUsed
+
+  const body = await readJsonBody(c)
+  if (!body.ok) {
+    // 平台丢包/截断：留一条可上报腾讯云的结构化证据（body 是否存在、
+    // 声明长度与实际长度是否一致、读取前是否已被消费），否则永远只能"推测"。
+    console.warn(
+      `[jsonBodyGuard] body unavailable (${body.reason}) ${method} ${path} ` +
+        `declared=${body.declared} hasBody=${hadBody} bodyUsedBeforeRead=${wasUsedBeforeRead}`,
+    )
+    return c.json(
+      { code: 503, message: BODY_RETRY_MESSAGE, data: null },
+      503,
+      // Retry-After 让网关/客户端知道这是暂时性故障；自定义头给前端
+      // 一个明确的"可以安全重试"信号（handler 未执行，无副作用）。
+      { "Retry-After": "1", "X-OpenList-Retry": "body" },
+    )
+  }
+
+  const text = body.text
+  if (text.trim() === "") {
+    if (isStrictBodyPath(path)) {
       return c.json(
-        { code: 400, message: "failed to read request body", data: null },
+        { code: 400, message: "request body required", data: null },
         400,
       )
     }
-
-    if (text.trim() === "") {
-      const strict = path.startsWith("/api/fs") || path.startsWith("/api/share")
-      if (strict) {
-        return c.json(
-          { code: 400, message: "request body required", data: null },
-          400,
-        )
-      }
-      // 空 body 放行（保持向后兼容），但管理端空 body 属于可疑行为
-      // （如 cache/clear 空 body 会清空全部缓存），显式记日志便于定位。
-      if (path.startsWith("/api/admin")) {
-        console.warn(
-          `[jsonBodyGuard] empty JSON body passed to ${method} ${path}`,
-        )
-      }
-      return next()
-    }
-
-    try {
-      JSON.parse(text)
-    } catch {
-      return c.json(
-        { code: 400, message: "invalid JSON request body", data: null },
-        400,
+    // 空 body 放行（保持向后兼容），但管理端空 body 属于可疑行为
+    // （如 cache/clear 空 body 会清空全部缓存），显式记日志便于定位。
+    if (path.startsWith("/api/admin")) {
+      console.warn(
+        `[jsonBodyGuard] empty JSON body passed to ${method} ${path}`,
       )
     }
+    return next()
+  }
+
+  try {
+    JSON.parse(text)
+  } catch {
+    return c.json(
+      { code: 400, message: "invalid JSON request body", data: null },
+      400,
+    )
   }
 
   return next()
