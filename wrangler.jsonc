@@ -9,6 +9,14 @@
 {
   "name": "openlist-tsworkers",
   "main": "src/backend/worker.ts",
+
+  // iconv-lite 只有 FTP 驱动在用，而 Workers 没有 TCP socket、FTP 驱动不可用。
+  // build-edge.mjs 早已把 iconv-lite 当作 external / 空模块，但 `wrangler deploy`
+  // 不经过那条链路，仍会去解析它以及它的传递依赖 safer-buffer（issue #151）。
+  // 这里指向空桩，让 Wrangler 的打包与其它产物的行为一致。
+  "alias": {
+    "iconv-lite": "./src/backend/drivers/ftp/iconv-stub.ts"
+  },
   "compatibility_date": "2026-08-04",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
