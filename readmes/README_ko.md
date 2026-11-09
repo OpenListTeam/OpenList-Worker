@@ -7,9 +7,9 @@
 
 <a href="https://github.com/OpenListTeam/OpenList-Worker/blob/main/LICENSE"><img src="https://img.shields.io/github/license/OpenListTeam/OpenList-Worker" alt="License" /></a>
 <a href="https://github.com/OpenListTeam/OpenList-Worker/actions/workflows/build-verify.yml"><img src="https://img.shields.io/github/actions/workflow/status/OpenListTeam/OpenList-Worker/build-verify.yml?branch=main" alt="Build status" /></a>
-<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/release/OpenListTeam/OpenList-Worker" alt="latest version" /></a>
 <a href="https://github.com/OpenListTeam/OpenList-Worker/discussions"><img src="https://img.shields.io/github/discussions/OpenListTeam/OpenList-Worker?color=%23ED8936" alt="discussions" /></a>
-<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/downloads/OpenListTeam/OpenList-Worker/total?color=%239F7AEA&logo=github" alt="Downloads" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/stargazers"><img src="https://img.shields.io/github/stars/OpenListTeam/OpenList-Worker?color=%23ED8936&logo=github" alt="Stars" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/forks"><img src="https://img.shields.io/github/forks/OpenListTeam/OpenList-Worker?color=%239F7AEA&logo=github" alt="Forks" /></a>
 
 📘 [사용 문서](https://doc.oplist.org) · 🌏 [사용 문서（중국 본토）](https://doc.oplist.org.cn)  · ⚖️ [이용 약관](https://doc.oplist.org/terms)  · 🔒 [개인정보 처리방침](https://doc.oplist.org/privacy)
 
@@ -35,15 +35,16 @@
 <div align="center">
 
 
-| EdgeOne Makers · 국제 | EdgeOne Makers · 중국 | Cloudflare Workers · 글로벌 |
-| :---: | :---: | :---: |
-| [![EdgeOne에 배포](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![EdgeOne에 배포](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
+| EdgeOne Makers · 국제 | EdgeOne Makers · 중국 | Cloudflare Workers · 글로벌 | Alibaba Cloud ESA · 중국 |
+| :---: | :---: | :---: | :---: |
+| [![EdgeOne에 배포](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![EdgeOne에 배포](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) | [![Alibaba Cloud ESA에 배포](assets/esa-deploy.svg)](https://esa.console.aliyun.com/edge/function/list) |
 
 </div>
 
 > [!IMPORTANT]
 > - Cloudflare에서 `저장소 콘텐츠를 가져올 수 없습니다`라고 표시되면, 먼저 이 프로젝트를 [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork)한 다음 Github 저장소 연결 기능으로 배포하세요
-> - 배포 시 `JWT_SECRET`(16자 이상의 임의 문자열, 예: `openssl rand -hex 32`)을 입력하세요. JWT 서명과 데이터 암호화에 사용되며, 미설정 시 초기화 단계에서 자동 생성·영구 저장됩니다
+> - Alibaba Cloud ESA의 경우 콘솔의 **엣지 컴퓨팅 및 AI → 함수 및 Pages**에서 이 저장소를 가져오세요
+> - 배포 시 `JWT_SECRET`(≥16자)을 설정하세요. JWT 서명과 암호화에 사용됩니다
 > - 데이터 저장은 플랫폼 내장 영구 저장소를 자동으로 선택합니다(`DB_DRIVER=auto`) — 대부분 설정이 필요 없으며, 나머지 변수는 [환경 변수](https://doc.oplist.org/ecosystem/official_worker/guide_env)를 참고하세요
 > - 배포 후 첫 방문 시 **설치 마법사**가 열립니다. 브라우저에서 관리자 계정과 비밀번호를 설정하면 초기화가 완료됩니다(`ADMIN_PASS`를 설정하면 마법사를 건너뜁니다)
 
@@ -69,31 +70,22 @@ OpenList-Worker는 공식 [OpenListTeam/OpenList](https://github.com/OpenListTea
 
 ### 핵심 기능
 
-- **파일 탐색**：통합된 디렉터리 트리 탐색. 이미지, 동영상, 오디오, 문서, 코드, 압축 파일 등의 온라인 미리보기 지원.
-- **업로드·다운로드**：스토리지 간 업로드, 일괄 다운로드, 스트리밍, 다이렉트 링크 리다이렉트.
-- **파일 공유**：유효기간·비밀번호·권한 제어가 포함된 공유 링크 생성. 익명 액세스 및 디렉터리 공유 지원.
-- **전체 텍스트 검색**：인덱싱된 스토리지에서 파일을 빠르게 검색.
-- **오프라인 작업**：백그라운드 작업 큐로 일괄 작업 및 비동기 처리 지원.
-- **외부 인터페이스**：집계 스토리지를 WebDAV 또는 S3 호환 프로토콜로 노출하여 타사 도구에 마운트 가능.
-- **MCP 서비스**：Model Context Protocol 엔드포인트를 제공하여 AI 어시스턴트 등의 클라이언트에서 통합·호출 가능.
-
-### 권한 관리
-
-- **권한 관리**：역할 기반 접근 제어（RBAC）. 사용자 그룹, 디렉터리 수준 읽기·쓰기 권한 및 할당량 지원.
-- **인증 방식**：내장 계정 비밀번호에 더해 TOTP 검증, WebAuthn/FIDO 로그인, SSO 싱글 사인온, LDAP 디렉터리 인증 지원.
-- **보안 강화**：JWT 세션, CSRF 방지, 클릭재킹 방지（X-Frame-Options）, 콘텐츠 보안 정책（CSP）.
-- **헬스 체크**：`/health` 라이브니스 프로브와 `/healthz` 레디니스 프로브를 제공하여 모니터링·알림에 활용.
-
-### 플랫폼 배포
-
-- **실행 플랫폼**：Cloudflare Workers、Tencent Cloud EdgeOne Makers、Vercel、Serverless、Node.js 컨테이너 환경.
-- **데이터 스토리지**：Cloudflare D1（SQLite）을 주로 사용하며 MySQL、MariaDB、PostgreSQL、SQL Server도 지원.
-- **영속 캐시**：Cloudflare KV / EdgeOne Blob（선택）. 설정 영속화 및 캐시에 사용.
-- **원클릭 배포**：EdgeOne、Cloudflare Workers 등 플랫폼에서 원클릭 배포 버튼 + 초기화 지원.
+- **파일 관리**：통합 디렉터리 트리 탐색과 이미지 / 동영상 / 오디오 / 문서 / 코드 / 압축 파일 온라인 미리보기；스토리지 간 업로드, 일괄 다운로드, 스트리밍, 다이렉트 링크 리다이렉트；유효기간·비밀번호·권한 제어가 포함된 공유 링크.
+- **검색 및 작업**：인덱싱된 스토리지의 전체 텍스트 검색；일괄 작업과 비동기 처리를 위한 백그라운드 작업 큐.
+- **외부 인터페이스**：WebDAV、S3 호환 프로토콜, AI 어시스턴트용 MCP 엔드포인트.
+- **접근 및 인증**：RBAC（사용자 그룹, 디렉터리 수준 읽기·쓰기 권한, 할당량）, 계정 비밀번호 + TOTP / WebAuthn / SSO / LDAP.
+- **보안 및 운영**：JWT 세션, CSRF, 클릭재킹（X-Frame-Options）및 CSP 보호, `/health`·`/healthz` 프로브.
+- **동시 요청 중복 제거**：같은 순간의 동일한 디렉터리 목록 / 메타데이터 요청은 업스트림 드라이브에 한 번만 전달되고, 나머지는 같은 결과를 재사용하여 속도 제한과 CPU 소모를 줄입니다.
+- **실행 플랫폼**：Cloudflare Workers、Tencent Cloud EdgeOne Makers、Alibaba Cloud ESA、Vercel / AWS Lambda 및 Node.js 컨테이너.
+- **데이터 스토리지**：Cloudflare D1（SQLite）주 사용, KV / Blob / Durable Objects 및 외부 MySQL / MariaDB 지원.
+- **원클릭 배포**：EdgeOne、Cloudflare Workers、Alibaba Cloud ESA 배포 버튼 + 설치 마법사.
 
 ---
 
 ## 수동 배포
+
+<details>
+<summary>사전 요구 사항, 로컬 개발 및 프로덕션 배포 보기</summary>
 
 ### 사전 요구 사항
 
@@ -106,7 +98,7 @@ OpenList-Worker는 공식 [OpenListTeam/OpenList](https://github.com/OpenListTea
 # 1. 의존성 설치
 pnpm install
 
-# 2. wrangler.toml 설정（JWT_SECRET, KV/D1 바인딩 입력）
+# 2. 필요에 따라 wrangler.jsonc의 바인딩과 변수 설정（JWT_SECRET은 .dev.vars.example 참고）
 
 # 3. 개발 서버 시작（공식 프런트엔드를 자동으로 가져와 Worker 실행）
 pnpm run dev:unified
@@ -118,12 +110,14 @@ pnpm run dev:worker
 ### 프로덕션 배포
 
 ```bash
-# 원클릭 배포：KV namespace 존재 확인 → 공식 프런트엔드 가져오기 → Cloudflare Workers에 배포
+# 원클릭 배포：프런트엔드 빌드 → Cloudflare Workers에 배포（KV 바인딩은 wrangler가 자동으로 프로비저닝）
 pnpm run deploy
 
-# 또는 Worker 직접 배포（KV 확인 및 프런트엔드 빌드 건너뜀）
+# 또는 Worker 직접 배포（프런트엔드 빌드 건너뜀）
 pnpm run deploy:worker
 ```
+
+</details>
 
 ---
 
@@ -131,21 +125,32 @@ pnpm run deploy:worker
 
 ### 백엔드
 
-- **실행 환경**：Cloudflare Workers（Edge Computing）
+- **실행 환경**：Cloudflare Workers / EdgeOne Functions / Alibaba Cloud ESA（Edge Computing）
 - **웹 프레임워크**：Hono.js
-- **데이터베이스**：Cloudflare D1（SQLite）/ MySQL、MariaDB、PostgreSQL、SQL Server 지원
-- **캐시**：Cloudflare KV（선택）
+- **데이터베이스**：Cloudflare D1（SQLite）/ KV / Blob / Durable Objects 또는 외부 MySQL / MariaDB
 - **언어**：TypeScript
 - **빌드 도구**：Wrangler、esbuild
 
 ### 프런트엔드
 
-- **프레임워크**：React 19 + TypeScript
-- **UI 라이브러리**：Ant Design / Material-UI
+- **프레임워크**：SolidJS + TypeScript（공식 [OpenList-Frontend](https://github.com/OpenListTeam/OpenList-Frontend)）
+- **UI 라이브러리**：Hope UI
 - **빌드 도구**：Vite
 
 ---
 
+## 배포 설정
+
+배포 후 다음 변수를 설정하세요:
+
+| 변수 | 기본값 | 설명 |
+| :--- | :--- | :--- |
+| `JWT_SECRET` | (없음) | JWT 서명 키 (≥16자) |
+| `DB_FORMAT` | `map` | `map` (JSON) / `key` (키별) / `sql` (관계형) |
+| `DB_DRIVER` | `auto` | `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql` |
+| `DB_CIPHER` | `none` | 민감 필드 저장 시 암호화, 예: `aes-256-gcm` |
+
+전체 변수 목록은 [설정 변수](https://doc.oplist.org/ecosystem/official_worker/guide_env)를 참고하세요.
 
 ## 도움말
 

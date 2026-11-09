@@ -7,9 +7,9 @@
 
 <a href="https://github.com/OpenListTeam/OpenList-Worker/blob/main/LICENSE"><img src="https://img.shields.io/github/license/OpenListTeam/OpenList-Worker" alt="License" /></a>
 <a href="https://github.com/OpenListTeam/OpenList-Worker/actions/workflows/build-verify.yml"><img src="https://img.shields.io/github/actions/workflow/status/OpenListTeam/OpenList-Worker/build-verify.yml?branch=main" alt="Build status" /></a>
-<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/release/OpenListTeam/OpenList-Worker" alt="latest version" /></a>
 <a href="https://github.com/OpenListTeam/OpenList-Worker/discussions"><img src="https://img.shields.io/github/discussions/OpenListTeam/OpenList-Worker?color=%23ED8936" alt="discussions" /></a>
-<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/downloads/OpenListTeam/OpenList-Worker/total?color=%239F7AEA&logo=github" alt="Downloads" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/stargazers"><img src="https://img.shields.io/github/stars/OpenListTeam/OpenList-Worker?color=%23ED8936&logo=github" alt="Stars" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/forks"><img src="https://img.shields.io/github/forks/OpenListTeam/OpenList-Worker?color=%239F7AEA&logo=github" alt="Forks" /></a>
 
 📘 [Dokumentation](https://doc.oplist.org) · 🌏 [Dokumentation (chinesisches Festland)](https://doc.oplist.org.cn)  · ⚖️ [Nutzungsbedingungen](https://doc.oplist.org/terms)  · 🔒 [Datenschutzerklärung](https://doc.oplist.org/privacy)
 
@@ -35,15 +35,16 @@ Klicken Sie auf die Schaltfläche unten, um dieses Projekt mit einem Klick auf d
 <div align="center">
 
 
-| EdgeOne Makers · International | EdgeOne Makers · China | Cloudflare Workers · Global |
-| :---: | :---: | :---: |
-| [![Auf EdgeOne bereitstellen](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Auf EdgeOne bereitstellen](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
+| EdgeOne Makers · International | EdgeOne Makers · China | Cloudflare Workers · Global | Alibaba Cloud ESA · China |
+| :---: | :---: | :---: | :---: |
+| [![Auf EdgeOne bereitstellen](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Auf EdgeOne bereitstellen](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) | [![Auf Alibaba Cloud ESA bereitstellen](assets/esa-deploy.svg)](https://esa.console.aliyun.com/edge/function/list) |
 
 </div>
 
 > [!IMPORTANT]
 > - Wenn Cloudflare `Repository-Inhalt kann nicht abgerufen werden` anzeigt, [forken](https://github.com/OpenListTeam/OpenList-Worker/fork) Sie dieses Projekt zuerst und stellen Sie es dann über die Verbindung zum Github-Repository bereit
-> - Tragen Sie bei der Bereitstellung `JWT_SECRET` ein (Zufallszeichenfolge mit 16+ Zeichen, z. B. `openssl rand -hex 32`): Sie signiert JWTs und verschlüsselt Daten; ohne Angabe wird sie bei der Initialisierung erzeugt und gespeichert
+> - Importieren Sie für Alibaba Cloud ESA dieses Repository in der Konsole unter **Edge Computing und AI → Funktionen und Pages**
+> - Setzen Sie bei der Bereitstellung `JWT_SECRET` (≥16 Zeichen) für JWT-Signatur und Verschlüsselung
 > - Der Datenspeicher verwendet automatisch das plattformeigene persistente Backend (`DB_DRIVER=auto`) — keine Konfiguration nötig; weitere Variablen siehe [Umgebungsvariablen](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 > - Beim ersten Besuch nach der Bereitstellung öffnet sich der **Installationsassistent**: Legen Sie Admin-Konto und Passwort im Browser fest, um die Initialisierung abzuschließen (mit `ADMIN_PASS` überspringen Sie den Assistenten)
 
@@ -69,31 +70,22 @@ Zusätzlich zu den oben genannten echten Speichern werden auch virtuelle/funktio
 
 ### Kernfunktionen
 
-- **Dateidurchsuchen**: einheitliches Durchsuchen des Verzeichnisbaums, mit Online-Vorschau von Bildern, Videos, Audio, Dokumenten, Code, Archiven und mehr.
-- **Hochladen & Herunterladen**: speicherübergreifendes Hochladen, Stapel-Download, Streaming und Direktlink-Weiterleitung.
-- **Dateifreigabe**: Erzeugen von Freigabe-Links mit Ablauf, Passwort und Berechtigungssteuerung, unterstützt anonymen Zugriff und Verzeichnisfreigabe.
-- **Volltextsuche**: schnelles Suchen von Dateien in indizierten Speichern.
-- **Offline-Aufgaben**: Hintergrund-Aufgabenwarteschlange für Stapeloperationen und asynchrone Verarbeitung.
-- **Externe Schnittstellen**: aggregierten Speicher über WebDAV oder S3-kompatibles Protokoll bereitstellen, zum Mounten in Drittanbieter-Tools.
-- **MCP-Dienst**: bietet einen Model-Context-Protocol-Endpunkt, der von KI-Assistenten und anderen Clients integriert und aufgerufen werden kann.
-
-### Zugriffsverwaltung
-
-- **Berechtigungen**: rollenbasierte Zugriffskontrolle (RBAC), unterstützt Benutzergruppen, Lese-/Schreibberechtigungen auf Verzeichnisebene und Kontingente.
-- **Authentifizierung**: integrierte Kontokennwörter mit TOTP-Verifizierung, WebAuthn/FIDO-Anmeldung, SSO-Single-Sign-on und LDAP-Verzeichnisauthentifizierung.
-- **Sicherheitshärtung**: JWT-Sitzungen, CSRF-Schutz, Clickjacking-Schutz (X-Frame-Options), Content Security Policy (CSP).
-- **Gesundheitsprüfungen**: bietet eine `/health`-Liveness-Probe und eine `/healthz`-Readiness-Probe für Überwachung und Alarmierung.
-
-### Plattform-Bereitstellung
-
-- **Laufzeitplattformen**: Cloudflare Workers, Tencent Cloud EdgeOne Makers, Vercel, Serverless und Node.js-Containerumgebungen.
-- **Datenspeicher**: Cloudflare D1 (SQLite) als primär, unterstützt auch MySQL, MariaDB, PostgreSQL, SQL Server.
-- **Persistenter Cache**: Cloudflare KV / EdgeOne Blob (optional) für Konfigurationspersistenz und Caching.
-- **One-Click-Bereitstellung**: unterstützt One-Click-Bereitstellungsbuttons + Initialisierung auf EdgeOne, Cloudflare Workers und anderen Plattformen.
+- **Dateiverwaltung**: einheitliches Durchsuchen des Verzeichnisbaums mit Online-Vorschau für Bilder, Videos, Audio, Dokumente, Code und Archive; speicherübergreifendes Hochladen, Stapel-Download, Streaming und Direktlink-Weiterleitung; Freigabe-Links mit Ablauf, Passwort und Berechtigungssteuerung.
+- **Suche & Aufgaben**: Volltextsuche in indizierten Speichern; Hintergrund-Aufgabenwarteschlange für Stapel- und asynchrone Verarbeitung.
+- **Externe Schnittstellen**: WebDAV, S3-kompatibles Protokoll und ein MCP-Endpunkt für KI-Assistenten.
+- **Zugriff & Authentifizierung**: RBAC (Benutzergruppen, Lese-/Schreibrechte auf Verzeichnisebene, Kontingente), Kontokennwörter plus TOTP / WebAuthn / SSO / LDAP.
+- **Sicherheit & Betrieb**: JWT-Sitzungen, CSRF-, Clickjacking- (X-Frame-Options) und CSP-Schutz, `/health`- und `/healthz`-Probes.
+- **Parallelitäts-Deduplizierung**: identische Verzeichnislisten- / Metadatenanfragen erreichen das Upstream-Laufwerk nur einmal; weitere Anfragen nutzen dasselbe Ergebnis und vermeiden Ratenlimits und CPU-Last.
+- **Laufzeitplattformen**: Cloudflare Workers, Tencent Cloud EdgeOne Makers, Alibaba Cloud ESA, Vercel / AWS Lambda und Node.js-Container.
+- **Datenspeicher**: Cloudflare D1 (SQLite) als primär, außerdem KV / Blob / Durable Objects und externes MySQL / MariaDB.
+- **One-Click-Bereitstellung**: Bereitstellungsschaltflächen für EdgeOne, Cloudflare Workers und Alibaba Cloud ESA + Installationsassistent.
 
 ---
 
 ## Manuelle Bereitstellung
+
+<details>
+<summary>Voraussetzungen, lokale Entwicklung und Produktionsbereitstellung anzeigen</summary>
 
 ### Voraussetzungen
 
@@ -106,7 +98,7 @@ Zusätzlich zu den oben genannten echten Speichern werden auch virtuelle/funktio
 # 1. Abhängigkeiten installieren
 pnpm install
 
-# 2. wrangler.toml konfigurieren (JWT_SECRET, KV/D1-Bindungen eintragen)
+# 2. Bindungen und Variablen in wrangler.jsonc nach Bedarf konfigurieren (JWT_SECRET siehe .dev.vars.example)
 
 # 3. Entwicklungsserver starten (holt automatisch das offizielle Frontend und führt den Worker aus)
 pnpm run dev:unified
@@ -118,12 +110,14 @@ pnpm run dev:worker
 ### Produktionsbereitstellung
 
 ```bash
-# One-Click-Bereitstellung: sicherstellen, dass der KV-Namespace existiert → offizielles Frontend holen → auf Cloudflare Workers bereitstellen
+# One-Click-Bereitstellung: Frontend bauen → auf Cloudflare Workers bereitstellen (KV-Bindungen werden von wrangler automatisch bereitgestellt)
 pnpm run deploy
 
-# Oder den Worker direkt bereitstellen (KV-Prüfung und Frontend-Build überspringen)
+# Oder den Worker direkt bereitstellen (Frontend-Build überspringen)
 pnpm run deploy:worker
 ```
+
+</details>
 
 ---
 
@@ -131,21 +125,32 @@ pnpm run deploy:worker
 
 ### Backend
 
-- **Laufzeit**: Cloudflare Workers (Edge Computing)
+- **Laufzeit**: Cloudflare Workers / EdgeOne Functions / Alibaba Cloud ESA (Edge Computing)
 - **Web-Framework**: Hono.js
-- **Datenbank**: Cloudflare D1 (SQLite) / unterstützt MySQL, MariaDB, PostgreSQL, SQL Server
-- **Cache**: Cloudflare KV (optional)
+- **Datenbank**: Cloudflare D1 (SQLite) / KV / Blob / Durable Objects oder externes MySQL / MariaDB
 - **Sprache**: TypeScript
 - **Build-Tools**: Wrangler, esbuild
 
 ### Frontend
 
-- **Framework**: React 19 + TypeScript
-- **UI-Bibliotheken**: Ant Design / Material-UI
+- **Framework**: SolidJS + TypeScript (offizielles [OpenList-Frontend](https://github.com/OpenListTeam/OpenList-Frontend))
+- **UI-Bibliothek**: Hope UI
 - **Build-Tool**: Vite
 
 ---
 
+## Bereitstellungs-Konfiguration
+
+Setzen Sie nach der Bereitstellung die folgenden Variablen:
+
+| Variable | Standard | Beschreibung |
+| :--- | :--- | :--- |
+| `JWT_SECRET` | (keine) | Signaturschlüssel für JWT (≥16 Zeichen) |
+| `DB_FORMAT` | `map` | `map` (JSON) / `key` (pro Schlüssel) / `sql` (relational) |
+| `DB_DRIVER` | `auto` | `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql` |
+| `DB_CIPHER` | `none` | Verschlüsselung sensibler Felder, z. B. `aes-256-gcm` |
+
+Die vollständige Variablenliste finden Sie unter [Konfigurationsvariablen](https://doc.oplist.org/ecosystem/official_worker/guide_env).
 
 ## Support
 
