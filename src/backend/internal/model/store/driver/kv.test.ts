@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { kvDriver } from "./kv"
+import { KEY_INDEX_KEY } from "../keycodec"
 
 /**
  * issue #125 回归：binding 模式 list() 必须同时兼容两种平台语义。
@@ -142,6 +143,28 @@ test("kv health (binding, key format) exercises list so exhausted quota is not r
   const ok = await kvDriver.health(okEnv)
   assert.equal(ok.available, true)
   assert.equal(listCalls, 1)
+})
+
+test("kv health (binding, key format) skips list when the key index exists", async () => {
+  // 索引存在时 key 格式的稳态读写只依赖 get，健康检查不应再白白消耗
+  // 1 次 list 配额（issue #125：list 配额只有 1000 次/天）。
+  let listCalls = 0
+  const health = await kvDriver.health({
+    DB_FORMAT: "key",
+    KV: {
+      get: async (key: string) =>
+        key === KEY_INDEX_KEY ? '{"v":1,"keys":["users_1"]}' : null,
+      put: async () => {},
+      delete: async () => {},
+      list: async () => {
+        listCalls += 1
+        return { keys: [], list_complete: true }
+      },
+    },
+  })
+
+  assert.equal(health.available, true)
+  assert.equal(listCalls, 0)
 })
 
 test("kv health (binding, map format) does not require an unsupported list API", async () => {

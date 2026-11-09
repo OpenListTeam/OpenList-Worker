@@ -153,6 +153,11 @@ pnpm run deploy:worker
 | `DB_DRIVER` | `auto` | 可选 `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql` |
 | `DB_CIPHER` | `none` | 敏感字段落盘算法，如 `aes-256-gcm` |
 
+> **KV 配额提示**：`DB_FORMAT=key` 会维护全局索引键（`openlist_key_index`），
+> 首次读取旧数据后 load/save 不再消耗 KV `list` 配额。但每次保存仍按记录数写入
+> （默认配置约 100+ 条），Cloudflare KV 免费版只有 1000 写/天，长期使用建议
+> `DB_DRIVER=d1` 或 `DB_FORMAT=map`。
+
 
 
 完整环境变量，请参阅[配置变量](https://doc.oplist.org/ecosystem/official_worker/guide_env)
