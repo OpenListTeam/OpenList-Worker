@@ -57,14 +57,21 @@ export const tooLargeResponse = (c: any, limit: number, label = "File") =>
  * 读取请求体，并按**实际字节数**复核上传上限。
  *
  * 仍保留 `Content-Length` 预检：能在读入内存**之前**就拒绝超大请求，省一次拷贝。
+ *
+ * 返回 `Uint8Array` 而不是 Node 的 `Buffer`：ESA 等边缘运行时没有全局 `Buffer`
+ * （Cloudflare Workers 是靠 nodejs_compat 注入的），直接用 `Buffer.from` 会在
+ * 读请求体这一步抛 `Buffer is not defined`，导致上传全链路 500。见 Issue #169。
  */
 export async function readBodyWithinLimit(
   c: any,
   part = false,
-): Promise<{ ok: true; buffer: Buffer } | { ok: false; limit: number }> {
+): Promise<{ ok: true; buffer: Uint8Array } | { ok: false; limit: number }> {
   const pre = exceedsUploadLimit(c, part)
   if (pre !== null) return { ok: false, limit: pre }
-  const buffer = Buffer.from(await c.req.arrayBuffer())
+  // 注意：这里只是对同一个 ArrayBuffer 建视图，**不额外拷贝**全量请求体。
+  // 曾有人误以为多了一次拷贝而改回 Buffer.from(...)，结果在无 Buffer 的
+  // 运行时（ESA）直接 500 —— 见 Issue #169。
+  const buffer = new Uint8Array(await c.req.arrayBuffer())
   const max = getUploadSizeLimit(c, part)
   if (buffer.length > max) return { ok: false, limit: max }
   return { ok: true, buffer }

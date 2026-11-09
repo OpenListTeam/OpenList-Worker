@@ -1,16 +1,8 @@
 import { resolvePath, getDb, getSettings, saveDb } from "../model/db"
+import { isSafeUrl } from "../../pkg/http"
 import { encodeDownloadPath } from "../../pkg/path"
-import { singleflight } from "../../pkg/singleflight"
 import { canUseProxyEndpoint, normalizeExtList } from "../driver/proxy"
 import { FileItem, StorageDriver, calcFileType } from "../driver/base"
-import {
-  getCachedFileTree,
-  setCachedFileTree,
-  getCachedLink,
-  setCachedLink,
-  invalidatePaths,
-  type CacheTarget,
-} from "../cache"
 import { Onedrive } from "../../drivers/onedrive/driver"
 import { OnedriveAPP } from "../../drivers/onedrive_app/driver"
 import { AliyundriveOpen } from "../../drivers/aliyundrive_open/driver"
@@ -1382,51 +1374,17 @@ export async function flushPendingDriverState(
 }
 
 /**
- * 由 `resolvePath()` 结果构造缓存目标；虚拟路径（无存储）返回 null，
- * 表示不参与缓存。
- */
-function toCacheTarget(resolved: any): CacheTarget | null {
-  if (!resolved?.storage) return null
-  return {
-    storage: resolved.storage,
-    cleanPath: resolved.cleanPath,
-    physical: resolved.physical,
-    isVirtual: resolved.isVirtual,
-  }
-}
-
-/**
- * fs 读操作的 singleflight 去重键。
+ * fs 读操作的入口。
  *
- * 组成：操作名 + 存储 id + 存储修订号 + 虚拟路径。
- *   - 带存储 id/修订号：不同存储、以及存储配置被编辑后，不会复用旧结果；
- *   - 带虚拟路径（调用方已做过 base_path 处理）：不会跨用户串味。
- *
- * 该键同时用于进程内（L1）与数据库表（L2）两级去重，因此必须稳定可复现：
- * 绝不能包含时间戳、随机数、用户对象等每次调用都不同的内容。
+ * 每次调用都直接回源驱动：既没有结果缓存，也没有跨请求/跨实例的调用合并，
+ * 目录与元信息始终反映上游的最新状态。
  */
-function fsSingleflightKey(
-  op: string,
-  resolved: any,
-  virtualPath: string,
-): string {
-  const storageId = resolved?.storage?.id ?? "virtual"
-  const revision = resolved?.storage?.modified ?? ""
-  return `${op}:${storageId}:${revision}:${virtualPath}`
-}
-
 export async function listItems(
   virtualPath: string,
   requestContext?: StorageRequestContext,
 ): Promise<{ content: FileItem[]; provider: string; storage?: any }> {
   const resolved = await resolvePath(virtualPath, requestContext?.env)
-  // 并发相同的「同一存储 + 同一目录」只向上游发起一次 list。
-  // 键必须在 resolvePath 之后才能确定（需要存储 id），因此去重发生在路径解析之后。
-  return singleflight(
-    fsSingleflightKey("fs.list", resolved, virtualPath),
-    () => listItemsResolved(resolved, virtualPath, requestContext),
-    { env: requestContext?.env },
-  )
+  return listItemsResolved(resolved, virtualPath, requestContext)
 }
 
 async function listItemsResolved(
@@ -1439,32 +1397,17 @@ async function listItemsResolved(
 
   if (resolved.storage) {
     driverName = resolved.storage.driver
-    const cacheTarget = toCacheTarget(resolved)
     try {
-      // 文件树缓存：命中则完全跳过驱动（对齐 OpenList.ts「浏览只读缓存」）。
-      // 注意缓存的是驱动层原始结果，权限/meta/签名仍在 server 层按请求计算。
-      const cached = await getCachedFileTree(cacheTarget!, requestContext?.env)
-      if (cached) {
-        items = cached
-      } else {
-        const driver = await getDriver(driverName, resolved.storage)
-        // Get raw items from driver
-        try {
-          items = await driver.list(virtualPath, resolved.physical!)
-        } finally {
-          await flushPendingDriverState(
-            driverName,
-            resolved.storage,
-            driver,
-            requestContext,
-          )
-        }
-        // 回源成功后写入缓存（空目录同样缓存，避免反复击穿存储）。
-        // 传副本：后续 mount 合并 / type 计算会就地修改 items。
-        await setCachedFileTree(
-          cacheTarget!,
-          items.map((item) => ({ ...item })),
-          requestContext?.env,
+      const driver = await getDriver(driverName, resolved.storage)
+      // Get raw items from driver
+      try {
+        items = await driver.list(virtualPath, resolved.physical!)
+      } finally {
+        await flushPendingDriverState(
+          driverName,
+          resolved.storage,
+          driver,
+          requestContext,
         )
       }
       if (resolved.storage.status !== "work") {
@@ -1583,12 +1526,7 @@ export async function getItem(
   requestContext?: StorageRequestContext,
 ): Promise<{ item: FileItem; provider: string; rawUrl: string }> {
   const resolved = await resolvePath(virtualPath, requestContext?.env)
-  // 与 listItems 同理：并发相同的「同一存储 + 同一路径」只向上游取一次元信息。
-  return singleflight(
-    fsSingleflightKey("fs.get", resolved, virtualPath),
-    () => getItemResolved(resolved, virtualPath, requestContext),
-    { env: requestContext?.env },
-  )
+  return getItemResolved(resolved, virtualPath, requestContext)
 }
 
 async function getItemResolved(
@@ -1631,25 +1569,17 @@ async function getItemResolved(
   }
 
   const driverName = resolved.storage ? resolved.storage.driver : "Local"
-  const cacheTarget = toCacheTarget(resolved)
-  // 下载链接缓存：命中则直接复用上次换取到的直链与元数据，
-  // 跳过驱动 get()（网盘换链通常是最贵、最易被限流的一步）。
-  let item: FileItem | null = cacheTarget
-    ? await getCachedLink(cacheTarget, requestContext?.env)
-    : null
-  if (!item) {
-    const driver = await getDriver(driverName, resolved.storage)
-    try {
-      item = await driver.get(virtualPath, resolved.physical!)
-    } finally {
-      await flushPendingDriverState(
-        driverName,
-        resolved.storage,
-        driver,
-        requestContext,
-      )
-    }
-    await setCachedLink(cacheTarget, item, requestContext?.env)
+  const driver = await getDriver(driverName, resolved.storage)
+  let item: FileItem
+  try {
+    item = await driver.get(virtualPath, resolved.physical!)
+  } finally {
+    await flushPendingDriverState(
+      driverName,
+      resolved.storage,
+      driver,
+      requestContext,
+    )
   }
   if (!item.type) {
     item.type = calcFileType(item.name, item.is_dir)
@@ -1684,8 +1614,6 @@ export async function makeDirectory(
       requestContext,
     )
   }
-  // 新建目录：父目录列表已变化（目录自身也为空列表）
-  await invalidatePaths([virtualPath], requestContext?.env)
 }
 
 export async function renameItem(
@@ -1708,10 +1636,6 @@ export async function renameItem(
       requestContext,
     )
   }
-  // 重命名：旧路径与新路径都要失效（父目录列表同样变化）
-  const parent = virtualPath.slice(0, virtualPath.lastIndexOf("/")) || "/"
-  const newVirtualPath = `${parent === "/" ? "" : parent}/${newName}`
-  await invalidatePaths([virtualPath, newVirtualPath], requestContext?.env)
 }
 
 export async function removeItems(
@@ -1736,8 +1660,6 @@ export async function removeItems(
         requestContext,
       )
     }
-    // 删除：被删路径与其父目录缓存失效
-    await invalidatePaths([itemVirtual], requestContext?.env)
   }
 }
 
@@ -1776,8 +1698,6 @@ export async function moveItems(
         requestContext,
       )
     }
-    // 移动：源路径与目标路径（含各自父目录）缓存全部失效
-    await invalidatePaths([srcVirtual, dstVirtual], requestContext?.env)
   }
 }
 
@@ -1816,13 +1736,12 @@ export async function copyItems(
         requestContext,
       )
     }
-    // 复制：目标路径（含父目录）缓存失效
-    await invalidatePaths([dstVirtual], requestContext?.env)
   }
 }
 
 export async function putItem(
   virtualPath: string,
+  // Uint8Array 而非 Node Buffer：ESA 等边缘运行时没有全局 Buffer（Issue #169）
   content: Uint8Array,
   requestContext?: StorageRequestContext,
 ): Promise<void> {
@@ -1841,6 +1760,188 @@ export async function putItem(
       requestContext,
     )
   }
-  // 上传/覆盖：该文件的旧直链与父目录列表缓存失效
-  await invalidatePaths([virtualPath], requestContext?.env)
+}
+
+/**
+ * 媒体刮削读取文件内容的上限：任何一次读取都不得超过 32MB。
+ *
+ * 刮削只需要文件头（ID3/FLAC/图片头）或尾部（ID3v1 / ZIP 中央目录），
+ * 但少数存储不支持 Range，会退化成整文件下载，因此必须有硬上限。
+ */
+export const MAX_MEDIA_READ_BYTES = 32 * 1024 * 1024
+
+/** 本地存储的区间读取（Node 运行时；Worker 下 import 会失败并返回 null） */
+async function readLocalRange(
+  physicalPath: string,
+  start: number,
+  want: number,
+): Promise<Uint8Array | null> {
+  try {
+    const fs = await import("node:fs/promises")
+    const fh = await fs.open(physicalPath, "r")
+    try {
+      const size = (await fh.stat()).size
+      if (start >= size) return new Uint8Array(0)
+      const len = Math.min(want, size - start)
+      const buf = new Uint8Array(len)
+      const { bytesRead } = await fh.read(buf, 0, len, start)
+      return buf.subarray(0, bytesRead)
+    } finally {
+      await fh.close()
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 读取 VFS 文件的指定区间（用于 ID3 标签、EPUB 封面、图片缩略图等）。
+ *
+ * 行为：
+ *   1. 通过驱动换链拿到 raw_url，再带 `Range` 请求；
+ *   2. 上游返回 206 时直接切片；
+ *   3. 上游忽略 Range 返回 200 时，流式丢弃 `offset` 字节后最多读 `length` 字节，
+ *      避免把整个大文件读进内存；
+ *   4. 任何失败返回 null（刮削属于尽力而为，不应中断主流程）。
+ */
+export async function readFileRange(
+  virtualPath: string,
+  offset: number,
+  length: number,
+  requestContext?: StorageRequestContext,
+): Promise<Uint8Array | null> {
+  const start = Math.max(0, Math.floor(offset) || 0)
+  const want = Math.min(
+    MAX_MEDIA_READ_BYTES,
+    Math.max(1, Math.floor(length) || 1),
+  )
+  let resolved: Awaited<ReturnType<typeof resolvePath>>
+  try {
+    resolved = await resolvePath(virtualPath, requestContext?.env)
+  } catch {
+    return null
+  }
+  if (resolved.isVirtual || !resolved.storage) return null
+
+  let item: FileItem
+  const driver = await getDriver(resolved.storage.driver, resolved.storage)
+  try {
+    item = await driver.get(virtualPath, resolved.physical!)
+  } catch (e: any) {
+    console.warn(`[op] read ${virtualPath} link failed:`, e?.message || e)
+    return null
+  } finally {
+    await flushPendingDriverState(
+      resolved.storage.driver,
+      resolved.storage,
+      driver,
+      requestContext,
+    )
+  }
+  if (!item?.raw_url) {
+    // LocalDriver 没有 raw_url（本地文件不走 HTTP）。Node 运行时直接读区间，
+    // 否则本地存储的音频/图片永远读不到标签与封面（PR #148 评审 #25）。
+    if (resolved.storage.driver === "local") {
+      return readLocalRange(resolved.physical!, start, want)
+    }
+    return null
+  }
+
+  const headers: Record<string, string> = {
+    ...(item.raw_url_headers || {}),
+    Range: `bytes=${start}-${start + want - 1}`,
+  }
+  try {
+    // 手动跟随重定向：默认 fetch 会自动跳转，既绕过 SSRF 校验，也会把
+    // raw_url_headers（Cookie/Authorization）原样带给第三方。每一跳都重新
+    // 校验目标地址，跨域时丢弃凭据头（对齐 server/raw.ts 的 safeProxyFetch）。
+    let currentUrl = item.raw_url
+    let currentHeaders: Record<string, string> = { ...headers }
+    let res: Response | null = null
+    for (let hop = 0; hop < 5; hop++) {
+      // 首跳地址来自管理员配置的驱动（可能是有意为之的内网存储），不做
+      // SSRF 拦截；后续每一跳都必须重新校验，防止公网地址 302 到内网。
+      if (hop > 0) {
+        let safe = false
+        try {
+          safe = isSafeUrl(currentUrl)
+        } catch {
+          safe = false
+        }
+        if (!safe) return null
+      }
+      res = await fetch(currentUrl, {
+        headers: currentHeaders,
+        redirect: "manual",
+      })
+      if (res.status < 300 || res.status >= 400) break
+      const loc = res.headers.get("location")
+      if (!loc) return null
+      let next: URL
+      try {
+        next = new URL(loc, currentUrl)
+      } catch {
+        return null
+      }
+      if (next.origin !== new URL(currentUrl).origin) {
+        currentHeaders = { Range: currentHeaders.Range }
+      }
+      try {
+        await res.body?.cancel()
+      } catch {
+        /* ignore */
+      }
+      currentUrl = next.toString()
+    }
+    if (!res) return null
+    if (!res.ok && res.status !== 206) return null
+
+    if (res.status === 206) {
+      const buf = new Uint8Array(await res.arrayBuffer())
+      return buf.subarray(0, Math.min(buf.length, want))
+    }
+
+    // 200：上游忽略了 Range（或本地文件驱动）。流式跳过 offset。
+    if (!res.body) {
+      const buf = new Uint8Array(await res.arrayBuffer())
+      return buf.subarray(start, start + want)
+    }
+    const reader = res.body.getReader()
+    let skipped = 0
+    const chunks: Uint8Array[] = []
+    let received = 0
+    try {
+      while (received < want) {
+        const { done, value } = await reader.read()
+        if (done || !value) break
+        let chunk = value
+        if (skipped < start) {
+          const drop = Math.min(chunk.length, start - skipped)
+          skipped += drop
+          chunk = chunk.subarray(drop)
+          if (chunk.length === 0) continue
+        }
+        const take = Math.min(chunk.length, want - received)
+        chunks.push(chunk.subarray(0, take))
+        received += take
+      }
+    } finally {
+      try {
+        await reader.cancel()
+      } catch {
+        /* ignore */
+      }
+    }
+    if (chunks.length === 0) return null
+    const out = new Uint8Array(received)
+    let pos = 0
+    for (const c of chunks) {
+      out.set(c, pos)
+      pos += c.length
+    }
+    return out
+  } catch (e: any) {
+    console.warn(`[op] read ${virtualPath} range failed:`, e?.message || e)
+    return null
+  }
 }

@@ -8,7 +8,7 @@
  * 自动检测环境并选择合适的模式。
  */
 import { sanitizeProxyOrigin } from "../proxy"
-import { readFormat } from "../config"
+import { KV_HEALTH_PROBE_KEY, readFormat } from "../config"
 import type { Driver, EnvContext } from "../types"
 
 /**
@@ -562,7 +562,7 @@ export const kvDriver: Driver = {
         if (typeof kv.healthCheck === "function") {
           await kv.healthCheck()
         } else {
-          await kv.get("__health_check__")
+          await kv.get(KV_HEALTH_PROBE_KEY)
         }
         // key 格式的 load/save 依赖 list；map 格式只读写固定的 openlist_config,
         // 不要求 EdgeKV 暴露 list API（ESA EdgeKV 内置 API 仅提供 get/put/delete）。
@@ -577,7 +577,7 @@ export const kvDriver: Driver = {
               "KV binding does not support list(), which is required by DB_FORMAT=key",
             )
           }
-          await kv.list({ prefix: "__health_check__", cursor: "", limit: 256 })
+          await kv.list({ prefix: KV_HEALTH_PROBE_KEY, cursor: "", limit: 256 })
         }
         return {
           driver: "kv",

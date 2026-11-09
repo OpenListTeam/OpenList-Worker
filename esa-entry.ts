@@ -17,6 +17,7 @@
  */
 declare const EdgeKV: any
 import app, { setSpaFallbackHtml } from "./src/backend/index"
+import { KV_HEALTH_PROBE_KEY } from "./src/backend/internal/model/store/config"
 import INDEX_HTML from "./dist/index.html"
 // 构建期内联 dist/index.html 作为 SPA 兜底壳
 setSpaFallbackHtml(INDEX_HTML)
@@ -110,7 +111,8 @@ function wrapEsaEdgeKV(
     // 退化为一次真实读取：宁可多花一个子请求，也不把未知状态报成可用。
     async healthCheck(): Promise<void> {
       if (!healthProbe) {
-        await edgeKv.get("__openlist_probe__")
+        // 与 kv 驱动的 health() 用同一个键，便于核对 ESA 子请求配额
+        await edgeKv.get(KV_HEALTH_PROBE_KEY)
         return
       }
       if (!healthProbe.ok) {
@@ -204,7 +206,7 @@ export default {
           let kvTestOk = false
           let kvTestErr: string | null = null
           try {
-            await edgeKv.get("__openlist_probe__")
+            await edgeKv.get(KV_HEALTH_PROBE_KEY)
             kvTestOk = true
           } catch (e: any) {
             kvTestErr = e?.message || String(e)

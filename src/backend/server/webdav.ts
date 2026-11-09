@@ -388,7 +388,8 @@ webdavRouter.all("/*", async (c) => {
         if (await deniedByMetaWrite(c, user, splitPath(actualPath).dir, true)) {
           return metaForbidden(c)
         }
-        const buffer = Buffer.from(await c.req.arrayBuffer())
+        // Uint8Array 而非 Buffer：ESA 边缘运行时没有全局 Buffer（Issue #169）
+        const buffer = new Uint8Array(await c.req.arrayBuffer())
         await putItem(actualPath, buffer, ctx)
         return c.body(null, 201)
       }

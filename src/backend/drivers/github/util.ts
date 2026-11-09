@@ -281,7 +281,8 @@ export class GithubApiClient {
   }
 
   async putBlob(content: Uint8Array): Promise<string> {
-    // 不用 Buffer.from(content).toString("base64")：ESA 没有全局 Buffer
+    // 不用 Buffer.from(content).toString("base64")：ESA 等边缘运行时没有全局
+    // Buffer，上传路径会直接抛 "Buffer is not defined"（Issue #169 的同类问题）。
     const base64Content = bytesToBase64(content)
     const res = await this.request<{ sha: string }>(
       `https://api.github.com/repos/${this.owner}/${this.repo}/git/blobs`,

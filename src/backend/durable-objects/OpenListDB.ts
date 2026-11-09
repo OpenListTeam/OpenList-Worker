@@ -13,11 +13,7 @@
  * 通过 RPC 调用（stub.kvGet / sqlQuery 等），每个实例用 `idFromName` 定位到
  * 固定实例，保证数据持久在同一 DO 实例。
  */
-import {
-  buildSingleFlightDdl,
-  D1_SCHEMA,
-  KV_SCHEMA_SQLITE,
-} from "../internal/model/store/schema"
+import { D1_SCHEMA, KV_SCHEMA_SQLITE } from "../internal/model/store/schema"
 
 export class OpenListDB {
   private state: any
@@ -32,14 +28,10 @@ export class OpenListDB {
   }
 
   /**
-   * 建表（幂等）：KV 表（map/key 格式）+ 列式表（sql 格式）+ singleflight 协调表。
+   * 建表（幂等）：KV 表（map/key 格式）+ 列式表（sql 格式）。
    */
   private ensureSchema(): void {
-    for (const ddl of [
-      ...KV_SCHEMA_SQLITE,
-      ...D1_SCHEMA,
-      ...buildSingleFlightDdl("sqlite"),
-    ]) {
+    for (const ddl of [...KV_SCHEMA_SQLITE, ...D1_SCHEMA]) {
       this.sql.exec(ddl)
     }
   }
