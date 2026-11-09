@@ -4,11 +4,6 @@ import { parseRangeHeader } from "../internal/stream/stream"
 import { flushPendingDriverState, getDriver } from "../internal/op/storage"
 import { resolveShare } from "../internal/op/share"
 import {
-  getCachedLink,
-  setCachedLink,
-  type CacheTarget,
-} from "../internal/cache"
-import {
   needDownloadSign,
   verifyDownloadSign,
   signDownloadPath,
@@ -525,31 +520,21 @@ rawRouter.get("/*", async (c) => {
           // 管理员配置的受信存储 endpoint host（可能是内网自建 S3/WebDAV/MinIO），
           // 加上全局环境变量 SSRF_ALLOWED_HOSTS，合并为 SSRF 白名单，避免被误拦截。
           const trustedHosts = getTrustedHosts(resolved.storage.addition, c.env)
-          // 下载链接缓存：与 /fs/get 共用同一份缓存（键 = storage + 虚拟路径）。
-          // 命中时直接复用直链，跳过驱动换链（网盘侧通常最贵、最易被限流）。
-          const cacheTarget: CacheTarget = {
-            storage: resolved.storage,
-            cleanPath: resolved.cleanPath,
-            physical: resolved.physical,
-            isVirtual: resolved.isVirtual,
-          }
-          let fileItem = await getCachedLink(cacheTarget, c.env)
-          // 仅在缓存未命中时才会实例化驱动（命中时 driver 保持 null，
-          // 见下方 createReadStream 分支的空值保护）。
-          let driver: any = null
-          if (!fileItem) {
-            driver = await getDriver(resolved.storage.driver, resolved.storage)
-            try {
-              fileItem = await driver.get(reqPath, resolved.physical)
-            } finally {
-              await flushPendingDriverState(
-                resolved.storage.driver,
-                resolved.storage,
-                driver,
-                getStorageRequestContext(c),
-              )
-            }
-            await setCachedLink(cacheTarget, fileItem, c.env)
+          // 每次请求都向驱动换取直链：不做任何跨请求缓存，保证链接与文件状态实时。
+          const driver: any = await getDriver(
+            resolved.storage.driver,
+            resolved.storage,
+          )
+          let fileItem: any
+          try {
+            fileItem = await driver.get(reqPath, resolved.physical)
+          } finally {
+            await flushPendingDriverState(
+              resolved.storage.driver,
+              resolved.storage,
+              driver,
+              getStorageRequestContext(c),
+            )
           }
 
           if (fileItem && fileItem.raw_url) {

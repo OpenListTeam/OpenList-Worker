@@ -1,17 +1,8 @@
 import { resolvePath, getDb, getSettings, saveDb } from "../model/db"
 import { isSafeUrl } from "../../pkg/http"
 import { encodeDownloadPath } from "../../pkg/path"
-import { singleflight } from "../../pkg/singleflight"
 import { canUseProxyEndpoint, normalizeExtList } from "../driver/proxy"
 import { FileItem, StorageDriver, calcFileType } from "../driver/base"
-import {
-  getCachedFileTree,
-  setCachedFileTree,
-  getCachedLink,
-  setCachedLink,
-  invalidatePaths,
-  type CacheTarget,
-} from "../cache"
 import { Onedrive } from "../../drivers/onedrive/driver"
 import { OnedriveAPP } from "../../drivers/onedrive_app/driver"
 import { AliyundriveOpen } from "../../drivers/aliyundrive_open/driver"
@@ -1383,51 +1374,17 @@ export async function flushPendingDriverState(
 }
 
 /**
- * 由 `resolvePath()` 结果构造缓存目标；虚拟路径（无存储）返回 null，
- * 表示不参与缓存。
- */
-function toCacheTarget(resolved: any): CacheTarget | null {
-  if (!resolved?.storage) return null
-  return {
-    storage: resolved.storage,
-    cleanPath: resolved.cleanPath,
-    physical: resolved.physical,
-    isVirtual: resolved.isVirtual,
-  }
-}
-
-/**
- * fs 读操作的 singleflight 去重键。
+ * fs 读操作的入口。
  *
- * 组成：操作名 + 存储 id + 存储修订号 + 虚拟路径。
- *   - 带存储 id/修订号：不同存储、以及存储配置被编辑后，不会复用旧结果；
- *   - 带虚拟路径（调用方已做过 base_path 处理）：不会跨用户串味。
- *
- * 该键同时用于进程内（L1）与数据库表（L2）两级去重，因此必须稳定可复现：
- * 绝不能包含时间戳、随机数、用户对象等每次调用都不同的内容。
+ * 每次调用都直接回源驱动：既没有结果缓存，也没有跨请求/跨实例的调用合并，
+ * 目录与元信息始终反映上游的最新状态。
  */
-function fsSingleflightKey(
-  op: string,
-  resolved: any,
-  virtualPath: string,
-): string {
-  const storageId = resolved?.storage?.id ?? "virtual"
-  const revision = resolved?.storage?.modified ?? ""
-  return `${op}:${storageId}:${revision}:${virtualPath}`
-}
-
 export async function listItems(
   virtualPath: string,
   requestContext?: StorageRequestContext,
 ): Promise<{ content: FileItem[]; provider: string; storage?: any }> {
   const resolved = await resolvePath(virtualPath, requestContext?.env)
-  // 并发相同的「同一存储 + 同一目录」只向上游发起一次 list。
-  // 键必须在 resolvePath 之后才能确定（需要存储 id），因此去重发生在路径解析之后。
-  return singleflight(
-    fsSingleflightKey("fs.list", resolved, virtualPath),
-    () => listItemsResolved(resolved, virtualPath, requestContext),
-    { env: requestContext?.env },
-  )
+  return listItemsResolved(resolved, virtualPath, requestContext)
 }
 
 async function listItemsResolved(
@@ -1440,32 +1397,17 @@ async function listItemsResolved(
 
   if (resolved.storage) {
     driverName = resolved.storage.driver
-    const cacheTarget = toCacheTarget(resolved)
     try {
-      // 文件树缓存：命中则完全跳过驱动（对齐 OpenList.ts「浏览只读缓存」）。
-      // 注意缓存的是驱动层原始结果，权限/meta/签名仍在 server 层按请求计算。
-      const cached = await getCachedFileTree(cacheTarget!, requestContext?.env)
-      if (cached) {
-        items = cached
-      } else {
-        const driver = await getDriver(driverName, resolved.storage)
-        // Get raw items from driver
-        try {
-          items = await driver.list(virtualPath, resolved.physical!)
-        } finally {
-          await flushPendingDriverState(
-            driverName,
-            resolved.storage,
-            driver,
-            requestContext,
-          )
-        }
-        // 回源成功后写入缓存（空目录同样缓存，避免反复击穿存储）。
-        // 传副本：后续 mount 合并 / type 计算会就地修改 items。
-        await setCachedFileTree(
-          cacheTarget!,
-          items.map((item) => ({ ...item })),
-          requestContext?.env,
+      const driver = await getDriver(driverName, resolved.storage)
+      // Get raw items from driver
+      try {
+        items = await driver.list(virtualPath, resolved.physical!)
+      } finally {
+        await flushPendingDriverState(
+          driverName,
+          resolved.storage,
+          driver,
+          requestContext,
         )
       }
       if (resolved.storage.status !== "work") {
@@ -1584,12 +1526,7 @@ export async function getItem(
   requestContext?: StorageRequestContext,
 ): Promise<{ item: FileItem; provider: string; rawUrl: string }> {
   const resolved = await resolvePath(virtualPath, requestContext?.env)
-  // 与 listItems 同理：并发相同的「同一存储 + 同一路径」只向上游取一次元信息。
-  return singleflight(
-    fsSingleflightKey("fs.get", resolved, virtualPath),
-    () => getItemResolved(resolved, virtualPath, requestContext),
-    { env: requestContext?.env },
-  )
+  return getItemResolved(resolved, virtualPath, requestContext)
 }
 
 async function getItemResolved(
@@ -1632,25 +1569,17 @@ async function getItemResolved(
   }
 
   const driverName = resolved.storage ? resolved.storage.driver : "Local"
-  const cacheTarget = toCacheTarget(resolved)
-  // 下载链接缓存：命中则直接复用上次换取到的直链与元数据，
-  // 跳过驱动 get()（网盘换链通常是最贵、最易被限流的一步）。
-  let item: FileItem | null = cacheTarget
-    ? await getCachedLink(cacheTarget, requestContext?.env)
-    : null
-  if (!item) {
-    const driver = await getDriver(driverName, resolved.storage)
-    try {
-      item = await driver.get(virtualPath, resolved.physical!)
-    } finally {
-      await flushPendingDriverState(
-        driverName,
-        resolved.storage,
-        driver,
-        requestContext,
-      )
-    }
-    await setCachedLink(cacheTarget, item, requestContext?.env)
+  const driver = await getDriver(driverName, resolved.storage)
+  let item: FileItem
+  try {
+    item = await driver.get(virtualPath, resolved.physical!)
+  } finally {
+    await flushPendingDriverState(
+      driverName,
+      resolved.storage,
+      driver,
+      requestContext,
+    )
   }
   if (!item.type) {
     item.type = calcFileType(item.name, item.is_dir)
@@ -1685,8 +1614,6 @@ export async function makeDirectory(
       requestContext,
     )
   }
-  // 新建目录：父目录列表已变化（目录自身也为空列表）
-  await invalidatePaths([virtualPath], requestContext?.env)
 }
 
 export async function renameItem(
@@ -1709,10 +1636,6 @@ export async function renameItem(
       requestContext,
     )
   }
-  // 重命名：旧路径与新路径都要失效（父目录列表同样变化）
-  const parent = virtualPath.slice(0, virtualPath.lastIndexOf("/")) || "/"
-  const newVirtualPath = `${parent === "/" ? "" : parent}/${newName}`
-  await invalidatePaths([virtualPath, newVirtualPath], requestContext?.env)
 }
 
 export async function removeItems(
@@ -1737,8 +1660,6 @@ export async function removeItems(
         requestContext,
       )
     }
-    // 删除：被删路径与其父目录缓存失效
-    await invalidatePaths([itemVirtual], requestContext?.env)
   }
 }
 
@@ -1777,8 +1698,6 @@ export async function moveItems(
         requestContext,
       )
     }
-    // 移动：源路径与目标路径（含各自父目录）缓存全部失效
-    await invalidatePaths([srcVirtual, dstVirtual], requestContext?.env)
   }
 }
 
@@ -1817,8 +1736,6 @@ export async function copyItems(
         requestContext,
       )
     }
-    // 复制：目标路径（含父目录）缓存失效
-    await invalidatePaths([dstVirtual], requestContext?.env)
   }
 }
 
@@ -1843,8 +1760,6 @@ export async function putItem(
       requestContext,
     )
   }
-  // 上传/覆盖：该文件的旧直链与父目录列表缓存失效
-  await invalidatePaths([virtualPath], requestContext?.env)
 }
 
 /**
