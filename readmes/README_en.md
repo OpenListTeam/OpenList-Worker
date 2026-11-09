@@ -166,12 +166,13 @@ All other variables have sensible defaults:
 | `DB_FORMAT` | `map` | Storage format: `map` (whole JSON) / `key` (per-key) / `sql` (relational, Go-compatible) |
 | `DB_DRIVER` | `auto` | Storage driver: `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql`; an explicit driver is never replaced automatically |
 | `DB_CIPHER` | `none` | At-rest cipher for sensitive fields (no encryption by default), e.g. `aes-256-gcm` |
-| `CACHE_ENABLED` / `CACHE_DRIVER` | `true` / `db` | File-tree & download-link caches, reusing the data backend by default |
 | `ALLOW_URLS` | — | Comma-separated CORS allowlist (same-origin only when unset) |
 | `MAX_UPLOAD` / `MAX_UPPART` | 26214400 / 16777216 | Max size (bytes) for a whole upload / a multipart chunk |
 | `ASSET_URLS` | — | Frontend asset CDN base URL, supports the `$version` placeholder |
 
-For the full variable list (cache `CACHE_*`, field encryption `DB_CIPHER`, concurrency dedup `SINGLEFLIGHT`, `cfkv` / MySQL settings, …) and per-platform deployment steps, see the documentation site:
+Directory listings and download links are always fetched from the drive — there is no cross-request cache (no `CACHE_*` variables), so external changes are visible immediately.
+
+For the full variable list (field encryption `DB_CIPHER`, concurrency dedup `SINGLEFLIGHT`, `cfkv` / MySQL settings, …) and per-platform deployment steps, see the documentation site:
 
 - [Environment Variables](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 - [Deployment](https://doc.oplist.org/ecosystem/official_worker/guide)

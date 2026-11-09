@@ -166,12 +166,13 @@ pnpm run deploy:worker
 | `DB_FORMAT` | `map` | 数据存储格式：`map`（整对象 JSON）/ `key`（分 key）/ `sql`（关系表，与 Go 后端一致） |
 | `DB_DRIVER` | `auto` | 存储驱动：`auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql`；显式指定后不做回退 |
 | `DB_CIPHER` | `none` | 敏感字段落盘算法（默认不加密），如 `aes-256-gcm` |
-| `CACHE_ENABLED` / `CACHE_DRIVER` | `true` / `db` | 文件树缓存与下载链接缓存，默认复用业务数据后端 |
 | `ALLOW_URLS` | — | CORS 允许白名单（逗号分隔，不设则仅同源） |
 | `MAX_UPLOAD` / `MAX_UPPART` | 26214400 / 16777216 | 整体上传 / 分片上传大小上限（字节） |
 | `ASSET_URLS` | — | 前端静态资源 CDN 地址，支持 `$version` 占位符 |
 
-完整环境变量（含缓存 `CACHE_*`、字段加密 `DB_CIPHER`、并发去重 `SINGLEFLIGHT`、`cfkv` / MySQL 连接配置等）与各平台部署步骤，请参阅文档站：
+目录列表与下载直链每次都直接回源驱动，没有跨请求缓存（无 `CACHE_*` 变量），外部改动立即可见。
+
+完整环境变量（含字段加密 `DB_CIPHER`、并发去重 `SINGLEFLIGHT`、`cfkv` / MySQL 连接配置等）与各平台部署步骤，请参阅文档站：
 
 - [配置变量](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 - [部署教程](https://doc.oplist.org/ecosystem/official_worker/guide)
