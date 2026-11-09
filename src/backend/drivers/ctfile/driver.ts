@@ -304,7 +304,7 @@ export class CtFileDriver implements StorageDriver {
   async put(
     _virtualPath: string,
     physicalPath: string,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     const segs = splitPath(physicalPath)
     if (segs.length === 0) throw new Error("[CtFile] 路径无效")

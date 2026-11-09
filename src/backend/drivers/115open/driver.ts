@@ -473,7 +473,7 @@ export class Pan115Driver implements StorageDriver {
   async put(
     _virtualPath: string,
     physicalPath: string,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     if (content.length < 1) {
       throw new Error("115 网盘不允许上传空文件")
@@ -545,7 +545,7 @@ export class Pan115Driver implements StorageDriver {
       SecurityToken: string
     },
     initResp: { bucket: string; object: string; callback: any },
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     const endpoint = token.endpoint.startsWith("http")
       ? token.endpoint

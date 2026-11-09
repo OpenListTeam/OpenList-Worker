@@ -164,7 +164,7 @@ export class DropboxDriver implements StorageDriver {
   async put(
     virtualPath: string,
     physicalPath: string,
-    content: Buffer | Uint8Array,
+    content: Uint8Array,
   ): Promise<void> {
     const clean = this.cleanPath(physicalPath)
     await this.client.request("/2/files/upload", {

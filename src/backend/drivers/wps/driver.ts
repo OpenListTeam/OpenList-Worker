@@ -296,7 +296,7 @@ export class WpsDriver implements StorageDriver {
   async put(
     virtualPath: string,
     physicalPath: string,
-    content: Buffer | Uint8Array,
+    content: Uint8Array,
   ): Promise<void> {
     // WPS direct upload requires chunked upload protocol
     const clean = this.cleanPath(physicalPath)

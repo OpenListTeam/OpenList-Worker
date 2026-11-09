@@ -1973,6 +1973,7 @@ fsRouter.post("/archive/decompress", async (c) => {
           continue
         }
         const content = await extractZipEntry(bytes, entry)
+        // content 已经是 Uint8Array；再包一层 Buffer 会在 ESA 上直接抛错
         await putItem(targetPath, content, getStorageRequestContext(c))
         count++
       }

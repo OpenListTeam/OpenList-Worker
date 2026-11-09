@@ -225,7 +225,7 @@ export class AliDocDriver implements StorageDriver {
   async put(
     virtualPath: string,
     physicalPath: string,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     throw new Error("AliDoc does not support upload")
   }

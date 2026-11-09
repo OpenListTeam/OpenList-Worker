@@ -305,7 +305,7 @@ export class ThunderDriver implements StorageDriver {
   async put(
     _virtualPath: string,
     physicalPath: string,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     const parts = physicalPath.split("/").filter(Boolean)
     const fileName = parts.pop() || "file"

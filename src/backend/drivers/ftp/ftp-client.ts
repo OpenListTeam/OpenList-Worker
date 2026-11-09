@@ -508,7 +508,7 @@ export class FTPClient {
     await this.removeDir(remotePath)
   }
 
-  async upload(remotePath: string, content: Buffer): Promise<void> {
+  async upload(remotePath: string, content: Uint8Array): Promise<void> {
     await this.connect()
     const { dataSocket } = await this.openDataConnection()
 

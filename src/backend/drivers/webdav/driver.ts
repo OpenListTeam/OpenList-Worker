@@ -144,7 +144,7 @@ export class WebdavDriver implements StorageDriver {
   async put(
     virtualPath: string,
     physicalPath: string,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     const remotePath = this.getRemotePath(physicalPath)
     await this.client.put(remotePath, content)

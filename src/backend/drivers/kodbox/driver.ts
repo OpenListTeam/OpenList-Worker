@@ -160,7 +160,7 @@ export class DriverKodbox implements StorageDriver {
   async put(
     _virtualPath: string,
     physicalPath: string,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     const full = this.fullPath(physicalPath)
     const parts = full.split("/").filter(Boolean)

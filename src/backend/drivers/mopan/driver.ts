@@ -375,7 +375,7 @@ export class MoPanDriver implements StorageDriver {
   async put(
     _virtualPath: string,
     physicalPath: string,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     const pathParts = physicalPath.split("/").filter(Boolean)
     const fileName = pathParts.pop() || "未命名文件"

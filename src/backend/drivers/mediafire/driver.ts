@@ -139,7 +139,7 @@ export class DriverMediafire implements StorageDriver {
   async put(
     _virtualPath: string,
     _physicalPath: string,
-    _content: Buffer,
+    _content: Uint8Array,
   ): Promise<void> {
     throw new Error("[MediaFire] Direct put not supported in stateless environment")
   }

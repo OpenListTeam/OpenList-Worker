@@ -53,7 +53,7 @@ export class ClientIpfs {
     await this.post("files/rm", [path, "recursive=true"])
   }
 
-  async add(content: Buffer, fileName: string): Promise<string> {
+  async add(content: Uint8Array, fileName: string): Promise<string> {
     const form = new FormData()
     form.append("file", new Blob([content as unknown as BlobPart]), fileName)
     const resp = await fetch(`${this.endpoint}/api/v0/add`, { method: "POST", body: form })

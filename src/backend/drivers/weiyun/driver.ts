@@ -547,7 +547,7 @@ export class WeiyunDriver implements StorageDriver {
   async put(
     _virtualPath: string,
     physicalPath: string,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     const parts = String(physicalPath || "")
       .split("/")
@@ -681,7 +681,7 @@ export class WeiyunDriver implements StorageDriver {
   async uploadPart(
     sessionToken: string,
     partNumber: number,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<{ partNumber: number }> {
     const session = decodeUploadSession(sessionToken)
     if (

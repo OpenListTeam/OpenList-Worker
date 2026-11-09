@@ -323,7 +323,7 @@ export class AzureBlobDriver implements StorageDriver {
     await this.copyBlob(srcKey, dstKey)
   }
 
-  async put(_v: string, physicalPath: string, content: Buffer): Promise<void> {
+  async put(_v: string, physicalPath: string, content: Uint8Array): Promise<void> {
     const key = this.getKey(physicalPath)
     const res = await this.request("PUT", key, "", {
       body: new Uint8Array(content),

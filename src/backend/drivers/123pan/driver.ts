@@ -391,7 +391,7 @@ export class Pan123Driver implements StorageDriver {
   async put(
     _virtualPath: string,
     physicalPath: string,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     this.budget.used = 0
     const segs = String(physicalPath || "")
@@ -467,7 +467,7 @@ export class Pan123Driver implements StorageDriver {
   async uploadPart(
     session: string,
     partNumber: number,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     this.budget.used = 0
     const s = decodeSession(session)

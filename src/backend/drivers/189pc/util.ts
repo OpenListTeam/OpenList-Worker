@@ -161,10 +161,13 @@ export class Cloud189PCClient {
   }
 }
 
-export function calcMD5(buffer: Buffer): string {
+// 入参统一为 Uint8Array：StorageDriver.put 的内容契约不再假设全局 Buffer
+// （ESA 边缘运行时没有 Buffer）。这两个函数本身仍依赖 node:crypto，
+// 只在天翼云驱动可用的 Node 运行时执行。
+export function calcMD5(buffer: Uint8Array): string {
   return createHash("md5").update(buffer).digest("hex").toUpperCase()
 }
 
-export function calcSHA1(buffer: Buffer): string {
+export function calcSHA1(buffer: Uint8Array): string {
   return createHash("sha1").update(buffer).digest("hex").toUpperCase()
 }

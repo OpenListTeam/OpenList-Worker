@@ -185,7 +185,7 @@ export class YandexDriver implements StorageDriver {
   async put(
     virtualPath: string,
     physicalPath: string,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     const clean = this.cleanPath(physicalPath)
     const uploadUrl = await this.client.getUploadLink(clean)

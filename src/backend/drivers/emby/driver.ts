@@ -219,7 +219,7 @@ export class EmbyDriver implements StorageDriver {
   async put(
     virtualPath: string,
     physicalPath: string,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     throw new Error("Emby is read-only")
   }

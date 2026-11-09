@@ -164,7 +164,7 @@ export class QuarkDriver implements StorageDriver {
   async put(
     _virtualPath: string,
     _physicalPath: string,
-    _content: Buffer,
+    _content: Uint8Array,
   ): Promise<void> {
     throw new Error(
       "[Quark/UC] Direct put not supported in stateless environment",

@@ -266,7 +266,7 @@ export class BaiduDriver implements StorageDriver {
   async put(
     _virtualPath: string,
     physicalPath: string,
-    content: Buffer,
+    content: Uint8Array,
   ): Promise<void> {
     // 百度网盘不允许上传空文件
     if (content.length < 1) {

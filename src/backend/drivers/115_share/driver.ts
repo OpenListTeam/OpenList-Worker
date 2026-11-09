@@ -208,7 +208,7 @@ export class Pan115ShareDriver implements StorageDriver {
   async put(
     virtualPath: string,
     physicalPath: string,
-    content: Buffer | Uint8Array,
+    content: Uint8Array,
   ): Promise<void> {
     throw new Error("115 Share is read-only")
   }
