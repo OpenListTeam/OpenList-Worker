@@ -1,6 +1,11 @@
 import CryptoJS from "crypto-js"
 import { DOMParser } from "@xmldom/xmldom"
 import {
+  loginWithCredentials,
+  Yun139LoginResult,
+  Yun139SmsRequiredError,
+} from "./login"
+import {
   Yun139Addition,
   QueryRoutePolicyResp,
   Yun139DiskResp,
@@ -131,14 +136,17 @@ export class Yun139ApiClient {
   public groupHost = YUN139_DEFAULT_HOST
   public account = ""
   private onAuthorizationRefresh?: (authorization: string) => Promise<void>
+  private onLoginStateChange?: (state: Yun139LoginResult) => Promise<void>
   private legacyRefreshNextAttemptAt = 0
 
   constructor(
     addition: Yun139Addition,
     onAuthorizationRefresh?: (authorization: string) => Promise<void>,
+    onLoginStateChange?: (state: Yun139LoginResult) => Promise<void>,
   ) {
     this.addition = addition
     this.onAuthorizationRefresh = onAuthorizationRefresh
+    this.onLoginStateChange = onLoginStateChange
     this.extractAccount()
   }
 
@@ -431,8 +439,13 @@ export class Yun139ApiClient {
 
     const userDomainId = (this.addition.user_domain_id || "").trim()
     if (userDomainId) {
-      await this.refreshWithPcApi(auth, pieces, userDomainId)
-      return
+      try {
+        await this.refreshWithPcApi(auth, pieces, userDomainId)
+        return
+      } catch (e) {
+        if (await this.tryReLogin()) return
+        throw e
+      }
     }
 
     // user_domain_id 只是 PC refreshToken 接口的必填项，不是自动续期的前提。
@@ -447,10 +460,51 @@ export class Yun139ApiClient {
     } catch (e) {
       this.legacyRefreshNextAttemptAt =
         Date.now() + YUN139_LEGACY_REFRESH_COOLDOWN_MS
+      if (await this.tryReLogin()) return
       console.debug(
         "[139] automatic token refresh skipped:",
         e instanceof Error ? e.message : String(e),
       )
+    }
+  }
+
+  /**
+   * 对齐 Go 的 loginAfterAuthorizationFailure：刷新失败时，如果配置里还有
+   * 邮箱 Cookie 或用户名/密码，就重新登录一次并保存新的 authorization 与
+   * user_domain_id；没有可用凭证时返回 false，由调用方保持原有降级行为。
+   */
+  private async tryReLogin(): Promise<boolean> {
+    const hasUsername = (this.addition.username || "").trim() !== ""
+    const hasPassword = (this.addition.password || "") !== ""
+    const hasCookies = (this.addition.mail_cookies || "").trim() !== ""
+    if (!hasCookies && !(hasUsername && hasPassword)) return false
+    try {
+      const result = await loginWithCredentials(this.addition, fetch, {
+        ignoreAuthorization: true,
+      })
+      this.addition.authorization = result.authorization
+      this.addition.user_domain_id = result.userDomainId
+      this.addition.mail_cookies = result.mailCookies
+      this.addition.sms_code = ""
+      this.account = result.account || this.account
+      await this.onLoginStateChange?.(result)
+      return true
+    } catch (e) {
+      if (e instanceof Yun139SmsRequiredError) {
+        this.addition.mail_cookies = e.mailCookies
+        await this.onLoginStateChange?.({
+          authorization: "",
+          account: this.account,
+          userDomainId: (this.addition.user_domain_id || "").trim(),
+          mailCookies: e.mailCookies,
+          smsCode: (this.addition.sms_code || "").trim(),
+        })
+      }
+      console.debug(
+        "[139] re-login after refresh failure skipped:",
+        e instanceof Error ? e.message : String(e),
+      )
+      return false
     }
   }
 
@@ -583,11 +637,44 @@ export class Yun139ApiClient {
     )
   }
 
-  async init(): Promise<void> {
-    if (!this.addition.authorization) {
-      throw new Error("139 Cloud Authorization is required")
+  /**
+   * 对齐主项目：Authorization 为空时用邮箱 Cookie / 用户名密码登录，并在登录
+   * 成功后保存 Authorization、user_domain_id 与更新后的 MailCookies。
+   */
+  private async ensureAuthorization(): Promise<void> {
+    const authorization = (this.addition.authorization || "").trim()
+    if (authorization) {
+      if (/^basic\s/i.test(authorization)) {
+        throw new Error("authorization should not include Basic prefix")
+      }
+      return
     }
 
+    try {
+      const result = await loginWithCredentials(this.addition)
+      this.addition.authorization = result.authorization
+      this.addition.user_domain_id = result.userDomainId
+      this.addition.mail_cookies = result.mailCookies
+      this.addition.sms_code = ""
+      this.account = result.account || this.account
+      await this.onLoginStateChange?.(result)
+    } catch (e) {
+      if (e instanceof Yun139SmsRequiredError) {
+        this.addition.mail_cookies = e.mailCookies
+        await this.onLoginStateChange?.({
+          authorization: "",
+          account: this.account,
+          userDomainId: (this.addition.user_domain_id || "").trim(),
+          mailCookies: e.mailCookies,
+          smsCode: (this.addition.sms_code || "").trim(),
+        })
+      }
+      throw e
+    }
+  }
+
+  async init(): Promise<void> {
+    await this.ensureAuthorization()
     await this.refreshAuthorizationIfNeeded()
 
     let routeError: unknown = null

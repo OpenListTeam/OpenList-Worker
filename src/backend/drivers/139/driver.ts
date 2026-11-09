@@ -5,6 +5,7 @@ import {
 } from "../../internal/driver/base"
 import { sortFileItems } from "../../internal/driver/sort"
 import { Yun139Addition } from "./types"
+import { Yun139LoginResult } from "./login"
 import { Yun139ApiClient } from "./util"
 
 export class Yun139Driver implements StorageDriver {
@@ -14,9 +15,14 @@ export class Yun139Driver implements StorageDriver {
   constructor(
     addition: Yun139Addition,
     onAuthorizationRefresh?: (authorization: string) => Promise<void>,
+    onLoginStateChange?: (state: Yun139LoginResult) => Promise<void>,
   ) {
     this.addition = addition
-    this.client = new Yun139ApiClient(addition, onAuthorizationRefresh)
+    this.client = new Yun139ApiClient(
+      addition,
+      onAuthorizationRefresh,
+      onLoginStateChange,
+    )
   }
 
   async init(): Promise<void> {

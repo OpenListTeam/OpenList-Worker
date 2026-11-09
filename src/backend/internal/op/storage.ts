@@ -1016,28 +1016,57 @@ async function createDriver(
     normDriver.includes("139")
   ) {
     const addition = parseAddition(storageConfig)
-    driver = new Yun139Driver(addition, async (authorization) => {
-      try {
-        const db = await getDb()
-        const st = (db.storages || []).find(
-          (s: any) => s.id === storageConfig?.id,
-        )
-        if (!st) return
-        const stAddition =
-          typeof st.addition === "string"
-            ? JSON.parse(st.addition || "{}")
-            : st.addition || {}
-        stAddition.authorization = authorization
-        st.addition = JSON.stringify(stAddition)
-        // Keep the in-flight admin update object in sync so it cannot overwrite
-        // the newly refreshed authorization with the previous value.
-        storageConfig.addition = st.addition
-        if (deferredTokenPersistence.has(storageConfig)) return
-        await saveDb(db)
-      } catch (e) {
-        console.warn("[139] failed to persist refreshed authorization:", e)
-      }
-    })
+    driver = new Yun139Driver(
+      addition,
+      async (authorization) => {
+        try {
+          const db = await getDb()
+          const st = (db.storages || []).find(
+            (s: any) => s.id === storageConfig?.id,
+          )
+          if (!st) return
+          const stAddition =
+            typeof st.addition === "string"
+              ? JSON.parse(st.addition || "{}")
+              : st.addition || {}
+          stAddition.authorization = authorization
+          st.addition = JSON.stringify(stAddition)
+          // Keep the in-flight admin update object in sync so it cannot overwrite
+          // the newly refreshed authorization with the previous value.
+          storageConfig.addition = st.addition
+          if (deferredTokenPersistence.has(storageConfig)) return
+          await saveDb(db)
+        } catch (e) {
+          console.warn("[139] failed to persist refreshed authorization:", e)
+        }
+      },
+      async (state) => {
+        try {
+          const db = await getDb()
+          const st = (db.storages || []).find(
+            (s: any) => s.id === storageConfig?.id,
+          )
+          if (!st) return
+          const stAddition =
+            typeof st.addition === "string"
+              ? JSON.parse(st.addition || "{}")
+              : st.addition || {}
+          if (state.authorization)
+            stAddition.authorization = state.authorization
+          if (state.userDomainId) {
+            stAddition.user_domain_id = state.userDomainId
+          }
+          stAddition.mail_cookies = state.mailCookies
+          stAddition.sms_code = state.smsCode
+          st.addition = JSON.stringify(stAddition)
+          storageConfig.addition = st.addition
+          if (deferredTokenPersistence.has(storageConfig)) return
+          await saveDb(db)
+        } catch (e) {
+          console.warn("[139] failed to persist login state:", e)
+        }
+      },
+    )
     await driver.init?.()
   } else if (
     normDriver === "mega" ||
