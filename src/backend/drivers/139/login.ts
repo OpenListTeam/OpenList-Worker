@@ -846,7 +846,7 @@ async function tryFastLoginWithCookies(
 export async function loginWithCredentials(
   addition: Yun139Addition,
   fetchImpl: typeof fetch = fetch,
-  options: { ignoreAuthorization?: boolean } = {},
+  options: { ignoreAuthorization?: boolean; skipFastLogin?: boolean } = {},
 ): Promise<Yun139LoginResult> {
   const authorization = (addition.authorization || "").trim()
   const username = (addition.username || "").trim()
@@ -877,7 +877,7 @@ export async function loginWithCredentials(
     throw new Error("username and password must be provided together")
   }
 
-  if (mailCookies) {
+  if (mailCookies && !options.skipFastLogin) {
     const fast = await tryFastLoginWithCookies(addition, fetchImpl)
     if (fast) return fast
   }

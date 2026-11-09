@@ -476,11 +476,13 @@ export class Yun139ApiClient {
   private async tryReLogin(): Promise<boolean> {
     const hasUsername = (this.addition.username || "").trim() !== ""
     const hasPassword = (this.addition.password || "") !== ""
-    const hasCookies = (this.addition.mail_cookies || "").trim() !== ""
-    if (!hasCookies && !(hasUsername && hasPassword)) return false
+    // 对齐 Go 的 loginAfterAuthorizationFailure：刷新失败时只走密码登录回退，
+    // 不重新尝试 Cookie 快速登录；mail_cookies 仅作为密码登录的设备上下文。
+    if (!hasUsername || !hasPassword) return false
     try {
       const result = await loginWithCredentials(this.addition, fetch, {
         ignoreAuthorization: true,
+        skipFastLogin: true,
       })
       this.addition.authorization = result.authorization
       this.addition.user_domain_id = result.userDomainId
