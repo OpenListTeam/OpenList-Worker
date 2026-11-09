@@ -2,22 +2,6 @@
 // OpenList-TSWorker · Cloudflare Workers 配置
 // 文档：https://developers.cloudflare.com/workers/wrangler/configuration/
 //
-// ⚠️ 本文件只声明 KV 一个存储绑定（见文件末 kv_namespaces），D1 / DO 等
-//    其它存储请按需在控制台添加。
-//
-// 为什么声明 KV 且【省略 id 字段】（不能写 "id": ""）：
-//   wrangler 会自动预配（automatic provisioning）：首次部署创建
-//   "项目名-绑定名" 的命名空间（此处即 openlist-tsworkers-kv）并绑定；
-//   二次部署通过服务端 inherit 复用已有绑定，不会重复创建。
-//
-// 注意：CI / 一键部署属非交互环境，wrangler 不会把生成的 id 回写进本文件。
-// 这是预期行为 —— 复用靠的是服务端 inherit 绑定，而非本地 id。
-//
-// ⚠️ 不要用 `wrangler kv namespace create` 手动建名为 "KV" 的命名空间：
-//   wrangler 的预配链路无法按 title 复用已有命名空间（KVHandler 未实现
-//   isConnectedToExistingResource），它会另建 openlist-tsworkers-kv，
-//   手动建的那个不会被任何绑定使用，成为孤儿资源。参见 Issue #34。
-//
 // Secret（JWT_SECRET / ADMIN_PASS / ALLOW_URLS / MYSQL_URLS / EO_KV_URLS / CF_* 等）请在
 // .dev.vars.example 或 .env.example 中声明 —— 部署按钮据此生成输入项，
 // 用户填入的值会成为该 Worker 的 Secret，后续更新不会被覆盖。
@@ -28,18 +12,8 @@
   "compatibility_date": "2026-08-04",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
-
-  // 见 issue #174：保留控制台配置的普通环境变量，部署更新后不再被清空。
-  // Secrets 本就不受影响；此开关仅作用于 vars。
-  "keep_vars": true,
   "preview_urls": false,
-
-  // ⚠️ run_worker_first 只放行 HTML 入口，不能改成 true（全量放行）：
-  //   默认「资源优先」时 / 与 /index.html 由静态层直接返回，Worker 根本不会执行，
-  //   ASSET_URLS 的 CDN 注入（fetch CDN index.html → 注入 window.OPENLIST_CONFIG.cdn）
-  //   永远不生效，前端仍从源站加载全部静态资源。
-  //   仅放行 HTML 入口后，带 hash 的 JS/CSS/图片仍由静态层直出、零 Worker 调用，
-  //   只有页面导航请求才多付一次 Worker 调用。
+  "keep_vars": true,
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
@@ -73,24 +47,9 @@
     // 敏感字段落盘算法（默认 none：不加密；与 DB_DRIVER/DB_FORMAT 正交）：
     //   none（默认）              - 不加密，敏感字段明文落盘
     //   aes-256-gcm              - HKDF 派生 AES-256-GCM 密钥（enc:v2:，推荐）
-    //   aes-256-gcm-pbkdf2       - AES-256-GCM + PBKDF2-SHA256(10 万次) 逐字段派生
-    //                              （历史 enc:v1: envelope，每字段约 27ms，慢）
     //   aes-256-cbc-hmac         - AES-256-CBC + HMAC-SHA256（enc:v3:）
     //   chacha20-poly1305        - ChaCha20-Poly1305（enc:v4:，RFC 8439，纯 JS）
-    //   des-cbc-hmac             - 单 DES + HMAC-SHA256（enc:v5:，仅兼容，不安全）
-    //   3des-cbc-hmac            - 3DES + HMAC-SHA256（enc:v6:，仅兼容，已弃用）
-    // 说明：加密对象为 storages[].addition / 敏感 settings / users[].password /
-    //       users[].otp_secret。密文带 enc:vN: 前缀，读取时按前缀自动解密，
-    //       因此把该项改回 none 不会导致既有数据不可读（下次保存自动转为明文）。
-    // 注意：该项与 JWT 密钥无关 —— DB_CIPHER=none 时，未配置 JWT_SECRET 仍会
-    //       自动生成并持久化共享密钥（JWT 签名需要）。
     "DB_CIPHER": "none",
-
-    // ── 持久缓存 / 并发去重均已移除 ───────────────────────────────────────
-    // 目录列表（/fs/list、/fs/get、/fs/dirs）与下载直链（/d、/p）每次都直接
-    // 回源驱动：不做跨请求缓存，也不合并并发相同调用。外部改动、直链与并发
-    // 请求的结果都以驱动当次返回为准。相关环境变量（CACHE_* / SINGLEFLIGHT*）
-    // 已全部删除，残留同名变量不会再被读取。
 
     // ── 安全鉴权（推荐以 Secret 类型配置，见 .dev.vars.example）──────────
     //
@@ -112,13 +71,8 @@
     // "MAX_UPPART": "16777216",
     //
     // 前端静态资源 CDN 地址，需包含完整 dist（含 index.html），支持 $version 占位符
-    // 优先「本地 index.html + CDN 资产」（不要求 CDN 能返回 HTML，npmmirror 也能用）；
-    // 本地哈希不在 CDN 上时改用 CDN 的 index.html 保证同源；都不可用则回退源站
-    // ⚠️ 资源由浏览器直接加载，CDN 必须对 .js/.css 返回 Access-Control-Allow-Origin
     // "ASSET_URLS": "https://registry.npmmirror.com/@openlist-frontend/openlist-frontend/$version/files/dist",
-    // "ASSET_URLS": "https://cdn.jsdelivr.net/npm/@openlist-frontend/openlist-frontend@$version/dist",
-    // "ASSET_URLS": "https://unpkg.com/@openlist-frontend/openlist-frontend@$version/dist",
-    //
+
     // 允许作为种子数据来源的主机白名单，逗号/空格分隔
     // "ALLOW_SEED": "",
 
@@ -134,9 +88,6 @@
     // "CF_API_KEY": "",
 
     // ── EdgeOne Node 云函数 KV 代理（DB_DRIVER=kv 时可选）──────────────────
-    //
-    // EdgeOne 的 KV 绑定只注入 Edge Functions，不会注入 Node 云函数。
-    // 运行在 EdgeOne Node 云函数时，必须经同部署的 Edge Functions 代理访问 KV。
     // 此处填部署 origin，如 https://your-project.edgeone.app
     // 留空则自动使用当前请求 origin（同一部署自调用）；跨域或本地调试才需显式设置。
     // "EO_KV_URLS": "",
@@ -159,23 +110,14 @@
   // ===========================================================================
   //
   // ▶ 方案 A：KV（默认启用，免费额度大、最通用）
-  //   ⚠️ 必须【完全省略 id 字段】，不能写成 "id": ""：
-  //      wrangler 配置校验会拒绝空字符串 id（"should have a string id field"）。
-  //   省略 id 后：首次部署由 wrangler 自动创建 openlist-tsworkers-kv 并绑定；
-  //   二次部署通过 inherit 复用已有绑定，不会重复创建。
-  //   若想改用账户里已有的 KV，把该命名空间的 id 填进来即可。
-  //
   //  "kv_namespaces": [{ "binding": "KV" }],
   //
-  // ▶ 方案 B：D1（关系型，可与 Go 后端共享库；DB_FORMAT 建议改为 "sql"）
-  //   控制台：Workers & Pages → D1 → 创建数据库 → 绑定到 Worker，变量名填 DB
-  //   省略 database_id 时，wrangler >= 4.45.0 会自动创建同名库并回写
-  //
+  // ▶ 方案 B：D1（关系型，可与 Go 后端共享库）
   // "d1_databases": [
   //   { "binding": "DB", "database_name": "openlist", "database_id": "" }
   // ],
   //
-  // ▶ 方案 C：Durable Objects（内置 SQLite，强一致；DB_FORMAT 建议改为 "sql"）
+  // ▶ 方案 C：Durable Objects（内置 SQLite，强一致）
   //   注意：DO 需要 migrations，且删除成本高，适合单租户部署。
   //
   // "durable_objects": {
@@ -185,21 +127,7 @@
   //   { "tag": "v1", "new_sqlite_classes": ["OpenListDB"] }
   // ],
   //
-  // ▶ 方案 D：Blob / MySQL
-  //   Blob 由 EdgeOne / ESA 自动注入，无需配置；
-  //   MySQL 通过 Secret 配置 MYSQL_URLS（或 MYSQL_HOST 等分项）。
-  //
-  // ▶ 方案 E：R2 对象存储（作为「存储驱动」，与上面的 DB 绑定无关）
-  //   后台「存储 → 新增 → R2」里把 bucket_binding 填成与下面 binding 相同的名字，
-  //   即可走 Workers 原生绑定读写（无需 API Token，推荐）。
-  //   不配 binding 时该驱动自动回退 S3 兼容 API：在存储配置里填
-  //   account_id + access_key_id / secret_access_key 即可（R2 控制台 →
-  //   Manage R2 API Tokens）。两者共用同一套目录语义。
-  //   绑定名可自定义，未在表单填写时按 R2 → R2_BUCKET → CF_R2 → OPENLIST_R2 顺序探测。
-  //
-  //   注意：binding 模式下载走 Worker 流式转发（R2 绑定不提供预签名 URL）；
-  //   想让浏览器直连，可在存储配置里填 custom_host（r2.dev 公开域名或自定义域名）。
-  //
+  // ▶ 方案 D：R2 对象存储（作为「存储驱动」，与上面的 DB 绑定无关）
   // "r2_buckets": [
   //   { "binding": "R2", "bucket_name": "your-bucket" }
   // ],

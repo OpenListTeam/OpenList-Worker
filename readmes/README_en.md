@@ -7,9 +7,9 @@
 
 <a href="https://github.com/OpenListTeam/OpenList-Worker/blob/main/LICENSE"><img src="https://img.shields.io/github/license/OpenListTeam/OpenList-Worker" alt="License" /></a>
 <a href="https://github.com/OpenListTeam/OpenList-Worker/actions/workflows/build-verify.yml"><img src="https://img.shields.io/github/actions/workflow/status/OpenListTeam/OpenList-Worker/build-verify.yml?branch=main" alt="Build status" /></a>
-<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/release/OpenListTeam/OpenList-Worker" alt="latest version" /></a>
 <a href="https://github.com/OpenListTeam/OpenList-Worker/discussions"><img src="https://img.shields.io/github/discussions/OpenListTeam/OpenList-Worker?color=%23ED8936" alt="discussions" /></a>
-<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/downloads/OpenListTeam/OpenList-Worker/total?color=%239F7AEA&logo=github" alt="Downloads" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/stargazers"><img src="https://img.shields.io/github/stars/OpenListTeam/OpenList-Worker?color=%23ED8936&logo=github" alt="Stars" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/forks"><img src="https://img.shields.io/github/forks/OpenListTeam/OpenList-Worker?color=%239F7AEA&logo=github" alt="Forks" /></a>
 
 📘 [Docs](https://doc.oplist.org) · 🌏 [Docs (China mainland)](https://doc.oplist.org.cn)  · ⚖️ [Terms of use](https://doc.oplist.org/terms)  · 🔒 [Privacy policy](https://doc.oplist.org/privacy)
 
@@ -35,15 +35,16 @@ Click the button below to deploy this project to the corresponding platform with
 <div align="center">
 
 
-| EdgeOne Makers · International | EdgeOne Makers · China | Cloudflare Workers · Global |
-| :---: | :---: | :---: |
-| [![Deploy to EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
+| EdgeOne Makers · International | EdgeOne Makers · China | Cloudflare Workers · Global | Alibaba Cloud ESA · China |
+| :---: | :---: | :---: | :---: |
+| [![Deploy to EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to EdgeOne](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) | [![Deploy to Alibaba Cloud ESA](assets/esa-deploy.svg)](https://esa.console.aliyun.com/edge/function/list) |
 
 </div>
 
 > [!IMPORTANT]
 > - If Cloudflare prompts `cannot fetch repository content`, [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork) this project first, then deploy by connecting to the GitHub repository
-> - Set `JWT_SECRET` during deployment (a random string of ≥16 chars, e.g. `openssl rand -hex 32`): it signs JWTs and encrypts data; if unset, it is generated and persisted during initialization
+> - For Alibaba Cloud ESA, import this repository from **Edge Computing and AI → Functions and Pages** in the console
+> - Set `JWT_SECRET` during deployment (≥16 random chars) for JWT signing and encryption
 > - Storage automatically uses the platform's built-in persistent backend (`DB_DRIVER=auto`) — no configuration needed; for other variables see [Environment Variables](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 > - After deployment, the first visit opens the **install wizard**: set the admin account and password in the browser to finish initialization; set `ADMIN_PASS` to skip the wizard
 
@@ -69,31 +70,22 @@ In addition to the real storages above, virtual/functional drivers such as `Loca
 
 ### Core Capabilities
 
-- **File browsing**: unified directory tree browsing, with online preview of images, videos, audio, documents, code, archives and more.
-- **Upload & download**: cross-storage upload, batch download, streaming and direct-link redirect.
-- **File sharing**: generate share links with expiry, password and permission control, supporting anonymous access and directory sharing.
-- **Full-text search**: quickly search files in indexed storages.
-- **Offline tasks**: background task queue supporting batch operations and async processing.
-- **External interfaces**: expose aggregated storage via WebDAV or S3-compatible protocol for mounting into third-party tools.
-- **MCP service**: provide a Model Context Protocol endpoint that can be integrated and called by AI assistants and other clients.
-
-### Access Control
-
-- **Permissions**: role-based access control (RBAC), supporting user groups, directory-level read/write permissions and quotas.
-- **Authentication**: built-in account passwords with TOTP verification, WebAuthn/FIDO login, SSO single sign-on and LDAP directory authentication.
-- **Security hardening**: JWT sessions, CSRF protection, clickjacking protection (X-Frame-Options), Content Security Policy (CSP).
-- **Health checks**: provide `/health` liveness probe and `/healthz` readiness probe for monitoring and alerting.
-
-### Platform Deployment
-
-- **Runtime platforms**: Cloudflare Workers, Tencent Cloud EdgeOne Makers, Vercel, Serverless and Node.js container environments.
-- **Data storage**: Cloudflare D1 (SQLite) as primary, also supporting MySQL, MariaDB, PostgreSQL, SQL Server.
-- **Persistent cache**: Cloudflare KV / EdgeOne Blob (optional) for config persistence and caching.
-- **One-click deploy**: support one-click deploy buttons + initialization on EdgeOne, Cloudflare Workers and other platforms.
+- **File management**: unified directory tree browsing with online preview for images, videos, audio, documents, code and archives; cross-storage upload, batch download, streaming and direct-link redirect; share links with expiry, password and permission control.
+- **Search & tasks**: full-text search across indexed storages; background task queue for batch and async processing.
+- **External interfaces**: WebDAV, S3-compatible protocol, and an MCP endpoint for AI assistants.
+- **Access & auth**: RBAC (user groups, directory-level read/write permissions, quotas), account passwords plus TOTP / WebAuthn / SSO / LDAP.
+- **Security & ops**: JWT sessions, CSRF, clickjacking (X-Frame-Options) and CSP protection, `/health` and `/healthz` probes.
+- **Concurrency deduplication**: identical directory listing / metadata requests hit the upstream drive only once; the rest reuse the result, reducing rate limits and CPU usage.
+- **Runtime platforms**: Cloudflare Workers, Tencent Cloud EdgeOne Makers, Alibaba Cloud ESA, Vercel / AWS Lambda and Node.js containers.
+- **Data storage**: Cloudflare D1 (SQLite) as primary, plus KV / Blob / Durable Objects and external MySQL / MariaDB.
+- **One-click deploy**: EdgeOne, Cloudflare Workers and Alibaba Cloud ESA deploy buttons + install wizard.
 
 ---
 
 ## Manual Deployment
+
+<details>
+<summary>Expand prerequisites, local development and production deployment</summary>
 
 ### Prerequisites
 
@@ -106,7 +98,7 @@ In addition to the real storages above, virtual/functional drivers such as `Loca
 # 1. Install dependencies
 pnpm install
 
-# 2. Configure wrangler.toml (fill in JWT_SECRET, KV/D1 bindings)
+# 2. Configure bindings and variables in wrangler.jsonc as needed (see .dev.vars.example for JWT_SECRET)
 
 # 3. Start the dev server (auto-fetches the official frontend and runs the Worker)
 pnpm run dev:unified
@@ -118,12 +110,14 @@ pnpm run dev:worker
 ### Production Deployment
 
 ```bash
-# One-click deploy: ensure the KV namespace exists → fetch the official frontend → deploy to Cloudflare Workers
+# One-click deploy: build the frontend → deploy to Cloudflare Workers (KV bindings are provisioned automatically by wrangler)
 pnpm run deploy
 
-# Or deploy the Worker directly (skip KV check and frontend build)
+# Or deploy the Worker directly (skip the frontend build)
 pnpm run deploy:worker
 ```
+
+</details>
 
 ---
 
@@ -146,37 +140,18 @@ pnpm run deploy:worker
 ---
 
 
-## Configuration
+## Deployment Configuration
 
-The **install wizard** appears automatically on the first visit — set the admin account and password in the browser to finish initialization. To skip the wizard, set `ADMIN_PASS` and the admin is initialized automatically.
-
-Most deployments need **no extra configuration**: storage defaults to `DB_DRIVER=auto`, which picks an available persistent backend (Cloudflare Workers → KV / D1 / DO, EdgeOne / ESA → Blob). The only variable worth setting explicitly is:
-
-| Variable | Description |
-| :--- | :--- |
-| `JWT_SECRET` | JWT signing key (≥16 chars, e.g. `openssl rand -hex 32`), also used for cron task auth. Auto-generated and persisted during initialization when unset |
-
-> Configure `JWT_SECRET` as a **Secret** (not a plain variable): plain variables can be overwritten by the repository config on redeploy, secrets are not.
-
-All other variables have sensible defaults:
+After deployment, set the following variables:
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
-| `ADMIN_PASS` | — | Skip the install wizard and auto-initialize the admin |
-| `DB_FORMAT` | `map` | Storage format: `map` (whole JSON) / `key` (per-key) / `sql` (relational, Go-compatible) |
-| `DB_DRIVER` | `auto` | Storage driver: `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql`; an explicit driver is never replaced automatically |
-| `DB_CIPHER` | `none` | At-rest cipher for sensitive fields (no encryption by default), e.g. `aes-256-gcm` |
-| `ALLOW_URLS` | — | Comma-separated CORS allowlist (same-origin only when unset) |
-| `MAX_UPLOAD` / `MAX_UPPART` | 26214400 / 16777216 | Max size (bytes) for a whole upload / a multipart chunk |
-| `ASSET_URLS` | — | Frontend asset CDN base URL, supports the `$version` placeholder |
+| `JWT_SECRET` | (none) | JWT signing key (≥16 chars) |
+| `DB_FORMAT` | `map` | `map` (JSON) / `key` (per key) / `sql` (relational) |
+| `DB_DRIVER` | `auto` | `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql` |
+| `DB_CIPHER` | `none` | At-rest cipher for sensitive fields, e.g. `aes-256-gcm` |
 
-Directory listings and download links are always fetched from the drive — there is no cross-request cache (no `CACHE_*` variables), so external changes are visible immediately.
-
-For the full variable list (field encryption `DB_CIPHER`, `cfkv` / MySQL settings, …) and per-platform deployment steps, see the documentation site:
-
-- [Environment Variables](https://doc.oplist.org/ecosystem/official_worker/guide_env)
-- [Deployment](https://doc.oplist.org/ecosystem/official_worker/guide)
-- [FAQ](https://doc.oplist.org/ecosystem/official_worker/about)
+For the full variable list, see [Configuration variables](https://doc.oplist.org/ecosystem/official_worker/guide_env).
 
 ## Support
 

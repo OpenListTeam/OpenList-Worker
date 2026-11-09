@@ -7,9 +7,9 @@
 
 <a href="https://github.com/OpenListTeam/OpenList-Worker/blob/main/LICENSE"><img src="https://img.shields.io/github/license/OpenListTeam/OpenList-Worker" alt="License" /></a>
 <a href="https://github.com/OpenListTeam/OpenList-Worker/actions/workflows/build-verify.yml"><img src="https://img.shields.io/github/actions/workflow/status/OpenListTeam/OpenList-Worker/build-verify.yml?branch=main" alt="Build status" /></a>
-<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/release/OpenListTeam/OpenList-Worker" alt="latest version" /></a>
 <a href="https://github.com/OpenListTeam/OpenList-Worker/discussions"><img src="https://img.shields.io/github/discussions/OpenListTeam/OpenList-Worker?color=%23ED8936" alt="discussions" /></a>
-<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/downloads/OpenListTeam/OpenList-Worker/total?color=%239F7AEA&logo=github" alt="Downloads" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/stargazers"><img src="https://img.shields.io/github/stars/OpenListTeam/OpenList-Worker?color=%23ED8936&logo=github" alt="Stars" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/forks"><img src="https://img.shields.io/github/forks/OpenListTeam/OpenList-Worker?color=%239F7AEA&logo=github" alt="Forks" /></a>
 
 📘 [使用文件](https://doc.oplist.org) · 🌏 [使用文件（中國大陸）](https://doc.oplist.org.cn)  · ⚖️ [使用條款](https://doc.oplist.org/terms)  · 🔒 [隱私政策](https://doc.oplist.org/privacy)
 
@@ -35,15 +35,16 @@
 <div align="center">
 
 
-| EdgeOne Makers · 國際站 | EdgeOne Makers · 中國站 | Cloudflare Workers · 全球站 |
-| :---: | :---: | :---: |
-| [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) |
+| EdgeOne Makers · 國際站 | EdgeOne Makers · 中國站 | Cloudflare Workers · 全球站 | 阿里雲 ESA · 中國站 |
+| :---: | :---: | :---: | :---: |
+| [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://edgeone.ai/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![使用 EdgeOne 部署](https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg)](https://console.cloud.tencent.com/edgeone/pages/new?project-name=openlist-tsworker&repository-url=https://github.com/OpenListTeam/OpenList-Worker&install-command=pnpm%20install%20--no-frozen-lockfile&build-command=pnpm%20run%20build&output-directory=dist&env=JWT_SECRET) | [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OpenListTeam/OpenList-Worker) | [![使用阿里雲 ESA 部署](assets/esa-deploy.svg)](https://esa.console.aliyun.com/edge/function/list) |
 
 </div>
 
 > [!IMPORTANT]
 > - 若 Cloudflare 提示`無法取得儲存庫內容`，則您需要先 [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork) 本專案，再透過連接到 Github 倉庫功能部署
-> - 部署時請填寫 `JWT_SECRET`（≥16 字元的隨機字串，可用 `openssl rand -hex 32` 產生）：用於 JWT 簽章與資料加密；未設定時會在初始化時自動產生並持久化
+> - 阿里雲 ESA 請在控制台「邊緣運算和 AI → 函數和 Pages」中匯入本儲存庫
+> - 部署時請填寫 `JWT_SECRET`（≥16 字元），用於 JWT 簽章與加密
 > - 資料儲存預設自動選擇平台內建的持久化後端（`DB_DRIVER=auto`），無需設定；其餘變數見 [設定變數](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 > - 部署完成後首次造訪站點，依**安裝精靈**在瀏覽器中設定管理員帳號與密碼即可完成初始化；如需跳過精靈，可設定 `ADMIN_PASS`
 
@@ -69,31 +70,22 @@ OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTea
 
 ### 核心能力
 
-- **檔案瀏覽**：統一的目錄樹瀏覽，支援圖片、影片、音訊、文件、程式碼、壓縮檔等格式線上預覽。
-- **上傳下載**：跨儲存的上傳、批次下載、串流傳輸與直鏈跳轉。
-- **檔案分享**：生成帶有效期、密碼與權限控制的分享連結，支援匿名存取與目錄分享。
-- **全文搜尋**：在已索引的儲存中快速檢索檔案。
-- **離線任務**：後台任務佇列，支援批次操作與非同步處理。
-- **外部介面**：將聚合儲存以 WebDAV 或 S3 相容協定對外暴露，便於掛載到第三方工具。
-- **MCP 服務**：提供 Model Context Protocol 端點，可被 AI 助手等客戶端整合呼叫。
-
-### 權限管理
-
-- **權限管理**：基於角色的存取控制（RBAC），支援使用者分組、目錄級讀寫權限與配額。
-- **認證方式**：內建帳號密碼，支援 TOTP 驗證、WebAuthn/FIDO 登入、SSO 單點登入與 LDAP 目錄認證。
-- **安全加固**：JWT 會話、CSRF 防護、點擊劫持防護（X-Frame-Options）、內容安全策略（CSP）。
-- **健康檢查**：提供 `/health` 存活探針與 `/healthz` 就緒探針，可用於監控與告警。
-
-### 平台部署
-
-- **運行平台**：Cloudflare Workers、騰訊雲 EdgeOne Makers、Vercel、Serverless 及 Node.js 容器環境。
-- **資料儲存**：Cloudflare D1（SQLite）為主，同時支援 MySQL、MariaDB、PostgreSQL、SQL Server。
-- **持久快取**：Cloudflare KV / EdgeOne Blob（可選），用於配置持久化與快取。
-- **一鍵部署**：支援 EdgeOne、Cloudflare Workers 等平台的一鍵部署按鈕+初始化。
+- **檔案管理**：統一目錄樹瀏覽，圖片 / 影片 / 音訊 / 文件 / 程式碼 / 壓縮檔線上預覽；跨儲存上傳、批次下載、串流傳輸與直鏈跳轉；帶有效期、密碼與權限控制的分享連結。
+- **檢索與任務**：已索引儲存的全文搜尋；後台任務佇列支援批次與非同步處理。
+- **外部介面**：WebDAV、S3 相容協定，以及可供 AI 助手整合的 MCP 端點。
+- **權限與認證**：RBAC（使用者分組、目錄級讀寫權限、配額），帳號密碼 + TOTP / WebAuthn / SSO / LDAP。
+- **安全與維運**：JWT 會話、CSRF、點擊劫持（X-Frame-Options）與 CSP 防護，`/health`、`/healthz` 健康探針。
+- **並行去重**：相同目錄列表 / 中繼資料請求只向上游網盤發起一次，其餘請求重用結果，減少限流與 CPU 消耗。
+- **執行平台**：Cloudflare Workers、騰訊雲 EdgeOne Makers、阿里雲 ESA、Vercel / AWS Lambda 與 Node.js 容器。
+- **資料儲存**：Cloudflare D1（SQLite）為主，也支援 KV / Blob / Durable Objects 與外部 MySQL / MariaDB。
+- **一鍵部署**：支援 EdgeOne、Cloudflare Workers、阿里雲 ESA 部署按鈕 + 安裝精靈。
 
 ---
 
 ## 手動部署
+
+<details>
+<summary>展開查看前置要求、本地開發與生產部署</summary>
 
 ### 前置要求
 
@@ -106,7 +98,7 @@ OpenList-Worker 是官方 [OpenListTeam/OpenList](https://github.com/OpenListTea
 # 1. 安裝依賴
 pnpm install
 
-# 2. 配置 wrangler.toml（填寫 JWT_SECRET、KV/D1 綁定）
+# 2. 按需設定 wrangler.jsonc 中的綁定與變數（JWT_SECRET 見 .dev.vars.example）
 
 # 3. 啟動開發伺服器（自動拉取官方前端並運行 Worker）
 pnpm run dev:unified
@@ -118,12 +110,14 @@ pnpm run dev:worker
 ### 生產部署
 
 ```bash
-# 一鍵部署：確保 KV namespace 存在 → 拉取官方前端 → 部署到 Cloudflare Workers
+# 一鍵部署：建置前端產物 → 部署到 Cloudflare Workers（KV 綁定由 wrangler 自動預配）
 pnpm run deploy
 
-# 或直接部署 Worker（跳過 KV 檢查與前端建置）
+# 或直接部署 Worker（跳過前端建置）
 pnpm run deploy:worker
 ```
+
+</details>
 
 ---
 
@@ -131,21 +125,32 @@ pnpm run deploy:worker
 
 ### 後端
 
-- **運行環境**：Cloudflare Workers（Edge Computing）
+- **運行環境**：Cloudflare Workers / EdgeOne 雲函數 / 阿里雲 ESA（Edge Computing）
 - **Web 框架**：Hono.js
-- **資料庫**：Cloudflare D1（SQLite）/ 支援 MySQL、MariaDB、PostgreSQL、SQL Server
-- **快取**：Cloudflare KV（可選）
+- **資料庫**：Cloudflare D1（SQLite）/ KV / Blob / Durable Objects，或外部 MySQL / MariaDB
 - **語言**：TypeScript
 - **建置工具**：Wrangler、esbuild
 
 ### 前端
 
-- **框架**：React 19 + TypeScript
-- **UI 庫**：Ant Design / Material-UI
+- **框架**：SolidJS + TypeScript（官方 [OpenList-Frontend](https://github.com/OpenListTeam/OpenList-Frontend)）
+- **UI 庫**：Hope UI
 - **建置工具**：Vite
 
 ---
 
+## 部署設定
+
+部署完成後請設定如下變數：
+
+| 變數 | 預設值 | 說明 |
+| :--- | :--- | :--- |
+| `JWT_SECRET` | (無) | JWT 令牌簽章金鑰（≥16 字元） |
+| `DB_FORMAT` | `map` | `map`（JSON）/ `key`（分 key）/ `sql`（關聯表） |
+| `DB_DRIVER` | `auto` | 可選 `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql` |
+| `DB_CIPHER` | `none` | 敏感欄位落盤演算法，如 `aes-256-gcm` |
+
+完整環境變數，請參閱[設定變數](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 
 ## 幫助支援
 
