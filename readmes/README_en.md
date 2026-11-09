@@ -172,7 +172,7 @@ All other variables have sensible defaults:
 
 Directory listings and download links are always fetched from the drive — there is no cross-request cache (no `CACHE_*` variables), so external changes are visible immediately.
 
-For the full variable list (field encryption `DB_CIPHER`, concurrency dedup `SINGLEFLIGHT`, `cfkv` / MySQL settings, …) and per-platform deployment steps, see the documentation site:
+For the full variable list (field encryption `DB_CIPHER`, `cfkv` / MySQL settings, …) and per-platform deployment steps, see the documentation site:
 
 - [Environment Variables](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 - [Deployment](https://doc.oplist.org/ecosystem/official_worker/guide)

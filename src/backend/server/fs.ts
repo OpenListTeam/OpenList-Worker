@@ -84,10 +84,8 @@ fsRouter.route("/torrent", torrentLegacyRouter)
  * 请求级存储上下文（`env` + `waitUntil`）。
  *
  * 关键约定：**`env` 必须始终传递**，与 executionCtx 是否可用无关。
- *
- * singleflight（`SINGLEFLIGHT=db`）依赖它解析后端：拿不到 `env` 时
- * `getStorageBackend(undefined)` 会解析成**内存驱动**，而业务数据仍走全局
- * env ctx 的持久化后端 —— 协调表与数据库被静默拆到两个后端。
+ * 拿不到 `env` 时 `getStorageBackend(undefined)` 会解析成**内存驱动**，而业务
+ * 数据仍走全局 env ctx 的持久化后端 —— 读写会被静默拆到两个后端。
  *
  * 真正依赖 executionCtx 的只有 `waitUntil`；缺失时降级为同步等待
  * （见 `scheduleStoragePersistence`），业务语义不变。

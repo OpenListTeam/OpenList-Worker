@@ -172,7 +172,7 @@ pnpm run deploy:worker
 
 目录列表与下载直链每次都直接回源驱动，没有跨请求缓存（无 `CACHE_*` 变量），外部改动立即可见。
 
-完整环境变量（含字段加密 `DB_CIPHER`、并发去重 `SINGLEFLIGHT`、`cfkv` / MySQL 连接配置等）与各平台部署步骤，请参阅文档站：
+完整环境变量（含字段加密 `DB_CIPHER`、`cfkv` / MySQL 连接配置等）与各平台部署步骤，请参阅文档站：
 
 - [配置变量](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 - [部署教程](https://doc.oplist.org/ecosystem/official_worker/guide)
