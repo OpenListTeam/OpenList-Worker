@@ -111,7 +111,7 @@ test("Security: /api/me returns 401 when unauthenticated and guest is deleted or
   assert.equal(json.code, 401)
 })
 
-test("Security: /api/public/settings returns allow_guest 'false' when guest is deleted or disabled", async () => {
+test("Security: /api/public/settings does not expose allow_guest (parity with Go)", async () => {
   const env: any = {}
   await saveDb(
     {
@@ -136,15 +136,13 @@ test("Security: /api/public/settings returns allow_guest 'false' when guest is d
   const app = new Hono()
   app.route("/api/public", publicRouter)
 
-  const res = await app.request("/api/public/settings", {
-    method: "GET",
-  })
+  const res = await app.request("/api/public/settings", { method: "GET" })
   assert.equal(res.status, 200)
   const json: any = await res.json()
   assert.equal(
     json.data.allow_guest,
-    "false",
-    "allow_guest must be false when guest user is deleted",
+    undefined,
+    "Go 版公开设置里没有 allow_guest，这里也不应输出",
   )
 })
 
@@ -255,3 +253,4 @@ test("/raw/* returns 401 without sign when sign_all is enabled (parity with Go n
   const res = await app.request("/raw/some/file.txt", { method: "GET" })
   assert.equal(res.status, 401, "sign_all enabled must require a valid sign")
 })
+

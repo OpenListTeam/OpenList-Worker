@@ -490,7 +490,6 @@ publicRouter.get("/settings", async (c) => {
     check_update: "false",
 
     // --- Auth ---
-    allow_guest: "true",
     webauthn_login_enabled: "false",
     sso_login_enabled: "false",
     sso_compatibility_mode: "false",
@@ -548,14 +547,9 @@ publicRouter.get("/settings", async (c) => {
     }
   })
 
-  // 动态检查是否存在且启用了 guest 账号
-  const guest = (db.users || []).find((u: any) => u.username === "guest")
-  const isGuestActive = Boolean(guest && !guest.disabled)
-  if (!isGuestActive || settingsObj.allow_guest === "false") {
-    settingsObj.allow_guest = "false"
-  } else {
-    settingsObj.allow_guest = "true"
-  }
+  // 注意：不再输出 allow_guest。Go 版没有这个键，匿名访问是否放行完全由
+  // guest 账号是否存在/被禁用决定（server/middlewares/auth.go 的 Auth(false)）。
+  // 前端也不读取该字段，删掉它是为了和 Go 的公开设置保持一致。
 
   return c.json({
     code: 200,
@@ -820,6 +814,9 @@ publicRouter.post("/init/setup", async (c) => {
       })
     }
   }
+
+  // 注意：新装默认要求登录由「guest 账号默认禁用」实现（defaultDb.users），
+  // 与 Go 保持同一套语义，不再写 allow_guest 设置项。
 
   // 初始化是唯一允许「在一次成功读取（确认存储为空）之后写入空壳」的场景，
   // 因此显式 force；此时 db 已包含新建的管理员用户，本身也不再是空壳。

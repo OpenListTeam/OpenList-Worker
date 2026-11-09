@@ -494,8 +494,9 @@ export async function getUserFromContext(c: Context): Promise<{
     }
   }
 
-  // 无 Authorization header：尝试使用 guest 用户作为后备
-  // 注意：guest 不可用时返回 null 是合理的，调用方应该正确处理
+  // 无 Authorization header：尝试使用 guest 用户作为后备。
+  // 与 Go 版 server/middlewares/auth.go 的 Auth(false) 一致：是否允许匿名访问
+  // 只取决于 guest 账号本身是否存在/被禁用，没有额外的站点开关。
   if (!authHeader) {
     try {
       const db = await getDb(c.env)

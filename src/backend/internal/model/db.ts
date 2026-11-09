@@ -1029,7 +1029,10 @@ export const defaultDb = {
       role: 1,
       permission: 0,
       base_path: "/",
-      disabled: false,
+      // 新装默认不启用访客：旧行为是 guest 默认启用、匿名请求直接按 guest 浏览，
+      // 与「打开网页就要登录」的预期相反（issue #133）。存量部署的用户表存在
+      // 持久化存储里，不受这里影响；需要匿名只读时在用户管理中显式启用。
+      disabled: true,
       sso_id: "",
       allow_ldap: false,
       pwd_update_at: new Date().toISOString(),
