@@ -1,33 +1,12 @@
-// =============================================================================
-// OpenList-TSWorker · Cloudflare Workers 配置
-// 文档：https://developers.cloudflare.com/workers/wrangler/configuration/
-//
-// ⚠️ 本文件只声明 KV 一个存储绑定（见文件末 kv_namespaces），D1 / DO 等
-//    其它存储请按需在控制台添加。
-//
-// 为什么声明 KV 且【省略 id 字段】（不能写 "id": ""）：
-//   wrangler 会自动预配（automatic provisioning）：首次部署创建
-//   "项目名-绑定名" 的命名空间（此处即 openlist-tsworkers-kv）并绑定；
-//   二次部署通过服务端 inherit 复用已有绑定，不会重复创建。
-//
-// 注意：CI / 一键部署属非交互环境，wrangler 不会把生成的 id 回写进本文件。
-// 这是预期行为 —— 复用靠的是服务端 inherit 绑定，而非本地 id。
-//
-// ⚠️ 不要用 `wrangler kv namespace create` 手动建名为 "KV" 的命名空间：
-//   wrangler 的预配链路无法按 title 复用已有命名空间（KVHandler 未实现
-//   isConnectedToExistingResource），它会另建 openlist-tsworkers-kv，
-//   手动建的那个不会被任何绑定使用，成为孤儿资源。参见 Issue #34。
-//
-// Secret（JWT_SECRET / ADMIN_PASS / ALLOW_URLS / MYSQL_URLS / EO_KV_URLS / CF_* 等）请在
-// .dev.vars.example 或 .env.example 中声明 —— 部署按钮据此生成输入项，
-// 用户填入的值会成为该 Worker 的 Secret，后续更新不会被覆盖。
-// =============================================================================
+// Production deployment: openlist-tsworkers.tangdou.workers.dev
+// D1 stores application metadata. Secrets are managed separately.
 {
   "name": "openlist-tsworkers",
+  "account_id": "31a6b48c870a8aefbb1f3840fa7fa3b2",
   "main": "src/backend/worker.ts",
   "compatibility_date": "2026-08-04",
   "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": false,
+  "workers_dev": true,
   "preview_urls": false,
 
   // ⚠️ run_worker_first 只放行 HTML 入口，不能改成 true（全量放行）：
@@ -53,7 +32,7 @@
     //   map（默认）- 整对象序列化为单个 JSON 键值，适合 KV/Blob
     //   key        - 分 key 存储，每实体一条记录（如 users_1）
     //   sql        - 关系表格式，与 Go 后端一致（适用于 D1/MySQL）
-    "DB_FORMAT": "map",
+    "DB_FORMAT": "sql",
 
     // 数据库驱动：
     //   auto（默认）- 自动检测，顺序 mysql → d1 → kv → cfkv → blob → do
@@ -64,7 +43,7 @@
     //   do         - Cloudflare Durable Objects（需下方 durable_objects）
     //   mysql      - 外部 MySQL（需 MYSQL_URLS 或 MYSQL_HOST 等，仅 Node 运行时）
     // 说明：mysql 仅在配置了连接信息时才参与 auto 探测，避免无谓的 TCP 建连。
-    "DB_DRIVER": "auto",
+    "DB_DRIVER": "d1",
 
     // 敏感字段落盘算法（默认 none：不加密；与 DB_DRIVER/DB_FORMAT 正交）：
     //   none（默认）              - 不加密，敏感字段明文落盘
@@ -80,7 +59,7 @@
     //       因此把该项改回 none 不会导致既有数据不可读（下次保存自动转为明文）。
     // 注意：该项与 JWT 密钥无关 —— DB_CIPHER=none 时，未配置 JWT_SECRET 仍会
     //       自动生成并持久化共享密钥（JWT 签名需要）。
-    "DB_CIPHER": "none",
+    "DB_CIPHER": "aes-256-gcm",
 
     // ── 缓存（文件树缓存 / 下载链接缓存）─────────────────────────────────
     // 参考 OpenList.ts 的两级持久缓存：
@@ -221,9 +200,13 @@
   //   控制台：Workers & Pages → D1 → 创建数据库 → 绑定到 Worker，变量名填 DB
   //   省略 database_id 时，wrangler >= 4.45.0 会自动创建同名库并回写
   //
-  // "d1_databases": [
-  //   { "binding": "DB", "database_name": "openlist", "database_id": "" }
-  // ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "openlist-tsworkers-db",
+      "database_id": "ecdfc837-2774-4ba9-af77-bbf983e08293"
+    }
+  ]
   //
   // ▶ 方案 C：Durable Objects（内置 SQLite，强一致；DB_FORMAT 建议改为 "sql"）
   //   注意：DO 需要 migrations，且删除成本高，适合单租户部署。
