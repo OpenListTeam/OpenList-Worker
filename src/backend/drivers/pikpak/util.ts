@@ -230,6 +230,10 @@ export class PikPakApiClient {
           "Content-Type": "application/json",
           "User-Agent": this.userAgent || "OpenList",
           "X-Device-ID": this.deviceId,
+          // 与 Go 版 request() 一致：刷新验证码时带上当前 captcha token
+          ...(this.captchaTokenVal
+            ? { "X-Captcha-Token": this.captchaTokenVal }
+            : {}),
         },
         body: JSON.stringify(param),
       },
@@ -280,6 +284,14 @@ export class PikPakApiClient {
     } else {
       metas.username = username
     }
+    // 与 Go 版 OpenList 对齐：登录前的 captcha/init 同样要带客户端版本、
+    // 包名与 captcha_sign，否则服务端只下发「未签名」的 token，
+    // 随后 /v1/auth/signin 会以 4126 AccessProhibited 拒绝本次登录。
+    const { timestamp, sign } = this.getCaptchaSign()
+    metas.client_version = this.clientVersion
+    metas.package_name = this.packageName
+    metas.timestamp = timestamp
+    metas.captcha_sign = sign
     return this.refreshCaptchaToken(action, metas)
   }
 
@@ -291,51 +303,77 @@ export class PikPakApiClient {
     }
 
     const url = "https://user.mypikpak.net/v1/auth/signin"
-    if (!this.captchaTokenVal) {
+    // 清空旧 access token，避免验证码请求带上已失效的 Bearer。
+    this.accessToken = ""
+
+    let lastError: PikPakErrResp | undefined
+    // 4126 AccessProhibited 基本等同于「captcha_token 无效/过期」。
+    // 用新申请的 captcha token 重试一次即可覆盖时钟偏差/并发导致的偶发失效，
+    // 最多两轮，避免反复登录触发风控。
+    for (let attempt = 0; attempt < 2; attempt++) {
+      // 每次登录都重新申请 captcha token：addition.captcha_token 是上次登录后
+      // 持久化的旧值（会过期），直接复用会让 signin 带着失效 token 被拒。
+      // Go 版同样在 login() 中无条件刷新验证码。
       await this.refreshCaptchaTokenInLogin(
         getAction("POST", url),
         this.addition.username,
       )
+
+      // 与 Go 版 / Web 端一致：signin 只带 Content-Type 与 User-Agent，
+      // 不附带 X-Device-ID / X-Captcha-Token（原生 SDK 才带这两个头，
+      // 在 web 凭据下会被服务端判定为 AccessProhibited）。
+      const res = await fetch(
+        `${url}?client_id=${encodeURIComponent(this.clientId)}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "User-Agent": this.userAgent || "OpenList",
+          },
+          body: JSON.stringify({
+            captcha_token: this.captchaTokenVal,
+            client_id: this.clientId,
+            client_secret: this.clientSecret,
+            username: this.addition.username,
+            password: this.addition.password,
+          }),
+        },
+      )
+
+      const data: PikPakTokenResp & PikPakErrResp = await res.json()
+      if (!data.error_code || data.error_code === 0) {
+        if (!data.access_token || !data.refresh_token) {
+          throw new Error("PikPak login failed: server returned empty tokens")
+        }
+
+        this.accessToken = data.access_token
+        this.refreshTokenVal = data.refresh_token
+        this.userId = data.sub || ""
+
+        if (this.onTokenRefreshed) {
+          await this.onTokenRefreshed({
+            accessToken: this.accessToken,
+            refreshToken: this.refreshTokenVal,
+            captchaToken: this.captchaTokenVal,
+          })
+        }
+        return
+      }
+
+      lastError = data
+      if (data.error_code !== 4126) break
     }
 
-    const res = await fetch(
-      `${url}?client_id=${encodeURIComponent(this.clientId)}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": this.userAgent || "OpenList",
-          "X-Device-ID": this.deviceId,
-          "X-Captcha-Token": this.captchaTokenVal,
-        },
-        body: JSON.stringify({
-          captcha_token: this.captchaTokenVal,
-          client_id: this.clientId,
-          client_secret: this.clientSecret,
-          username: this.addition.username,
-          password: this.addition.password,
-        }),
-      },
-    )
-
-    const data: PikPakTokenResp & PikPakErrResp = await res.json()
-    if (data.error_code && data.error_code !== 0) {
+    const detail =
+      lastError?.error_description || lastError?.error || "unknown error"
+    if (lastError?.error_code === 4126) {
       throw new Error(
-        `PikPak login failed (${data.error_code}): ${data.error_description || data.error}`,
+        `PikPak login failed (4126): ${detail} — 已用新的验证码 token 重试登录仍被拒绝。` +
+          "若账号能正常登录官网，通常是出口 IP（如 Cloudflare Workers 数据中心 IP）触发风控，" +
+          "或该账号被要求人工完成验证码；请更换出口网络稍后重试，或改用 refresh_token 添加存储。",
       )
     }
-
-    this.accessToken = data.access_token
-    this.refreshTokenVal = data.refresh_token
-    this.userId = data.sub || ""
-
-    if (this.onTokenRefreshed) {
-      await this.onTokenRefreshed({
-        accessToken: this.accessToken,
-        refreshToken: this.refreshTokenVal,
-        captchaToken: this.captchaTokenVal,
-      })
-    }
+    throw new Error(`PikPak login failed (${lastError?.error_code}): ${detail}`)
   }
 
   async refreshToken(): Promise<void> {
@@ -351,8 +389,9 @@ export class PikPakApiClient {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "User-Agent": this.userAgent || "OpenList",
-          "X-Device-ID": this.deviceId,
+          // 与 Go 版 / Web 端一致：refresh_token 换发不带 UA 与 X-Device-ID，
+          // 带浏览器 UA 会被服务端当作跨端调用而拒绝。
+          "User-Agent": "",
         },
         body: JSON.stringify({
           client_id: this.clientId,
@@ -372,6 +411,10 @@ export class PikPakApiClient {
       throw new Error(
         `PikPak token refresh failed (${data.error_code}): ${data.error_description || data.error}`,
       )
+    }
+
+    if (!data.access_token || !data.refresh_token) {
+      throw new Error("PikPak token refresh failed: server returned empty tokens")
     }
 
     this.accessToken = data.access_token

@@ -121,3 +121,228 @@ test("PikPak login succeeds without user-provided client_id (issue #179)", async
     globalThis.fetch = originalFetch
   }
 })
+
+interface RecordedCall {
+  url: string
+  body: any
+  headers: Record<string, string>
+}
+
+function installFetchMock(
+  handler: (url: string, call: RecordedCall, index: number) => Response | undefined,
+): { calls: RecordedCall[]; restore: () => void } {
+  const originalFetch = globalThis.fetch
+  const calls: RecordedCall[] = []
+  globalThis.fetch = (async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    const url = String(input)
+    const headers: Record<string, string> = {}
+    new Headers(init?.headers || {}).forEach((v, k) => {
+      headers[k.toLowerCase()] = v
+    })
+    const call: RecordedCall = {
+      url,
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      headers,
+    }
+    const index = calls.push(call) - 1
+    return (
+      handler(url, call, index) ||
+      new Response("unexpected URL", { status: 404 })
+    )
+  }) as typeof fetch
+  return { calls, restore: () => (globalThis.fetch = originalFetch) }
+}
+
+test("PikPak login refreshes captcha token instead of reusing the persisted one (4126)", async () => {
+  let captchaCount = 0
+  const mock = installFetchMock((url) => {
+    if (url.includes("/v1/shield/captcha/init")) {
+      captchaCount++
+      return jsonResponse({
+        captcha_token: `fresh-captcha-${captchaCount}`,
+        expires_in: 300,
+      })
+    }
+    if (url.includes("/v1/auth/signin")) {
+      return jsonResponse({
+        access_token: "access-token",
+        refresh_token: "refresh-token",
+        sub: "user-id",
+      })
+    }
+    return undefined
+  })
+
+  try {
+    const client = new PikPakApiClient({
+      username: "user@example.com",
+      password: "password123",
+      // 上次登录后持久化的旧验证码 token，此时已经过期
+      captcha_token: "stale-captcha",
+    }) as any
+
+    await client.login()
+
+    const signin = mock.calls.find((c) => c.url.includes("/v1/auth/signin"))!
+    const captcha = mock.calls.find((c) =>
+      c.url.includes("/v1/shield/captcha/init"),
+    )!
+    assert.ok(captcha, "captcha init must run even when captcha_token exists")
+    assert.equal(signin.body.captcha_token, "fresh-captcha-1")
+    assert.notEqual(signin.body.captcha_token, "stale-captcha")
+  } finally {
+    mock.restore()
+  }
+})
+
+test("PikPak login captcha init carries client metadata and captcha_sign", async () => {
+  const mock = installFetchMock((url) => {
+    if (url.includes("/v1/shield/captcha/init")) {
+      return jsonResponse({ captcha_token: "ct", expires_in: 300 })
+    }
+    if (url.includes("/v1/auth/signin")) {
+      return jsonResponse({
+        access_token: "access-token",
+        refresh_token: "refresh-token",
+        sub: "user-id",
+      })
+    }
+    return undefined
+  })
+
+  try {
+    const client = new PikPakApiClient({
+      username: "user@example.com",
+      password: "password123",
+    }) as any
+    await client.login()
+
+    const captcha = mock.calls.find((c) =>
+      c.url.includes("/v1/shield/captcha/init"),
+    )!
+    assert.equal(captcha.body.action, "POST:/v1/auth/signin")
+    assert.equal(captcha.body.meta.email, "user@example.com")
+    assert.equal(captcha.body.meta.client_version, client.clientVersion)
+    assert.equal(captcha.body.meta.package_name, client.packageName)
+    assert.ok(/^\d+$/.test(captcha.body.meta.timestamp))
+    assert.ok(captcha.body.meta.captcha_sign.startsWith("1."))
+  } finally {
+    mock.restore()
+  }
+})
+
+test("PikPak signin only sends web headers, not native SDK headers", async () => {
+  const mock = installFetchMock((url) => {
+    if (url.includes("/v1/shield/captcha/init")) {
+      return jsonResponse({ captcha_token: "ct", expires_in: 300 })
+    }
+    if (url.includes("/v1/auth/signin")) {
+      return jsonResponse({
+        access_token: "access-token",
+        refresh_token: "refresh-token",
+        sub: "user-id",
+      })
+    }
+    return undefined
+  })
+
+  try {
+    const client = new PikPakApiClient({
+      username: "user@example.com",
+      password: "password123",
+    }) as any
+    await client.login()
+
+    const signin = mock.calls.find((c) => c.url.includes("/v1/auth/signin"))!
+    // 原生 SDK 才带这两个头，web 凭据下带上会被判为 AccessProhibited
+    assert.equal(signin.headers["x-device-id"], undefined)
+    assert.equal(signin.headers["x-captcha-token"], undefined)
+    assert.equal(signin.headers["content-type"], "application/json")
+    assert.ok(signin.headers["user-agent"])
+  } finally {
+    mock.restore()
+  }
+})
+
+test("PikPak retries signin once with a fresh captcha token on 4126", async () => {
+  let signinCount = 0
+  let captchaCount = 0
+  const mock = installFetchMock((url) => {
+    if (url.includes("/v1/shield/captcha/init")) {
+      captchaCount++
+      return jsonResponse({
+        captcha_token: `captcha-${captchaCount}`,
+        expires_in: 300,
+      })
+    }
+    if (url.includes("/v1/auth/signin")) {
+      signinCount++
+      if (signinCount === 1) {
+        return jsonResponse({
+          error_code: 4126,
+          error: "AccessProhibited",
+          error_description: "AccessProhibited",
+        })
+      }
+      return jsonResponse({
+        access_token: "access-token",
+        refresh_token: "refresh-token",
+        sub: "user-id",
+      })
+    }
+    return undefined
+  })
+
+  try {
+    const client = new PikPakApiClient({
+      username: "user@example.com",
+      password: "password123",
+    }) as any
+    await client.login()
+
+    const signins = mock.calls.filter((c) => c.url.includes("/v1/auth/signin"))
+    assert.equal(signins.length, 2)
+    assert.equal(signins[0].body.captcha_token, "captcha-1")
+    assert.equal(signins[1].body.captcha_token, "captcha-2")
+    assert.equal((client as any).accessToken, "access-token")
+  } finally {
+    mock.restore()
+  }
+})
+
+test("PikPak refresh_token exchange omits UA and X-Device-ID", async () => {
+  const mock = installFetchMock((url) => {
+    if (url.includes("/v1/auth/token")) {
+      return jsonResponse({
+        access_token: "new-access",
+        refresh_token: "new-refresh",
+        sub: "user-id",
+      })
+    }
+    if (url.includes("/v1/shield/captcha/init")) {
+      return jsonResponse({ captcha_token: "ct", expires_in: 300 })
+    }
+    return undefined
+  })
+
+  try {
+    const client = new PikPakApiClient({
+      username: "user@example.com",
+      password: "password123",
+      refresh_token: "old-refresh",
+    }) as any
+    await client.refreshToken()
+
+    const tokenCall = mock.calls.find((c) => c.url.includes("/v1/auth/token"))!
+    assert.equal(tokenCall.body.grant_type, "refresh_token")
+    assert.equal(tokenCall.body.refresh_token, "old-refresh")
+    assert.equal(tokenCall.headers["user-agent"], "")
+    assert.equal(tokenCall.headers["x-device-id"], undefined)
+    assert.equal((client as any).accessToken, "new-access")
+  } finally {
+    mock.restore()
+  }
+})
