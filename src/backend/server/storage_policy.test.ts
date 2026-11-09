@@ -230,7 +230,16 @@ test("未配置 JWT_SECRET：ready 仍应为 true（存储可用即可开始安�
     "warning",
     "缺密钥不是 error：存储可用时 setup 会自动生成并持久化",
   )
-  assert.match(String(issue.suggestion), /let setup generate one/)
+  assert.match(
+    String(issue.summary),
+    /generated at setup|初始化时自动生成/,
+    "summary 要说明可以留空、由初始化自动生成，避免用户误以为是必填项",
+  )
+  assert.match(
+    String(issue.suggestion),
+    /openssl rand -hex 32/,
+    "建议里给出可直接执行的生成命令",
+  )
 })
 
 test("未配置 JWT_SECRET：初始化成功后必须自动生成并持久化密钥", async () => {
