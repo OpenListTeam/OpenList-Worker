@@ -28,6 +28,10 @@
   "compatibility_date": "2026-08-04",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
+
+  // 见 issue #174：保留控制台配置的普通环境变量，部署更新后不再被清空。
+  // Secrets 本就不受影响；此开关仅作用于 vars。
+  "keep_vars": true,
   "preview_urls": false,
 
   // ⚠️ run_worker_first 只放行 HTML 入口，不能改成 true（全量放行）：
