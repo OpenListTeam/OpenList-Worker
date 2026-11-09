@@ -7,9 +7,9 @@
 
 <a href="https://github.com/OpenListTeam/OpenList-Worker/blob/main/LICENSE"><img src="https://img.shields.io/github/license/OpenListTeam/OpenList-Worker" alt="License" /></a>
 <a href="https://github.com/OpenListTeam/OpenList-Worker/actions/workflows/build-verify.yml"><img src="https://img.shields.io/github/actions/workflow/status/OpenListTeam/OpenList-Worker/build-verify.yml?branch=main" alt="Build status" /></a>
-<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/release/OpenListTeam/OpenList-Worker" alt="latest version" /></a>
 <a href="https://github.com/OpenListTeam/OpenList-Worker/discussions"><img src="https://img.shields.io/github/discussions/OpenListTeam/OpenList-Worker?color=%23ED8936" alt="discussions" /></a>
-<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/downloads/OpenListTeam/OpenList-Worker/total?color=%239F7AEA&logo=github" alt="Downloads" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/stargazers"><img src="https://img.shields.io/github/stars/OpenListTeam/OpenList-Worker?color=%23ED8936&logo=github" alt="Stars" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/forks"><img src="https://img.shields.io/github/forks/OpenListTeam/OpenList-Worker?color=%239F7AEA&logo=github" alt="Forks" /></a>
 
 📘 [사용 문서](https://doc.oplist.org) · 🌏 [사용 문서（중국 본토）](https://doc.oplist.org.cn)  · ⚖️ [이용 약관](https://doc.oplist.org/terms)  · 🔒 [개인정보 처리방침](https://doc.oplist.org/privacy)
 
@@ -43,8 +43,8 @@
 
 > [!IMPORTANT]
 > - Cloudflare에서 `저장소 콘텐츠를 가져올 수 없습니다`라고 표시되면, 먼저 이 프로젝트를 [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork)한 다음 Github 저장소 연결 기능으로 배포하세요
-> - Alibaba Cloud ESA의 경우 콘솔의 **엣지 컴퓨팅 및 AI → 함수 및 Pages**에서 이 저장소를 가져오세요. 저장소의 `esa.jsonc`에 설치, 빌드, 정적 자산 디렉터리 설정이 이미 포함되어 있습니다. 배포 후 `JWT_SECRET`과 `KV_NAMESPACE`(기본값 `openlist`)를 설정하고, 동일한 이름의 EdgeKV 네임스페이스를 미리 생성하세요
-> - 배포 시 `JWT_SECRET`(16자 이상의 임의 문자열, 예: `openssl rand -hex 32`)을 입력하세요. JWT 서명과 데이터 암호화에 사용되며, 미설정 시 초기화 단계에서 자동 생성·영구 저장됩니다
+> - Alibaba Cloud ESA의 경우 콘솔의 **엣지 컴퓨팅 및 AI → 함수 및 Pages**에서 이 저장소를 가져오세요
+> - 배포 시 `JWT_SECRET`(≥16자)을 설정하세요. JWT 서명과 암호화에 사용됩니다
 > - 데이터 저장은 플랫폼 내장 영구 저장소를 자동으로 선택합니다(`DB_DRIVER=auto`) — 대부분 설정이 필요 없으며, 나머지 변수는 [환경 변수](https://doc.oplist.org/ecosystem/official_worker/guide_env)를 참고하세요
 > - 배포 후 첫 방문 시 **설치 마법사**가 열립니다. 브라우저에서 관리자 계정과 비밀번호를 설정하면 초기화가 완료됩니다(`ADMIN_PASS`를 설정하면 마법사를 건너뜁니다)
 
@@ -70,31 +70,22 @@ OpenList-Worker는 공식 [OpenListTeam/OpenList](https://github.com/OpenListTea
 
 ### 핵심 기능
 
-- **파일 탐색**：통합된 디렉터리 트리 탐색. 이미지, 동영상, 오디오, 문서, 코드, 압축 파일 등의 온라인 미리보기 지원.
-- **업로드·다운로드**：스토리지 간 업로드, 일괄 다운로드, 스트리밍, 다이렉트 링크 리다이렉트.
-- **파일 공유**：유효기간·비밀번호·권한 제어가 포함된 공유 링크 생성. 익명 액세스 및 디렉터리 공유 지원.
-- **전체 텍스트 검색**：인덱싱된 스토리지에서 파일을 빠르게 검색.
-- **오프라인 작업**：백그라운드 작업 큐로 일괄 작업 및 비동기 처리 지원.
-- **외부 인터페이스**：집계 스토리지를 WebDAV 또는 S3 호환 프로토콜로 노출하여 타사 도구에 마운트 가능.
-- **MCP 서비스**：Model Context Protocol 엔드포인트를 제공하여 AI 어시스턴트 등의 클라이언트에서 통합·호출 가능.
-- **동시 요청 중복 제거**：같은 순간의 동일한 디렉터리 목록 / 메타데이터 요청은 업스트림 드라이브에 한 번만 전달되고, 나머지 요청은 같은 결과를 재사용하여 불필요한 속도 제한과 CPU 소모를 피합니다.
-
-### 권한 관리
-
-- **권한 관리**：역할 기반 접근 제어（RBAC）. 사용자 그룹, 디렉터리 수준 읽기·쓰기 권한 및 할당량 지원.
-- **인증 방식**：내장 계정 비밀번호에 더해 TOTP 검증, WebAuthn/FIDO 로그인, SSO 싱글 사인온, LDAP 디렉터리 인증 지원.
-- **보안 강화**：JWT 세션, CSRF 방지, 클릭재킹 방지（X-Frame-Options）, 콘텐츠 보안 정책（CSP）.
-- **헬스 체크**：`/health` 라이브니스 프로브와 `/healthz` 레디니스 프로브를 제공하여 모니터링·알림에 활용.
-
-### 플랫폼 배포
-
-- **실행 플랫폼**：Cloudflare Workers、Tencent Cloud EdgeOne Makers、Alibaba Cloud ESA、Vercel / AWS Lambda 및 Node.js 컨테이너 환경.
-- **데이터 스토리지**：Cloudflare D1（SQLite）을 주로 사용하며 KV / Blob / Durable Objects 및 외부 MySQL / MariaDB도 지원.
-- **원클릭 배포**：EdgeOne、Cloudflare Workers、Alibaba Cloud ESA 배포 진입점 + 설치 마법사.
+- **파일 관리**：통합 디렉터리 트리 탐색과 이미지 / 동영상 / 오디오 / 문서 / 코드 / 압축 파일 온라인 미리보기；스토리지 간 업로드, 일괄 다운로드, 스트리밍, 다이렉트 링크 리다이렉트；유효기간·비밀번호·권한 제어가 포함된 공유 링크.
+- **검색 및 작업**：인덱싱된 스토리지의 전체 텍스트 검색；일괄 작업과 비동기 처리를 위한 백그라운드 작업 큐.
+- **외부 인터페이스**：WebDAV、S3 호환 프로토콜, AI 어시스턴트용 MCP 엔드포인트.
+- **접근 및 인증**：RBAC（사용자 그룹, 디렉터리 수준 읽기·쓰기 권한, 할당량）, 계정 비밀번호 + TOTP / WebAuthn / SSO / LDAP.
+- **보안 및 운영**：JWT 세션, CSRF, 클릭재킹（X-Frame-Options）및 CSP 보호, `/health`·`/healthz` 프로브.
+- **동시 요청 중복 제거**：같은 순간의 동일한 디렉터리 목록 / 메타데이터 요청은 업스트림 드라이브에 한 번만 전달되고, 나머지는 같은 결과를 재사용하여 속도 제한과 CPU 소모를 줄입니다.
+- **실행 플랫폼**：Cloudflare Workers、Tencent Cloud EdgeOne Makers、Alibaba Cloud ESA、Vercel / AWS Lambda 및 Node.js 컨테이너.
+- **데이터 스토리지**：Cloudflare D1（SQLite）주 사용, KV / Blob / Durable Objects 및 외부 MySQL / MariaDB 지원.
+- **원클릭 배포**：EdgeOne、Cloudflare Workers、Alibaba Cloud ESA 배포 버튼 + 설치 마법사.
 
 ---
 
 ## 수동 배포
+
+<details>
+<summary>사전 요구 사항, 로컬 개발 및 프로덕션 배포 보기</summary>
 
 ### 사전 요구 사항
 
@@ -126,6 +117,8 @@ pnpm run deploy
 pnpm run deploy:worker
 ```
 
+</details>
+
 ---
 
 ## 기술 스택
@@ -146,37 +139,18 @@ pnpm run deploy:worker
 
 ---
 
-## 설정
+## 배포 설정
 
-배포 후 **사이트 첫 방문 시 설치 마법사가 자동으로 열립니다**. 브라우저에서 관리자 계정과 비밀번호를 설정하면 초기화가 완료됩니다. 마법사를 건너뛰려면 `ADMIN_PASS`를 설정하면 관리자가 자동으로 초기화됩니다.
-
-대부분의 배포는 **추가 설정이 필요하지 않습니다**. 데이터 저장은 기본적으로 `DB_DRIVER=auto`를 사용하여 사용 가능한 영구 백엔드（Cloudflare Workers → KV / D1 / DO, EdgeOne / ESA → Blob）를 자동으로 선택합니다. 명시적으로 설정할 가치가 있는 유일한 변수는 다음과 같습니다.
-
-| 변수 | 설명 |
-| :--- | :--- |
-| `JWT_SECRET` | JWT 토큰 서명 키（≥16자, `openssl rand -hex 32` 권장）. cron 작업 인증에도 사용됩니다. 미설정 시 초기화 단계에서 자동 생성·영구 저장됩니다 |
-
-> `JWT_SECRET`은 **Secret**(일반 변수가 아님)으로 설정하세요. 일반 변수는 재배포 시 저장소 설정으로 덮어쓸 수 있지만 Secret은 그렇지 않습니다.
-
-나머지 변수에는 합리적인 기본값이 있습니다.
+배포 후 다음 변수를 설정하세요:
 
 | 변수 | 기본값 | 설명 |
 | :--- | :--- | :--- |
-| `ADMIN_PASS` | — | 설치 마법사를 건너뛰고 이 비밀번호로 관리자를 자동 초기화 |
-| `DB_FORMAT` | `map` | 저장 형식：`map`(전체 JSON 객체) / `key`(키별) / `sql`(관계형 테이블, Go 백엔드 호환) |
-| `DB_DRIVER` | `auto` | 저장 드라이버：`auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql`; 명시적으로 지정한 드라이버는 자동으로 대체되지 않음 |
-| `DB_CIPHER` | `none` | 민감 필드 저장 시 암호화(기본 미암호화), 예: `aes-256-gcm` |
-| `ALLOW_URLS` | — | CORS 허용 목록(쉼표 구분, 미설정 시 동일 출처만 허용) |
-| `MAX_UPLOAD` / `MAX_UPPART` | 26214400 / 16777216 | 전체 업로드 / 멀티파트 청크 최대 크기(바이트) |
-| `ASSET_URLS` | — | 프런트엔드 정적 자산 CDN 주소, `$version` 자리표시자 지원 |
+| `JWT_SECRET` | (없음) | JWT 서명 키 (≥16자) |
+| `DB_FORMAT` | `map` | `map` (JSON) / `key` (키별) / `sql` (관계형) |
+| `DB_DRIVER` | `auto` | `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql` |
+| `DB_CIPHER` | `none` | 민감 필드 저장 시 암호화, 예: `aes-256-gcm` |
 
-디렉터리 목록과 다운로드 직링크는 항상 드라이브에서 직접 가져오며 요청 간 캐시가 없습니다(`CACHE_*` 변수 없음). 따라서 외부 변경 사항이 즉시 반영됩니다.
-
-전체 환경 변수(필드 암호화 `DB_CIPHER`, `cfkv` / MySQL 연결 설정 등)와 플랫폼별 배포 단계는 문서 사이트를 참고하세요.
-
-- [환경 변수](https://doc.oplist.org/ecosystem/official_worker/guide_env)
-- [배포](https://doc.oplist.org/ecosystem/official_worker/guide)
-- [FAQ](https://doc.oplist.org/ecosystem/official_worker/about)
+전체 변수 목록은 [설정 변수](https://doc.oplist.org/ecosystem/official_worker/guide_env)를 참고하세요.
 
 ## 도움말
 

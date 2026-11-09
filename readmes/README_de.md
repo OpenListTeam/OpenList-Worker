@@ -7,9 +7,9 @@
 
 <a href="https://github.com/OpenListTeam/OpenList-Worker/blob/main/LICENSE"><img src="https://img.shields.io/github/license/OpenListTeam/OpenList-Worker" alt="License" /></a>
 <a href="https://github.com/OpenListTeam/OpenList-Worker/actions/workflows/build-verify.yml"><img src="https://img.shields.io/github/actions/workflow/status/OpenListTeam/OpenList-Worker/build-verify.yml?branch=main" alt="Build status" /></a>
-<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/release/OpenListTeam/OpenList-Worker" alt="latest version" /></a>
 <a href="https://github.com/OpenListTeam/OpenList-Worker/discussions"><img src="https://img.shields.io/github/discussions/OpenListTeam/OpenList-Worker?color=%23ED8936" alt="discussions" /></a>
-<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/downloads/OpenListTeam/OpenList-Worker/total?color=%239F7AEA&logo=github" alt="Downloads" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/stargazers"><img src="https://img.shields.io/github/stars/OpenListTeam/OpenList-Worker?color=%23ED8936&logo=github" alt="Stars" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/forks"><img src="https://img.shields.io/github/forks/OpenListTeam/OpenList-Worker?color=%239F7AEA&logo=github" alt="Forks" /></a>
 
 📘 [Dokumentation](https://doc.oplist.org) · 🌏 [Dokumentation (chinesisches Festland)](https://doc.oplist.org.cn)  · ⚖️ [Nutzungsbedingungen](https://doc.oplist.org/terms)  · 🔒 [Datenschutzerklärung](https://doc.oplist.org/privacy)
 
@@ -43,8 +43,8 @@ Klicken Sie auf die Schaltfläche unten, um dieses Projekt mit einem Klick auf d
 
 > [!IMPORTANT]
 > - Wenn Cloudflare `Repository-Inhalt kann nicht abgerufen werden` anzeigt, [forken](https://github.com/OpenListTeam/OpenList-Worker/fork) Sie dieses Projekt zuerst und stellen Sie es dann über die Verbindung zum Github-Repository bereit
-> - Importieren Sie für Alibaba Cloud ESA dieses Repository in der Konsole unter **Edge Computing und AI → Funktionen und Pages**: Die enthaltene `esa.jsonc` definiert bereits Installations-, Build- und Static-Asset-Einstellungen. Setzen Sie nach der Bereitstellung `JWT_SECRET` und `KV_NAMESPACE` (Standard `openlist`) und legen Sie vorab den gleichnamigen EdgeKV-Namespace an
-> - Tragen Sie bei der Bereitstellung `JWT_SECRET` ein (Zufallszeichenfolge mit 16+ Zeichen, z. B. `openssl rand -hex 32`): Sie signiert JWTs und verschlüsselt Daten; ohne Angabe wird sie bei der Initialisierung erzeugt und gespeichert
+> - Importieren Sie für Alibaba Cloud ESA dieses Repository in der Konsole unter **Edge Computing und AI → Funktionen und Pages**
+> - Setzen Sie bei der Bereitstellung `JWT_SECRET` (≥16 Zeichen) für JWT-Signatur und Verschlüsselung
 > - Der Datenspeicher verwendet automatisch das plattformeigene persistente Backend (`DB_DRIVER=auto`) — keine Konfiguration nötig; weitere Variablen siehe [Umgebungsvariablen](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 > - Beim ersten Besuch nach der Bereitstellung öffnet sich der **Installationsassistent**: Legen Sie Admin-Konto und Passwort im Browser fest, um die Initialisierung abzuschließen (mit `ADMIN_PASS` überspringen Sie den Assistenten)
 
@@ -70,31 +70,22 @@ Zusätzlich zu den oben genannten echten Speichern werden auch virtuelle/funktio
 
 ### Kernfunktionen
 
-- **Dateidurchsuchen**: einheitliches Durchsuchen des Verzeichnisbaums, mit Online-Vorschau von Bildern, Videos, Audio, Dokumenten, Code, Archiven und mehr.
-- **Hochladen & Herunterladen**: speicherübergreifendes Hochladen, Stapel-Download, Streaming und Direktlink-Weiterleitung.
-- **Dateifreigabe**: Erzeugen von Freigabe-Links mit Ablauf, Passwort und Berechtigungssteuerung, unterstützt anonymen Zugriff und Verzeichnisfreigabe.
-- **Volltextsuche**: schnelles Suchen von Dateien in indizierten Speichern.
-- **Offline-Aufgaben**: Hintergrund-Aufgabenwarteschlange für Stapeloperationen und asynchrone Verarbeitung.
-- **Externe Schnittstellen**: aggregierten Speicher über WebDAV oder S3-kompatibles Protokoll bereitstellen, zum Mounten in Drittanbieter-Tools.
-- **MCP-Dienst**: bietet einen Model-Context-Protocol-Endpunkt, der von KI-Assistenten und anderen Clients integriert und aufgerufen werden kann.
-- **Parallelitäts-Deduplizierung**: identische Verzeichnislisten- / Metadatenanfragen im selben Moment werden nur einmal an das Upstream-Laufwerk gestellt; weitere Anfragen nutzen dasselbe Ergebnis, um unnötige Ratenbegrenzungen und CPU-Last zu vermeiden.
-
-### Zugriffsverwaltung
-
-- **Berechtigungen**: rollenbasierte Zugriffskontrolle (RBAC), unterstützt Benutzergruppen, Lese-/Schreibberechtigungen auf Verzeichnisebene und Kontingente.
-- **Authentifizierung**: integrierte Kontokennwörter mit TOTP-Verifizierung, WebAuthn/FIDO-Anmeldung, SSO-Single-Sign-on und LDAP-Verzeichnisauthentifizierung.
-- **Sicherheitshärtung**: JWT-Sitzungen, CSRF-Schutz, Clickjacking-Schutz (X-Frame-Options), Content Security Policy (CSP).
-- **Gesundheitsprüfungen**: bietet eine `/health`-Liveness-Probe und eine `/healthz`-Readiness-Probe für Überwachung und Alarmierung.
-
-### Plattform-Bereitstellung
-
-- **Laufzeitplattformen**: Cloudflare Workers, Tencent Cloud EdgeOne Makers, Alibaba Cloud ESA, Vercel / AWS Lambda und Node.js-Containerumgebungen.
-- **Datenspeicher**: Cloudflare D1 (SQLite) als primär, außerdem KV / Blob / Durable Objects sowie externes MySQL / MariaDB.
-- **One-Click-Bereitstellung**: Bereitstellungseinstiege für EdgeOne, Cloudflare Workers und Alibaba Cloud ESA + Installationsassistent.
+- **Dateiverwaltung**: einheitliches Durchsuchen des Verzeichnisbaums mit Online-Vorschau für Bilder, Videos, Audio, Dokumente, Code und Archive; speicherübergreifendes Hochladen, Stapel-Download, Streaming und Direktlink-Weiterleitung; Freigabe-Links mit Ablauf, Passwort und Berechtigungssteuerung.
+- **Suche & Aufgaben**: Volltextsuche in indizierten Speichern; Hintergrund-Aufgabenwarteschlange für Stapel- und asynchrone Verarbeitung.
+- **Externe Schnittstellen**: WebDAV, S3-kompatibles Protokoll und ein MCP-Endpunkt für KI-Assistenten.
+- **Zugriff & Authentifizierung**: RBAC (Benutzergruppen, Lese-/Schreibrechte auf Verzeichnisebene, Kontingente), Kontokennwörter plus TOTP / WebAuthn / SSO / LDAP.
+- **Sicherheit & Betrieb**: JWT-Sitzungen, CSRF-, Clickjacking- (X-Frame-Options) und CSP-Schutz, `/health`- und `/healthz`-Probes.
+- **Parallelitäts-Deduplizierung**: identische Verzeichnislisten- / Metadatenanfragen erreichen das Upstream-Laufwerk nur einmal; weitere Anfragen nutzen dasselbe Ergebnis und vermeiden Ratenlimits und CPU-Last.
+- **Laufzeitplattformen**: Cloudflare Workers, Tencent Cloud EdgeOne Makers, Alibaba Cloud ESA, Vercel / AWS Lambda und Node.js-Container.
+- **Datenspeicher**: Cloudflare D1 (SQLite) als primär, außerdem KV / Blob / Durable Objects und externes MySQL / MariaDB.
+- **One-Click-Bereitstellung**: Bereitstellungsschaltflächen für EdgeOne, Cloudflare Workers und Alibaba Cloud ESA + Installationsassistent.
 
 ---
 
 ## Manuelle Bereitstellung
+
+<details>
+<summary>Voraussetzungen, lokale Entwicklung und Produktionsbereitstellung anzeigen</summary>
 
 ### Voraussetzungen
 
@@ -126,6 +117,8 @@ pnpm run deploy
 pnpm run deploy:worker
 ```
 
+</details>
+
 ---
 
 ## Tech-Stack
@@ -146,37 +139,18 @@ pnpm run deploy:worker
 
 ---
 
-## Konfiguration
+## Bereitstellungs-Konfiguration
 
-Nach der Bereitstellung öffnet der **erste Besuch der Website automatisch den Installationsassistenten** — legen Sie dort das Admin-Konto und das Passwort fest, um die Initialisierung abzuschließen. Um den Assistenten zu überspringen, setzen Sie `ADMIN_PASS`; der Admin wird dann automatisch initialisiert.
-
-Die meisten Bereitstellungen benötigen **keine zusätzliche Konfiguration**: Der Datenspeicher nutzt standardmäßig `DB_DRIVER=auto` und wählt automatisch ein verfügbares persistentes Backend (Cloudflare Workers → KV / D1 / DO, EdgeOne / ESA → Blob). Explizit gesetzt werden sollte nur:
-
-| Variable | Beschreibung |
-| :--- | :--- |
-| `JWT_SECRET` | Signaturschlüssel für JWT-Tokens (≥16 Zeichen, empfohlen: `openssl rand -hex 32`), wird auch zur Authentifizierung von Cron-Aufgaben verwendet. Ohne Angabe wird er bei der Initialisierung erzeugt und gespeichert |
-
-> Konfigurieren Sie `JWT_SECRET` als **Secret** (nicht als normale Variable): Normale Variablen können bei einer erneuten Bereitstellung durch die Repository-Konfiguration überschrieben werden, Secrets nicht.
-
-Alle anderen Variablen haben sinnvolle Standardwerte:
+Setzen Sie nach der Bereitstellung die folgenden Variablen:
 
 | Variable | Standard | Beschreibung |
 | :--- | :--- | :--- |
-| `ADMIN_PASS` | — | Überspringt den Installationsassistenten und initialisiert den Admin mit diesem Passwort |
-| `DB_FORMAT` | `map` | Speicherformat: `map` (ganzes JSON-Objekt) / `key` (pro Schlüssel) / `sql` (relationale Tabellen, kompatibel zum Go-Backend) |
-| `DB_DRIVER` | `auto` | Speichertreiber: `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql`; ein explizit gesetzter Treiber wird nicht automatisch ersetzt |
-| `DB_CIPHER` | `none` | Verschlüsselung sensibler Felder auf dem Datenträger (standardmäßig keine), z. B. `aes-256-gcm` |
-| `ALLOW_URLS` | — | CORS-Allowlist (kommagetrennt; ohne Angabe nur gleiche Origin) |
-| `MAX_UPLOAD` / `MAX_UPPART` | 26214400 / 16777216 | Maximale Größe (Bytes) für einen gesamten Upload / ein Multipart-Chunk |
-| `ASSET_URLS` | — | CDN-Basis-URL für Frontend-Assets, unterstützt den Platzhalter `$version` |
+| `JWT_SECRET` | (keine) | Signaturschlüssel für JWT (≥16 Zeichen) |
+| `DB_FORMAT` | `map` | `map` (JSON) / `key` (pro Schlüssel) / `sql` (relational) |
+| `DB_DRIVER` | `auto` | `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql` |
+| `DB_CIPHER` | `none` | Verschlüsselung sensibler Felder, z. B. `aes-256-gcm` |
 
-Verzeichnislisten und Download-Links werden immer direkt vom Laufwerk abgerufen — es gibt keinen Cache über Anfragen hinweg (keine `CACHE_*`-Variablen), externe Änderungen sind sofort sichtbar.
-
-Die vollständige Variablenliste (Feldverschlüsselung `DB_CIPHER`, `cfkv` / MySQL-Einstellungen usw.) und die Bereitstellungsschritte je Plattform finden Sie in der Dokumentation:
-
-- [Umgebungsvariablen](https://doc.oplist.org/ecosystem/official_worker/guide_env)
-- [Bereitstellung](https://doc.oplist.org/ecosystem/official_worker/guide)
-- [FAQ](https://doc.oplist.org/ecosystem/official_worker/about)
+Die vollständige Variablenliste finden Sie unter [Konfigurationsvariablen](https://doc.oplist.org/ecosystem/official_worker/guide_env).
 
 ## Support
 

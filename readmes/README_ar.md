@@ -7,9 +7,9 @@
 
 <a href="https://github.com/OpenListTeam/OpenList-Worker/blob/main/LICENSE"><img src="https://img.shields.io/github/license/OpenListTeam/OpenList-Worker" alt="License" /></a>
 <a href="https://github.com/OpenListTeam/OpenList-Worker/actions/workflows/build-verify.yml"><img src="https://img.shields.io/github/actions/workflow/status/OpenListTeam/OpenList-Worker/build-verify.yml?branch=main" alt="Build status" /></a>
-<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/release/OpenListTeam/OpenList-Worker" alt="latest version" /></a>
 <a href="https://github.com/OpenListTeam/OpenList-Worker/discussions"><img src="https://img.shields.io/github/discussions/OpenListTeam/OpenList-Worker?color=%23ED8936" alt="discussions" /></a>
-<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/downloads/OpenListTeam/OpenList-Worker/total?color=%239F7AEA&logo=github" alt="Downloads" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/stargazers"><img src="https://img.shields.io/github/stars/OpenListTeam/OpenList-Worker?color=%23ED8936&logo=github" alt="Stars" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/forks"><img src="https://img.shields.io/github/forks/OpenListTeam/OpenList-Worker?color=%239F7AEA&logo=github" alt="Forks" /></a>
 
 📘 [التوثيق](https://doc.oplist.org) · 🌏 [التوثيق (الصين القارية)](https://doc.oplist.org.cn)  · ⚖️ [شروط الاستخدام](https://doc.oplist.org/terms)  · 🔒 [سياسة الخصوصية](https://doc.oplist.org/privacy)
 
@@ -43,8 +43,8 @@
 
 > [!IMPORTANT]
 > - إذا عرض Cloudflare رسالة `تعذّر جلب محتوى المستودع`، [قم بعمل fork](https://github.com/OpenListTeam/OpenList-Worker/fork) لهذا المشروع أولاً ثم انشر من خلال الاتصال بمستودع Github
-> - بالنسبة إلى Alibaba Cloud ESA، استورد هذا المستودع من **الحوسبة الطرفية والذكاء الاصطناعي ← الدوال وPages** في وحدة التحكم: ملف `esa.jsonc` المضمّن يحدد بالفعل أوامر التثبيت والبناء ومجلد الموارد الثابتة. بعد النشر، اضبط `JWT_SECRET` و`KV_NAMESPACE` (الافتراضي `openlist`) وأنشئ مسبقًا مساحة أسماء EdgeKV بالاسم نفسه
-> - عند النشر، املأ `JWT_SECRET` (سلسلة عشوائية من 16 حرفًا أو أكثر، مثل `openssl rand -hex 32`): تُستخدم لتوقيع JWT وتشفير البيانات؛ وإن لم تُضبط فسيتم توليدها وحفظها أثناء التهيئة
+> - بالنسبة إلى Alibaba Cloud ESA، استورد هذا المستودع من **الحوسبة الطرفية والذكاء الاصطناعي ← الدوال وPages** في وحدة التحكم
+> - اضبط `JWT_SECRET` أثناء النشر (≥16 حرفًا) لتوقيع JWT والتشفير
 > - يستخدم تخزين البيانات تلقائيًا الواجهة الخلفية الدائمة للمنصة (`DB_DRIVER=auto`) — لا حاجة لأي إعداد؛ ولمتغيرات أخرى راجع [متغيرات البيئة](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 > - بعد النشر، يظهر **معالج التثبيت** عند أول زيارة: عيّن حساب المسؤول وكلمة المرور في المتصفح لإكمال التهيئة (اضبط `ADMIN_PASS` لتخطي المعالج)
 
@@ -70,31 +70,22 @@ OpenList-Worker هو المنفذ الرسمي TypeScript + Serverless لمشر�
 
 ### القدرات الأساسية
 
-- **تصفح الملفات**: تصفح موحّد لشجرة الأدلة، مع معاينة عبر الإنترنت للصور والفيديو والصوت والمستندات والأكواد والأرشيف وغيرها.
-- **الرفع والتنزيل**: رفع عبر التخزين، وتنزيل جماعي، وبث، وإعادة توجيه برابط مباشر.
-- **مشاركة الملفات**: إنشاء روابط مشاركة مع انتهاء صلاحية وكلمة مرور والتحكم في الصلاحيات، مع دعم الوصول المجهول ومشاركة الأدلة.
-- **البحث بالنص الكامل**: بحث سريع عن الملفات في التخزين المفهرس.
-- **المهام دون اتصال**: قائمة انتظار مهام في الخلفية تدعم العمليات الجماعية والمعالجة غير المتزامنة.
-- **الواجهات الخارجية**: كشف التخزين المجمّع عبر بروتوكول WebDAV أو بروتوكول متوافق مع S3 للتركيب في أدوات خارجية.
-- **خدمة MCP**: توفير نقطة نهاية Model Context Protocol يمكن دمجها واستدعاؤها من مساعدي الذكاء الاصطناعي والعملاء الآخرين.
-- **إزالة تكرار الطلبات المتزامنة**: طلبات قائمة الدليل / البيانات الوصفية المتطابقة في اللحظة نفسها تصل إلى القرص الأعلى مرة واحدة فقط؛ وتعيد الطلبات الأخرى استخدام النتيجة نفسها، مما يتجنب حدود المعدل واستهلاك المعالج غير الضروري.
-
-### إدارة الوصول
-
-- **الصلاحيات**: التحكم في الوصول القائم على الأدوار (RBAC)، مع دعم مجموعات المستخدمين وصلاحيات القراءة/الكتابة على مستوى الأدلة والحصص.
-- **المصادقة**: كلمات مرور حسابات مدمجة مع التحقق عبر TOTP، وتسجيل الدخول WebAuthn/FIDO، والدخول الموحّد SSO، ومصادقة دليل LDAP.
-- **تعزيز الأمان**: جلسات JWT، والحماية من CSRF، والحماية من النقر الخادع (X-Frame-Options)، وسياسة أمان المحتوى (CSP).
-- **فحوصات السلامة**: توفير مسبار الحيوية `/health` ومسبار الجاهزية `/healthz` للمراقبة والتنبيه.
-
-### النشر على المنصات
-
-- **منصات التشغيل**: Cloudflare Workers وTencent Cloud EdgeOne Makers وAlibaba Cloud ESA وVercel / AWS Lambda وبيئات حاويات Node.js.
+- **إدارة الملفات**: تصفح موحّد لشجرة الأدلة مع معاينة عبر الإنترنت للصور والفيديو والصوت والمستندات والأكواد والأرشيف؛ رفع عبر التخزين وتنزيل جماعي وبث وإعادة توجيه برابط مباشر؛ روابط مشاركة مع انتهاء صلاحية وكلمة مرور والتحكم في الصلاحيات.
+- **البحث والمهام**: بحث بالنص الكامل في التخزين المفهرس؛ قائمة مهام في الخلفية للعمليات الجماعية والمعالجة غير المتزامنة.
+- **الواجهات الخارجية**: WebDAV وبروتوكول متوافق مع S3 ونقطة نهاية MCP لمساعدي الذكاء الاصطناعي.
+- **الوصول والمصادقة**: RBAC (مجموعات المستخدمين وصلاحيات القراءة/الكتابة على مستوى الأدلة والحصص)، وكلمات مرور الحسابات مع TOTP / WebAuthn / SSO / LDAP.
+- **الأمان والتشغيل**: جلسات JWT والحماية من CSRF والنقر الخادع (X-Frame-Options) وCSP، ومسبارات `/health` و`/healthz`.
+- **إزالة تكرار الطلبات المتزامنة**: طلبات قائمة الدليل / البيانات الوصفية المتطابقة تصل إلى القرص الأعلى مرة واحدة فقط؛ وتعيد الطلبات الأخرى استخدام النتيجة، مما يقلل حدود المعدل واستهلاك المعالج.
+- **منصات التشغيل**: Cloudflare Workers وTencent Cloud EdgeOne Makers وAlibaba Cloud ESA وVercel / AWS Lambda وحاويات Node.js.
 - **تخزين البيانات**: Cloudflare D1 (SQLite) كأساس، بالإضافة إلى KV / Blob / Durable Objects وMySQL / MariaDB الخارجيين.
-- **النشر بنقرة واحدة**: مداخل نشر EdgeOne وCloudflare Workers وAlibaba Cloud ESA + معالج التثبيت.
+- **النشر بنقرة واحدة**: أزرار نشر EdgeOne وCloudflare Workers وAlibaba Cloud ESA + معالج التثبيت.
 
 ---
 
 ## النشر اليدوي
+
+<details>
+<summary>عرض المتطلبات الأساسية والتطوير المحلي والنشر في الإنتاج</summary>
 
 ### المتطلبات الأساسية
 
@@ -126,6 +117,8 @@ pnpm run deploy
 pnpm run deploy:worker
 ```
 
+</details>
+
 ---
 
 ## البنية التقنية
@@ -146,37 +139,18 @@ pnpm run deploy:worker
 
 ---
 
-## الإعداد
+## إعداد النشر
 
-بعد النشر، **تفتح أول زيارة للموقع معالج التثبيت تلقائيًا**: عيّن حساب المسؤول وكلمة المرور في المتصفح لإكمال التهيئة. لتخطي المعالج، اضبط `ADMIN_PASS` ليتم تهيئة المسؤول تلقائيًا.
-
-معظم عمليات النشر **لا تحتاج إلى أي إعداد إضافي**: يستخدم التخزين افتراضيًا `DB_DRIVER=auto`، الذي يختار تلقائيًا واجهة خلفية دائمة متاحة (Cloudflare Workers ← KV / D1 / DO، EdgeOne / ESA ← Blob). المتغير الوحيد الذي يُستحسن ضبطه صراحةً هو:
-
-| المتغير | الوصف |
-| :--- | :--- |
-| `JWT_SECRET` | مفتاح توقيع رموز JWT (≥16 حرفًا، يُوصى بـ `openssl rand -hex 32`)، ويُستخدم أيضًا لمصادقة مهام cron. إذا لم يُضبط، يُولَّد ويُحفظ أثناء التهيئة |
-
-> اضبط `JWT_SECRET` كـ **Secret** (وليس متغيرًا عاديًا): المتغيرات العادية قد تُستبدل بإعدادات المستودع عند إعادة النشر، أما Secrets فلا.
-
-المتغيرات الأخرى لها قيم افتراضية معقولة:
+بعد النشر، اضبط المتغيرات التالية:
 
 | المتغير | الافتراضي | الوصف |
 | :--- | :--- | :--- |
-| `ADMIN_PASS` | — | تخطي معالج التثبيت وتهيئة المسؤول بهذه الكلمة |
-| `DB_FORMAT` | `map` | تنسيق التخزين: `map` (كائن JSON كامل) / `key` (لكل مفتاح) / `sql` (جداول علائقية، متوافق مع الواجهة الخلفية Go) |
-| `DB_DRIVER` | `auto` | برنامج تشغيل التخزين: `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql`؛ لا يُستبدل البرنامج المحدد صراحةً تلقائيًا |
-| `DB_CIPHER` | `none` | تشفير الحقول الحساسة عند التخزين (بلا تشفير افتراضيًا)، مثل `aes-256-gcm` |
-| `ALLOW_URLS` | — | قائمة CORS المسموح بها (مفصولة بفواصل؛ وعند عدم ضبطها يُسمح بالمصدر نفسه فقط) |
-| `MAX_UPLOAD` / `MAX_UPPART` | 26214400 / 16777216 | الحد الأقصى (بايت) للرفع الكامل / لجزء الرفع المتعدد |
-| `ASSET_URLS` | — | عنوان CDN الأساسي لموارد الواجهة الأمامية، يدعم العنصر النائب `$version` |
+| `JWT_SECRET` | (لا شيء) | مفتاح توقيع JWT (≥16 حرفًا) |
+| `DB_FORMAT` | `map` | `map` (JSON) / `key` (لكل مفتاح) / `sql` (علائقي) |
+| `DB_DRIVER` | `auto` | `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql` |
+| `DB_CIPHER` | `none` | تشفير الحقول الحساسة عند التخزين، مثل `aes-256-gcm` |
 
-تُجلب قوائم الأدلة وروابط التنزيل دائمًا مباشرة من القرص — لا يوجد تخزين مؤقت بين الطلبات (لا متغيرات `CACHE_*`)، لذا تظهر التغييرات الخارجية فورًا.
-
-للاطلاع على القائمة الكاملة للمتغيرات (تشفير الحقول `DB_CIPHER`، وإعدادات `cfkv` / MySQL، إلخ) وخطوات النشر لكل منصة، راجع التوثيق:
-
-- [متغيرات البيئة](https://doc.oplist.org/ecosystem/official_worker/guide_env)
-- [النشر](https://doc.oplist.org/ecosystem/official_worker/guide)
-- [الأسئلة الشائعة](https://doc.oplist.org/ecosystem/official_worker/about)
+للقائمة الكاملة للمتغيرات، راجع [متغيرات الإعداد](https://doc.oplist.org/ecosystem/official_worker/guide_env).
 
 ## الدعم
 

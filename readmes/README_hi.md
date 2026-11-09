@@ -7,9 +7,9 @@
 
 <a href="https://github.com/OpenListTeam/OpenList-Worker/blob/main/LICENSE"><img src="https://img.shields.io/github/license/OpenListTeam/OpenList-Worker" alt="License" /></a>
 <a href="https://github.com/OpenListTeam/OpenList-Worker/actions/workflows/build-verify.yml"><img src="https://img.shields.io/github/actions/workflow/status/OpenListTeam/OpenList-Worker/build-verify.yml?branch=main" alt="Build status" /></a>
-<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/release/OpenListTeam/OpenList-Worker" alt="latest version" /></a>
 <a href="https://github.com/OpenListTeam/OpenList-Worker/discussions"><img src="https://img.shields.io/github/discussions/OpenListTeam/OpenList-Worker?color=%23ED8936" alt="discussions" /></a>
-<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/downloads/OpenListTeam/OpenList-Worker/total?color=%239F7AEA&logo=github" alt="Downloads" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/stargazers"><img src="https://img.shields.io/github/stars/OpenListTeam/OpenList-Worker?color=%23ED8936&logo=github" alt="Stars" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/forks"><img src="https://img.shields.io/github/forks/OpenListTeam/OpenList-Worker?color=%239F7AEA&logo=github" alt="Forks" /></a>
 
 📘 [उपयोग दस्तावेज़](https://doc.oplist.org) · 🌏 [उपयोग दस्तावेज़（मुख्यभूमि चीन）](https://doc.oplist.org.cn)  · ⚖️ [उपयोग की शर्तें](https://doc.oplist.org/terms)  · 🔒 [गोपनीयता नीति](https://doc.oplist.org/privacy)
 
@@ -43,8 +43,8 @@
 
 > [!IMPORTANT]
 > - यदि Cloudflare `रिपॉजिटरी सामग्री प्राप्त नहीं कर सकता` दिखाता है, तो पहले इस परियोजना को [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork) करें, फिर Github रिपॉजिटरी से कनेक्ट करके तैनात करें
-> - Alibaba Cloud ESA के लिए, कंसोल में **एज कंप्यूटिंग और AI → फ़ंक्शन और Pages** से इस रिपॉजिटरी को आयात करें: रिपॉजिटरी में मौजूद `esa.jsonc` पहले से इंस्टॉल, बिल्ड और स्टैटिक एसेट निर्देशिका निर्धारित करता है। तैनाती के बाद `JWT_SECRET` और `KV_NAMESPACE` (डिफ़ॉल्ट `openlist`) सेट करें, और पहले से उसी नाम का EdgeKV namespace बनाएँ
-> - तैनाती के समय `JWT_SECRET` भरें (16+ वर्णों की यादृच्छिक स्ट्रिंग, उदा. `openssl rand -hex 32`): यह JWT पर हस्ताक्षर और डेटा एन्क्रिप्शन के लिए उपयोग होता है; न दिया जाए तो इनिशियलाइज़ेशन के दौरान स्वतः बनाकर सहेजा जाता है
+> - Alibaba Cloud ESA के लिए, कंसोल में **एज कंप्यूटिंग और AI → फ़ंक्शन और Pages** से इस रिपॉजिटरी को आयात करें
+> - तैनाती के समय `JWT_SECRET` सेट करें (≥16 वर्ण) — JWT हस्ताक्षर और एन्क्रिप्शन के लिए
 > - डेटा संग्रहण स्वतः प्लेटफ़ॉर्म के स्थायी बैकएंड का चयन करता है (`DB_DRIVER=auto`) — कोई कॉन्फ़िगरेशन आवश्यक नहीं; शेष चरों के लिए [पर्यावरण चर](https://doc.oplist.org/ecosystem/official_worker/guide_env) देखें
 > - तैनाती के बाद पहली विज़िट पर **इंस्टॉल विज़ार्ड** खुलता है: इनिशियलाइज़ेशन पूरा करने के लिए ब्राउज़र में एडमिन खाता और पासवर्ड सेट करें (`ADMIN_PASS` सेट करने पर विज़ार्ड छूट जाता है)
 
@@ -70,31 +70,22 @@ OpenList-Worker आधिकारिक [OpenListTeam/OpenList](https://github.
 
 ### मुख्य क्षमताएँ
 
-- **फ़ाइल ब्राउज़िंग**: एकीकृत निर्देशिका ट्री ब्राउज़िंग, जिसमें छवियों, वीडियो, ऑडियो, दस्तावेज़ों, कोड, संग्रहों आदि का ऑनलाइन पूर्वावलोकन शामिल है।
-- **अपलोड और डाउनलोड**: क्रॉस-स्टोरेज अपलोड, बैच डाउनलोड, स्ट्रीमिंग और डायरेक्ट-लिंक रीडायरेक्ट।
-- **फ़ाइल साझाकरण**: समाप्ति, पासवर्ड और अनुमति नियंत्रण के साथ साझाकरण लिंक बनाना, अनाम पहुंच और निर्देशिका साझाकरण का समर्थन करता है।
-- **पूर्ण-पाठ खोज**: अनुक्रमित स्टोरेज में फ़ाइलों की त्वरित खोज।
-- **ऑफ़लाइन कार्य**: बैकग्राउंड कार्य कतार, बैच संचालन और अतुल्यकालिक प्रसंस्करण का समर्थन करती है।
-- **बाहरी इंटरफ़ेस**: एग्रीगेटेड स्टोरेज को WebDAV या S3-संगत प्रोटोकॉल के माध्यम से उजागर करना, ताकि तृतीय-पक्ष टूल में माउंट किया जा सके।
-- **MCP सेवा**: Model Context Protocol एंडपॉइंट प्रदान करता है, जिसे AI सहायक और अन्य क्लाइंट एकीकृत और कॉल कर सकते हैं।
-- **समवर्ती अनुरोध डिडुप्लिकेशन**: एक ही समय पर समान निर्देशिका सूची / मेटाडेटा अनुरोध अपस्ट्रीम ड्राइव पर केवल एक बार जाते हैं; बाकी अनुरोध वही परिणाम पुनः उपयोग करते हैं, जिससे अनावश्यक रेट लिमिट और CPU खपत से बचा जाता है।
-
-### पहुंच प्रबंधन
-
-- **अनुमतियाँ**: भूमिका-आधारित पहुंच नियंत्रण（RBAC）, उपयोगकर्ता समूहों, निर्देशिका-स्तरीय पढ़ने/लिखने की अनुमतियों और कोटा का समर्थन करता है।
-- **प्रमाणीकरण**: अंतर्निहित खाता पासवर्ड, TOTP सत्यापन, WebAuthn/FIDO लॉगिन, SSO सिंगल साइन-ऑन और LDAP निर्देशिका प्रमाणीकरण का समर्थन करता है।
-- **सुरक्षा सुदृढ़ीकरण**: JWT सत्र, CSRF सुरक्षा, क्लिकजैकिंग सुरक्षा（X-Frame-Options）, कंटेंट सिक्योरिटी पॉलिसी（CSP）.
-- **स्वास्थ्य जाँच**: निगरानी और अलर्ट के लिए `/health` लाइवनेस प्रोब और `/healthz` रेडीनेस प्रोब प्रदान करता है।
-
-### प्लेटफ़ॉर्म तैनाती
-
-- **रनटाइम प्लेटफ़ॉर्म**: Cloudflare Workers、Tencent Cloud EdgeOne Makers、Alibaba Cloud ESA、Vercel / AWS Lambda और Node.js कंटेनर वातावरण।
-- **डेटा स्टोरेज**: Cloudflare D1（SQLite）प्राथमिक, साथ ही KV / Blob / Durable Objects और बाहरी MySQL / MariaDB।
-- **एक-क्लिक तैनाती**: EdgeOne、Cloudflare Workers और Alibaba Cloud ESA के लिए तैनाती प्रवेश + इंस्टॉल विज़ार्ड।
+- **फ़ाइल प्रबंधन**：एकीकृत निर्देशिका ट्री ब्राउज़िंग, छवियों / वीडियो / ऑडियो / दस्तावेज़ों / कोड / संग्रहों का ऑनलाइन पूर्वावलोकन; क्रॉस-स्टोरेज अपलोड, बैच डाउनलोड, स्ट्रीमिंग और डायरेक्ट-लिंक रीडायरेक्ट; समाप्ति, पासवर्ड और अनुमति नियंत्रण के साथ साझाकरण लिंक।
+- **खोज और कार्य**：अनुक्रमित स्टोरेज में पूर्ण-पाठ खोज; बैच और अतुल्यकालिक प्रसंस्करण के लिए बैकग्राउंड कार्य कतार।
+- **बाहरी इंटरफ़ेस**：WebDAV、S3-संगत प्रोटोकॉल, और AI सहायकों के लिए MCP एंडपॉइंट।
+- **पहुंच और प्रमाणीकरण**：RBAC（उपयोगकर्ता समूह, निर्देशिका-स्तरीय पढ़ने/लिखने की अनुमतियाँ, कोटा）, खाता पासवर्ड + TOTP / WebAuthn / SSO / LDAP।
+- **सुरक्षा और संचालन**：JWT सत्र, CSRF, क्लिकजैकिंग（X-Frame-Options）और CSP सुरक्षा, `/health` और `/healthz` प्रोब।
+- **समवर्ती अनुरोध डिडुप्लिकेशन**：समान निर्देशिका सूची / मेटाडेटा अनुरोध अपस्ट्रीम ड्राइव पर केवल एक बार जाते हैं; बाकी वही परिणाम पुनः उपयोग करते हैं, जिससे रेट लिमिट और CPU खपत कम होती है।
+- **रनटाइम प्लेटफ़ॉर्म**：Cloudflare Workers、Tencent Cloud EdgeOne Makers、Alibaba Cloud ESA、Vercel / AWS Lambda और Node.js कंटेनर।
+- **डेटा स्टोरेज**：Cloudflare D1（SQLite）प्राथमिक, साथ ही KV / Blob / Durable Objects और बाहरी MySQL / MariaDB।
+- **एक-क्लिक तैनाती**：EdgeOne、Cloudflare Workers और Alibaba Cloud ESA तैनाती बटन + इंस्टॉल विज़ार्ड।
 
 ---
 
 ## मैन्युअल तैनाती
+
+<details>
+<summary>पूर्वापेक्षाएँ, स्थानीय विकास और उत्पादन तैनाती देखें</summary>
 
 ### पूर्वापेक्षाएँ
 
@@ -126,6 +117,8 @@ pnpm run deploy
 pnpm run deploy:worker
 ```
 
+</details>
+
 ---
 
 ## तकनीकी संरचना
@@ -146,37 +139,18 @@ pnpm run deploy:worker
 
 ---
 
-## कॉन्फ़िगरेशन
+## तैनाती कॉन्फ़िगरेशन
 
-तैनाती के बाद **साइट पर पहली विज़िट स्वतः इंस्टॉल विज़ार्ड खोलती है**: इनिशियलाइज़ेशन पूरा करने के लिए ब्राउज़र में एडमिन खाता और पासवर्ड सेट करें। विज़ार्ड छोड़ने के लिए `ADMIN_PASS` सेट करें, ताकि एडमिन स्वतः इनिशियलाइज़ हो जाए।
-
-अधिकांश तैनातियों को **किसी अतिरिक्त कॉन्फ़िगरेशन की आवश्यकता नहीं** होती: स्टोरेज डिफ़ॉल्ट रूप से `DB_DRIVER=auto` का उपयोग करता है, जो उपलब्ध स्थायी बैकएंड स्वतः चुनता है（Cloudflare Workers → KV / D1 / DO, EdgeOne / ESA → Blob）。केवल एक चर स्पष्ट रूप से सेट करना उपयोगी है:
-
-| चर | विवरण |
-| :--- | :--- |
-| `JWT_SECRET` | JWT टोकन हस्ताक्षर कुंजी（≥16 वर्ण, अनुशंसित `openssl rand -hex 32`）, cron कार्य प्रमाणीकरण के लिए भी उपयोग होती है। न सेट होने पर इनिशियलाइज़ेशन के दौरान स्वतः बनाकर सहेजी जाती है |
-
-> `JWT_SECRET` को **Secret** के रूप में सेट करें（सामान्य चर के रूप में नहीं）: सामान्य चर पुनः तैनाती पर रिपॉजिटरी कॉन्फ़िगरेशन से अधिलेखित हो सकते हैं, Secrets नहीं।
-
-शेष चरों के लिए उचित डिफ़ॉल्ट मान हैं:
+तैनाती के बाद निम्न चर सेट करें:
 
 | चर | डिफ़ॉल्ट | विवरण |
 | :--- | :--- | :--- |
-| `ADMIN_PASS` | — | इंस्टॉल विज़ार्ड छोड़कर इस पासवर्ड से एडमिन इनिशियलाइज़ करता है |
-| `DB_FORMAT` | `map` | स्टोरेज प्रारूप: `map`（पूरा JSON ऑब्जेक्ट）/ `key`（प्रति कुंजी）/ `sql`（संबंधपरक तालिकाएँ, Go बैकएंड के अनुरूप） |
-| `DB_DRIVER` | `auto` | स्टोरेज ड्राइवर: `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql`; स्पष्ट रूप से चुना गया ड्राइवर कभी स्वतः नहीं बदला जाता |
-| `DB_CIPHER` | `none` | संवेदनशील फ़ील्ड का एट-रेस्ट एन्क्रिप्शन（डिफ़ॉल्ट रूप से कोई नहीं）, जैसे `aes-256-gcm` |
-| `ALLOW_URLS` | — | CORS अनुमत सूची（कॉमा से अलग; न सेट होने पर केवल समान मूल） |
-| `MAX_UPLOAD` / `MAX_UPPART` | 26214400 / 16777216 | पूर्ण अपलोड / एक मल्टीपार्ट खंड का अधिकतम आकार（बाइट） |
-| `ASSET_URLS` | — | फ्रंटएंड एसेट का CDN आधार URL, `$version` प्लेसहोल्डर का समर्थन करता है |
+| `JWT_SECRET` | (कोई नहीं) | JWT हस्ताक्षर कुंजी (≥16 वर्ण) |
+| `DB_FORMAT` | `map` | `map` (JSON) / `key` (प्रति कुंजी) / `sql` (संबंधपरक) |
+| `DB_DRIVER` | `auto` | `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql` |
+| `DB_CIPHER` | `none` | संवेदनशील फ़ील्ड का एट-रेस्ट एन्क्रिप्शन, जैसे `aes-256-gcm` |
 
-निर्देशिका सूचियाँ और डाउनलोड लिंक हमेशा सीधे ड्राइव से प्राप्त होते हैं — अनुरोधों के बीच कोई कैश नहीं（कोई `CACHE_*` चर नहीं）, इसलिए बाहरी परिवर्तन तुरंत दिखाई देते हैं।
-
-पूरी चर सूची（फ़ील्ड एन्क्रिप्शन `DB_CIPHER`, `cfkv` / MySQL सेटिंग्स आदि）और प्रत्येक प्लेटफ़ॉर्म के तैनाती चरणों के लिए दस्तावेज़ देखें:
-
-- [पर्यावरण चर](https://doc.oplist.org/ecosystem/official_worker/guide_env)
-- [तैनाती](https://doc.oplist.org/ecosystem/official_worker/guide)
-- [सामान्य प्रश्न](https://doc.oplist.org/ecosystem/official_worker/about)
+पूरी चर सूची के लिए [कॉन्फ़िगरेशन चर](https://doc.oplist.org/ecosystem/official_worker/guide_env) देखें।
 
 ## सहायता
 

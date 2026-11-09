@@ -7,9 +7,9 @@
 
 <a href="https://github.com/OpenListTeam/OpenList-Worker/blob/main/LICENSE"><img src="https://img.shields.io/github/license/OpenListTeam/OpenList-Worker" alt="License" /></a>
 <a href="https://github.com/OpenListTeam/OpenList-Worker/actions/workflows/build-verify.yml"><img src="https://img.shields.io/github/actions/workflow/status/OpenListTeam/OpenList-Worker/build-verify.yml?branch=main" alt="Build status" /></a>
-<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/release/OpenListTeam/OpenList-Worker" alt="latest version" /></a>
 <a href="https://github.com/OpenListTeam/OpenList-Worker/discussions"><img src="https://img.shields.io/github/discussions/OpenListTeam/OpenList-Worker?color=%23ED8936" alt="discussions" /></a>
-<a href="https://github.com/OpenListTeam/OpenList-Worker/releases"><img src="https://img.shields.io/github/downloads/OpenListTeam/OpenList-Worker/total?color=%239F7AEA&logo=github" alt="Downloads" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/stargazers"><img src="https://img.shields.io/github/stars/OpenListTeam/OpenList-Worker?color=%23ED8936&logo=github" alt="Stars" /></a>
+<a href="https://github.com/OpenListTeam/OpenList-Worker/forks"><img src="https://img.shields.io/github/forks/OpenListTeam/OpenList-Worker?color=%239F7AEA&logo=github" alt="Forks" /></a>
 
 📘 [Documentação](https://doc.oplist.org) · 🌏 [Documentação (China continental)](https://doc.oplist.org.cn)  · ⚖️ [Termos de uso](https://doc.oplist.org/terms)  · 🔒 [Política de privacidade](https://doc.oplist.org/privacy)
 
@@ -43,8 +43,8 @@ Clique no botão abaixo para implantar este projeto na plataforma correspondente
 
 > [!IMPORTANT]
 > - Se o Cloudflare exibir `não é possível obter o conteúdo do repositório`, [bifurque](https://github.com/OpenListTeam/OpenList-Worker/fork) este projeto primeiro e depois implante conectando-se ao repositório do Github
-> - Para o Alibaba Cloud ESA, importe este repositório em **Computação de borda e IA → Funções e Pages** no console: o `esa.jsonc` incluído já define instalação, build e recursos estáticos. Após a implantação, configure `JWT_SECRET` e `KV_NAMESPACE` (padrão `openlist`) e crie previamente o namespace EdgeKV com o mesmo nome
-> - Na implantação, informe `JWT_SECRET` (string aleatória com 16+ caracteres, por exemplo `openssl rand -hex 32`): ela assina JWTs e criptografa dados; se não definida, é gerada e persistida durante a inicialização
+> - Para o Alibaba Cloud ESA, importe este repositório em **Computação de borda e IA → Funções e Pages** no console
+> - Configure `JWT_SECRET` na implantação (≥16 caracteres) para assinatura JWT e criptografia
 > - O armazenamento de dados usa automaticamente o backend persistente da plataforma (`DB_DRIVER=auto`) — sem configuração necessária; para as demais variáveis, consulte [Variáveis de ambiente](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 > - Após a implantação, o primeiro acesso abre o **assistente de instalação**: defina a conta e a senha do administrador no navegador para concluir a inicialização (defina `ADMIN_PASS` para pular o assistente)
 
@@ -70,31 +70,22 @@ Além dos armazenamentos reais acima, também são fornecidos drivers virtuais/f
 
 ### Principais recursos
 
-- **Navegação de arquivos**: navegação unificada na árvore de diretórios, com visualização online de imagens, vídeos, áudio, documentos, código, arquivos e muito mais.
-- **Upload e download**: upload entre armazenamentos, download em lote, streaming e redirecionamento de link direto.
-- **Compartilhamento de arquivos**: gerar links de compartilhamento com expiração, senha e controle de permissão, suportando acesso anônimo e compartilhamento de diretórios.
-- **Busca em texto completo**: pesquisa rápida de arquivos em armazenamentos indexados.
-- **Tarefas offline**: fila de tarefas em segundo plano com suporte a operações em lote e processamento assíncrono.
-- **Interfaces externas**: expor o armazenamento agregado via protocolo WebDAV ou compatível com S3 para montagem em ferramentas de terceiros.
-- **Serviço MCP**: fornecer um endpoint de Model Context Protocol que pode ser integrado e chamado por assistentes de IA e outros clientes.
-- **Deduplicação de solicitações concorrentes**: solicitações idênticas de listagem de diretório / metadados no mesmo instante consultam o disco upstream apenas uma vez; as demais reutilizam o mesmo resultado, evitando limites de taxa e consumo de CPU desnecessários.
-
-### Gestão de acesso
-
-- **Permissões**: controle de acesso baseado em funções (RBAC), com suporte a grupos de usuários, permissões de leitura/gravação em nível de diretório e cotas.
-- **Autenticação**: senhas de conta integradas com verificação TOTP, login WebAuthn/FIDO, login único SSO e autenticação de diretório LDAP.
-- **Endurecimento de segurança**: sessões JWT, proteção CSRF, proteção contra clickjacking (X-Frame-Options), Content Security Policy (CSP).
-- **Verificações de saúde**: fornecer uma sonda de vivacidade `/health` e uma sonda de prontidão `/healthz` para monitoramento e alertas.
-
-### Implantação em plataformas
-
-- **Plataformas de execução**: Cloudflare Workers, Tencent Cloud EdgeOne Makers, Alibaba Cloud ESA, Vercel / AWS Lambda e ambientes de contêiner Node.js.
+- **Gerenciamento de arquivos**: navegação unificada na árvore de diretórios com visualização online de imagens, vídeos, áudio, documentos, código e arquivos; upload entre armazenamentos, download em lote, streaming e redirecionamento de link direto; links de compartilhamento com expiração, senha e controle de permissão.
+- **Busca e tarefas**: busca em texto completo em armazenamentos indexados; fila de tarefas em segundo plano para operações em lote e processamento assíncrono.
+- **Interfaces externas**: WebDAV, protocolo compatível com S3 e endpoint MCP para assistentes de IA.
+- **Acesso e autenticação**: RBAC (grupos de usuários, permissões de leitura/gravação por diretório, cotas), senhas de conta + TOTP / WebAuthn / SSO / LDAP.
+- **Segurança e operação**: sessões JWT, proteção CSRF, clickjacking (X-Frame-Options) e CSP, sondas `/health` e `/healthz`.
+- **Deduplicação de solicitações concorrentes**: solicitações idênticas de listagem de diretório / metadados consultam o disco upstream apenas uma vez; as demais reutilizam o resultado, reduzindo limites de taxa e consumo de CPU.
+- **Plataformas de execução**: Cloudflare Workers, Tencent Cloud EdgeOne Makers, Alibaba Cloud ESA, Vercel / AWS Lambda e contêineres Node.js.
 - **Armazenamento de dados**: Cloudflare D1 (SQLite) como principal, além de KV / Blob / Durable Objects e MySQL / MariaDB externos.
-- **Implantação em um clique**: entradas de implantação para EdgeOne, Cloudflare Workers e Alibaba Cloud ESA + assistente de instalação.
+- **Implantação em um clique**: botões de implantação do EdgeOne, Cloudflare Workers e Alibaba Cloud ESA + assistente de instalação.
 
 ---
 
 ## Implantação manual
+
+<details>
+<summary>Ver pré-requisitos, desenvolvimento local e implantação em produção</summary>
 
 ### Pré-requisitos
 
@@ -126,6 +117,8 @@ pnpm run deploy
 pnpm run deploy:worker
 ```
 
+</details>
+
 ---
 
 ## Stack tecnológico
@@ -146,37 +139,18 @@ pnpm run deploy:worker
 
 ---
 
-## Configuração
+## Configuração da implantação
 
-Após a implantação, o **primeiro acesso ao site abre automaticamente o assistente de instalação**: defina a conta e a senha do administrador no navegador para concluir a inicialização. Para pular o assistente, configure `ADMIN_PASS` para inicializar o admin automaticamente.
-
-A maioria das implantações **não precisa de configuração extra**: o armazenamento usa por padrão `DB_DRIVER=auto`, que seleciona automaticamente um backend persistente disponível (Cloudflare Workers → KV / D1 / DO, EdgeOne / ESA → Blob). A única variável que vale definir explicitamente é:
-
-| Variável | Descrição |
-| :--- | :--- |
-| `JWT_SECRET` | Chave de assinatura de tokens JWT (≥16 caracteres, recomendado: `openssl rand -hex 32`), também usada na autenticação de tarefas cron. Se não definida, é gerada e persistida durante a inicialização |
-
-> Configure `JWT_SECRET` como **Secret** (e não como variável comum): variáveis comuns podem ser sobrescritas pela configuração do repositório ao reimplantar, Secrets não.
-
-As demais variáveis têm valores padrão razoáveis:
+Após a implantação, defina as seguintes variáveis:
 
 | Variável | Padrão | Descrição |
 | :--- | :--- | :--- |
-| `ADMIN_PASS` | — | Pula o assistente de instalação e inicializa o admin com esta senha |
-| `DB_FORMAT` | `map` | Formato de armazenamento: `map` (objeto JSON inteiro) / `key` (por chave) / `sql` (tabelas relacionais, compatível com o backend Go) |
-| `DB_DRIVER` | `auto` | Driver de armazenamento: `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql`; um driver explícito nunca é substituído automaticamente |
-| `DB_CIPHER` | `none` | Criptografia em repouso de campos sensíveis (nenhuma por padrão), por exemplo `aes-256-gcm` |
-| `ALLOW_URLS` | — | Lista de permissões CORS (separada por vírgulas; apenas mesma origem se não definida) |
-| `MAX_UPLOAD` / `MAX_UPPART` | 26214400 / 16777216 | Tamanho máximo (bytes) de um upload completo / de um fragmento multipart |
-| `ASSET_URLS` | — | URL base do CDN para recursos do frontend, aceita o marcador `$version` |
+| `JWT_SECRET` | (nenhum) | Chave de assinatura JWT (≥16 caracteres) |
+| `DB_FORMAT` | `map` | `map` (JSON) / `key` (por chave) / `sql` (relacional) |
+| `DB_DRIVER` | `auto` | `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql` |
+| `DB_CIPHER` | `none` | Criptografia em repouso de campos sensíveis, por exemplo `aes-256-gcm` |
 
-As listagens de diretórios e os links de download são sempre obtidos diretamente do disco — não há cache entre requisições (sem variáveis `CACHE_*`), então mudanças externas ficam visíveis imediatamente.
-
-Para a lista completa de variáveis (criptografia de campos `DB_CIPHER`, ajustes de `cfkv` / MySQL etc.) e os passos de implantação por plataforma, consulte a documentação:
-
-- [Variáveis de ambiente](https://doc.oplist.org/ecosystem/official_worker/guide_env)
-- [Implantação](https://doc.oplist.org/ecosystem/official_worker/guide)
-- [FAQ](https://doc.oplist.org/ecosystem/official_worker/about)
+Para a lista completa de variáveis, consulte [Variáveis de configuração](https://doc.oplist.org/ecosystem/official_worker/guide_env).
 
 ## Suporte
 

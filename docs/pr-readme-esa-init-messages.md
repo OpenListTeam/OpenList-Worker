@@ -12,13 +12,12 @@ PR title / PR 标题:
 
 ## Summary / 摘要
 
-本 PR 包含三组互相独立的改动：
+本 PR 包含四组互相独立的改动：
 
 1. **初始化环境检查文案**：安装向导里的环境变量报错改为「一行中文 + 一行英文」的短文案，详细排查信息仍保留在日志字段中。
-2. **README 改版**：补充阿里云 ESA 部署入口与 Star / Fork 徽章，折叠手动部署步骤，合并精简「核心能力 / 权限管理 / 平台部署」。
-3. **wrangler 配置注释精简**：删除冗长注释，保留实际生效的绑定与变量说明。
-
-同时附带 12 个语言版本 README 的 ESA 入口与配置章节同步（见「已知边界」）。
+2. **README 改版**：补充阿里云 ESA 部署入口与 Star / Fork 徽章，折叠手动部署步骤，合并精简「核心能力 / 权限管理 / 平台部署」，配置章节改为精简表格。
+3. **多语言同步**：12 个语言版本 README 应用与主文件相同的结构。
+4. **wrangler 配置注释精简**：删除冗长注释，保留实际生效的绑定与变量说明。
 
 ## Motivation / 背景
 
@@ -50,17 +49,27 @@ PR title / PR 标题:
 
 ### 2. JWT_SECRET 自动生成说明
 
-已核实：未配置 `JWT_SECRET` 时，`/public/init/setup` 会调用 `ensureEncryptionSecret()`，生成随机密钥并写入持久化后端（`openlist_encryption_secret`），写入后带退避重试回读校验，`getJwtSecret()` 与字段加密复用同一把密钥。因此 README 与安装向导文案统一为「可留空，初始化时自动生成并持久化」，而不是「必须手动配置」。
+已核实：未配置 `JWT_SECRET` 时，`/public/init/setup` 会调用 `ensureEncryptionSecret()`，生成随机密钥并写入持久化后端（`openlist_encryption_secret`），写入后带退避重试回读校验，`getJwtSecret()` 与字段加密复用同一把密钥。因此安装向导文案明确「可留空，初始化时自动生成并持久化」；README 顶部仍以「部署时填写」作为推荐做法。
 
-### 3. README（`README.md`）
+### 3. README（主文件与 12 个语言版本）
 
 - 一键部署表格新增第 4 列「阿里云 ESA · 中国站」，徽章使用仓库内 `readmes/assets/esa-deploy.svg`。
 - 顶部徽章新增 Star 与 Fork 数量。
 - `## 手动部署` 的前置要求、本地开发、生产部署折叠进 `<details>`。
 - 「核心能力 / 权限管理 / 平台部署」合并为一节「核心能力」，压缩为 9 条。
-- 补充 ESA 导入仓库、`KV_NAMESPACE` 与 `JWT_SECRET` 自动生成的注意事项。
+- 配置章节改为精简的「部署配置」表格（`JWT_SECRET` / `DB_FORMAT` / `DB_DRIVER` / `DB_CIPHER`）。
+- 补充 ESA 导入仓库的注意事项。
 
-### 4. wrangler.jsonc
+### 4. 多语言 README 同步（`readmes/*.md`）
+
+12 个语言版本已与主 README 保持相同结构：
+
+- 相同的 5 个顶部徽章（含 Stars / Forks）。
+- 相同的 4 列一键部署表格（含阿里云 ESA）。
+- 相同的 16 个二/三级标题：折叠的手动部署、合并后的「核心能力」（9 条）、精简的「部署配置」。
+- 相同的 4 行环境变量表与文档链接。
+
+### 5. wrangler.jsonc
 
 - 删除与当前实现不符的历史注释（持久缓存、旧加密算法、手动创建 KV 等）。
 - `keep_vars`、`run_worker_first`、`assets` 等实际生效配置保持不变。
@@ -93,7 +102,6 @@ npx tsc -p tsconfig.json --noEmit
 ## Known boundaries / 已知边界
 
 - 阿里云 ESA 没有 Cloudflare / EdgeOne 那样的官方仓库部署按钮 URL，按钮指向 ESA 控制台「函数和 Pages」创建入口，仓库内 `esa.jsonc` 接管构建配置。
-- 本次新增的「折叠 + 合并章节」只应用于主 `README.md`；`readmes/` 下 12 个语言版本已同步 ESA 按钮与配置章节，但仍保留原有的分节布局，后续可单独同步。
 
 ## Checklist
 
