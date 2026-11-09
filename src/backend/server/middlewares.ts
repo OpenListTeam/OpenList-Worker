@@ -1,7 +1,6 @@
 import { Context } from "hono"
 import { verify } from "hono/jwt"
 import { checkAdminAuth, isStaticApiToken } from "../pkg/utils"
-import { isGuestAllowed } from "../pkg/permission"
 import { getDb, readPersistedSecret, ENCRYPTION_SECRET_KV_KEY } from "../internal/model/db"
 import { isPasswordStampValid } from "../pkg/password"
 
@@ -495,15 +494,12 @@ export async function getUserFromContext(c: Context): Promise<{
     }
   }
 
-  // 无 Authorization header：仅在允许访客访问时使用 guest 用户作为后备。
-  // allow_guest 是应用层安全设置，必须由后端鉴权路径执行，不能只作为前端显示提示。
+  // 无 Authorization header：尝试使用 guest 用户作为后备。
+  // 与 Go 版 server/middlewares/auth.go 的 Auth(false) 一致：是否允许匿名访问
+  // 只取决于 guest 账号本身是否存在/被禁用，没有额外的站点开关。
   if (!authHeader) {
     try {
       const db = await getDb(c.env)
-      // 统一走 isGuestAllowed：与 /api/public/settings 的展示规则同源，
-      // 并兼容布尔 false / 大小写等历史写法（裸 === "false" 会 fail-open）。
-      if (!isGuestAllowed(db.settings)) return null
-
       const guest = (db.users || []).find((u: any) => u.username === "guest")
       if (guest && !guest.disabled) {
         return {

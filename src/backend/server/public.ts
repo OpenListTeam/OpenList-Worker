@@ -7,7 +7,6 @@ import {
   isDbTrusted,
   isEncryptionReady,
   saveDb,
-  setSettingValue,
 } from "../internal/model/db"
 import {
   getStoreConfigErrorDetail,
@@ -18,7 +17,6 @@ import {
   readFormat,
 } from "../internal/model/store/backend"
 import { setUserPassword } from "../pkg/password"
-import { isGuestAllowed } from "../pkg/permission"
 // 脱敏 / 截断：与全局 503 拦截（index.ts）共用同一套规则
 import { reasonLines, redact } from "./storage-error"
 
@@ -492,7 +490,6 @@ publicRouter.get("/settings", async (c) => {
     check_update: "false",
 
     // --- Auth ---
-    allow_guest: "true",
     webauthn_login_enabled: "false",
     sso_login_enabled: "false",
     sso_compatibility_mode: "false",
@@ -550,16 +547,9 @@ publicRouter.get("/settings", async (c) => {
     }
   })
 
-  // 动态检查是否存在且启用了 guest 账号
-  const guest = (db.users || []).find((u: any) => u.username === "guest")
-  const isGuestActive = Boolean(guest && !guest.disabled)
-  // 与鉴权路径（getUserFromContext / Emby 匿名入口）共用 isGuestAllowed，
-  // 避免「展示已关闭、实际仍放行」的规则漂移（布尔 false / "False" 等写法）。
-  if (!isGuestActive || !isGuestAllowed(settingsObj)) {
-    settingsObj.allow_guest = "false"
-  } else {
-    settingsObj.allow_guest = "true"
-  }
+  // 注意：不再输出 allow_guest。Go 版没有这个键，匿名访问是否放行完全由
+  // guest 账号是否存在/被禁用决定（server/middlewares/auth.go 的 Auth(false)）。
+  // 前端也不读取该字段，删掉它是为了和 Go 的公开设置保持一致。
 
   return c.json({
     code: 200,
@@ -825,16 +815,8 @@ publicRouter.post("/init/setup", async (c) => {
     }
   }
 
-  // 新装默认要求登录：关闭匿名访客浏览。
-  //
-  // 只在初始化（本请求）里写 "false"：存量部署不会走到这里，因此升级不会被
-  // 静默改成「必须登录」；管理员之后可在「站点设置 → 允许访客访问」打开。
-  setSettingValue(db, "allow_guest", "false", {
-    type: "bool",
-    help: "Allow Anonymous Visitors to Browse as Guest",
-    group: 1,
-    flag: 0,
-  })
+  // 注意：新装默认要求登录由「guest 账号默认禁用」实现（defaultDb.users），
+  // 与 Go 保持同一套语义，不再写 allow_guest 设置项。
 
   // 初始化是唯一允许「在一次成功读取（确认存储为空）之后写入空壳」的场景，
   // 因此显式 force；此时 db 已包含新建的管理员用户，本身也不再是空壳。

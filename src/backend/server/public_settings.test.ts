@@ -59,8 +59,8 @@ test("Security(C-1): public settings still returns display options (no regressio
   assert.equal(json.data.webauthn_login_enabled, "false")
   assert.equal(json.data.sign_all, "true")
   assert.equal(json.data.site_title, "My Site")
-  // NOTE: allow_guest is deliberately not asserted here — it is derived from
-  // whether a guest account exists (see guest_auth.test.ts), not a plain echo.
+  // NOTE: allow_guest is not part of the public response — the Go backend has no
+  // such key; anonymous access is controlled by the guest account state only.
 })
 
 test("Security(F-14): unknown keys fail closed — they are not echoed", async () => {
