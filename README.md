@@ -44,8 +44,8 @@
 
 > [!IMPORTANT]
 > - 在 Cloudflare 平台部署，您需要先 [Fork](https://github.com/OpenListTeam/OpenList-Worker/fork) 本项目，再连接到仓库部署
-> - 阿里云 ESA 请在控制台「边缘计算和 AI → 函数和 Pages」导入本仓库，`esa.jsonc` 已内置构建配置；部署后配置 `JWT_SECRET` 与 `KV_NAMESPACE`（默认 `openlist`）
-> - 部署时请填写 `JWT_SECRET`（≥16 随机串，用于 JWT 签名与加密；未配置时初始化会自动生成并持久化）
+> - 阿里云 ESA 请在控制台边缘计算和 AI → 函数和 Pages导入本仓库
+> - 部署时请填写 `JWT_SECRET`（≥16 随机串，用于 JWT 签名与加密）
 > - 数据存储默认自动选择平台自带的持久化后端，其余变量见 [配置变量](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 > - 部署完成后首次访问站点，通过**安装向导**完成初始化并设置账号密码
 
