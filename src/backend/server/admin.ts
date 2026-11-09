@@ -12,19 +12,15 @@ import { checkAdminAuth } from "../pkg/utils"
 import { safeErrorMessage } from "../pkg/errs"
 import { validateHide } from "../pkg/meta"
 import {
+  isTranscodeSettingKey,
+  stripTranscodeSettings,
+} from "../internal/model/transcode-guard"
+import {
   PROXY_RANGE_DRIVERS,
   driverMustProxy,
   driverPreferProxy,
   normalizeDriverName,
 } from "../internal/driver/proxy"
-import {
-  cacheKindPrefix,
-  cacheListKeys,
-  clearCache,
-  clearStorageCache,
-  getCacheRuntimeStatus,
-  type CacheKind,
-} from "../internal/cache"
 
 export const adminRouter = new Hono()
 
@@ -448,9 +444,6 @@ adminRouter.post("/storage/update", async (c) => {
     }
     db.storages[idx] = updatedStorage
     await saveDb(db, c.env)
-    // 存储配置已变更（挂载路径 / root_folder_path / addition / 缓存策略等），
-    // 既有缓存全部失效，避免继续返回旧挂载点或旧凭据下的结果。
-    await clearStorageCache(updatedStorage.id, c.env)
   }
   return c.json({ code: 200, message: "success", data: null })
 })
@@ -460,9 +453,6 @@ adminRouter.post("/storage/delete", async (c) => {
   const db = await getDb(c.env)
   db.storages = db.storages.filter((s: any) => s.id !== id)
   await saveDb(db, c.env)
-  // 存储已删除：其文件树 / 下载链接缓存必须一并清理，否则 id 复用时
-  // 新存储会读到旧存储的缓存内容。
-  await clearStorageCache(id, c.env)
   return c.json({ code: 200, message: "success", data: null })
 })
 
@@ -474,7 +464,6 @@ adminRouter.post("/storage/enable", async (c) => {
     s.disabled = false
     s.modified = new Date().toISOString()
     await saveDb(db, c.env)
-    await clearStorageCache(id, c.env)
     // 异步初始化驱动（不阻塞响应）：启用多个云盘时立即返回，
     // 初始化完成后更新状态；失败时把错误写入 status，下次访问或
     // 重新加载时会再次尝试。
@@ -508,7 +497,6 @@ adminRouter.post("/storage/disable", async (c) => {
   if (s) {
     s.disabled = true
     await saveDb(db, c.env)
-    await clearStorageCache(id, c.env)
   }
   return c.json({ code: 200, message: "success", data: null })
 })
@@ -591,27 +579,7 @@ const BASE_FIELDS = [
     default: "",
     required: false,
   },
-  {
-    name: "cache_expiration",
-    type: "number",
-    default: "30",
-    required: false,
-    help: "目录内容缓存时长（分钟）",
-  },
 ]
-
-/**
- * 路径级缓存覆盖（对齐 Go model.Storage.CustomCachePolicies）。
- * 支持 JSON 数组：[{"path":"/photos/*","cache_expiration":1440}]
- * 或映射形式：{"/photos/*": 1440}
- */
-const CUSTOM_CACHE_POLICIES_FIELD = {
-  name: "custom_cache_policies",
-  type: "text",
-  default: "",
-  required: false,
-  help: '按路径覆盖缓存时长，JSON 格式，如 [{"path":"/photos/*","cache_expiration":1440}]',
-}
 
 /** 存储级签名开关（对齐 Go common.IsStorageSignEnabled） */
 const ENABLE_SIGN_FIELD = {
@@ -731,7 +699,6 @@ const DISABLE_PROXY_SIGN_FIELD = {
 
 const COMMON_FIELDS = [
   ...BASE_FIELDS,
-  CUSTOM_CACHE_POLICIES_FIELD,
   ENABLE_SIGN_FIELD,
   DISABLE_INDEX_FIELD,
   ...buildProxyFields(),
@@ -823,7 +790,6 @@ const driverConfigs: Record<string, any> = {
     // webdav_policy 默认 302_redirect（OneDrive 默认走直链）。
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("Onedrive"),
@@ -926,7 +892,6 @@ const driverConfigs: Record<string, any> = {
     // 同 Onedrive：默认 302_redirect
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("OnedriveAPP"),
@@ -1004,7 +969,6 @@ const driverConfigs: Record<string, any> = {
     default_mount_path: "/google-drive",
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("GoogleDrive"),
@@ -1198,7 +1162,6 @@ const driverConfigs: Record<string, any> = {
     // 对齐 Go drivers/123/meta.go：只有 PreferProxy（无 OnlyProxy）
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("123Pan"),
@@ -1284,7 +1247,6 @@ const driverConfigs: Record<string, any> = {
     // 对齐 Go drivers/baidu_netdisk/meta.go：只有 PreferProxy（无 OnlyProxy）
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("BaiduNetdisk"),
@@ -1422,7 +1384,6 @@ const driverConfigs: Record<string, any> = {
     // 对齐 Go drivers/115_open/meta.go：OnlyProxy（无 302 选项）
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("115Open"),
@@ -1925,7 +1886,6 @@ const driverConfigs: Record<string, any> = {
     // 对齐 Go drivers/189/meta.go：OnlyProxy
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("189Cloud"),
@@ -2157,7 +2117,6 @@ const driverConfigs: Record<string, any> = {
     // web_proxy 默认 true、webdav_policy 默认 native_proxy。
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("WebDav"),
@@ -2713,7 +2672,6 @@ const driverConfigs: Record<string, any> = {
     // 对齐 Go drivers/weiyun/meta.go：OnlyProxy
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("WeiYun"),
@@ -2773,7 +2731,6 @@ const driverConfigs: Record<string, any> = {
     // 对齐 Go drivers/sftp/meta.go：OnlyProxy + NoLinkURL（无直链可 302）
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("SFTP"),
@@ -2845,7 +2802,6 @@ const driverConfigs: Record<string, any> = {
     // 对齐 Go drivers/ftp/meta.go：OnlyProxy + NoLinkURL
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("FTP"),
@@ -3132,7 +3088,6 @@ const driverConfigs: Record<string, any> = {
     // 对齐 Go drivers/terabox/meta.go：OnlyProxy
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("Terabox"),
@@ -3239,7 +3194,6 @@ const driverConfigs: Record<string, any> = {
     // 对齐 Go drivers/alias/meta.go：ProxyRangeOption
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("Alias"),
@@ -3439,7 +3393,6 @@ const driverConfigs: Record<string, any> = {
     // 对齐 Go drivers/139/meta.go：ProxyRangeOption 且实例默认 ProxyRange = true
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("139Yun"),
@@ -3511,7 +3464,6 @@ const driverConfigs: Record<string, any> = {
     // 对齐 Go drivers/mega/meta.go：OnlyProxy + NoLinkURL
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("Mega_nz"),
@@ -3642,7 +3594,6 @@ const driverConfigs: Record<string, any> = {
     // 对齐 Go drivers/123_share/meta.go：OnlyProxy + PreferProxy
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("123PanShare"),
@@ -3854,7 +3805,6 @@ const driverConfigs: Record<string, any> = {
     // 对齐 Go drivers/smb/meta.go：OnlyProxy + NoLinkURL
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("SMB"),
@@ -3930,7 +3880,6 @@ const driverConfigs: Record<string, any> = {
     // 对齐 Go drivers/crypt/meta.go：OnlyProxy + NoLinkURL
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("Crypt"),
@@ -4010,7 +3959,6 @@ const driverConfigs: Record<string, any> = {
     // 对齐 Go drivers/virtual/meta.go：OnlyProxy + NoLinkURL
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("Virtual"),
@@ -4065,7 +4013,6 @@ const driverConfigs: Record<string, any> = {
     // 对齐 Go drivers/alist_v3/meta.go：ProxyRangeOption
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("AListV3"),
@@ -4166,7 +4113,6 @@ const driverConfigs: Record<string, any> = {
     // 对齐 Go drivers/strm/meta.go：OnlyProxy + NoLinkURL
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("Strm"),
@@ -4632,7 +4578,6 @@ const driverConfigs: Record<string, any> = {
     // 对齐 Go drivers/proton_drive/meta.go：OnlyProxy + NoLinkURL
     common: [
       ...BASE_FIELDS,
-      CUSTOM_CACHE_POLICIES_FIELD,
       ENABLE_SIGN_FIELD,
       DISABLE_INDEX_FIELD,
       ...buildProxyFields("ProtonDrive"),
@@ -4724,6 +4669,9 @@ adminRouter.get("/setting/list", async (c) => {
 
   let settings = db.settings || []
 
+  // Worker 没有 ffmpeg：转码设置一律不下发，避免前端展示永远失败的开关
+  settings = stripTranscodeSettings(settings)
+
   if (groupQuery !== undefined) {
     const groupNum = parseInt(groupQuery, 10)
     settings = settings.filter((s: any) => s.group === groupNum)
@@ -4750,6 +4698,16 @@ adminRouter.post("/setting/save", async (c) => {
     const key = item.key
     if (typeof key !== "string" || key.length === 0 || key.length > 128)
       continue
+
+    // Worker 不支持转码：拒绝写入，并把历史遗留的开关强制落成 false。
+    // 只跳过该字段而不是整批返回 400，避免一次保存中其它合法设置被连带拒绝。
+    if (isTranscodeSettingKey(key)) {
+      const existing = db.settings.find((s: any) => s.key === key)
+      if (existing) {
+        existing.value = key === "transcode_enabled" ? "false" : ""
+      }
+      continue
+    }
 
     let value = item.value
     if (value !== null && typeof value === "object") {
@@ -5098,102 +5056,24 @@ adminRouter.get("/kv/status", async (c) => {
   })
 })
 
-// --- 缓存管理（文件树缓存 / 下载链接缓存）---
+// --- 存储刷新（兼容接口）---
 //
-// 默认只向数据库启用（CACHE_DRIVER=db）；想要改用 / 额外启用 KV、Blob 等
-// 专用后端，需显式配置 CACHE_DRIVER（如 `kv`、`db,kv`、`blob`）。
-// 这里的接口只做「查看状态 / 清空」，不改变后端选择（后端只认环境变量）。
+// 持久缓存已整体移除：`/fs/list`、`/fs/get`、`/d`、`/p` 每次都直接回源，
+// 目录与直链实时生效。为兼容旧客户端保留这两个接口，固定返回 removed=0。
 
-/** 缓存状态：生效配置 + 实际后端 + 当前条目数。 */
-adminRouter.get("/cache/status", async (c) => {
-  const runtime = await getCacheRuntimeStatus(c.env)
-  let fileTree = 0
-  let downloadLink = 0
-  try {
-    const [ftKeys, lnKeys] = await Promise.all([
-      cacheListKeys(cacheKindPrefix("ft", runtime.config.prefix), c.env),
-      cacheListKeys(cacheKindPrefix("ln", runtime.config.prefix), c.env),
-    ])
-    fileTree = ftKeys.length
-    downloadLink = lnKeys.length
-  } catch (err: any) {
-    return c.json({
-      code: 200,
-      message: "success",
-      data: {
-        ...runtime,
-        entries: null,
-        entries_error: safeErrorMessage(err),
-      },
-    })
-  }
-  return c.json({
-    code: 200,
-    message: "success",
-    data: {
-      ...runtime,
-      entries: {
-        file_tree: fileTree,
-        download_link: downloadLink,
-        total: fileTree + downloadLink,
-      },
-    },
-  })
-})
-
-/**
- * 清空缓存。
- * body: { type?: "file_tree" | "download_link" | "all", storage_id?: number }
- * 省略 type 表示两级缓存全清；省略 storage_id 表示所有存储。
- */
-adminRouter.post("/cache/clear", async (c) => {
-  const body = await c.req.json().catch(() => ({}))
-  const rawType = String(body.type ?? c.req.query("type") ?? "")
-    .trim()
-    .toLowerCase()
-  const kind: CacheKind | undefined =
-    rawType === "file_tree" || rawType === "ft" || rawType === "tree"
-      ? "ft"
-      : rawType === "download_link" || rawType === "link" || rawType === "ln"
-        ? "ln"
-        : undefined
-
-  const idRaw = body.storage_id ?? c.req.query("storage_id")
-  const hasId = idRaw !== undefined && idRaw !== null && String(idRaw) !== ""
-
-  const removed = await clearCache(c.env, {
-    ...(kind ? { kind } : {}),
-    ...(hasId ? { storageId: idRaw } : {}),
-  })
-  return c.json({
-    code: 200,
-    message: "success",
-    data: { removed, type: kind ?? "all", storage_id: hasId ? idRaw : null },
-  })
-})
-
-/**
- * 刷新文件树缓存（对齐参考实现 OpenList.ts 的 POST /api/admin/storage/refresh）。
- * body/query 可选 `id`：只刷新该存储。
- */
 adminRouter.post("/storage/refresh", async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const idRaw = body.id ?? c.req.query("id")
   const hasId = idRaw !== undefined && idRaw !== null && String(idRaw) !== ""
-  const removed = await clearCache(c.env, {
-    kind: "ft",
-    ...(hasId ? { storageId: idRaw } : {}),
-  })
   return c.json({
     code: 200,
     message: "success",
-    data: { removed, storage_id: hasId ? idRaw : null },
+    data: { removed: 0, storage_id: hasId ? idRaw : null },
   })
 })
 
 /**
- * 刷新单个存储的文件树缓存
- * （对齐参考实现 OpenList.ts 的 POST /api/admin/storage/refresh_one?id=）。
+ * 刷新单个存储（兼容接口，同上）。
  */
 adminRouter.post("/storage/refresh_one", async (c) => {
   const body = await c.req.json().catch(() => ({}))
@@ -5201,11 +5081,10 @@ adminRouter.post("/storage/refresh_one", async (c) => {
   if (idRaw === undefined || idRaw === null || String(idRaw) === "") {
     return c.json({ code: 400, message: "id is required", data: null }, 400)
   }
-  const removed = await clearCache(c.env, { kind: "ft", storageId: idRaw })
   return c.json({
     code: 200,
     message: "success",
-    data: { removed, storage_id: idRaw },
+    data: { removed: 0, storage_id: idRaw },
   })
 })
 

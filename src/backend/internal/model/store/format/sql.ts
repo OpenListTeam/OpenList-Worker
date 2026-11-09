@@ -18,6 +18,19 @@ import {
 
 const INIT_MARK = "openlist_config"
 
+/**
+ * 单条 SQL 语句允许的绑定参数上限。
+ *
+ * Cloudflare D1 的「Maximum bound parameters per query」为 100（DO 的 SQLite
+ * 同一限制），超过即报 `D1_ERROR: too many SQL variables`。
+ *
+ * 批量 UPSERT 每行一条语句（参数数 = 列数，最多 22），不会触发；真正会超限的
+ * 只有本文件底部「删除本端已移除的行」用的 `NOT IN (?...)`：它必须把该表全部
+ * 保留键塞进同一条语句，而默认配置里 settings 就有 114 条，首次初始化直接 500
+ * （issue #180）。
+ */
+const MAX_BIND_PARAMS = 100
+
 function quote(name: string): string {
   return "`" + name + "`"
 }
@@ -67,6 +80,30 @@ function qn(table: TableName, env?: any): string {
 /** 列名列表（含反引号）。 */
 function cols(table: TableName): string {
   return TABLES[table].columns.map((c) => quote(c.name)).join(", ")
+}
+
+/**
+ * 读取某表当前的主键集合（统一字符串化，避免数字/字符串主键比较失真）。
+ *
+ * 只在大表删除已移除行时使用：`NOT IN` 的分片在语义上不可行（把保留键拆成
+ * 多片后，每片都会把其余片的保留行当成"已移除"删掉），因此改为先取现有主键、
+ * 在内存里求差集，再按 `IN` 分片删除。
+ */
+async function listKeys(
+  driver: Driver,
+  table: TableName,
+  keyCol: string,
+  env?: any,
+): Promise<string[]> {
+  if (!driver.query) return []
+  const rows = await driver.query(
+    `SELECT ${quote(keyCol)} AS k FROM ${qn(table, env)}`,
+    [],
+    env,
+  )
+  return (rows || [])
+    .map((r: any) => (r?.k === undefined || r?.k === null ? "" : String(r.k)))
+    .filter((k: string) => k !== "")
 }
 
 export const sqlFormat: FormatAdapter = {
@@ -126,13 +163,32 @@ export const sqlFormat: FormatAdapter = {
       }
 
       // 删除本端已移除的行（keys 为空则整表清空，与原语义一致）
-      const delSql =
-        keepKeys.length > 0
-          ? `DELETE FROM ${qn(table, env)} WHERE ${quote(keyCol)} NOT IN (${keepKeys
+      if (keepKeys.length === 0) {
+        statements.push({ sql: `DELETE FROM ${qn(table, env)}`, params: [] })
+      } else if (keepKeys.length <= MAX_BIND_PARAMS || !driver.query) {
+        statements.push({
+          sql: `DELETE FROM ${qn(table, env)} WHERE ${quote(keyCol)} NOT IN (${keepKeys
+            .map(() => "?")
+            .join(", ")})`,
+          params: keepKeys,
+        })
+      } else {
+        // 保留键超过单语句参数上限（默认配置的 settings 就有 114 条）：
+        // 直接 NOT IN 会撞 D1 的 100 个绑定参数上限，必须换成差集 + 分片 IN。
+        const keep = new Set(keepKeys)
+        const stale = (await listKeys(driver, table, keyCol, env)).filter(
+          (k) => !keep.has(k),
+        )
+        for (let i = 0; i < stale.length; i += MAX_BIND_PARAMS) {
+          const group = stale.slice(i, i + MAX_BIND_PARAMS)
+          statements.push({
+            sql: `DELETE FROM ${qn(table, env)} WHERE ${quote(keyCol)} IN (${group
               .map(() => "?")
-              .join(", ")})`
-          : `DELETE FROM ${qn(table, env)}`
-      statements.push({ sql: delSql, params: keepKeys })
+              .join(", ")})`,
+            params: group,
+          })
+        }
+      }
     }
 
     // 标记已初始化（方言兼容的 UPSERT）

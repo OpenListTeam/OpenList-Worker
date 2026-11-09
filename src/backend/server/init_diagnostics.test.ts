@@ -159,8 +159,8 @@ test("驱动不可用：错误必须写明该驱动需要什么（d1 示例）",
   assert.equal(data.storage.error_code, "DRIVER_UNAVAILABLE")
   assert.equal(
     data.storage.summary,
-    `DB_DRIVER is set to "d1", but that driver is not available in this runtime.`,
-    "summary 是给界面的一行短句",
+    `存储驱动不可用：DB_DRIVER=d1 / Storage driver unavailable: DB_DRIVER=d1`,
+    "summary 是给界面的一行中英双语短句",
   )
   // 接口只透传前 3 行，因此这 3 行必须是「原因 + 不回退 + 怎么做」
   assert.match(
@@ -302,7 +302,7 @@ test("显式配置的驱动不可用：绝不回退（即使 auto 能选到别�
     await buildApp().request("/api/public/init_status", { method: "GET" }, env)
   ).json()).data
   assert.equal(st.initialized, false)
-  assert.match(String(st.storage_error), /not available in this runtime/)
+  assert.match(String(st.storage_error), /Storage driver unavailable|存储驱动不可用/)
   assert.match(String(st.storage_suggestion), /DB_DRIVER=blob/)
 })
 

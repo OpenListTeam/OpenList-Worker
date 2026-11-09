@@ -17,17 +17,8 @@ import {
   readFormat,
 } from "../internal/model/store/backend"
 import { setUserPassword } from "../pkg/password"
-import {
-  describeCacheConfig,
-  getCacheDrivers,
-  isCacheActive,
-} from "../internal/cache"
-// 脱敏 / 截断 / 摘要 / 建议组装：与全局 503 拦截（index.ts）共用同一套规则
-import {
-  reasonLines,
-  redact,
-  storageErrorSummary,
-} from "./storage-error"
+// 脱敏 / 截断：与全局 503 拦截（index.ts）共用同一套规则
+import { reasonLines, redact } from "./storage-error"
 
 export const publicRouter = new Hono()
 
@@ -46,27 +37,86 @@ function resolvedOrNull(value: any): string | null {
 }
 
 /**
- * 「没有可用存储后端」时的统一建议（单一来源）。
+ * 初始化向导展示的「一行原因 + 一行建议」：中英双语、尽量短。
  *
- * ## 为什么不再提 `set DB_DRIVER=auto`
+ * 安装页只读取 issue.summary / issue.suggestion（以及 init_status 的
+ * storage_error / storage_suggestion），且不会按语言切换，所以这里直接返回
+ * 「中文 / English」。详细排查信息仍保留在 message / reason 里，只给日志和
+ * 诊断工具使用 —— 界面不再被多行长文淹没。
  *
- * 旧文案是「Bind a storage backend (D1 / KV / Blob) **or set DB_DRIVER=auto**」。
- * 后半句在**绝大多数真实场景下是循环建议**：用户看到这条 issue 时，`DB_DRIVER`
- * 往往**本来就是 auto**（CF / EdgeOne 部署的默认形态）。让他「去设置 auto」等于
- * 让他改一个已经正确的值，改完照旧报错，只会加深「这软件坏了」的印象。
- *
- * 准确的表述是：auto **已经把所有候选驱动探测过一遍且都不可用**，因此缺的是
- * **平台侧的绑定**，不是配置值。这里只说这件事。
- *
- * 若驱动解析器给出了更精确的 hint（如 `noStorageHint` 的逐平台文案），调用方
- * 会优先使用它，本函数只是兜底。
+ * 建议里仍保留「auto 会选中哪个驱动」这类可抄写答案（见 DRIVER_UNAVAILABLE），
+ * 因为精简不等于少给下一步动作。
  */
-function bindBackendSuggestion(): string {
-  return (
-    "No storage binding was detected (auto probes every driver). " +
-    "Bind one and redeploy — Cloudflare: D1 or KV namespace; " +
-    "EdgeOne: Blob; ESA: ESA_BLOB."
-  )
+function initIssueText(
+  code: string | null | undefined,
+  opts: {
+    driver?: string | null
+    format?: string | null
+    detail?: string | null
+  } = {},
+): { summary: string; suggestion: string } {
+  const driver = String(opts.driver || "").trim()
+  const format = String(opts.format || "").trim()
+  const label = driver && driver !== "auto" ? driver : "DB_DRIVER"
+
+  switch (code) {
+    case "NO_STORAGE":
+      return {
+        summary: "没有可用的存储后端 / No storage backend available",
+        suggestion:
+          "绑定持久化后端后重新部署：Cloudflare 用 D1 或 KV，EdgeOne / ESA 用 Blob / " +
+          "Bind a persistent backend and redeploy: D1 or KV on Cloudflare, Blob on EdgeOne / ESA",
+      }
+    case "INVALID_COMBINATION":
+      return {
+        summary:
+          `存储组合无效：DB_FORMAT=${format || "?"} 与 DB_DRIVER=${driver || "?"} 不兼容 / ` +
+          `Invalid storage combination: DB_FORMAT=${format || "?"} cannot be used with DB_DRIVER=${driver || "?"}`,
+        suggestion:
+          "改为 DB_FORMAT=map（或 key），或换用 d1 / do / mysql / " +
+          "Set DB_FORMAT=map (or key), or switch to d1 / do / mysql",
+      }
+    case "DRIVER_UNAVAILABLE": {
+      const picked = String(opts.detail || "").match(
+        /Auto-detection would pick: DB_DRIVER=([\w-]+)/,
+      )?.[1]
+      return {
+        summary: `存储驱动不可用：DB_DRIVER=${label} / Storage driver unavailable: DB_DRIVER=${label}`,
+        suggestion: picked
+          ? `改为 DB_DRIVER=${picked}（或 auto）/ Set DB_DRIVER=${picked} (or auto)`
+          : "检查该驱动的绑定与凭据，或设置 DB_DRIVER=auto / " +
+            "Check the binding and credentials, or set DB_DRIVER=auto",
+      }
+    }
+    case "PROXY_CONFIG":
+      return {
+        summary: "KV 代理配置错误 / KV proxy configuration error",
+        suggestion:
+          "检查 EO_KV_URLS，或改用 DB_DRIVER=auto / " +
+          "Check EO_KV_URLS, or use DB_DRIVER=auto",
+      }
+    case "UNKNOWN_DRIVER":
+      return {
+        summary: `未知的存储驱动：DB_DRIVER=${label} / Unknown DB_DRIVER: ${label}`,
+        suggestion:
+          "使用 auto / blob / kv / cfkv / d1 / do / mysql / " +
+          "Use auto / blob / kv / cfkv / d1 / do / mysql",
+      }
+    case "STORAGE_READ_FAILED":
+      return {
+        summary: "存储读取失败，已中止初始化 / Storage is not readable; initialization was aborted",
+        suggestion:
+          "检查存储绑定与凭据，修复后重新部署 / " +
+          "Check the storage binding and credentials, then redeploy",
+      }
+    default:
+      return {
+        summary: "存储配置有误 / Storage configuration error",
+        suggestion:
+          "检查 DB_DRIVER、DB_FORMAT 与平台绑定 / " +
+          "Check DB_DRIVER, DB_FORMAT and the platform bindings",
+      }
+  }
 }
 
 /**
@@ -155,11 +205,16 @@ publicRouter.get("/env_check", async (c) => {
 
   if (hasConfigError) {
     const detail = await getStoreConfigErrorDetail(env, { silent: true })
+    const text = initIssueText(detail.code, {
+      driver: driverCfg,
+      format: formatCfg,
+      detail: detail.message,
+    })
     storageDetail = {
       code: detail.code,
-      summary: storageErrorSummary(detail.message),
+      summary: text.summary,
       message: detail.message,
-      suggestion: detail.suggestion,
+      suggestion: text.suggestion,
     }
   }
 
@@ -167,13 +222,14 @@ publicRouter.get("/env_check", async (c) => {
     // 一个可选后端都没有：这类错误本身就是「没有可用的存储」，用一条通用提示
     // 说清即可，不必再叠一条内容相同的配置错误（两条 issue 说同一件事只会让
     // 用户以为出了两个问题）。
+    const text = initIssueText("NO_STORAGE")
     issues.push({
       code: "STORAGE_UNAVAILABLE",
       level: "error",
-      summary: "No storage backend available.",
+      summary: text.summary,
       message: "No storage backend available.",
       docUrl: DOC_STORAGE,
-      suggestion: storageDetail.suggestion || bindBackendSuggestion(),
+      suggestion: text.suggestion,
     })
   } else if (hasConfigError) {
     // 配置错误：界面只给「一行短原因 + 一行怎么改」；完整排查说明留在 message /
@@ -191,8 +247,8 @@ publicRouter.get("/env_check", async (c) => {
       summary:
         storageDetail.summary ||
         (isInvalidCombination
-          ? "Unsupported storage combination."
-          : "Storage driver is not configured correctly."),
+          ? "存储组合无效 / Unsupported storage combination"
+          : "存储配置有误 / Storage configuration error"),
       message: isInvalidCombination
         ? `Unsupported storage combination: ${reason}`
         : `Storage driver is not configured correctly: ${reason}`,
@@ -200,26 +256,28 @@ publicRouter.get("/env_check", async (c) => {
       suggestion: storageDetail.suggestion,
     })
   } else if (isMemory) {
+    const text = initIssueText("NO_STORAGE")
     issues.push({
       code: "STORAGE_MEMORY_ONLY",
       level: serverless ? "error" : "warning",
       summary: serverless
-        ? "In-memory storage only; data will be lost immediately."
-        : "In-memory storage only; data will be lost on restart (fine for local dev).",
+        ? "仅内存存储，实例销毁后数据丢失 / In-memory storage only; data is lost when the instance stops"
+        : "仅内存存储，重启后数据丢失 / In-memory storage only; data is lost on restart (fine for local dev)",
       message: serverless
         ? "In-memory storage only; data will be lost immediately."
         : "In-memory storage only; data will be lost on restart (fine for local dev).",
       docUrl: DOC_STORAGE,
-      suggestion: bindBackendSuggestion(),
+      suggestion: text.suggestion,
     })
   } else if (!hasDriver) {
+    const text = initIssueText("NO_STORAGE")
     issues.push({
       code: "STORAGE_UNAVAILABLE",
       level: "error",
-      summary: "No storage backend available.",
+      summary: text.summary,
       message: "No storage backend available.",
       docUrl: DOC_STORAGE,
-      suggestion: bindBackendSuggestion(),
+      suggestion: text.suggestion,
     })
   }
 
@@ -231,7 +289,8 @@ publicRouter.get("/env_check", async (c) => {
     issues.push({
       code: "STORAGE_UNHEALTHY",
       level: "error",
-      summary: unreachable,
+      // 原因只给「哪个驱动连不上」，原始错误留在 message 里（可能含内部主机名）。
+      summary: `存储驱动连接失败：${resolvedDriver} / Storage driver is configured but unreachable: ${resolvedDriver}`,
       message: unreachable,
       docUrl: DOC_DRIVER,
       // 注意：这里**不**再建议「set DB_DRIVER=auto」。
@@ -239,8 +298,8 @@ publicRouter.get("/env_check", async (c) => {
       // （如 KV 代理 401）。此时改回 auto 没有任何帮助 —— auto 会解析出同一个
       // 驱动、撞上同一个错误，属于把用户支去绕圈。真正要做的是修凭据/绑定。
       suggestion:
-        `Check the credentials/bindings for "${resolvedDriver}" ` +
-        "(it resolved, but its health check failed).",
+        `检查该驱动的凭据与绑定 / ` +
+        `Check the credentials and bindings for "${resolvedDriver}" (it resolved, but its health check failed).`,
     })
   }
 
@@ -254,16 +313,17 @@ publicRouter.get("/env_check", async (c) => {
       // 密钥支持**自动生成 + 持久化**（见 ensureEncryptionSecret），所以文案
       // 不说「必须手动配置」，而是同时给出「也可留空让 setup 自动生成」这条路，
       // 避免用户以为这是个必填项而无谓地卡在向导里。
-      summary: "JWT_SECRET is not set.",
+      summary:
+        "未配置 JWT_SECRET（可留空，初始化时自动生成）/ " +
+        "JWT_SECRET is not set (optional; generated at setup)",
       message:
         "JWT_SECRET is not set. If storage is available, a secret is generated " +
         "and persisted automatically during setup; setting it explicitly is " +
         "recommended so that all instances and cold starts share one key.",
       docUrl: DOC_STORAGE,
       suggestion:
-        "Set JWT_SECRET (32+ chars recommended, `openssl rand -hex 32`) in your " +
-        "deployment variables — or leave it empty and let setup generate one " +
-        "(requires working storage).",
+        "建议设置 32+ 位随机串：openssl rand -hex 32 / " +
+        "Recommended: set a 32+ char secret via openssl rand -hex 32",
     })
   }
 
@@ -284,19 +344,6 @@ publicRouter.get("/env_check", async (c) => {
   // 但不再因此阻断向导。
   const ready = storageAvailable
 
-  // ── 缓存状态（文件树 / 下载链接）──
-  // 默认只向数据库启用（CACHE_DRIVER=db）；配置了 KV/Blob 等专用后端时
-  // 这里会如实回显实际生效的后端列表，便于排查「以为缓存在 KV」的错觉。
-  const cacheConfig = describeCacheConfig(env)
-  let cacheActive = false
-  let cacheDrivers: string[] = []
-  try {
-    cacheActive = await isCacheActive(env)
-    cacheDrivers = (await getCacheDrivers(env)).map((d) => d.name)
-  } catch {
-    cacheActive = false
-  }
-
   return c.json({
     code: 200,
     message: "success",
@@ -304,13 +351,6 @@ publicRouter.get("/env_check", async (c) => {
       runtime: {
         serverless,
         platform: storage?.platform ?? null,
-      },
-      cache: {
-        ...cacheConfig,
-        /** 是否已有可用缓存后端（false 时缓存自动降级为不缓存） */
-        active: cacheActive,
-        /** 实际解析出的后端驱动名（`db` 会展开成 d1/kv/blob/... ） */
-        resolved_backends: cacheDrivers,
       },
       config: {
         // 配置值（用户显式设置，或默认值）
@@ -625,15 +665,20 @@ publicRouter.get("/init_status", async (c) => {
   // 安装向导只能看到本接口，因此这里必须给出可展示的原因，否则用户只会拿到
   // 一个 500 或一句「未初始化」，无从判断是绑定缺失、组合写错还是密钥缺失。
   // 两类原因都返回（已脱敏）：
-  //   storage_error      一行短原因（界面直接展示，故取首行摘要）
-  //   storage_suggestion 一句话修复建议（「改什么」）
-  //   db_load_error      上一次从持久化后端读取失败的原因（运行期故障）
+  //   storage_error      一行中英双语短原因（界面直接展示）
+  //   storage_suggestion 一句话中英双语修复建议（「改什么」）
+  //   db_load_error      上一次从持久化后端读取失败的原因（运行期故障，完整版）
   let storageError: string | null = null
   let storageSuggestion: string | null = null
   if (!storageReady) {
     const detail = await getStoreConfigErrorDetail(c.env, { silent: true })
-    storageError = storageErrorSummary(detail.message)
-    storageSuggestion = detail.suggestion
+    const text = initIssueText(detail.code || "STORAGE_READ_FAILED", {
+      driver: readDriver(c.env),
+      format: readFormat(c.env),
+      detail: detail.message,
+    })
+    storageError = text.summary
+    storageSuggestion = text.suggestion
   }
   const dbLoadError = getDbLoadError()
 
@@ -693,6 +738,11 @@ publicRouter.post("/init/setup", async (c) => {
     // data，让安装向导能直接展示，而不是只给用户一个通用 500。
     const detail = await getStoreConfigErrorDetail(c.env, { silent: true })
     const code = detail.code || "STORAGE_READ_FAILED"
+    const text = initIssueText(code, {
+      driver: readDriver(c.env),
+      format: readFormat(c.env),
+      detail: detail.message || loadError,
+    })
     return c.json(
       {
         code: 500,
@@ -700,12 +750,12 @@ publicRouter.post("/init/setup", async (c) => {
           "database is not readable; refusing to initialize to avoid overwriting existing config",
         data: {
           code,
-          // 界面展示 summary（完整一句）；reason 保留给工具/日志阅读
-          summary: storageErrorSummary(loadError),
+          // 界面展示 summary（一行中英双语）；reason 保留给工具/日志阅读
+          summary: text.summary,
           reason: redact(loadError, reasonLines(code)),
-          // 一句话修复建议：有配置原因时优先用它（如「改成 DB_DRIVER=d1」），
+          // 一句话中英双语修复建议（如「改成 DB_DRIVER=d1」），
           // 否则向导只能展示一段原因，用户仍不知道下一步做什么。
-          suggestion: detail.suggestion,
+          suggestion: text.suggestion,
         },
       },
       500,

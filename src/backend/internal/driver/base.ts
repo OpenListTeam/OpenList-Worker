@@ -171,5 +171,13 @@ export interface StorageDriver {
     srcPhys: string,
     dstPhys: string,
   ): Promise<void>
-  put(virtualPath: string, physicalPath: string, content: Buffer): Promise<void>
+  // 上传内容统一用 Uint8Array：ESA 边缘运行时没有全局 Buffer（Issue #169）。
+  // 实现方**不得使用 Buffer 专有方法**（toString(encoding) / Buffer.from /
+  // Buffer.concat 等）：Cloudflare 靠 nodejs_compat 注入 Buffer，ESA 没有，
+  // 同一段代码在两边行为不同。需要文本请用 TextDecoder，需要 base64 请用 btoa。
+  put(
+    virtualPath: string,
+    physicalPath: string,
+    content: Uint8Array,
+  ): Promise<void>
 }

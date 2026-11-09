@@ -6,6 +6,7 @@ import { readPersistedSecret, writePersistedSecret } from "./json"
 import { mapFormat } from "./format/map"
 import { keyFormat } from "./format/key"
 import { sqlFormat } from "./format/sql"
+import { d1Driver } from "./driver/d1"
 import {
   TABLE_NAMES,
   DDL_TABLE_NAMES,
@@ -70,6 +71,12 @@ function createMockSqlDriver(name = "mock-sql"): Driver {
         const k = String(params[0])
         return schemaInfo.has(k) ? [{ v: schemaInfo.get(k) }] : []
       }
+      // SELECT `key` AS k FROM `table`（差集删除时读取现有主键）
+      const keySel = trimmed.match(/^SELECT `?(\w+)`? AS k FROM `?(\w+)`?/i)
+      if (keySel) {
+        const [, col, table] = keySel
+        return ensureTable(table).map((r: any) => ({ k: r[col] }))
+      }
       // SELECT * FROM `table`
       const m = trimmed.match(/^SELECT \* FROM `?(\w+)`?/i)
       if (m) return ensureTable(m[1]).map((r) => ({ ...r }))
@@ -83,6 +90,14 @@ function createMockSqlDriver(name = "mock-sql"): Driver {
     ): Promise<void> {
       for (const { sql, params } of statements) {
         const trimmed = sql.trim()
+        // 模拟 D1 的单条语句绑定参数上限（limits: 100 per query）。
+        // 越过它 D1 只会报 "too many SQL variables at offset N"，
+        // 这里直接让测试失败，防止再生成超限语句（issue #180）。
+        if (params.length > 100) {
+          throw new Error(
+            `mock-sql: too many SQL variables (${params.length} > 100): ${trimmed.slice(0, 120)}`,
+          )
+        }
         // DELETE FROM `table`（整表清空）
         const delAll = trimmed.match(/^DELETE FROM `?(\w+)`?$/i)
         if (delAll) {
@@ -100,6 +115,19 @@ function createMockSqlDriver(name = "mock-sql"): Driver {
           tables.set(
             table,
             rows.filter((r: any) => keep.has(String(r[keyCol]))),
+          )
+          continue
+        }
+        // DELETE FROM `table` WHERE `key` IN (?, ?, ...)（大表差集分片删除）
+        const delIn = trimmed.match(
+          /^DELETE FROM `?(\w+)`? WHERE `?(\w+)`? IN \(([^)]*)\)/i,
+        )
+        if (delIn) {
+          const [, table, keyCol] = delIn
+          const drop = new Set(params.map((p) => String(p)))
+          tables.set(
+            table,
+            ensureTable(table).filter((r: any) => !drop.has(String(r[keyCol]))),
           )
           continue
         }
@@ -300,6 +328,75 @@ test("sql format: MySQL dialect uses ON DUPLICATE KEY UPDATE (no INSERT OR REPLA
   const driver = createMockSqlDriver("mysql")
   assert.equal(await sqlFormat.save(SAMPLE_DB, driver), true)
   assert.deepEqual(await sqlFormat.load(driver), SAMPLE_DB)
+})
+
+test("sql format: 大表不使用超限的 NOT IN，改用差集分片删除（issue #180）", async () => {
+  // 回归：默认配置有 114 条 settings，旧实现把它们塞进一条
+  // `DELETE ... WHERE key NOT IN (?, ×114)`，撞上 D1 的
+  // "Maximum bound parameters per query = 100"，导致
+  // /api/public/init/setup 直接 500（too many SQL variables at offset 350）。
+  // mock 驱动会在任何语句参数 >100 时抛错，因此旧实现必然失败。
+  const driver = createMockSqlDriver()
+  const settings = Array.from({ length: 150 }, (_, i) => ({
+    key: `s${i}`,
+    value: String(i),
+  }))
+
+  const big = { ...SAMPLE_DB, settings }
+  assert.equal(await sqlFormat.save(big, driver), true)
+  assert.deepEqual(await sqlFormat.load(driver), big)
+
+  // 删掉 50 条后再次保存：被移除的行必须真的从表里消失（差集语义不变）
+  const shrunk = { ...SAMPLE_DB, settings: settings.slice(0, 100) }
+  assert.equal(await sqlFormat.save(shrunk, driver), true)
+  assert.deepEqual(await sqlFormat.load(driver), shrunk)
+})
+
+test("d1 driver: 单条语句绑定参数 >100 时提前报错（而不是 SQLITE_ERROR）", async () => {
+  // 回归辅助：D1 对超限只回 "too many SQL variables at offset N"，
+  // 无法定位是哪条语句；驱动层应提前抛出可读错误。
+  const db = {
+    prepare(_sql: string) {
+      const stmt: any = {
+        bind() {
+          return stmt
+        },
+        async run() {
+          return { success: true }
+        },
+        async first() {
+          return null
+        },
+        async all() {
+          return { results: [] }
+        },
+      }
+      return stmt
+    },
+    async batch() {
+      return []
+    },
+  }
+
+  // 2 个参数的语句是合法的，应正常提交
+  await d1Driver.batch!(
+    [{ sql: "DELETE FROM `x` WHERE `k` NOT IN (?, ?)", params: [1, 2] }],
+    { DB: db },
+  )
+
+  await assert.rejects(
+    () =>
+      d1Driver.batch!(
+        [
+          {
+            sql: `DELETE FROM \`x\` WHERE \`k\` NOT IN (${Array(101).fill("?").join(", ")})`,
+            params: Array(101).fill(1),
+          },
+        ],
+        { DB: db },
+      ),
+    /over the platform limit of 100 per query/,
+  )
 })
 
 /**

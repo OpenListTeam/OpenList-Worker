@@ -45,13 +45,9 @@ import {
 import { safeErrorMessage } from "../pkg/errs"
 import { encodeDownloadPath } from "../pkg/path"
 import { search } from "../internal/op/search"
-import {
-  getDisableIndex,
-  resolveCacheExpiration,
-} from "../internal/driver/storageopts"
+import { getDisableIndex } from "../internal/driver/storageopts"
 import { parseZip, extractZipEntry, ZipArchive } from "../internal/archive/zip"
 import { assertSafeUrl, getTrustedHosts } from "../pkg/http"
-import { invalidatePaths } from "../internal/cache"
 import { seedRouter, torrentLegacyRouter } from "./seed"
 import { r2CanSignDirectUpload } from "../drivers/r2/driver"
 
@@ -88,12 +84,8 @@ fsRouter.route("/torrent", torrentLegacyRouter)
  * 请求级存储上下文（`env` + `waitUntil`）。
  *
  * 关键约定：**`env` 必须始终传递**，与 executionCtx 是否可用无关。
- *
- * 缓存（`CACHE_DRIVER=db`）与 singleflight（`SINGLEFLIGHT=db`）都依赖它来解析
- * 后端：拿不到 `env` 时 `getStorageBackend(undefined)` 会解析成**内存驱动**，
- * 而业务数据仍走全局 env ctx 的持久化后端 —— 缓存与数据库被静默拆到两个后端，
- * 表现为「列表看似命中缓存（内容陈旧），但持久层里一条缓存键都没有、
- * `/cache/status` 计数恒为 0、`/cache/clear` 永远 removed=0」。
+ * 拿不到 `env` 时 `getStorageBackend(undefined)` 会解析成**内存驱动**，而业务
+ * 数据仍走全局 env ctx 的持久化后端 —— 读写会被静默拆到两个后端。
  *
  * 真正依赖 executionCtx 的只有 `waitUntil`；缺失时降级为同步等待
  * （见 `scheduleStoragePersistence`），业务语义不变。
@@ -249,16 +241,6 @@ fsRouter.post("/dirs", async (c) => {
   if (!body.force_root) {
     reqPath = getActualPath(user, reqPath)
   }
-  if (body.refresh) {
-    try {
-      await invalidatePaths([reqPath], c.env)
-    } catch (err) {
-      console.warn(
-        `[fs/dirs] refresh: invalidating cache for "${reqPath}" failed:`,
-        err,
-      )
-    }
-  }
   try {
     // Share path support for completeness
     if (reqPath.startsWith("/@s")) {
@@ -333,19 +315,6 @@ fsRouter.post("/list", async (c) => {
   const page = parseInt(body.page, 10) || 1
   const perPage = parseInt(body.per_page, 10) || 0
 
-  // 对齐 Go 版 handles.FsList：refresh=true 时失效该路径的文件树/链接
-  // 缓存，允许用户在缓存 TTL 内手动刷新（此前 refresh 参数未实现，
-  // 缓存内的错误列表最长 30 分钟无法自救）。
-  if (body.refresh) {
-    try {
-      await invalidatePaths([reqPath], c.env)
-    } catch (err) {
-      console.warn(
-        `[fs] refresh: invalidating cache for "${reqPath}" failed:`,
-        err,
-      )
-    }
-  }
   const paginateItems = <T>(items: T[]) => {
     const total = items.length
     if (perPage <= 0) {
@@ -593,13 +562,8 @@ fsRouter.post("/list", async (c) => {
     })()
 
     const { content: pagedContent, total } = paginateStorageItems(normalized)
-    // cache_expiration：由 custom_cache_policies 按路径覆盖后得出（分钟）。
-    // 对齐 Go 的路径级缓存策略；前端/上层可据此决定该目录的列表缓存时长。
-    const cacheExpiration = storage
-      ? resolveCacheExpiration(storage, reqPath)
-      : 0 // Virtual directories must not be cached; a cached Virtual result
-          // would persist after the real storage comes online, causing the
-          // 'always shows root / Virtual provider' symptom for subsequent requests.
+    // cache_expiration 保留字段以兼容 Go 客户端：持久缓存已移除，列表始终实时，
+    // 因此固定返回 0（Go 语义即「不缓存」）。
     return c.json({
       code: 200,
       message: "success",
@@ -613,7 +577,7 @@ fsRouter.post("/list", async (c) => {
         provider,
         direct_upload_tools: directUploadTools,
         page_size: effectivePerPage > 0 ? effectivePerPage : undefined,
-        cache_expiration: cacheExpiration,
+        cache_expiration: 0,
       },
     })
   } catch (err: any) {
@@ -1049,7 +1013,8 @@ fsRouter.put("/form", async (c) => {
         data: null,
       })
     }
-    const buffer = Buffer.from(await (file as File).arrayBuffer())
+    // 用 Uint8Array 而非 Buffer：ESA 边缘运行时没有全局 Buffer（Issue #169）
+    const buffer = new Uint8Array(await (file as File).arrayBuffer())
     // multipart 的 Content-Length 只覆盖整个表单，仍需按文件实际字节复核
     const max = getUploadSizeLimit(c, false)
     if (buffer.length > max) return tooLargeResponse(c, max)
@@ -1143,14 +1108,6 @@ fsRouter.post("/other", async (c) => {
     const driver = await getDriver(resolved.storage.driver, resolved.storage)
     if (typeof (driver as any).other === "function") {
       const data = await (driver as any).other(method, resolved.relative, body)
-      // other() 可能触发落盘（如 S3 直传 URL 的签发流程）：按已知路径失效缓存。
-      // 直传的实际写入发生在客户端，无法精确感知完成时机，这里失效目标目录
-      // 及（若给定）文件路径，将陈旧窗口压到最小；失效失败不影响响应。
-      const targets = [reqPath]
-      if (typeof body?.file_name === "string" && body.file_name) {
-        targets.push(`${reqPath === "/" ? "" : reqPath}/${body.file_name}`)
-      }
-      await invalidatePaths(targets, c.env)
       return c.json({ code: 200, message: "success", data })
     }
     return c.json(
@@ -1450,9 +1407,6 @@ fsRouter.post("/get_direct_upload_info", async (c) => {
         cleanName,
         file_size,
       )
-      // 直传 URL 签发后客户端会向该路径写入新文件：预失效目录与目标路径
-      // （本分支已把校验后的目录/文件名归一化为 dirPath / dstPath）
-      await invalidatePaths([dirPath, dstPath], c.env)
       return c.json({ code: 200, message: "success", data: info })
     }
     // 回退到 other("direct_upload") / other("get_direct_upload_info")
@@ -1464,8 +1418,6 @@ fsRouter.post("/get_direct_upload_info", async (c) => {
             file_size,
           })
           if (info) {
-            // 同上：直传 URL 签发后预失效目录与目标路径
-            await invalidatePaths([dirPath, dstPath], c.env)
             return c.json({ code: 200, message: "success", data: info })
           }
         } catch {
@@ -1700,15 +1652,6 @@ fsRouter.post("/multipart/complete", async (c) => {
     session.state = "completed"
     putSession(session)
     deleteSession(session.upload_id)
-    // 分片收尾：失效上传文件及其目录的缓存（对齐 op 层 put 的失效范围）
-    {
-      const { dir, name } = splitUploadPath(session.path)
-      const actualDir = getActualPath(user, dir)
-      await invalidatePaths(
-        [actualDir, `${actualDir === "/" ? "" : actualDir}/${name}`],
-        c.env,
-      )
-    }
     return c.json({ code: 200, message: "success", data: mpSnapshot(session) })
   } catch (e: any) {
     session.state = "failed_permanent"
@@ -2030,7 +1973,7 @@ fsRouter.post("/archive/decompress", async (c) => {
           continue
         }
         const content = await extractZipEntry(bytes, entry)
-        await putItem(targetPath, Buffer.from(content), getStorageRequestContext(c))
+        await putItem(targetPath, content, getStorageRequestContext(c))
         count++
       }
     }

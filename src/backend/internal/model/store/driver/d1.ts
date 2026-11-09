@@ -6,11 +6,7 @@
  * - OPENLIST_DB (别名)
  */
 import type { Driver } from "../types"
-import {
-  buildDdl,
-  buildSingleFlightDdl,
-  KV_SCHEMA_SQLITE,
-} from "../schema"
+import { buildDdl, KV_SCHEMA_SQLITE } from "../schema"
 
 /**
  * 判断对象是否具备 D1 绑定接口形态。
@@ -50,12 +46,8 @@ const d1Inited = new WeakMap<object, boolean>()
 
 async function ensureSchema(db: any, env?: any): Promise<void> {
   if (d1Inited.get(db)) return
-  // KV 表（map/key 格式）+ 列式表（sql 格式）+ singleflight 协调表一并创建
-  for (const ddl of [
-    ...KV_SCHEMA_SQLITE,
-    ...buildDdl("sqlite", env),
-    ...buildSingleFlightDdl("sqlite", env),
-  ]) {
+  // KV 表（map/key 格式）+ 列式表（sql 格式）一并创建
+  for (const ddl of [...KV_SCHEMA_SQLITE, ...buildDdl("sqlite", env)]) {
     await db.prepare(ddl).run()
   }
   d1Inited.set(db, true)
@@ -149,11 +141,26 @@ export const d1Driver: Driver = {
     // 语义边界（重要，不要误以为这里提供整体事务）：**片内原子，跨片不原子**。
     // D1 没有跨 batch 调用的事务，因此语句数 >100 时，后续片失败**不会**回滚
     // 已提交的片。要让整体操作可恢复，依赖两点：
-    //   ① 上层 format/sql 生成的是幂等 UPSERT + 末位 DELETE NOT IN，整体重跑可收敛；
+    //   ① 上层 format/sql 生成的是幂等 UPSERT + 末位删除残留行（小表用
+    //     DELETE NOT IN，大表按差集分片 DELETE IN），整体重跑可收敛；
     //   ② 这里对**单片的瞬时失败**做有限重试，避免一次网络抖动就留下半成品。
     // 重试仍失败时，错误信息带上「已提交片数」，供调用方判断是否需要整体重跑。
     const BATCH = 100
     const MAX_RETRY = 2
+
+    // 单条语句的绑定参数上限同样是 100（D1 limits: Maximum bound parameters
+    // per query）。超限时 SQLite 只回 "too many SQL variables at offset N"，
+    // 无法定位到具体语句（issue #180 的排查成本就来自这里），因此提前拦下。
+    statements.forEach((s, idx) => {
+      if (s.params.length > BATCH) {
+        throw new Error(
+          `D1 statement #${idx + 1} binds ${s.params.length} parameters, over the ` +
+            `platform limit of ${BATCH} per query; split it into multiple statements. ` +
+            `SQL: ${s.sql.slice(0, 160)}`,
+        )
+      }
+    })
+
     const stmts = statements.map((s) => db.prepare(s.sql).bind(...s.params))
 
     let committed = 0
