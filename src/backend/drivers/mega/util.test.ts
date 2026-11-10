@@ -633,3 +633,40 @@ test("MegaApiClient keeps the solved Hashcash header across a 503 retry", async 
     globalThis.fetch = originalFetch
   }
 })
+
+test("MegaApiClient exposes and resumes a persisted session", async () => {
+  const originalFetch = globalThis.fetch
+  const masterKey = crypto.randomBytes(16)
+  const masterKeyB64 = bytesToB64Url(masterKey)
+  const client = new MegaApiClient({
+    email: "user@example.com",
+    password: "password123",
+  })
+
+  assert.equal(client.getSession(), null)
+  client.restoreSession("sid-1", masterKeyB64)
+  assert.deepEqual(client.getSession(), {
+    sid: "sid-1",
+    masterKey: masterKeyB64,
+  })
+  assert.throws(
+    () => client.restoreSession("sid-1", bytesToB64Url(new Uint8Array(8))),
+    /invalid master key/,
+  )
+
+  const urls: string[] = []
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    urls.push(String(input))
+    return jsonResponse([{ f: [] }])
+  }) as typeof fetch
+
+  try {
+    await client.fetchNodes()
+    assert.match(urls[0], /&sid=sid-1$/)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+
+  client.clearSession()
+  assert.equal(client.getSession(), null)
+})

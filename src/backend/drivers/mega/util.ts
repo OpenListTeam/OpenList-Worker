@@ -418,10 +418,7 @@ export class MegaApiClient {
     const email = this.addition.email.trim().toLowerCase()
     const password = this.addition.password
 
-    this.sid = ""
-    this.masterKey = null
-    this.nodes.clear()
-    this.rootId = ""
+    this.clearSession()
 
     const prelogin = await this.request<any[]>([{ a: "us0", user: email }])
     const preloginResp = prelogin[0]
@@ -585,6 +582,29 @@ export class MegaApiClient {
 
   getRootId(): string {
     return this.rootId
+  }
+
+  /** 持久化用的会话材料；master key 是解密节点密钥/属性所必需的。 */
+  getSession(): { sid: string; masterKey: string } | null {
+    if (!this.sid || !this.masterKey) return null
+    return { sid: this.sid, masterKey: bytesToB64Url(this.masterKey) }
+  }
+
+  /** 复用已持久化的会话，跳过 us0/us 登录（也就跳过了 Hashcash）。 */
+  restoreSession(sid: string, masterKey: string): void {
+    const key = b64ToBytes(masterKey)
+    if (key.length !== 16) {
+      throw new Error("Mega persisted session has an invalid master key")
+    }
+    this.sid = sid
+    this.masterKey = key
+  }
+
+  clearSession(): void {
+    this.sid = ""
+    this.masterKey = null
+    this.nodes.clear()
+    this.rootId = ""
   }
 
   async getDownloadLink(handle: string): Promise<string> {

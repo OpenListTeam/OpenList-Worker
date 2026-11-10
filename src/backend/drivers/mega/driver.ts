@@ -5,19 +5,67 @@ import {
 } from "../../internal/driver/base"
 import { sortFileItems } from "../../internal/driver/sort"
 import { MegaAddition, MegaNodeItem } from "./types"
-import { MegaApiClient } from "./util"
+import { MegaApiClient, MegaApiError } from "./util"
+
+export interface MegaSession {
+  sid: string
+  masterKey: string
+}
+
+export type PersistMegaSession = (session: MegaSession) => Promise<void> | void
 
 export class MegaDriver implements StorageDriver {
   private addition: MegaAddition
   private client: MegaApiClient
+  private persistSession?: PersistMegaSession
 
-  constructor(addition: MegaAddition) {
+  constructor(addition: MegaAddition, persistSession?: PersistMegaSession) {
     this.addition = addition
     this.client = new MegaApiClient(addition)
+    this.persistSession = persistSession
   }
 
   async init(): Promise<void> {
+    // 复用上次持久化的会话；sid/master key 任缺其一都只能重新登录（缺
+    // master key 时虽然能列目录，但节点名和下载密钥都解不开）。
+    const cachedSid = this.addition.sid?.trim()
+    const cachedKey = this.addition.master_key?.trim()
+    let resumed = false
+    if (cachedSid && cachedKey) {
+      try {
+        this.client.restoreSession(cachedSid, cachedKey)
+        resumed = true
+      } catch (e) {
+        // 存储里的会话被截断/格式不对时按未登录处理，不能因此让挂载失败。
+        console.warn("[Mega] invalid persisted session, logging in again:", e)
+        this.client.clearSession()
+      }
+    }
+
+    if (resumed) {
+      try {
+        await this.client.fetchNodes()
+        return
+      } catch (e) {
+        if (!(e instanceof MegaApiError) || e.code !== -15) throw e
+        console.warn("[Mega] persisted session expired, logging in again")
+        this.client.clearSession()
+      }
+    }
+
     await this.client.init()
+    const session = this.client.getSession()
+    if (!session) return
+
+    this.addition.sid = session.sid
+    this.addition.master_key = session.masterKey
+    if (!this.persistSession) return
+    try {
+      await this.persistSession(session)
+    } catch (e) {
+      // 持久化失败只影响下次冷启动要重新登录，不能因此让本次挂载失败。
+      console.warn("[Mega] failed to persist session:", e)
+    }
   }
 
   private cleanPath(p: string): string {
