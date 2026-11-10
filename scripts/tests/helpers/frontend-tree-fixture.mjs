@@ -13,7 +13,8 @@ export const tree = {
   "/B2/Movies": [dir("2024"), file("Inter.mkv", 6e10, 2)],
   "/B2/Movies/2024": [file("x.mp4", 1e9, 2)],
   "/B2/Shows": [],
-  "/Backup": [],
+  "/Backup": [dir("Old"), file("one.bin", 10), file("two.bin", 20), file("three.bin", 30)],
+  "/Backup/Old": [],
   "/Photos": Array.from({ length: 25 }, (_, i) => dir(`Album ${String(i + 1).padStart(2, "0")}`)),
 }
 for (let i = 1; i <= 25; i++) tree[`/Photos/Album ${String(i).padStart(2, "0")}`] = []

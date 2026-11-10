@@ -47,7 +47,8 @@ test(
         await result.getAttribute("href"),
         "/Documents/report.pdf?from=search",
       )
-      assert.equal(await result.getAttribute("target"), "_blank")
+      // Files open in the full-screen viewer in this tab.
+      assert.equal(await result.getAttribute("target"), null)
       assert.equal(await result.locator("mark").innerText(), "report")
       assert.equal(fixture.searches.at(-1).parent, "/")
       assert.equal(fixture.searches.at(-1).password, "test-password")

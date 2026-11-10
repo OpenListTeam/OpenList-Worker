@@ -183,3 +183,57 @@ test(
     }
   },
 )
+
+test(
+  "files open in a full-screen viewer in this tab, step through the folder and close back to it",
+  { timeout: 60000 },
+  async () => {
+    const { page, base, errors, close } = await open(0)
+    try {
+      const viewer = page.locator(".file-viewer")
+      const next = viewer.getByRole("button", { name: /^Next: / })
+      const prev = viewer.getByRole("button", { name: /^Previous: / })
+      await page.goto(base + "/Backup")
+      await page.locator(".drive-file-row", { hasText: "one.bin" }).waitFor()
+      const before = await page.evaluate(() => history.length)
+      await page.locator(".drive-file-row", { hasText: "one.bin" }).click()
+      await viewer.waitFor()
+      assert.equal(new URL(page.url()).pathname, "/Backup/one.bin")
+      assert.equal(await viewer.getAttribute("aria-label"), "one.bin")
+      assert.match(await viewer.locator(".file-viewer-title").innerText(), /\/Backup · 1 \/ 3/)
+      assert.equal(await prev.count(), 0)
+      assert.equal(await page.context().pages().length, 1)
+      // The page behind cannot take focus while the viewer is open.
+      assert.equal(await page.locator(".drive-shell").getAttribute("inert"), "")
+
+      // Arrow keys and buttons step through files (the folder is skipped)
+      // without adding history entries.
+      await page.keyboard.press("ArrowRight")
+      await page.waitForURL(base + "/Backup/two.bin")
+      await next.click()
+      await page.waitForURL(base + "/Backup/three.bin")
+      assert.equal(await next.count(), 0)
+      await prev.click()
+      await page.waitForURL(base + "/Backup/two.bin")
+      assert.equal(await page.evaluate(() => history.length), before + 1)
+
+      // Escape returns to the folder the file was opened from.
+      await page.keyboard.press("Escape")
+      await viewer.waitFor({ state: "detached" })
+      await page.waitForURL(base + "/Backup")
+      await page.locator(".drive-file-row", { hasText: "one.bin" }).waitFor()
+      assert.equal(await page.locator(".drive-shell").getAttribute("inert"), null)
+
+      // Opened from a link: the arrows still work and closing goes to the folder.
+      await page.goto(base + "/Backup/two.bin")
+      await viewer.waitFor()
+      await prev.waitFor()
+      await viewer.getByRole("button", { name: "Close preview" }).click()
+      await page.waitForURL(base + "/Backup")
+      await page.locator(".drive-file-row", { hasText: "one.bin" }).waitFor()
+      assert.deepEqual(errors, [])
+    } finally {
+      await close()
+    }
+  },
+)
