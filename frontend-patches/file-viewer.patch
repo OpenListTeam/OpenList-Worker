@@ -1,0 +1,1164 @@
+diff --git a/src/hooks/useRouter.ts b/src/hooks/useRouter.ts
+index 2e20eee..11deac7 100644
+--- a/src/hooks/useRouter.ts
++++ b/src/hooks/useRouter.ts
+@@ -33,10 +33,12 @@ const useRouter = () => {
+       clearHistory(decodeURIComponent(path))
+       navigate(path, options)
+     },
++    // Switch to a sibling file without adding a history entry, so Back (and
++    // closing the file viewer) returns to the folder.
+     replace: (to: string) => {
+       const path = joinBase(encodePath(pathJoin(pathDir(pathname()), to), true))
+       clearHistory(decodeURIComponent(path))
+-      navigate(path)
++      navigate(path, { replace: true })
+     },
+     pushHref: (to: string): string => {
+       return encodePath(pathJoin(pathname(), to))
+diff --git a/src/pages/home/Layout.tsx b/src/pages/home/Layout.tsx
+index 788990c..71028b4 100644
+--- a/src/pages/home/Layout.tsx
++++ b/src/pages/home/Layout.tsx
+@@ -22,6 +22,7 @@ import { Footer } from "./Footer"
+ import { Header } from "./header/Header"
+ import { Toolbar } from "./toolbar/Toolbar"
+ import { Search, SearchContext, createFileSearch } from "./folder/Search"
++import { FileViewer } from "./file/FileViewer"
+ 
+ const Recent = lazy(() => import("./recent/Recent"))
+ const Shares = lazy(() => import("./shares/Shares"))
+@@ -73,6 +74,7 @@ const Index = () => {
+                     <Search />
+                   </Show>
+                   <DriveStatusBar />
++                  <FileViewer />
+                 </Match>
+               </Switch>
+             </main>
+diff --git a/src/pages/home/Obj.tsx b/src/pages/home/Obj.tsx
+index aa28b74..7c99c94 100644
+--- a/src/pages/home/Obj.tsx
++++ b/src/pages/home/Obj.tsx
+@@ -29,7 +29,6 @@ import {
+ import { UserMethods } from "~/types"
+ 
+ const Folder = lazy(() => import("./folder/Folder"))
+-const File = lazy(() => import("./file/File"))
+ const Password = lazy(() => import("./Password"))
+ // const ListSkeleton = lazy(() => import("./Folder/ListSkeleton"));
+ // const GridSkeleton = lazy(() => import("./Folder/GridSkeleton"));
+@@ -185,9 +184,7 @@ export const Obj = () => {
+             >
+               <Folder />
+             </Match>
+-            <Match when={objStore.state === State.File}>
+-              <File />
+-            </Match>
++            {/* Files open in the full-screen viewer mounted by the layout. */}
+           </Switch>
+         </Suspense>
+       </ErrorBoundary>
+diff --git a/src/pages/home/file/FileViewer.tsx b/src/pages/home/file/FileViewer.tsx
+new file mode 100644
+index 0000000..30944ff
+--- /dev/null
++++ b/src/pages/home/file/FileViewer.tsx
+@@ -0,0 +1,382 @@
++import { Icon, useColorModeValue } from "@hope-ui/solid"
++import {
++  createEffect,
++  createMemo,
++  createSignal,
++  ErrorBoundary,
++  For,
++  Match,
++  on,
++  onCleanup,
++  Show,
++  Suspense,
++  Switch,
++  untrack,
++} from "solid-js"
++import { Dynamic, Portal } from "solid-js/web"
++import { ModuleLoadError } from "~/components/ModuleLoadError"
++import { currentLang } from "~/app/i18n"
++import { useCopyLink, useLink, useRouter } from "~/hooks"
++import { objStore, password, State } from "~/store"
++import {
++  encodePath,
++  fsList,
++  getFileSize,
++  joinBase,
++  pathJoin,
++} from "~/utils"
++import { getIconByObj } from "~/utils/icon"
++import { getPreviews } from "../previews"
++import { Download } from "../previews/download"
++import {
++  clearViewerOrigin,
++  restoreScroll,
++  viewerOrigin,
++} from "./viewer-state"
++import {
++  neighbours,
++  parentFolder,
++  viewerKey,
++  type ViewerItem,
++} from "./viewer-utils"
++import "./file-viewer.css"
++
++const Glyph = (props: { d: string; size?: number }) => (
++  <svg
++    width={props.size ?? 20}
++    height={props.size ?? 20}
++    viewBox="0 0 24 24"
++    fill="none"
++    stroke="currentColor"
++    stroke-width="2"
++    stroke-linecap="round"
++    stroke-linejoin="round"
++    aria-hidden="true"
++  >
++    <path d={props.d} />
++  </svg>
++)
++
++const CLOSE = "M6 6l12 12M18 6 6 18"
++const DOWNLOAD = "M12 4v11M7 10l5 5 5-5M5 20h14"
++const LINK =
++  "M10 14a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5M14 10a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5"
++const EXTERNAL = "M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"
++const PREV = "M15 5l-7 7 7 7"
++// Shown straight on the dark stage; everything else sits on a page.
++const MEDIA = ["image", "video", "aliyun_video", "video360", "pdf", "flash", "asciinema"]
++const NEXT = "M9 5l7 7-7 7"
++
++export const FileViewer = () => {
++  const { pathname, to, isShare, searchParams, setSearchParams } = useRouter()
++  const { copyCurrentRawLink } = useCopyLink()
++  const { currentObjLink } = useLink()
++  const mode = useColorModeValue("light", "dark")
++  const text = (zh: string, en: string) =>
++    String(currentLang()).startsWith("zh") ? zh : en
++  const [closing, setClosing] = createSignal(false)
++  createEffect(on(pathname, () => setClosing(false), { defer: true }))
++
++  // Opened from a page of this app: stay up while the file loads, and show
++  // a failure inside the viewer rather than behind it.
++  const pending = () =>
++    !!viewerOrigin() &&
++    (objStore.state === State.FetchingObj ||
++      (!!objStore.err && objStore.state !== State.Folder))
++  const open = createMemo(
++    () => !closing() && (objStore.state === State.File || pending()),
++  )
++  const name = () =>
++    objStore.state === State.File && objStore.obj.name
++      ? objStore.obj.name
++      : pathname().split("/").pop() || ""
++  const folder = createMemo(() => (open() ? parentFolder(pathname()) : undefined))
++
++  // Back in a folder: drop the origin and put the list where it was.
++  createEffect(
++    on(
++      () => objStore.state,
++      (state) => {
++        if (state !== State.Folder) return
++        const origin = untrack(viewerOrigin)
++        if (!origin) return
++        if (origin.folder === pathname()) restoreScroll(origin.scroll)
++        clearViewerOrigin()
++      },
++      { defer: true },
++    ),
++  )
++
++  const [listing, setListing] = createSignal<{
++    folder: string
++    items: ViewerItem[]
++  }>()
++  createEffect(
++    on(folder, async (dir) => {
++      if (!dir || listing()?.folder === dir) return
++      const origin = untrack(viewerOrigin)
++      if (origin?.folder === dir && origin.items?.length) {
++        setListing({ folder: dir, items: origin.items })
++        return
++      }
++      try {
++        const resp = await fsList(dir, password())
++        if (resp.code === 200 && folder() === dir)
++          setListing({ folder: dir, items: resp.data.content ?? [] })
++      } catch {
++        /* Arrows stay hidden without a listing. */
++      }
++    }),
++  )
++  const around = createMemo(() => {
++    const list = listing()
++    if (!list || list.folder !== folder())
++      return { index: -1, total: 0 } as ReturnType<typeof neighbours>
++    return neighbours(list.items, name())
++  })
++  const go = (target?: string) => {
++    const dir = folder()
++    if (!target || !dir) return
++    to(encodePath(pathJoin(dir, target)), false, { replace: true })
++  }
++  const close = () => {
++    const dir = folder()
++    const from = pathname()
++    setClosing(true)
++    if (viewerOrigin() && history.length > 1) {
++      history.back()
++      // Nothing to step back to: go to the folder instead.
++      setTimeout(() => {
++        if (pathname() === from && dir) to(encodePath(dir))
++      }, 400)
++    } else if (dir) to(encodePath(dir))
++  }
++
++  const previews = createMemo(() =>
++    objStore.state === State.File
++      ? getPreviews({ ...objStore.obj, provider: objStore.provider })
++      : [],
++  )
++  const current = createMemo(() => {
++    const list = previews()
++    if (!list.length) return undefined
++    const selected = searchParams["preview"]
++    return list.find((item) => item.key === selected) ?? list[0]
++  })
++  const details = () => {
++    const parts: string[] = []
++    if (objStore.state === State.File && objStore.obj.size)
++      parts.push(getFileSize(objStore.obj.size))
++    const dir = folder()
++    if (dir) parts.push(dir)
++    const { index, total } = around()
++    if (index >= 0 && total > 1) parts.push(`${index + 1} / ${total}`)
++    return parts.join(" · ")
++  }
++  const pageUrl = () => joinBase(encodePath(pathname())) + location.search
++
++  // Keyboard: arrows step through files, Escape closes. Players keep the
++  // arrows for seeking, and Escape first leaves full screen or a dialog.
++  const onKey = (event: KeyboardEvent) => {
++    const action = viewerKey(event)
++    if (!action) return
++    if (action === "close") {
++      if (document.fullscreenElement) return
++      if (document.querySelector('[role="dialog"]:not(.file-viewer)')) return
++      if (!folder()) return
++      event.preventDefault()
++      close()
++      return
++    }
++    if (document.querySelector(".file-viewer-preview :is(video, audio)"))
++      return
++    const target = action === "prev" ? around().prev : around().next
++    if (!target) return
++    event.preventDefault()
++    go(target)
++  }
++  createEffect(() => {
++    const active = open()
++    document.documentElement.classList.toggle("file-viewer-open", active)
++    document.querySelector(".drive-shell")?.toggleAttribute("inert", active)
++    if (active) window.addEventListener("keydown", onKey)
++    else window.removeEventListener("keydown", onKey)
++  })
++  onCleanup(() => {
++    // Left the files pages (e.g. Back to Recent): nothing is waiting to open.
++    clearViewerOrigin()
++    document.documentElement.classList.remove("file-viewer-open")
++    document.querySelector(".drive-shell")?.removeAttribute("inert")
++    window.removeEventListener("keydown", onKey)
++  })
++
++  return (
++    <Show when={open()}>
++      <Portal>
++        <div
++          class="file-viewer"
++          data-mode={mode()}
++          role="dialog"
++          aria-modal="true"
++          aria-label={name()}
++        >
++          <header class="file-viewer-bar">
++            <Show when={folder()}>
++              <button
++                type="button"
++                class="file-viewer-icon"
++                aria-label={text("关闭预览", "Close preview")}
++                title={text("关闭 (Esc)", "Close (Esc)")}
++                onClick={close}
++              >
++                <Glyph d={CLOSE} />
++              </button>
++            </Show>
++            <Icon
++              as={getIconByObj({
++                name: name(),
++                type: objStore.state === State.File ? objStore.obj.type : 0,
++                is_dir: false,
++              })}
++              class="file-viewer-type"
++              aria-hidden="true"
++            />
++            <div class="file-viewer-title">
++              <h1 title={name()}>{name()}</h1>
++              <Show when={details()}>
++                <p>{details()}</p>
++              </Show>
++            </div>
++            <div class="file-viewer-actions">
++              <Show when={previews().length > 1}>
++                <select
++                  class="file-viewer-select"
++                  aria-label={text("预览方式", "Preview with")}
++                  value={current()?.key || ""}
++                  onChange={(e) =>
++                    setSearchParams(
++                      { preview: e.currentTarget.value },
++                      { replace: true },
++                    )
++                  }
++                >
++                  <For each={previews()}>
++                    {(item) => <option value={item.key}>{item.name}</option>}
++                  </For>
++                </select>
++              </Show>
++              <Show when={objStore.state === State.File}>
++                <a
++                  class="file-viewer-icon"
++                  href={currentObjLink(true)}
++                  download={name()}
++                  aria-label={text("下载", "Download")}
++                  title={text("下载", "Download")}
++                >
++                  <Glyph d={DOWNLOAD} />
++                </a>
++                <Show when={!isShare()}>
++                  <button
++                    type="button"
++                    class="file-viewer-icon"
++                    aria-label={text("复制直链", "Copy direct link")}
++                    title={text("复制直链", "Copy direct link")}
++                    onClick={() => copyCurrentRawLink(true)}
++                  >
++                    <Glyph d={LINK} />
++                  </button>
++                </Show>
++                <a
++                  class="file-viewer-icon"
++                  href={pageUrl()}
++                  target="_blank"
++                  rel="noopener noreferrer"
++                  aria-label={text("在新标签页打开", "Open in new tab")}
++                  title={text("在新标签页打开", "Open in new tab")}
++                >
++                  <Glyph d={EXTERNAL} />
++                </a>
++              </Show>
++            </div>
++          </header>
++          <div class="file-viewer-stage">
++            <Switch
++              fallback={
++                <div
++                  class="file-viewer-spinner"
++                  role="status"
++                  aria-label={text("加载中", "Loading")}
++                />
++              }
++            >
++              <Match when={objStore.state === State.File}>
++                <Show
++                  when={previews().length > 1}
++                  fallback={
++                    <div class="file-viewer-card">
++                      <Download openWith />
++                    </div>
++                  }
++                >
++                  <div
++                    class="file-viewer-preview"
++                    data-layout={
++                      current()?.key === "download"
++                        ? "card"
++                        : MEDIA.includes(current()?.key || "")
++                          ? "media"
++                          : "paper"
++                    }
++                  >
++                    <ErrorBoundary
++                      fallback={(err) => <ModuleLoadError error={err} />}
++                    >
++                      <Suspense
++                        fallback={
++                          <div
++                            class="file-viewer-spinner"
++                            role="status"
++                            aria-label={text("加载中", "Loading")}
++                          />
++                        }
++                      >
++                        <Dynamic component={current()?.component} />
++                      </Suspense>
++                    </ErrorBoundary>
++                  </div>
++                </Show>
++              </Match>
++              <Match when={objStore.err}>
++                <div class="file-viewer-message" role="alert">
++                  {objStore.err}
++                </div>
++              </Match>
++            </Switch>
++            <Show when={around().prev}>
++              <button
++                type="button"
++                class="file-viewer-nav file-viewer-prev"
++                aria-label={`${text("上一个", "Previous")}: ${around().prev}`}
++                title={around().prev}
++                onClick={() => go(around().prev)}
++              >
++                <Glyph d={PREV} size={24} />
++              </button>
++            </Show>
++            <Show when={around().next}>
++              <button
++                type="button"
++                class="file-viewer-nav file-viewer-next"
++                aria-label={`${text("下一个", "Next")}: ${around().next}`}
++                title={around().next}
++                onClick={() => go(around().next)}
++              >
++                <Glyph d={NEXT} size={24} />
++              </button>
++            </Show>
++          </div>
++        </div>
++      </Portal>
++    </Show>
++  )
++}
+diff --git a/src/pages/home/file/file-viewer.css b/src/pages/home/file/file-viewer.css
+new file mode 100644
+index 0000000..383c499
+--- /dev/null
++++ b/src/pages/home/file/file-viewer.css
+@@ -0,0 +1,250 @@
++/* Full-screen file viewer: a dark layer over the drive with the file centered. */
++html.file-viewer-open,
++html.file-viewer-open body {
++  overflow: hidden;
++}
++.file-viewer {
++  --fv-bg: #1b1b1f;
++  --fv-bar: #1b1b1f;
++  --fv-text: #f4f4f5;
++  --fv-muted: #a1a1aa;
++  --fv-hover: #ffffff1f;
++  --fv-border: #ffffff26;
++  --fv-nav: #2a2a30e6;
++  --fv-bar-h: 64px;
++  position: fixed;
++  inset: 0;
++  z-index: 1150;
++  display: flex;
++  flex-direction: column;
++  color: var(--fv-text);
++  background: var(--fv-bg);
++  font-size: 14px;
++}
++.file-viewer-bar {
++  flex: none;
++  height: var(--fv-bar-h);
++  display: flex;
++  align-items: center;
++  gap: 12px;
++  padding: 0 12px 0 10px;
++  background: var(--fv-bar);
++}
++.file-viewer-icon {
++  flex: none;
++  width: 40px;
++  height: 40px;
++  display: inline-grid;
++  place-items: center;
++  border: 0;
++  border-radius: 50%;
++  color: var(--fv-text);
++  background: transparent;
++  cursor: pointer;
++  text-decoration: none;
++}
++.file-viewer-icon:hover {
++  background: var(--fv-hover);
++}
++.file-viewer :is(button, a, select):focus-visible {
++  outline: 2px solid #a5b4fc;
++  outline-offset: 2px;
++}
++.file-viewer-type {
++  flex: none;
++  width: 24px !important;
++  height: 24px !important;
++}
++.file-viewer-title {
++  flex: 1;
++  min-width: 0;
++}
++.file-viewer-title h1 {
++  margin: 0;
++  font-size: 16px;
++  font-weight: 600;
++  line-height: 1.3;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++}
++.file-viewer-title p {
++  margin: 1px 0 0;
++  color: var(--fv-muted);
++  font-size: 12px;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++  font-variant-numeric: tabular-nums;
++}
++.file-viewer-actions {
++  flex: none;
++  display: flex;
++  align-items: center;
++  gap: 4px;
++}
++.file-viewer-select {
++  height: 36px;
++  max-width: 180px;
++  margin-right: 6px;
++  padding: 0 10px;
++  color: var(--fv-text);
++  background: transparent;
++  border: 1px solid var(--fv-border);
++  border-radius: 18px;
++  font: inherit;
++  cursor: pointer;
++}
++.file-viewer-select option {
++  color: #18181b;
++}
++
++/* Stage */
++.file-viewer-stage {
++  /* Previews size themselves from this instead of a fixed share of the page. */
++  --preview-h: calc(100dvh - var(--fv-bar-h) - 24px);
++  position: relative;
++  flex: 1;
++  min-height: 0;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  padding: 0 72px 24px;
++  overflow: auto;
++}
++.file-viewer-preview {
++  width: 100%;
++  max-width: 1400px;
++  height: var(--preview-h);
++  display: flex;
++  flex-direction: column;
++  align-self: flex-start;
++  min-height: 0;
++}
++.file-viewer-preview > * {
++  flex: 1;
++  min-height: 0;
++}
++.file-viewer-stage {
++  --preview-video-h: calc(var(--preview-h) - 110px);
++}
++.file-viewer-preview[data-layout="paper"],
++.file-viewer-preview[data-layout="card"],
++.file-viewer-card {
++  border-radius: 12px;
++  background: #ffffff;
++  color: #18181b;
++  box-shadow: 0 20px 60px #00000066;
++}
++.file-viewer[data-mode="dark"] .file-viewer-preview:is([data-layout="paper"], [data-layout="card"]),
++.file-viewer[data-mode="dark"] .file-viewer-card {
++  background: #26262b;
++  color: #f4f4f5;
++}
++.file-viewer-preview[data-layout="paper"] {
++  padding: 8px;
++  overflow: auto;
++}
++/* Files without a preview: a compact card in the middle of the stage. */
++.file-viewer-preview[data-layout="card"] {
++  width: min(560px, 100%);
++  height: auto;
++  align-self: center;
++  padding: 8px;
++}
++.file-viewer-card {
++  width: min(560px, 100%);
++  padding: 8px;
++}
++.file-viewer-message {
++  max-width: 520px;
++  padding: 20px 24px;
++  border-radius: 12px;
++  background: #ffffff14;
++  text-align: center;
++  line-height: 1.6;
++}
++.file-viewer-spinner {
++  width: 40px;
++  height: 40px;
++  border: 3px solid #ffffff33;
++  border-top-color: #a5b4fc;
++  border-radius: 50%;
++  animation: file-viewer-spin 0.8s linear infinite;
++}
++@keyframes file-viewer-spin {
++  to {
++    transform: rotate(360deg);
++  }
++}
++@media (prefers-reduced-motion: reduce) {
++  .file-viewer-spinner {
++    animation-duration: 2.4s;
++  }
++}
++.file-viewer-nav {
++  position: fixed;
++  top: calc(50% + var(--fv-bar-h) / 2);
++  z-index: 1;
++  width: 48px;
++  height: 48px;
++  display: grid;
++  place-items: center;
++  transform: translateY(-50%);
++  border: 1px solid var(--fv-border);
++  border-radius: 50%;
++  color: var(--fv-text);
++  background: var(--fv-nav);
++  cursor: pointer;
++  box-shadow: 0 4px 16px #00000059;
++}
++.file-viewer-nav:hover {
++  background: #3f3f46;
++}
++.file-viewer-prev {
++  left: 12px;
++}
++.file-viewer-next {
++  right: 12px;
++}
++
++@media (max-width: 760px) {
++  .file-viewer {
++    --fv-bar-h: 56px;
++  }
++  .file-viewer-bar {
++    gap: 6px;
++    padding: 0 4px;
++  }
++  .file-viewer-type {
++    display: none !important;
++  }
++  .file-viewer-title h1 {
++    font-size: 15px;
++  }
++  .file-viewer-select {
++    max-width: 104px;
++    margin-right: 0;
++    padding: 0 6px;
++  }
++  .file-viewer-actions a[target="_blank"] {
++    display: none;
++  }
++  .file-viewer-stage {
++    --preview-h: calc(100dvh - var(--fv-bar-h) - 80px);
++    padding: 0 8px 80px;
++  }
++  .file-viewer-nav {
++    top: auto;
++    bottom: calc(16px + env(safe-area-inset-bottom));
++    transform: none;
++    width: 44px;
++    height: 44px;
++  }
++  .file-viewer-prev {
++    left: calc(50% - 56px);
++  }
++  .file-viewer-next {
++    right: calc(50% - 56px);
++  }
++}
+diff --git a/src/pages/home/file/viewer-state.ts b/src/pages/home/file/viewer-state.ts
+new file mode 100644
+index 0000000..810caf2
+--- /dev/null
++++ b/src/pages/home/file/viewer-state.ts
+@@ -0,0 +1,40 @@
++import { createSignal } from "solid-js"
++import type { ViewerItem } from "./viewer-utils"
++
++// Set when a file is opened from a page of this app, so closing the viewer can
++// step back in history instead of pushing the folder again.
++export interface ViewerOrigin {
++  url: string
++  folder?: string
++  items?: ViewerItem[]
++  scroll: number
++}
++
++const [origin, setOrigin] = createSignal<ViewerOrigin>()
++export { origin as viewerOrigin }
++
++const scroller = () => document.querySelector<HTMLElement>(".drive-main")
++
++export function rememberViewerOrigin(
++  folder?: string,
++  items?: { name: string; is_dir: boolean }[],
++) {
++  setOrigin({
++    url: location.pathname + location.search,
++    folder,
++    items: items?.map((item) => ({ name: item.name, is_dir: item.is_dir })),
++    scroll: scroller()?.scrollTop || window.scrollY,
++  })
++}
++
++export function clearViewerOrigin() {
++  setOrigin(undefined)
++}
++
++export function restoreScroll(top: number) {
++  requestAnimationFrame(() => {
++    const el = scroller()
++    if (el && el.scrollHeight > el.clientHeight) el.scrollTop = top
++    else window.scrollTo(0, top)
++  })
++}
+diff --git a/src/pages/home/file/viewer-utils.ts b/src/pages/home/file/viewer-utils.ts
+new file mode 100644
+index 0000000..b44970b
+--- /dev/null
++++ b/src/pages/home/file/viewer-utils.ts
+@@ -0,0 +1,57 @@
++/** Pure helpers for the file viewer (no UI imports, unit-testable). */
++
++export interface ViewerItem {
++  name: string
++  is_dir: boolean
++}
++
++/** The files around `current` in a listing; folders are skipped. */
++export function neighbours(items: ViewerItem[], current: string) {
++  const files = items.filter((item) => !item.is_dir).map((item) => item.name)
++  const index = files.indexOf(current)
++  if (index < 0) return { index: -1, total: files.length }
++  return {
++    index,
++    total: files.length,
++    prev: index > 0 ? files[index - 1] : undefined,
++    next: index < files.length - 1 ? files[index + 1] : undefined,
++  }
++}
++
++/** The folder that holds `path`, or undefined at the root of a share link. */
++export function parentFolder(path: string) {
++  const trimmed = path.replace(/\/+$/, "")
++  const cut = trimmed.lastIndexOf("/")
++  const parent = cut <= 0 ? "/" : trimmed.slice(0, cut)
++  if (parent === "/@s" || parent === "/%40s") return undefined
++  return parent
++}
++
++/** Keys the viewer acts on, unless typing or an embedded player owns them. */
++export function viewerKey(event: {
++  key: string
++  defaultPrevented?: boolean
++  altKey?: boolean
++  ctrlKey?: boolean
++  metaKey?: boolean
++  target?: unknown
++}): "prev" | "next" | "close" | undefined {
++  if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey)
++    return undefined
++  const target = event.target as
++    | { tagName?: string; isContentEditable?: boolean }
++    | null
++    | undefined
++  const tag = target?.tagName?.toLowerCase()
++  if (
++    tag === "input" ||
++    tag === "textarea" ||
++    tag === "select" ||
++    target?.isContentEditable
++  )
++    return undefined
++  if (event.key === "ArrowLeft") return "prev"
++  if (event.key === "ArrowRight") return "next"
++  if (event.key === "Escape") return "close"
++  return undefined
++}
+diff --git a/src/pages/home/folder/Search.tsx b/src/pages/home/folder/Search.tsx
+index d7fc337..e2d382d 100644
+--- a/src/pages/home/folder/Search.tsx
++++ b/src/pages/home/folder/Search.tsx
+@@ -27,6 +27,7 @@ import {
+ import { isMac } from "~/utils/compatibility"
+ import { getIconByObj } from "~/utils/icon"
+ import { Container } from "../Container"
++import { rememberViewerOrigin } from "../file/viewer-state"
+ 
+ const zh = () => String(currentLang()).startsWith("zh")
+ export const searchText = (
+@@ -277,11 +278,10 @@ const SearchResult = (props: { node: SearchNode; query: string }) => {
+     <LinkWithBase
+       class="drive-search-result"
+       href={`${props.node.path}?from=search`}
+-      target={props.node.is_dir ? undefined : "_blank"}
+-      rel={props.node.is_dir ? undefined : "noopener noreferrer"}
+       onMouseEnter={() => setPathAs(props.node.path, props.node.is_dir)}
+       onClick={() => {
+         if (props.node.is_dir) search.clear()
++        else rememberViewerOrigin()
+       }}
+     >
+       <Icon as={getIconByObj(props.node)} class="drive-search-file-icon" />
+diff --git a/src/pages/home/folder/context-menu.tsx b/src/pages/home/folder/context-menu.tsx
+index 8b2bf13..b7730dd 100644
+--- a/src/pages/home/folder/context-menu.tsx
++++ b/src/pages/home/folder/context-menu.tsx
+@@ -4,7 +4,7 @@ import "solid-contextmenu/dist/style.css"
+ import { HStack, Icon, Text, useColorMode, Image } from "@hope-ui/solid"
+ import { operations } from "../toolbar/operations"
+ import { createMemo, For, Show } from "solid-js"
+-import { bus, convertURL, joinBase, notify, torrentParse } from "~/utils"
++import { bus, convertURL, notify, torrentParse } from "~/utils"
+ import { ObjType, UserMethods } from "~/types"
+ import {
+   getSettingBool,
+@@ -116,7 +116,11 @@ export const ContextMenu = () => {
+             {(preview) => (
+               <Item
+                 onClick={({ props }) => {
+-                  window.open(`${joinBase(pushHref(props.name))}?preview=${preview.key}`, "_blank", "noopener,noreferrer")
++                  openItem(
++                    props,
++                    `${pushHref(props.name)}?preview=${preview.key}`,
++                    to,
++                  )
+                 }}
+               >
+                 {preview.name}
+diff --git a/src/pages/home/folder/open-item.ts b/src/pages/home/folder/open-item.ts
+index bf13d9b..255dab0 100644
+--- a/src/pages/home/folder/open-item.ts
++++ b/src/pages/home/folder/open-item.ts
+@@ -1,15 +1,18 @@
+ import type { StoreObj } from "~/types"
+-import { joinBase } from "~/utils"
++import { objStore } from "~/store"
++import { trimBase } from "~/utils"
++import { rememberViewerOrigin } from "../file/viewer-state"
+ 
+-// Keep folder navigation in the current tab. A file preview gets its own tab.
++// Folders and files both open in the current tab; a file opens in the
++// full-screen viewer, which can step through the files of this folder.
+ export function openItem(
+   obj: Pick<StoreObj, "is_dir">,
+   href: string,
+   navigate: (path: string) => void,
+ ) {
+-  if (obj.is_dir) {
+-    navigate(href)
+-  } else {
+-    window.open(joinBase(href), "_blank", "noopener,noreferrer")
++  if (!obj.is_dir) {
++    const folder = trimBase(decodeURIComponent(location.pathname))
++    rememberViewerOrigin(folder, objStore.objs)
+   }
++  navigate(href)
+ }
+diff --git a/src/pages/home/previews/aliyun_video.tsx b/src/pages/home/previews/aliyun_video.tsx
+index 730dbdc..e643824 100644
+--- a/src/pages/home/previews/aliyun_video.tsx
++++ b/src/pages/home/previews/aliyun_video.tsx
+@@ -532,7 +532,7 @@ const Preview = () => {
+   const [warnVisible, setWarnVisible] = createSignal(false)
+   return (
+     <VideoBox onAutoNextChange={setAutoNext}>
+-      <Box w="$full" h="60vh" id="video-player" />
++      <Box w="$full" h="var(--preview-video-h, 60vh)" id="video-player" />
+       <Show when={warnVisible()}>
+         <Center w="100%" h="60vh" bgColor="black">
+           <TiWarning size="4rem" />
+diff --git a/src/pages/home/previews/doc.tsx b/src/pages/home/previews/doc.tsx
+index db0ac1f..71e1031 100644
+--- a/src/pages/home/previews/doc.tsx
++++ b/src/pages/home/previews/doc.tsx
+@@ -142,7 +142,7 @@ const DocViewerApp = () => {
+   })
+ 
+   return (
+-    <BoxWithFullScreen w="$full" h="70vh" pos="relative">
++    <BoxWithFullScreen w="$full" h="var(--preview-h, 70vh)" pos="relative">
+       {/* 缩放控制 */}
+       <Box
+         pos="absolute"
+diff --git a/src/pages/home/previews/flash.tsx b/src/pages/home/previews/flash.tsx
+index 886c6bc..f6cc848 100644
+--- a/src/pages/home/previews/flash.tsx
++++ b/src/pages/home/previews/flash.tsx
+@@ -94,7 +94,7 @@ const Preview = () => {
+   }
+ 
+   return (
+-    <BoxWithFullScreen w="$full" h="75vh">
++    <BoxWithFullScreen w="$full" h="var(--preview-h, 75vh)">
+       <div
+         id="swf-container"
+         style={{
+diff --git a/src/pages/home/previews/html.tsx b/src/pages/home/previews/html.tsx
+index 82efcdf..11595fc 100644
+--- a/src/pages/home/previews/html.tsx
++++ b/src/pages/home/previews/html.tsx
+@@ -7,7 +7,7 @@ function Html(props: { children?: string | ArrayBuffer }) {
+   const [encoding, setEncoding] = createSignal<string>("utf-8")
+   const { isString, text } = useParseText(props.children)
+   return (
+-    <BoxWithFullScreen w="$full" h="70vh" pos="relative">
++    <BoxWithFullScreen w="$full" h="var(--preview-h, 70vh)" pos="relative">
+       <hope.iframe
+         w="$full"
+         h="$full"
+diff --git a/src/pages/home/previews/iframe.tsx b/src/pages/home/previews/iframe.tsx
+index 8b5e0d9..a3d3b75 100644
+--- a/src/pages/home/previews/iframe.tsx
++++ b/src/pages/home/previews/iframe.tsx
+@@ -19,7 +19,7 @@ const IframePreview = (props: { scheme: string }) => {
+   return (
+     <BoxWithFullScreen
+       w="$full"
+-      h="70vh"
++      h="var(--preview-h, 70vh)"
+       extraButtons={
+         <Tooltip label="Open in new tab" withArrow>
+           <IconButton
+diff --git a/src/pages/home/previews/image.tsx b/src/pages/home/previews/image.tsx
+index fa41586..6ea689a 100644
+--- a/src/pages/home/previews/image.tsx
++++ b/src/pages/home/previews/image.tsx
+@@ -169,6 +169,9 @@ const Preview = (props: PreviewProps) => {
+   if (images.length === 0) images = [objStore.obj]
+ 
+   const curIdx = () => images.findIndex((f) => f.name === objStore.obj.name)
++  // Inside the full-screen file viewer, which steps through every file of the
++  // folder and draws the dark backdrop itself.
++  const [inViewer, setInViewer] = createSignal(false)
+ 
+   // ── reset on image change ──
+   createEffect(() => {
+@@ -266,6 +269,7 @@ const Preview = (props: PreviewProps) => {
+ 
+   // ── keyboard ──
+   const onKey = (e: KeyboardEvent) => {
++    if (inViewer() && (e.key === "ArrowLeft" || e.key === "ArrowRight")) return
+     switch (e.key) {
+       case "ArrowLeft":
+         return prev()
+@@ -302,6 +306,7 @@ const Preview = (props: PreviewProps) => {
+   }
+ 
+   onMount(() => {
++    setInViewer(!!containerRef?.closest(".file-viewer"))
+     window.addEventListener("keydown", onKey)
+     areaRef?.addEventListener("wheel", onWheel, { passive: false })
+     document.addEventListener("fullscreenchange", updateFullscreen)
+@@ -320,12 +325,13 @@ const Preview = (props: PreviewProps) => {
+ 
+   // ── render ──────────────────────────────────────────────────────
+   return (
+-    <BoxWithFullScreen w="$full" h="70vh">
++    <BoxWithFullScreen w="$full" h="var(--preview-h, 70vh)">
+       <VStack ref={containerRef} w="$full" h="$full">
+         {/* ── Toolbar ── */}
+         <Flex
+           w="$full"
+-          bg="$neutral1"
++          bg={inViewer() ? "transparent" : "$neutral1"}
++          color={inViewer() ? "#e4e4e7" : undefined}
+           p="$2"
+           position={isFullscreen() ? "absolute" : "relative"}
+           top={isFullscreen() ? "0" : undefined}
+@@ -336,7 +342,7 @@ const Preview = (props: PreviewProps) => {
+           _hover={{ opacity: isFullscreen() ? "1" : undefined }}
+         >
+           <HStack spacing="$1">
+-            <Show when={curIdx() > 0}>
++            <Show when={!inViewer() && curIdx() > 0}>
+               <Tooltip label="Previous (←)">
+                 <IconButton
+                   icon={<FaSolidAngleLeft />}
+@@ -347,7 +353,7 @@ const Preview = (props: PreviewProps) => {
+                 />
+               </Tooltip>
+             </Show>
+-            <Show when={curIdx() < images.length - 1}>
++            <Show when={!inViewer() && curIdx() < images.length - 1}>
+               <Tooltip label="Next (→)">
+                 <IconButton
+                   icon={<FaSolidAngleRight />}
+@@ -367,11 +373,13 @@ const Preview = (props: PreviewProps) => {
+                 "text-overflow": "ellipsis",
+                 "white-space": "nowrap",
+               }}
+-              display={{ "@initial": "none", "@sm": "block" }}
++              display={
++                inViewer() ? "none" : { "@initial": "none", "@sm": "block" }
++              }
+             >
+               {objStore.obj.name}
+             </Text>
+-            <Show when={images.length > 1}>
++            <Show when={!inViewer() && images.length > 1}>
+               <Text color="$neutral11" size="xs">
+                 {curIdx() + 1}/{images.length}
+               </Text>
+@@ -461,7 +469,7 @@ const Preview = (props: PreviewProps) => {
+           w="$full"
+           h={isFullscreen() ? "$full" : undefined}
+           flex="1"
+-          backgroundColor="$neutral2"
++          backgroundColor={inViewer() ? "transparent" : "$neutral2"}
+           overflow="hidden"
+           cursor={cursor()}
+           onMouseDown={onMouseDown}
+diff --git a/src/pages/home/previews/pdf.tsx b/src/pages/home/previews/pdf.tsx
+index 8725879..c93c0d1 100644
+--- a/src/pages/home/previews/pdf.tsx
++++ b/src/pages/home/previews/pdf.tsx
+@@ -120,7 +120,7 @@ const PDFViewer = () => {
+       : undefined,
+   )
+   return (
+-    <BoxWithFullScreen w="$full" h="60vh">
++    <BoxWithFullScreen w="$full" h="var(--preview-h, 60vh)">
+       <Show keyed when={document()}>
+         {(doc) => (
+           <PDFFrame
+diff --git a/src/pages/home/previews/ppt.tsx b/src/pages/home/previews/ppt.tsx
+index ed2f90d..8cbdd01 100644
+--- a/src/pages/home/previews/ppt.tsx
++++ b/src/pages/home/previews/ppt.tsx
+@@ -196,7 +196,7 @@ const PPTViewerApp = () => {
+   })
+ 
+   return (
+-    <BoxWithFullScreen w="$full" h="70vh" pos="relative">
++    <BoxWithFullScreen w="$full" h="var(--preview-h, 70vh)" pos="relative">
+       {/* PPT容器 */}
+       <div
+         ref={containerRef}
+diff --git a/src/pages/home/previews/text-editor.tsx b/src/pages/home/previews/text-editor.tsx
+index 151d0b2..6fb124b 100644
+--- a/src/pages/home/previews/text-editor.tsx
++++ b/src/pages/home/previews/text-editor.tsx
+@@ -516,7 +516,7 @@ function Editor(props: { data?: string | ArrayBuffer; contentType?: string }) {
+ const TextEditor = () => {
+   const [content] = useFetchText()
+   return (
+-    <BoxWithFullScreen w="$full" h="70vh">
++    <BoxWithFullScreen w="$full" h="var(--preview-h, 70vh)">
+       <MaybeLoading loading={content.loading}>
+         <Editor
+           data={content()?.content}
+diff --git a/src/pages/home/previews/video.tsx b/src/pages/home/previews/video.tsx
+index 8688e25..c3bb1cb 100644
+--- a/src/pages/home/previews/video.tsx
++++ b/src/pages/home/previews/video.tsx
+@@ -529,7 +529,7 @@ const Preview = () => {
+   const [autoNext, setAutoNext] = createSignal()
+   return (
+     <VideoBox onAutoNextChange={setAutoNext}>
+-      <Box w="$full" h="60vh" id="video-player" />
++      <Box w="$full" h="var(--preview-video-h, 60vh)" id="video-player" />
+     </VideoBox>
+   )
+ }
+diff --git a/src/pages/home/previews/video360.tsx b/src/pages/home/previews/video360.tsx
+index e76de71..21f0685 100644
+--- a/src/pages/home/previews/video360.tsx
++++ b/src/pages/home/previews/video360.tsx
+@@ -39,7 +39,7 @@ const Preview = () => {
+ 
+   return (
+     <VideoBox onAutoNextChange={setAutoNext}>
+-      <Box w="$full" h="60vh" id="video360-player">
++      <Box w="$full" h="var(--preview-video-h, 60vh)" id="video360-player">
+         <Box
+           w={"100%"}
+           h={"100%"}
+diff --git a/src/pages/home/previews/xls.tsx b/src/pages/home/previews/xls.tsx
+index 1a4d481..e1ddcf2 100644
+--- a/src/pages/home/previews/xls.tsx
++++ b/src/pages/home/previews/xls.tsx
+@@ -128,7 +128,7 @@ const ExcelViewerApp = () => {
+   })
+ 
+   return (
+-    <BoxWithFullScreen w="$full" h="70vh" pos="relative">
++    <BoxWithFullScreen w="$full" h="var(--preview-h, 70vh)" pos="relative">
+       {/* 工作表标签和全屏按钮 */}
+       <Box
+         pos="absolute"
+diff --git a/src/pages/home/recent/Recent.tsx b/src/pages/home/recent/Recent.tsx
+index a3c0bb6..60c452b 100644
+--- a/src/pages/home/recent/Recent.tsx
++++ b/src/pages/home/recent/Recent.tsx
+@@ -32,7 +32,7 @@ import { currentLang } from "~/app/i18n"
+ import { useRouter, useTitle } from "~/hooks"
+ import { me } from "~/store"
+ import type { PageResp, Resp } from "~/types"
+-import { encodePath, getFileSize, joinBase, pathDir, r } from "~/utils"
++import { encodePath, getFileSize, pathDir, r } from "~/utils"
+ import { getIconByObj } from "~/utils/icon"
+ import {
+   Button,
+@@ -44,6 +44,7 @@ import {
+ import { Container } from "../Container"
+ import { DriveAccount, DriveSidebarToggle } from "../DriveChrome"
+ import { recentText } from "./labels"
++import { rememberViewerOrigin } from "../file/viewer-state"
+ import "../shares/shares.css"
+ import "./recent.css"
+ interface RecentFile {
+@@ -159,12 +160,10 @@ const Recent = () => {
+       `${file.name} ${file.path}`.toLocaleLowerCase().includes(value),
+     )
+   })
+-  const open = (file: RecentFile) =>
+-    window.open(
+-      joinBase(encodePath(file.path)),
+-      "_blank",
+-      "noopener,noreferrer",
+-    )
++  const open = (file: RecentFile) => {
++    rememberViewerOrigin("/@recent")
++    to(encodePath(file.path))
++  }
+   const date = (value: number) =>
+     new Intl.DateTimeFormat(
+       String(currentLang()).startsWith("zh") ? "zh-CN" : "en",

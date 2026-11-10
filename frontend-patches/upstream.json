@@ -28,6 +28,7 @@
     "b2-folder-jobs.patch",
     "pro-layout.patch",
     "pro-mobile.patch",
-    "upload-tray.patch"
+    "upload-tray.patch",
+    "file-viewer.patch"
   ]
 }
