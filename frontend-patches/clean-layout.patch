@@ -444,7 +444,7 @@ index 0000000..2d1937c
 +  )
 +}
 diff --git a/src/pages/home/DrivePro.tsx b/src/pages/home/DrivePro.tsx
-index 4a7187c..4bcdee9 100644
+index 4a7187c..87d036e 100644
 --- a/src/pages/home/DrivePro.tsx
 +++ b/src/pages/home/DrivePro.tsx
 @@ -18,7 +18,6 @@ import {
@@ -541,40 +541,68 @@ index 4a7187c..4bcdee9 100644
  export const DriveTabBar = () => {
    const { items, signedIn, to } = useNavItems()
    // Lets floating panels outside the shell (the upload panel) clear the bar.
-@@ -406,10 +369,10 @@ const TreeBranch = (props: { path: string; depth: number }) => {
+@@ -406,10 +369,11 @@ const TreeBranch = (props: { path: string; depth: number }) => {
  }
  
  /**
 - * Folder tree. The desktop column (always mounted) keeps the shared store in
 - * sync; the phone drawer (`drawer`) only renders it.
-+ * Folder tree. The desktop sidebar's copy (`embedded`, always mounted) keeps
-+ * the shared store in sync; the phone drawer (`drawer`) only renders it.
++ * Folders. The desktop sidebar's copy (`embedded`, always mounted) lists the
++ * mounts and keeps the shared store in sync; the phone drawer (`drawer`)
++ * renders the full tree from it.
   */
 -export const DriveTree = (props: { drawer?: boolean }) => {
 +export const DriveTree = (props: { drawer?: boolean; embedded?: boolean }) => {
    const { pathname, to, isShare } = useRouter()
  
    if (!props.drawer) {
-@@ -456,6 +419,18 @@ export const DriveTree = (props: { drawer?: boolean }) => {
+@@ -456,6 +420,45 @@ export const DriveTree = (props: { drawer?: boolean }) => {
      )
    }
  
-+  // In the sidebar: only the folders, under its own heading.
-+  if (props.embedded)
++  // In the sidebar: the mounts as a flat list; the phone drawer keeps the tree.
++  if (props.embedded) {
++    onMount(() => {
++      if (!isShare()) void loadTree("/")
++    })
 +    return (
-+      <ul
-+        role="tree"
-+        class="drive-tree-list drive-side-tree"
-+        aria-label={text("目录树", "Folder tree")}
-+      >
-+        <TreeBranch path="/" depth={0} />
++      <ul class="drive-mount-list" aria-label={text("挂载", "Storage")}>
++        <For each={treeChildren["/"] ?? []}>
++          {(node) => {
++            const exact = () => pathname() === node.path
++            const inside = () =>
++              exact() || pathname().startsWith(`${node.path}/`)
++            return (
++              <li>
++                <a
++                  class="drive-mount-link"
++                  classList={{ "drive-mount-current": inside() }}
++                  href={joinBase(encodePath(node.path))}
++                  aria-current={
++                    exact() ? "page" : inside() ? "location" : undefined
++                  }
++                  title={node.name}
++                  onClick={(event: MouseEvent) => {
++                    if (event.ctrlKey || event.metaKey || event.shiftKey)
++                      return
++                    event.preventDefault()
++                    to(encodePath(node.path))
++                  }}
++                >
++                  {node.name}
++                </a>
++              </li>
++            )
++          }}
++        </For>
 +      </ul>
 +    )
++  }
 +
    return (
      <aside
        id={props.drawer ? "drive-drawer-tree" : "drive-desktop-navigation"}
-@@ -485,11 +460,6 @@ export const DriveTree = (props: { drawer?: boolean }) => {
+@@ -485,11 +488,6 @@ export const DriveTree = (props: { drawer?: boolean }) => {
            <TreeBranch path="/" depth={0} />
          </ul>
        </Show>
@@ -586,7 +614,7 @@ index 4a7187c..4bcdee9 100644
      </aside>
    )
  }
-@@ -795,55 +765,3 @@ export const DriveInspector = () => {
+@@ -795,55 +793,3 @@ export const DriveInspector = () => {
      </>
    )
  }
@@ -819,7 +847,7 @@ index 0a296fe..811b8c9 100644
  
  /** "3 个文件夹 · 1 个文件" / "3 folders · 1 file" */
 diff --git a/src/pages/home/drive-pro.css b/src/pages/home/drive-pro.css
-index 48e3b30..0b5dec4 100644
+index 48e3b30..9f187f1 100644
 --- a/src/pages/home/drive-pro.css
 +++ b/src/pages/home/drive-pro.css
 @@ -1,41 +1,56 @@
@@ -931,7 +959,7 @@ index 48e3b30..0b5dec4 100644
      display: none;
    }
    .drive-pro .drive-main {
-@@ -70,72 +87,159 @@
+@@ -70,72 +87,184 @@
  }
  @media (min-width: 761px) and (max-width: 1100px) {
    .drive-shell.drive-pro {
@@ -1037,23 +1065,16 @@ index 48e3b30..0b5dec4 100644
 +  width: 18px;
 +  height: 18px;
 +  color: var(--drive-muted);
- }
--.drive-icon-rail-item:hover {
--  background: #27272a;
--  color: #ffffff;
++}
 +.drive-side-item:hover {
 +  background: var(--drive-hover);
- }
--.drive-icon-rail-item-current {
--  background: #27272a;
--  color: #ffffff;
++}
 +.drive-side-item-current,
 +.drive-side-item-current:hover {
 +  background: var(--drive-current);
 +  color: var(--drive-current-text);
 +  font-weight: 600;
- }
--.drive-icon-rail-end {
++}
 +.drive-side-item-current svg {
 +  color: inherit;
 +}
@@ -1073,9 +1094,41 @@ index 48e3b30..0b5dec4 100644
 +  font-size: 12px;
 +  font-weight: 600;
 +}
-+.drive-side-tree .drive-tree-row {
-+  min-height: 38px;
++.drive-mount-list {
++  margin: 0;
++  padding: 0;
++  list-style: none;
++  display: flex;
++  flex-direction: column;
++  gap: 2px;
 +}
++.drive-mount-link {
++  display: block;
++  min-height: 40px;
++  padding: 0 12px;
++  border-radius: 8px;
++  color: var(--drive-text);
++  line-height: 40px;
++  text-decoration: none;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
+ }
+-.drive-icon-rail-item:hover {
+-  background: #27272a;
+-  color: #ffffff;
++.drive-mount-link:hover {
++  background: var(--drive-hover);
+ }
+-.drive-icon-rail-item-current {
+-  background: #27272a;
+-  color: #ffffff;
++.drive-mount-current,
++.drive-mount-current:hover {
++  background: var(--drive-line);
++  font-weight: 600;
+ }
+-.drive-icon-rail-end {
 +.drive-side-end {
    margin-top: auto;
 +  display: flex;
@@ -1126,7 +1179,7 @@ index 48e3b30..0b5dec4 100644
  }
  
  /* ---------- Folder tree ---------- */
-@@ -221,52 +325,136 @@
+@@ -221,52 +350,136 @@
    font-size: 11px;
    color: var(--drive-job-text);
  }
@@ -1189,11 +1242,11 @@ index 48e3b30..0b5dec4 100644
 +    border-radius: 9px;
 +    background: var(--drive-bg);
 +    color: var(--drive-text);
-+  }
+   }
 +  .drive-pro .drive-button:hover {
 +    background: var(--drive-hover);
-   }
- }
++  }
++}
 +.drive-pro .drive-heading-description {
 +  display: none;
 +}
@@ -1204,12 +1257,14 @@ index 48e3b30..0b5dec4 100644
 +  background: var(--drive-blue);
 +  border-color: var(--drive-blue);
 +  color: var(--drive-on-blue);
-+}
+ }
  .drive-pro .drive-button-primary {
    background: var(--drive-blue);
    border-color: var(--drive-blue);
 +  color: var(--drive-on-blue);
-+}
+ }
+-.drive-pro[data-drive-mode="dark"] .drive-button-primary {
+-  color: #18181b;
 +.drive-pro .drive-list-toolbar {
 +  height: auto;
 +  min-height: 0;
@@ -1234,9 +1289,7 @@ index 48e3b30..0b5dec4 100644
 +  align-items: center;
 +  gap: 12px;
 +  flex-wrap: wrap;
- }
--.drive-pro[data-drive-mode="dark"] .drive-button-primary {
--  color: #18181b;
++}
 +.drive-filter-chips {
 +  display: flex;
 +  gap: 8px;
@@ -1283,7 +1336,7 @@ index 48e3b30..0b5dec4 100644
  }
  /* One toggle sits in the heading (docked panel), one in the header (overlay). */
  .drive-inspector-toggle {
-@@ -287,40 +475,55 @@
+@@ -287,40 +500,55 @@
    background: var(--drive-selected);
  }
  
@@ -1358,7 +1411,7 @@ index 48e3b30..0b5dec4 100644
  
  /* ---------- Details panel ---------- */
  .drive-inspector {
-@@ -471,45 +674,55 @@
+@@ -471,45 +699,55 @@
    background: #b45309;
  }
  
@@ -1447,7 +1500,7 @@ index 48e3b30..0b5dec4 100644
  }
  
  /* ---------- Details as an overlay below the docking width ---------- */
-@@ -584,14 +797,43 @@
+@@ -584,14 +822,43 @@
    font-size: 10px;
    line-height: 1;
  }

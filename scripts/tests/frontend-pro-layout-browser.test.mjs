@@ -23,46 +23,58 @@ async function open(pageSize) {
   return { page, base, errors, close }
 }
 
-const treeNames = (page) =>
-  page.locator("#drive-desktop-navigation .drive-tree-link").allInnerTexts()
+const drawerNames = (page) =>
+  page.locator("#drive-drawer-tree .drive-tree-link").allInnerTexts()
 
 test(
-  "folder tree follows navigation and keeps every folder of a paginated listing",
+  "sidebar lists the mounts flat; the phone drawer tree keeps every folder of a paginated listing",
   { timeout: 60000 },
   async () => {
     const { page, base, errors, close } = await open(20)
     try {
       await page.goto(base + "/")
       await page.locator(".drive-file-row").first().waitFor()
-      const tree = page.locator("#drive-desktop-navigation")
-      await tree.locator(".drive-tree-link", { hasText: "B2" }).click()
+      const sidebar = page.locator("#drive-desktop-navigation")
+      const mounts = () => sidebar.locator(".drive-mount-link").allInnerTexts()
+      await sidebar.locator(".drive-mount-link", { hasText: "B2" }).waitFor()
+      assert.deepEqual(await mounts(), ["B2", "Backup", "Photos"])
+      await sidebar.locator(".drive-mount-link", { hasText: "B2" }).click()
       await page.waitForURL(base + "/B2")
-      await tree.locator(".drive-tree-link", { hasText: "Movies" }).waitFor()
+      await page.locator(".drive-file-row", { hasText: "Movies" }).waitFor()
+      // No tree in the sidebar: subfolders never appear there.
+      assert.deepEqual(await mounts(), ["B2", "Backup", "Photos"])
+      assert.equal(await sidebar.locator(".drive-tree-twisty").count(), 0)
       assert.deepEqual(
-        await tree.locator(".drive-tree-current").allInnerTexts(),
+        await sidebar.locator(".drive-mount-current").allInnerTexts(),
         ["B2"],
       )
-      await page.getByRole("button", { name: "Collapse B2", exact: true }).click()
-      assert.ok(!(await treeNames(page)).includes("Movies"))
-      await page.getByRole("button", { name: "Expand B2", exact: true }).click()
-      await tree.locator(".drive-tree-link", { hasText: "Movies" }).waitFor()
+      // Inside a mount, the mount stays marked.
+      await page.locator(".drive-file-row", { hasText: "Movies" }).locator(".name").click()
+      await page.waitForURL(base + "/B2/Movies")
+      await page.locator(".drive-file-row", { hasText: "Inter.mkv" }).waitFor()
+      assert.equal(
+        await sidebar.locator(".drive-mount-current").getAttribute("aria-current"),
+        "location",
+      )
 
-      // 25 albums, 20 per page: the tree must still list all of them.
+      // 25 albums, 20 per page: the drawer tree must still list all of them.
       await page.goto(base + "/Photos")
       await page.locator(".drive-file-row").first().waitFor()
       assert.equal(await page.locator(".drive-file-row").count(), 20)
-      await tree
-        .locator(".drive-tree-link", { hasText: "Album 25" })
-        .waitFor()
-      assert.equal(
-        (await treeNames(page)).filter((name) => name.startsWith("Album"))
-          .length,
-        25,
-      )
       // The details summary must not count only the visible page.
       assert.match(
         await page.locator("#drive-inspector").innerText(),
         /25 items/,
+      )
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.getByRole("button", { name: "Workspace", exact: true }).click()
+      await page
+        .locator("#drive-drawer-tree .drive-tree-link", { hasText: "Album 25" })
+        .waitFor()
+      assert.equal(
+        (await drawerNames(page)).filter((name) => name.startsWith("Album"))
+          .length,
+        25,
       )
       assert.deepEqual(errors, [])
     } finally {
@@ -286,9 +298,7 @@ test(
       await bar.waitFor({ state: "detached" })
 
       // A new folder starts unfiltered.
-      await page
-        .locator("#drive-desktop-navigation .drive-tree-link", { hasText: "Movies" })
-        .click()
+      await page.locator(".drive-file-row", { hasText: "Movies" }).locator(".name").click()
       await page.waitForURL(base + "/B2/Movies")
       await page.locator(".drive-file-row", { hasText: "Inter.mkv" }).waitFor()
       assert.equal(await chip("All").getAttribute("aria-pressed"), "true")
