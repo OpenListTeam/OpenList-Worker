@@ -28,17 +28,22 @@ test(
       page.on("pageerror", (error) => errors.push(error.message))
       await page.goto(`http://127.0.0.1:${fixture.server.address().port}/`)
       await page.locator(".drive-file-row").first().waitFor()
-      assert.equal(await page.locator(".drive-item-count").innerText(), "2")
-      // Pro layout: folder tree, status bar and details panel.
+      // Clean layout: sidebar with folders, item count, details on demand.
       await page
-        .locator(".drive-tree-link", { hasText: "Documents" })
+        .locator("#drive-desktop-navigation .drive-tree-link", {
+          hasText: "Documents",
+        })
         .waitFor()
       assert.match(
-        await page.locator(".drive-status-bar").innerText(),
+        await page.locator(".drive-filter-total").innerText(),
         /2 items/,
       )
       const inspector = page.locator("#drive-inspector")
-      assert.ok(await inspector.isVisible(), "details open on wide screens")
+      assert.ok(!(await inspector.isVisible()), "details closed until asked for")
+      await page
+        .getByRole("button", { name: "Show details", exact: true })
+        .click()
+      assert.ok(await inspector.isVisible())
       assert.match(await inspector.innerText(), /Current folder/)
       const pdf = page.getByRole("checkbox", {
         name: "Select original.pdf",
@@ -48,7 +53,7 @@ test(
       await inspector.getByRole("heading", { name: "original.pdf" }).waitFor()
       assert.ok(await inspector.getByLabel("Direct link", { exact: true }).isVisible())
       assert.match(
-        await page.locator(".drive-status-bar").innerText(),
+        await page.locator(".drive-selection-bar").innerText(),
         /1 selected/,
       )
       const screenshots = process.env.HOME_SCREENSHOT_DIR
