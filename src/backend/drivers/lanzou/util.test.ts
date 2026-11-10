@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { afterEach, test } from "node:test"
 
-import { LanzouClient, parseFnPage } from "./util"
+import { isTrustedLanzouApiUrl, LanzouClient, parseFnPage } from "./util"
 import { removeJSComment } from "./help"
 
 const originalFetch = globalThis.fetch
@@ -128,6 +128,68 @@ test("removeJSComment keeps url '//' but strips real comments", () => {
   assert.ok(out.includes("var b = 1;"))
 })
 
+test("removeJSComment keeps protocol-relative urls inside strings", () => {
+  // 评审 P2：src="//cdn..." 的前两个字符也是 '//' 且前面是引号，不能当行注释截断
+  const src = `<script src="//cdn.woozooo.com/x.js"></script> var b = 1 // 真注释`
+  const out = removeJSComment(src)
+  assert.ok(out.includes("//cdn.woozooo.com/x.js"))
+  assert.ok(!out.includes("真注释"))
+  assert.ok(out.includes("var b = 1"))
+})
+
+test("isTrustedLanzouApiUrl only allows https lanzou hosts", () => {
+  // 可信：蓝奏云自家域（含子域）
+  assert.equal(
+    isTrustedLanzouApiUrl("https://apifile.woozooo.com/ajaxfile.php?file=1"),
+    true,
+  )
+  assert.equal(isTrustedLanzouApiUrl("https://user.lanzn.com/fn?x=1"), true)
+  assert.equal(
+    isTrustedLanzouApiUrl("https://pan.lanzoui.com/ajaxfile.php?file=1"),
+    true,
+  )
+  // 不可信：非 https
+  assert.equal(
+    isTrustedLanzouApiUrl("http://apifile.woozooo.com/ajaxfile.php?file=1"),
+    false,
+  )
+  // 不可信：近似域（evilwoozooo.com 不是 .woozooo.com 的子域）
+  assert.equal(
+    isTrustedLanzouApiUrl(
+      "https://apifile.evilwoozooo.com/ajaxfile.php?file=1",
+    ),
+    false,
+  )
+  assert.equal(
+    isTrustedLanzouApiUrl("https://apifile.woozooo.com.evil.com/ajaxfile.php"),
+    false,
+  )
+  // 不可信：userinfo 伪装（apifile.woozooo.com@evil.com 的主机是 evil.com）
+  assert.equal(
+    isTrustedLanzouApiUrl("https://apifile.woozooo.com@evil.com/ajaxfile.php"),
+    false,
+  )
+  // 不可信：loopback / 私网 / 内网元数据地址
+  assert.equal(
+    isTrustedLanzouApiUrl("https://127.0.0.1/ajaxfile.php?file=1"),
+    false,
+  )
+  assert.equal(
+    isTrustedLanzouApiUrl("https://169.254.169.254/ajaxfile.php?file=1"),
+    false,
+  )
+  assert.equal(
+    isTrustedLanzouApiUrl("https://10.0.0.5/ajaxfile.php?file=1"),
+    false,
+  )
+  assert.equal(
+    isTrustedLanzouApiUrl("https://[::1]/ajaxfile.php?file=1"),
+    false,
+  )
+  // 不可信：非法 URL
+  assert.equal(isTrustedLanzouApiUrl("not a url"), false)
+})
+
 test("new /fn structure posts to absolute apifile url with sign form", async () => {
   const { posts, gets } = installFetch(FN_PAGE)
   const file = await newClient().getFilesByShareUrl(
@@ -216,4 +278,24 @@ $("#go").click(function(){
       newClient().getFilesByShareUrl(SHARE_ID, "", SHARE_PAGE, SHARE_DOMAIN),
     /未能识别下载页结构/,
   )
+})
+
+test("fn page pointing outside lanzou domains is rejected (SSRF guard)", async () => {
+  // 评审 P1：domain1 由远端页面内容决定，指向非蓝奏云域时必须拒绝，
+  // 且不能发出任何请求（ Cookie 不得外送）
+  for (const badHost of [
+    "https://evil.example.com",
+    "https://127.0.0.1",
+    "https://169.254.169.254",
+    "http://apifile.woozooo.com",
+  ]) {
+    const evil = FN_PAGE.replace("https://apifile.woozooo.com", badHost)
+    const { posts } = installFetch(evil)
+    await assert.rejects(
+      () =>
+        newClient().getFilesByShareUrl(SHARE_ID, "", SHARE_PAGE, SHARE_DOMAIN),
+      /可信域名/,
+    )
+    assert.equal(posts.length, 0, `${badHost} 不应发出任何请求`)
+  }
 })

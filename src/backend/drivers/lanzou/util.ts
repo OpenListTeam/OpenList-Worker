@@ -39,6 +39,45 @@ const FN_AJAXDATA_RE = /var\s+ajaxdata\s*=\s*'([^']*)'/
 const UNKNOWN_SHARE_PAGE_MSG =
   "[Lanzou] 未能识别下载页结构（旧版 /ajaxm.php 与 2026-10 的 /fn 结构都不匹配），蓝奏云可能再次改版，需要更新驱动"
 
+/** /fn 页面给出的接口地址不在可信域名内的提示（SSRF / Cookie 外送防护） */
+const UNTRUSTED_API_URL_MSG =
+  "[Lanzou] /fn 页面给出的下载接口地址不在蓝奏云可信域名内，已拒绝请求（防止 SSRF）。" +
+  "如蓝奏云更换接口域名，请更新驱动的可信域名列表"
+
+/**
+ * 下载接口允许的域名后缀（后缀匹配，近似域如 evilwoozooo.com 不会命中）。
+ * /fn 页面给出的绝对地址只允许发往蓝奏云自家域：既防止被篡改/注入的页面把
+ * 服务端请求引向任意主机（SSRF / 内网探测），也保证驱动 Cookie 不会带出蓝奏云域。
+ */
+const TRUSTED_API_HOST_SUFFIXES = [
+  "woozooo.com", // apifile.woozooo.com（2026-10 改版的下载接口）
+  "lanzn.com", // 蓝奏云账号分享子域（xxx.lanzn.com）
+  "lanzoui.com", // 以下为蓝奏云轮换使用的分享/接口域家族
+  "lanzouw.com",
+  "lanzoux.com",
+  "lanzouy.com",
+  "lanzou.com",
+]
+
+/**
+ * 校验 /fn 页面解析出的下载接口地址是否可信。
+ * @returns 仅当协议为 https 且主机属于蓝奏云可信域（精确后缀匹配，含子域）时返回 true；
+ *   非法 URL、非 https、loopback/私网 IP、近似域、userinfo 伪装一律 false
+ */
+export function isTrustedLanzouApiUrl(raw: string): boolean {
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    return false
+  }
+  if (url.protocol !== "https:") return false
+  const host = url.hostname.toLowerCase()
+  return TRUSTED_API_HOST_SUFFIXES.some(
+    (s) => host === s || host.endsWith(`.${s}`),
+  )
+}
+
 /**
  * 从改版后的 /fn? 内页提取下载接口地址与签名表单。
  * 对应页面 JS：POST domain1 {'action':'downprocess','websignkey':ajaxdata,
@@ -846,10 +885,18 @@ export class LanzouClient {
         const fnPage = parseFnPage(cleanNextPage)
         if (fnPage) {
           // 2026-10 改版结构：/fn? 内页携带 apifile 绝对地址与签名参数，
-          // 必须原样 POST 到该地址（签名与 file=N 绑定），不能再拼成分享域相对路径
+          // 必须原样 POST 到该地址（签名与 file=N 绑定），不能再拼成分享域相对路径。
+          // 接口地址来自远端页面文本，先做可信域校验（评审 P1：防 SSRF / Cookie 外送）
+          if (!isTrustedLanzouApiUrl(fnPage.url)) {
+            throw new Error(
+              `${UNTRUSTED_API_URL_MSG}（host: ${safeHost(fnPage.url)}）`,
+            )
+          }
           resp = await this.postShareAjax(fnPage.url, fnPage.form)
         } else {
-          // 兜底：页面变体（无引号 / 无前导斜杠），沿用原有宽松提取
+          // 兜底：页面变体（无引号 / 无前导斜杠），沿用原有宽松提取。
+          // 注意：不放行裸 `file=(\d+)` / `file: 123` 这类猜测 —— 它们会在 apifile
+          // 绝对地址上"蒙对" file ID 然后发一个注定失败的请求；识别不了就显式失败
           try {
             param = htmlJsonToMap(cleanNextPage, cleanNextPage)
           } catch {
@@ -857,8 +904,6 @@ export class LanzouClient {
           }
           const fileIdMatch =
             cleanNextPage.match(/['"]?\/?ajax(?:file|m)\.php\?file=(\d+)['"]?/) ||
-            cleanNextPage.match(/file\s*[:=]\s*['"]?(\d+)['"]?/) ||
-            cleanNextPage.match(/file=(\d+)/) ||
             cleanNextPage.match(/var\s+file_id\s*=\s*['"]?(\d+)['"]?/)
           const fileId = fileIdMatch ? fileIdMatch[1] : ""
           if (!fileId) throw new Error(UNKNOWN_SHARE_PAGE_MSG)
