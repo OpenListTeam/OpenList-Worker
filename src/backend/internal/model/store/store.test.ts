@@ -5,6 +5,7 @@ import { readDriver, readFormat, getStoreBackend } from "./backend"
 import { readPersistedSecret, writePersistedSecret } from "./json"
 import { mapFormat } from "./format/map"
 import { keyFormat } from "./format/key"
+import { KEY_INDEX_KEY } from "./keycodec"
 import { sqlFormat } from "./format/sql"
 import { d1Driver } from "./driver/d1"
 import {
@@ -228,7 +229,10 @@ test("schema: SQL table names align with Go GORM naming", () => {
   // 完整表名 = 前缀 + 复数名
   assert.equal(tableSqlName("settings", {}), "x_setting_items")
   assert.equal(tableSqlName("shares", {}), "x_sharing_dbs")
-  assert.equal(tableSqlName("settings", { TABLE_PREFIX: "abc_" }), "x_setting_items")
+  assert.equal(
+    tableSqlName("settings", { TABLE_PREFIX: "abc_" }),
+    "x_setting_items",
+  )
 
   // DDL 里应包含带前缀的复数表名
   assert.ok(D1_SCHEMA.some((d) => d.includes("x_setting_items")))
@@ -289,9 +293,10 @@ test("key format: roundtrip via mock KV driver (per-table keys)", async () => {
   assert.deepEqual(await keyFormat.load(driver), SAMPLE_DB)
 })
 
-test("key format: load/save issue one global list each (issue #125 quota)", async () => {
-  // 回归防护：key 格式有 6 张表，旧实现 load/save 各逐表 list（6 次）。
-  // Cloudflare 免费版 list 配额仅 1000 次/天，必须收敛为每次 1 次全局 list。
+test("key format: global index replaces list() in steady state (issue #125 quota)", async () => {
+  // 回归防护：Cloudflare 免费版 list 配额仅 1000 次/天。旧实现 load/save
+  // 各要一次全局 list，正常使用约 1000 次请求就见底。现在用索引键记录存活
+  // 记录，稳态下 load/save 都不再调用 list —— 只有首次（索引尚不存在）会扫一次。
   const base = createMockKvDriver()
   let listCalls = 0
   const driver: Driver = {
@@ -308,12 +313,149 @@ test("key format: load/save issue one global list each (issue #125 quota)", asyn
     health: base.health,
   }
 
+  // 首次保存：索引不存在，允许 1 次 list 建立索引
   assert.equal(await keyFormat.save(SAMPLE_DB, driver), true)
-  assert.equal(listCalls, 1) // save：清空旧数据只 1 次全局 list
+  assert.equal(listCalls, 1)
+
+  // 之后 load/save 完全走索引：list 次数不再增长
+  assert.deepEqual(await keyFormat.load(driver), SAMPLE_DB)
+  assert.equal(listCalls, 1)
+  assert.equal(await keyFormat.save(SAMPLE_DB, driver), true)
+  assert.equal(listCalls, 1)
+})
+
+test("key format: legacy layout without index is migrated on first load", async () => {
+  // 升级前的部署只有实体键 + 初始化标记，没有索引。首次 load 必须仍能读到
+  // 全部数据（回退 list），并顺手补写索引，之后不再消耗 list。
+  const base = createMockKvDriver()
+  await keyFormat.save(SAMPLE_DB, base)
+  await base.delete(KEY_INDEX_KEY)
+
+  let listCalls = 0
+  const driver: Driver = {
+    name: "mock-kv-counting",
+    isAvailable: base.isAvailable,
+    init: base.init,
+    get: base.get,
+    put: base.put,
+    delete: base.delete,
+    list: async (prefix: string) => {
+      listCalls += 1
+      return await base.list(prefix)
+    },
+    health: base.health,
+  }
+
+  assert.deepEqual(await keyFormat.load(driver), SAMPLE_DB)
+  assert.equal(listCalls, 1, "首次 load 回退 list 建立索引")
+  assert.deepEqual(await keyFormat.load(driver), SAMPLE_DB)
+  assert.equal(listCalls, 1, "索引补写后不再 list")
+})
+
+test("key format: corrupt index falls back to list and is rewritten", async () => {
+  const base = createMockKvDriver()
+  await keyFormat.save(SAMPLE_DB, base)
+  await base.put(KEY_INDEX_KEY, "{ this is not json")
+
+  let listCalls = 0
+  const driver: Driver = {
+    name: "mock-kv-counting",
+    isAvailable: base.isAvailable,
+    init: base.init,
+    get: base.get,
+    put: base.put,
+    delete: base.delete,
+    list: async (prefix: string) => {
+      listCalls += 1
+      return await base.list(prefix)
+    },
+    health: base.health,
+  }
+
+  // 索引损坏绝不能当成空库：必须回退 list 并完整读出
+  assert.deepEqual(await keyFormat.load(driver), SAMPLE_DB)
+  assert.equal(listCalls, 1)
+  assert.deepEqual(await keyFormat.load(driver), SAMPLE_DB)
+  assert.equal(listCalls, 1, "损坏索引已被重建")
+})
+
+test("key format: stale records are deleted using the index (no list)", async () => {
+  const base = createMockKvDriver()
+  await keyFormat.save(SAMPLE_DB, base)
+
+  let listCalls = 0
+  const driver: Driver = {
+    name: "mock-kv-counting",
+    isAvailable: base.isAvailable,
+    init: base.init,
+    get: base.get,
+    put: base.put,
+    delete: base.delete,
+    list: async (prefix: string) => {
+      listCalls += 1
+      return await base.list(prefix)
+    },
+    health: base.health,
+  }
+
+  const next = { ...SAMPLE_DB, users: [] }
+  assert.equal(await keyFormat.save(next, driver), true)
+  assert.equal(listCalls, 0, "索引已存在时保存不 list")
+  assert.equal(await base.get("users_1"), null, "被删除的用户键已清理")
+
+  const index = JSON.parse(String(await base.get(KEY_INDEX_KEY)))
+  assert.ok(!index.keys.includes("users_1"))
+  assert.deepEqual(await keyFormat.load(driver), next)
+})
+
+test("key format: records are fetched with bounded concurrency", async () => {
+  // 串行 get 会让 100+ 条记录的 load 在边缘网络上耗时数秒。这里断言读取确实
+  // 并发进行（但不超过上限，避免撞平台子请求限制）。
+  const many = {
+    ...SAMPLE_DB,
+    users: Array.from({ length: 30 }, (_, i) => ({
+      id: i + 1,
+      username: `u${i + 1}`,
+    })),
+  }
+  const base = createMockKvDriver()
+  await keyFormat.save(many, base)
+
+  let active = 0
+  let maxActive = 0
+  const driver: Driver = {
+    name: "mock-kv-concurrency",
+    isAvailable: base.isAvailable,
+    init: base.init,
+    put: base.put,
+    delete: base.delete,
+    list: base.list,
+    health: base.health,
+    get: async (key) => {
+      active += 1
+      maxActive = Math.max(maxActive, active)
+      await new Promise((resolve) => setTimeout(resolve, 2))
+      try {
+        return await base.get(key)
+      } finally {
+        active -= 1
+      }
+    },
+  }
 
   const loaded = await keyFormat.load(driver)
-  assert.deepEqual(loaded, SAMPLE_DB)
-  assert.equal(listCalls, 2) // load：再 1 次全局 list（行为与逐表一致）
+  // 键名是 `users_<id>`，读取顺序与 KV list 一致（字典序），与写入顺序无关；
+  // 这里只校验全部记录都读到了（并发不能导致漏读/串行解析错误）。
+  assert.equal(loaded.users.length, many.users.length)
+  assert.deepEqual(
+    loaded.users.map((u: any) => u.id).sort((a: number, b: number) => a - b),
+    many.users.map((u) => u.id),
+  )
+  assert.ok(maxActive > 1, `expected concurrent reads, saw max=${maxActive}`)
+  assert.ok(
+    maxActive <= 12,
+    `read concurrency must stay bounded, saw ${maxActive}`,
+  )
 })
 
 test("sql format: roundtrip via mock SQL driver (columnar)", async () => {
@@ -434,7 +576,9 @@ function createMockD1Binding() {
           return { results: [] }
         },
         async run() {
-          if (/INSERT\s+OR\s+REPLACE\s+INTO\s+kv\s*\(key,\s*value\)/i.test(sql)) {
+          if (
+            /INSERT\s+OR\s+REPLACE\s+INTO\s+kv\s*\(key,\s*value\)/i.test(sql)
+          ) {
             store.set(String(params[0]), String(params[1]))
           } else if (/DELETE\s+FROM\s+kv\s+WHERE\s+key\s*=\s*\?/i.test(sql)) {
             store.delete(String(params[0]))

@@ -90,6 +90,21 @@ export function decodeKeyPart(input: string): string {
   return out
 }
 
+/**
+ * key 格式的全局索引键。
+ *
+ * key 格式把每张表摊平成 `<table>_<id>` 多条记录，历史实现靠 `list()` 枚举键名；
+ * Cloudflare 免费版 list 配额只有 1000 次/天，而一次 load/save 就要扫全量键，
+ * 免费版很快就会耗尽（issue #125）。索引键记录当前存活记录的完整键名，
+ * 用 1 次 `get` 取代 1 次（可能多页的）`list`。
+ *
+ * 约束：
+ *  - 只含字母/数字/下划线，满足 EdgeOne KV 的键名限制；
+ *  - 不以任何表前缀开头（`settings_` / `users_` …），不会被 `groupKeysByTable`
+ *    误当成实体记录，也不会被陈旧键清理误删。
+ */
+export const KEY_INDEX_KEY = "openlist_key_index"
+
 /** 构造某张表的键名前缀，如 `users_` */
 export function tableKeyPrefix(table: string): string {
   return `${encodeKeyPart(table)}${KEY_SEP}`

@@ -40,6 +40,17 @@ SEED_MAX_METADATA_SIZE=10485760
 # 兼容旧变量名 ALLOW_SEED（新变量优先）。
 SEED_SOURCE_ALLOWED_HOSTS=
 
+# ── 任务系统 ────────────────────────────────────────────────────────────────
+# URL 离线下载的主机白名单，逗号/空格/分号分隔，支持 *.example.com。
+# **默认留空 = 拒绝一切外网下载**（防止被当作免费代理刷流量）。
+# 任务在执行时会重新校验该白名单，排队期间收紧配置也会生效。
+ALLOW_OFFLINE_DOWNLOAD=
+
+# 部署 origin（如 https://your-domain.com）。后台任务没有请求对象，存储驱动
+# 返回的相对下载直链（/d/...）需要它才能解析。Cloudflare 部署通常不需要填
+# （入队时会把当前请求的 origin 写进任务）；EdgeOne / Node 建议显式配置。
+PUBLIC_ORIGIN=
+
 # 说明：seed_single_direct_preview 不是环境变量，而是数据库中的站点设置项
 # （默认 false）。可在管理后台「设置 → 种子」中修改，单文件种子解析时生效。
 

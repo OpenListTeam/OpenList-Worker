@@ -50,6 +50,18 @@ import { parseZip, extractZipEntry, ZipArchive } from "../internal/archive/zip"
 import { assertSafeUrl, getTrustedHosts } from "../pkg/http"
 import { seedRouter, torrentLegacyRouter } from "./seed"
 import { r2CanSignDirectUpload } from "../drivers/r2/driver"
+import { decideCopyMoveMode } from "../internal/task/decide"
+import {
+  enqueueTask,
+  kickTaskPump,
+  recordCompletedTask,
+} from "../internal/task/manager"
+import { toTaskInfo } from "../internal/task/types"
+import {
+  assertDownloadUrlAllowed,
+  fileNameFromUrl,
+  offlineDownloadAllowList,
+} from "../internal/task/handlers/offline_download"
 
 /**
  * 该路径所属存储是否禁止目录列表（对齐 Go handles.FsList 的 DisableIndex 判断）。
@@ -113,6 +125,83 @@ const getStorageRequestContext = (c: any) => {
   }
   if (!env && !waitUntil) return undefined
   return { ...(waitUntil ? { waitUntil } : {}), env }
+}
+
+/**
+ * 任务运行时上下文：后台执行没有请求对象，但需要 env / origin / waitUntil。
+ * origin 会被写进任务 payload —— 存储驱动返回的相对 raw_url 要靠它解析。
+ */
+const taskRuntimeOf = (c: any, requestContext?: any) => ({
+  env: c.env,
+  origin: new URL(c.req.url).origin,
+  waitUntil: requestContext?.waitUntil,
+})
+
+/**
+ * 把 copy / move 入队。
+ *
+ * 每个顶层条目一条任务，与 Go 的 FsCopy/FsMove 一致：这样单条失败不会连累
+ * 其它条目，前端也能逐条取消/重试。
+ */
+async function enqueueFsTasks(
+  c: any,
+  user: any,
+  requestContext: any,
+  type: "copy" | "move",
+  actualSrcDir: string,
+  actualDstDir: string,
+  names: string[],
+): Promise<any[]> {
+  const runtime = taskRuntimeOf(c, requestContext)
+  const preview: any[] = []
+  for (const name of names) {
+    const record = await enqueueTask(c.env, {
+      type,
+      name: `${type} ${actualSrcDir.replace(/\/+$/, "")}/${name} to ${actualDstDir}`,
+      creator_id: Number(user?.id ?? 0),
+      creator: String(user?.username || ""),
+      creator_role: Number(user?.role ?? 1),
+      payload: {
+        op: type,
+        src_dir: actualSrcDir,
+        dst_dir: actualDstDir,
+        names: [name],
+        origin: runtime.origin,
+      },
+    })
+    preview.push(toTaskInfo(record))
+  }
+  await kickTaskPump(c.env, runtime)
+  return preview
+}
+
+/** 同步完成的操作也记一条已完成任务（对齐 Go：done 列表可回溯） */
+function recordSyncCompletion(
+  c: any,
+  user: any,
+  requestContext: any,
+  type: "copy" | "move",
+  actualSrcDir: string,
+  actualDstDir: string,
+  names: string[],
+): void {
+  const runtime = taskRuntimeOf(c, requestContext)
+  const promise = recordCompletedTask(c.env, {
+    type,
+    name: `${type} ${actualSrcDir.replace(/\/+$/, "")}/${names.join(", ")} to ${actualDstDir}`,
+    creator_id: Number(user?.id ?? 0),
+    creator: String(user?.username || ""),
+    creator_role: Number(user?.role ?? 1),
+    payload: {
+      op: type,
+      src_dir: actualSrcDir,
+      dst_dir: actualDstDir,
+      names,
+      origin: runtime.origin,
+    },
+  })
+  if (requestContext?.waitUntil) requestContext.waitUntil(promise)
+  else void promise
 }
 
 // ---- 写操作权限校验 ----
@@ -908,10 +997,51 @@ fsRouter.post("/move", async (c) => {
     ]
     if (await deniedByMetaWriteAcl(c, user, aclPaths))
       return permissionDenied(c)
-    await moveItems(actualSrcDir, actualDstDir, cleanNames, requestContext)
-    return c.json({ code: 200, message: "success", data: null })
+    const decision = await decideCopyMoveMode(
+      taskRuntimeOf(c, requestContext),
+      {
+        op: "move",
+        srcDir: actualSrcDir,
+        dstDir: actualDstDir,
+        names: cleanNames,
+      },
+    )
+    if (decision.mode === "sync") {
+      await moveItems(actualSrcDir, actualDstDir, cleanNames, requestContext)
+      recordSyncCompletion(
+        c,
+        user,
+        requestContext,
+        "move",
+        actualSrcDir,
+        actualDstDir,
+        cleanNames,
+      )
+      return c.json({ code: 200, message: "success", data: null })
+    }
+    const tasks = await enqueueFsTasks(
+      c,
+      user,
+      requestContext,
+      "move",
+      actualSrcDir,
+      actualDstDir,
+      cleanNames,
+    )
+    return c.json({
+      code: 200,
+      message: "success",
+      data: {
+        message: `Successfully created ${tasks.length} move task(s)`,
+        tasks,
+      },
+    })
   } catch (e: any) {
-    return c.json({ code: 500, message: safeErrorMessage(e), data: null })
+    return c.json({
+      code: Number(e?.status) || 500,
+      message: safeErrorMessage(e),
+      data: null,
+    })
   }
 })
 
@@ -950,10 +1080,51 @@ fsRouter.post("/copy", async (c) => {
     ]
     if (await deniedByMetaWriteAcl(c, user, aclPaths))
       return permissionDenied(c)
-    await copyItems(actualSrcDir, actualDstDir, cleanNames, requestContext)
-    return c.json({ code: 200, message: "success", data: null })
+    const decision = await decideCopyMoveMode(
+      taskRuntimeOf(c, requestContext),
+      {
+        op: "copy",
+        srcDir: actualSrcDir,
+        dstDir: actualDstDir,
+        names: cleanNames,
+      },
+    )
+    if (decision.mode === "sync") {
+      await copyItems(actualSrcDir, actualDstDir, cleanNames, requestContext)
+      recordSyncCompletion(
+        c,
+        user,
+        requestContext,
+        "copy",
+        actualSrcDir,
+        actualDstDir,
+        cleanNames,
+      )
+      return c.json({ code: 200, message: "success", data: null })
+    }
+    const tasks = await enqueueFsTasks(
+      c,
+      user,
+      requestContext,
+      "copy",
+      actualSrcDir,
+      actualDstDir,
+      cleanNames,
+    )
+    return c.json({
+      code: 200,
+      message: "success",
+      data: {
+        message: `Successfully created ${tasks.length} copy task(s)`,
+        tasks,
+      },
+    })
   } catch (e: any) {
-    return c.json({ code: 500, message: safeErrorMessage(e), data: null })
+    return c.json({
+      code: Number(e?.status) || 500,
+      message: safeErrorMessage(e),
+      data: null,
+    })
   }
 })
 
@@ -1033,21 +1204,62 @@ fsRouter.post("/add_offline_download", async (c) => {
   if (!user || user.disabled) {
     return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
   }
+  if (!can(user, PermissionBit.OFFLINE_DOWNLOAD)) return permissionDenied(c)
   const { path: rawPath, urls } = await c.req.json().catch(() => ({}))
+  const urlList = (Array.isArray(urls) ? urls : [])
+    .map((url: unknown) => String(url).trim())
+    .filter(Boolean)
+  if (urlList.length === 0) {
+    return c.json({ code: 400, message: "No URLs provided", data: null }, 400)
+  }
+  const requestContext = getStorageRequestContext(c)
   const reqPath = getActualPath(user, rawPath || "/")
-  if (!urls || urls.length === 0) {
-    return c.json({ code: 400, message: "No URLs provided" })
+  if (!isWithinUserRoot(user, reqPath)) return permissionDenied(c)
+  if (await deniedByMetaWriteAcl(c, user, [reqPath])) return permissionDenied(c)
+  if (offlineDownloadAllowList(c.env).length === 0) {
+    return c.json(
+      {
+        code: 403,
+        message:
+          "offline download is disabled: set ALLOW_OFFLINE_DOWNLOAD to a comma-separated host allowlist",
+        data: null,
+      },
+      403,
+    )
   }
 
-  return c.json(
-    {
-      code: 501,
-      message:
-        "capability unavailable: this runtime has no durable offline-download adapter; use /fs/seed/offline_download with an approved source and a streaming-capable target driver",
-      data: { path: reqPath, accepted: 0 },
-    },
-    501,
-  )
+  const runtime = taskRuntimeOf(c, requestContext)
+  const tasks: any[] = []
+  try {
+    for (const url of urlList) {
+      // 入队即校验：非法地址不应该先占一个任务位再失败
+      assertDownloadUrlAllowed(url, c.env)
+      const name = fileNameFromUrl(url)
+      const record = await enqueueTask(c.env, {
+        type: "offline_download",
+        name: `download ${name} to ${reqPath}`,
+        creator_id: Number(user.id ?? 0),
+        creator: String(user.username || ""),
+        creator_role: Number(user.role ?? 1),
+        payload: {
+          url,
+          dst_dir: reqPath,
+          name,
+          origin: runtime.origin,
+        },
+      })
+      tasks.push(toTaskInfo(record))
+    }
+  } catch (e: any) {
+    const status = Number(e?.status) || 400
+    return c.json(
+      { code: status, message: safeErrorMessage(e), data: null },
+      status as any,
+    )
+  }
+
+  await kickTaskPump(c.env, runtime)
+  return c.json({ code: 200, message: "success", data: { tasks } })
 })
 
 fsRouter.post("/search", async (c) => {

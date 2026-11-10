@@ -1,7 +1,25 @@
 import { Hono } from "hono"
+import type { Context } from "hono"
 import { getDb, saveDb } from "../internal/model/db"
 import { getDriver } from "../internal/op/storage"
-import { adminAuthMiddleware, matchCronSecret } from "./middlewares"
+import { isAdmin } from "../pkg/permission"
+import {
+  adminAuthMiddleware,
+  getUserFromContext,
+  matchCronSecret,
+} from "./middlewares"
+import {
+  TaskError,
+  applyBulkAction,
+  applyTaskAction,
+  clearDoneTasks,
+  getTaskDetail,
+  listTaskInfos,
+  retryFailedTasks,
+  runTaskPump,
+  type TaskActor,
+} from "../internal/task/manager"
+import { isTaskType, type TaskType } from "../internal/task/types"
 
 export const taskRouter = new Hono()
 
@@ -9,7 +27,7 @@ export const taskRouter = new Hono()
 // 仅管理员可触发（防止未授权用户探测存储配置/触发资源消耗）。
 // EdgeOne Schedules 等平台调度器无法附加 Authorization 头，
 // 因此复用 JWT_SECRET 作为调度密钥，调度请求可携带该密钥
-//（JSON body / query / X-Cron-Secret 头）通过 matchCronSecret 放行。
+// （JSON body / query / X-Cron-Secret 头）通过 matchCronSecret 放行。
 taskRouter.all(
   "/refresh",
   async (c, next) => {
@@ -94,65 +112,272 @@ taskRouter.all(
   },
 )
 
-// In-memory or stateless placeholder for task management in serverless
-const tasks: Record<string, any[]> = {
-  upload: [],
-  copy: [],
-  move: [],
-  offline_download: [],
+// ───────────────────────── 任务管理 API ─────────────────────────
+//
+// 契约与 Go 版 server/handles/task.go 保持一致，前端任务页无需改动：
+//   GET  /task/:type/undone|done
+//   POST /task/:type/info|cancel|delete|retry?tid=
+//   POST /task/:type/cancel_some|delete_some|retry_some   (body: string[])
+//   POST /task/:type/clear_done|clear_succeeded|retry_failed
+//   POST /task/run                                        (cron secret / admin)
+
+function errorResponse(c: Context, err: any) {
+  if (err instanceof TaskError) {
+    return c.json(
+      { code: err.status, message: err.message, data: null },
+      err.status as any,
+    )
+  }
+  const message = String(err?.message || err)
+  console.error("[Task API]", message)
+  return c.json({ code: 500, message, data: null }, 500)
 }
 
-// All task-management endpoints are admin-only (placeholder APIs that may
-// later carry real file-operation metadata)
-taskRouter.use("*", adminAuthMiddleware)
+async function resolveActor(c: Context): Promise<TaskActor | null> {
+  const user = await getUserFromContext(c)
+  if (!user) return null
+  // 对齐 Go 的 AuthNotGuest：游客不能访问任务接口
+  if (user.username === "guest") return null
+  return {
+    id: Number(user.id ?? 0),
+    username: user.username || "",
+    role: Number(user.role ?? 1),
+    isAdmin: isAdmin(user as any),
+  }
+}
 
-taskRouter.get("/:type/:state", (c) => {
+function parseTaskType(c: Context): TaskType | null {
   const type = c.req.param("type")
-  const state = c.req.param("state") // "undone" | "done"
-  const list = tasks[type] || []
-  const filtered = list.filter((t) => (state === "done" ? t.done : !t.done))
-  return c.json({
-    code: 200,
-    message: "success",
-    data: filtered,
+  return isTaskType(type) ? type : null
+}
+
+/** seed_save 与 Go 一致：只展示进度，不支持重试 */
+function allowsRetry(type: TaskType): boolean {
+  return type !== "seed_save"
+}
+
+taskRouter.get("/:type/:state", async (c) => {
+  const type = parseTaskType(c)
+  if (!type) {
+    return c.json({ code: 404, message: "task type not found", data: null }, 404)
+  }
+  const state = c.req.param("state")
+  if (state !== "undone" && state !== "done") {
+    return c.json(
+      { code: 400, message: "state must be 'undone' or 'done'", data: null },
+      400,
+    )
+  }
+  const actor = await resolveActor(c)
+  if (!actor) {
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  }
+  try {
+    const data = await listTaskInfos(c.env, type, state, actor)
+    return c.json({ code: 200, message: "success", data })
+  } catch (err) {
+    return errorResponse(c, err)
+  }
+})
+
+taskRouter.post("/:type/info", async (c) => {
+  const type = parseTaskType(c)
+  if (!type) {
+    return c.json({ code: 404, message: "task type not found", data: null }, 404)
+  }
+  const actor = await resolveActor(c)
+  if (!actor) {
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  }
+  const tid = c.req.query("tid") || ""
+  if (!tid) {
+    return c.json({ code: 400, message: "tid is required", data: null }, 400)
+  }
+  try {
+    const data = await getTaskDetail(c.env, type, tid, actor)
+    return c.json({ code: 200, message: "success", data })
+  } catch (err) {
+    return errorResponse(c, err)
+  }
+})
+
+for (const action of ["cancel", "delete", "retry"] as const) {
+  taskRouter.post(`/:type/${action}`, async (c) => {
+    const type = parseTaskType(c)
+    if (!type) {
+      return c.json(
+        { code: 404, message: "task type not found", data: null },
+        404,
+      )
+    }
+    if (action === "retry" && !allowsRetry(type)) {
+      return c.json(
+        { code: 404, message: "retry is not supported for this type", data: null },
+        404,
+      )
+    }
+    const actor = await resolveActor(c)
+    if (!actor) {
+      return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+    }
+    const tid = c.req.query("tid") || ""
+    if (!tid) {
+      return c.json({ code: 400, message: "tid is required", data: null }, 400)
+    }
+    try {
+      await applyTaskAction(c.env, type, tid, actor, action)
+      return c.json({ code: 200, message: "success", data: null })
+    } catch (err) {
+      return errorResponse(c, err)
+    }
   })
-})
+}
 
-taskRouter.post("/:type/clear_done", (c) => {
-  const type = c.req.param("type")
-  if (tasks[type]) {
-    tasks[type] = tasks[type].filter((t) => !t.done)
+for (const action of ["cancel", "delete", "retry"] as const) {
+  taskRouter.post(`/:type/${action}_some`, async (c) => {
+    const type = parseTaskType(c)
+    if (!type) {
+      return c.json(
+        { code: 404, message: "task type not found", data: null },
+        404,
+      )
+    }
+    if (action === "retry" && !allowsRetry(type)) {
+      return c.json(
+        { code: 404, message: "retry is not supported for this type", data: null },
+        404,
+      )
+    }
+    const actor = await resolveActor(c)
+    if (!actor) {
+      return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+    }
+    let ids: string[] = []
+    try {
+      const body = await c.req.json()
+      if (Array.isArray(body)) ids = body.map((id: any) => String(id))
+    } catch {
+      return c.json(
+        { code: 400, message: "invalid request format", data: null },
+        400,
+      )
+    }
+    if (ids.length === 0) {
+      return c.json(
+        { code: 400, message: "invalid request format", data: null },
+        400,
+      )
+    }
+    try {
+      const data = await applyBulkAction(c.env, type, ids, actor, action)
+      return c.json({ code: 200, message: "success", data })
+    } catch (err) {
+      return errorResponse(c, err)
+    }
+  })
+}
+
+taskRouter.post("/:type/clear_done", async (c) => {
+  const type = parseTaskType(c)
+  if (!type) {
+    return c.json({ code: 404, message: "task type not found", data: null }, 404)
   }
-  return c.json({ code: 200, message: "success", data: null })
-})
-
-taskRouter.post("/:type/clear_succeeded", (c) => {
-  const type = c.req.param("type")
-  if (tasks[type]) {
-    tasks[type] = tasks[type].filter((t) => t.state !== "succeeded")
+  const actor = await resolveActor(c)
+  if (!actor) {
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
   }
-  return c.json({ code: 200, message: "success", data: null })
+  try {
+    await clearDoneTasks(c.env, type, actor, false)
+    return c.json({ code: 200, message: "success", data: null })
+  } catch (err) {
+    return errorResponse(c, err)
+  }
 })
 
-// 以下接口在 TS Worker 中无意义：TS 不维护持久异步任务队列，
-// 所有文件操作均同步完成后立即返回。任务 ID / 进度 / 重试 / 取消
-// 等生命周期管理由 Go 后端负责，此处明确返回 501。
-const unsupportedTaskOp = (c: any) =>
-  c.json(
-    {
-      code: 501,
-      message:
-        "task lifecycle operations (retry/cancel/delete) are not supported in the TS Worker runtime; " +
-        "file operations execute synchronously and do not produce persistent tasks",
-      data: null,
-    },
-    501,
-  )
+taskRouter.post("/:type/clear_succeeded", async (c) => {
+  const type = parseTaskType(c)
+  if (!type) {
+    return c.json({ code: 404, message: "task type not found", data: null }, 404)
+  }
+  const actor = await resolveActor(c)
+  if (!actor) {
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  }
+  try {
+    await clearDoneTasks(c.env, type, actor, true)
+    return c.json({ code: 200, message: "success", data: null })
+  } catch (err) {
+    return errorResponse(c, err)
+  }
+})
 
-taskRouter.post("/:type/retry_failed", unsupportedTaskOp)
-taskRouter.post("/:type/retry", unsupportedTaskOp)
-taskRouter.post("/:type/retry_some", unsupportedTaskOp)
-taskRouter.post("/:type/cancel", unsupportedTaskOp)
-taskRouter.post("/:type/cancel_some", unsupportedTaskOp)
-taskRouter.post("/:type/delete", unsupportedTaskOp)
-taskRouter.post("/:type/delete_some", unsupportedTaskOp)
+taskRouter.post("/:type/retry_failed", async (c) => {
+  const type = parseTaskType(c)
+  if (!type) {
+    return c.json({ code: 404, message: "task type not found", data: null }, 404)
+  }
+  if (!allowsRetry(type)) {
+    return c.json(
+      { code: 404, message: "retry is not supported for this type", data: null },
+      404,
+    )
+  }
+  const actor = await resolveActor(c)
+  if (!actor) {
+    return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+  }
+  try {
+    await retryFailedTasks(c.env, type, actor)
+    return c.json({ code: 200, message: "success", data: null })
+  } catch (err) {
+    return errorResponse(c, err)
+  }
+})
+
+/**
+ * 任务泵（外部 cron / 手动触发）。
+ *
+ * EdgeOne 的 schedules 最小间隔是一天，无法当分钟级泵使用；部署在非 CF 平台时
+ * 需要外部 cron 每分钟 POST 到这里（带 X-Cron-Secret 或管理员凭证）。
+ * 只执行已存在的任务，不接受任何路径/URL 参数。
+ */
+taskRouter.post("/run", async (c) => {
+  let isCron = false
+  try {
+    isCron = await matchCronSecret(c)
+  } catch {}
+  if (!isCron) {
+    const actor = await resolveActor(c)
+    if (!actor?.isAdmin) {
+      return c.json({ code: 401, message: "Unauthorized", data: null }, 401)
+    }
+  }
+  let budgetMs: number | undefined
+  try {
+    const body = await c.req.json()
+    budgetMs = Number(body?.budget_ms) || undefined
+  } catch {
+    // 无 body 或非 JSON：用默认预算
+  }
+  try {
+    const data = await runTaskPump(
+      c.env,
+      {
+        env: c.env,
+        origin: new URL(c.req.url).origin,
+        waitUntil: (() => {
+          try {
+            return (promise: Promise<unknown>) =>
+              c.executionCtx.waitUntil(promise)
+          } catch {
+            return undefined
+          }
+        })(),
+      },
+      { budgetMs, pump: "http" },
+    )
+    return c.json({ code: 200, message: "success", data })
+  } catch (err) {
+    return errorResponse(c, err)
+  }
+})
