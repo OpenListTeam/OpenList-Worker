@@ -196,6 +196,10 @@ test(
       await page.goto(base + "/Backup")
       await page.locator(".drive-file-row", { hasText: "one.bin" }).waitFor()
       const before = await page.evaluate(() => history.length)
+      // Remember a row: closing must show the same list, not rebuild it.
+      await page
+        .locator(".drive-file-row", { hasText: "three.bin" })
+        .evaluate((row) => (window.__keptRow = row))
       await page.locator(".drive-file-row", { hasText: "one.bin" }).click()
       await viewer.waitFor()
       assert.equal(new URL(page.url()).pathname, "/Backup/one.bin")
@@ -223,6 +227,11 @@ test(
       await page.waitForURL(base + "/Backup")
       await page.locator(".drive-file-row", { hasText: "one.bin" }).waitFor()
       assert.equal(await page.locator(".drive-shell").getAttribute("inert"), null)
+      assert.equal(
+        await page.evaluate(() => window.__keptRow?.isConnected),
+        true,
+        "the folder list was rebuilt after closing the viewer",
+      )
 
       // Opened from a link: the arrows still work and closing goes to the folder.
       await page.goto(base + "/Backup/two.bin")
