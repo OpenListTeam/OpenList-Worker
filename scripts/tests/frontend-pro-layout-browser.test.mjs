@@ -117,3 +117,69 @@ test(
     }
   },
 )
+
+test(
+  "upload tray lists tasks, flags failures, folds finished ones and minimizes to a pill",
+  { timeout: 60000 },
+  async () => {
+    const { page, base, errors, close } = await open(0)
+    try {
+      await page.route("**/api/fs/put", (route) => {
+        const name = decodeURIComponent(route.request().headers()["file-path"])
+        route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify(
+            name.includes("broken")
+              ? { code: 500, message: "B2 returned 503", data: null }
+              : { code: 200, message: "success", data: null },
+          ),
+        })
+      })
+      const panel = page.locator(".upload-center")
+      await page.goto(base + "/B2")
+      await page.locator(".drive-file-row").first().waitFor()
+      await page.locator(".drive-icon-rail-item", { hasText: "Transfers" }).click()
+      const chooser = page.waitForEvent("filechooser")
+      await panel.getByRole("button", { name: "Choose files" }).click()
+      await (await chooser).setFiles([
+        { name: "clip.mp4", mimeType: "video/mp4", buffer: Buffer.alloc(2048) },
+        { name: "broken.zip", mimeType: "application/zip", buffer: Buffer.alloc(1024) },
+      ])
+
+      const failed = panel.locator(".upload-row[data-status=error]")
+      await failed.waitFor()
+      assert.match(await failed.innerText(), /broken\.zip[\s\S]*B2 returned 503/)
+      assert.equal(await failed.getByRole("button", { name: "Restart" }).count(), 1)
+      assert.equal(await failed.locator(".upload-kind").getAttribute("data-kind"), "archive")
+
+      // The finished upload folds away until asked for.
+      const toggle = panel.locator(".upload-done-toggle")
+      await toggle.waitFor()
+      assert.match(await toggle.innerText(), /1 finished/)
+      assert.equal(await panel.locator(".upload-row[data-status=success]").count(), 0)
+      await toggle.click()
+      const done = panel.locator(".upload-row[data-status=success]")
+      await done.waitFor()
+      assert.equal(await done.locator(".upload-kind").getAttribute("data-kind"), "video")
+      assert.match(await done.innerText(), /clip\.mp4[\s\S]*Copy link/)
+
+      // Minimize to the pill and back.
+      await panel.getByRole("button", { name: "Minimize uploads" }).click()
+      const pill = panel.locator(".upload-pill")
+      await pill.waitFor()
+      assert.equal(await panel.locator(".upload-rows").count(), 0)
+      await pill.click()
+      await failed.waitFor()
+
+      // A failed task keeps the tray open: closing is offered only once nothing
+      // is left to cancel.
+      assert.equal(await panel.getByRole("button", { name: "Close uploads" }).count(), 0)
+      await failed.getByRole("button", { name: /Cancel broken\.zip/ }).click()
+      await panel.getByRole("button", { name: "Close uploads" }).click()
+      await panel.waitFor({ state: "detached" })
+      assert.deepEqual(errors, [])
+    } finally {
+      await close()
+    }
+  },
+)

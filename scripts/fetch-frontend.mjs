@@ -394,6 +394,9 @@ function buildLocalRepo(repo) {
       path.join(ROOT, "scripts/tests/frontend-storage-usage.test.mjs"),
       path.join(ROOT, "scripts/tests/frontend-shares.test.mjs"),
       path.join(ROOT, "scripts/tests/frontend-recent.test.mjs"),
+      path.join(ROOT, "scripts/tests/frontend-b2-jobs.test.mjs"),
+      path.join(ROOT, "scripts/tests/frontend-pro-layout.test.mjs"),
+      path.join(ROOT, "scripts/tests/frontend-upload-tray.test.mjs"),
       path.join(ROOT, "scripts/tests/pdf-viewer.test.mjs"),
     ],
     {
