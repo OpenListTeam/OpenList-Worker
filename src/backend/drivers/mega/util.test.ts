@@ -260,14 +260,14 @@ test("MegaApiClient streams only the error prefix instead of buffering the body"
     },
   })
   globalThis.fetch = (async () =>
-    new Response(body, { status: 500 })) as typeof fetch
+    new Response(body, { status: 400 })) as typeof fetch
 
   try {
     await assert.rejects(
       () => client.request([{ a: "f" }]),
       (err: any) => {
         const message = String(err?.message || "")
-        assert.match(message, /Mega API HTTP error: 500/)
+        assert.match(message, /Mega API HTTP error: 400/)
         assert.ok(
           message.length < 600,
           `error message too long: ${message.length}`,
@@ -499,6 +499,135 @@ test("MegaApiClient reports MEGA -9 as a credential error", async () => {
     await assert.rejects(
       () => client.init(),
       /Mega authentication failed: -9 \(wrong email or password\)/,
+    )
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("MegaApiClient retries 503 Server Too Busy with backoff", async () => {
+  const originalFetch = globalThis.fetch
+  const sleeps: number[] = []
+  let calls = 0
+  const client = new MegaApiClient(
+    { email: "user@example.com", password: "password" },
+    undefined,
+    async (ms) => {
+      sleeps.push(ms)
+    },
+  )
+  globalThis.fetch = (async () => {
+    calls++
+    return calls === 1
+      ? new Response("", {
+          status: 503,
+          statusText: "Server Too Busy",
+        })
+      : jsonResponse([0])
+  }) as typeof fetch
+
+  try {
+    assert.deepEqual(await client.request([{ a: "f" }]), [0])
+    assert.equal(calls, 2)
+    assert.equal(sleeps.length, 1)
+    // 400ms 基数 + 最多 250ms 抖动
+    assert.ok(sleeps[0] >= 400 && sleeps[0] <= 650, `delay=${sleeps[0]}`)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("MegaApiClient bounds transient 5xx retries", async () => {
+  const originalFetch = globalThis.fetch
+  let calls = 0
+  let sleeps = 0
+  const client = new MegaApiClient(
+    { email: "user@example.com", password: "password" },
+    undefined,
+    async () => {
+      sleeps++
+    },
+  )
+  globalThis.fetch = (async () => {
+    calls++
+    return new Response("", { status: 503, statusText: "Server Too Busy" })
+  }) as typeof fetch
+
+  try {
+    await assert.rejects(
+      () => client.request([{ a: "f" }]),
+      /Mega API HTTP error: 503 Server Too Busy/,
+    )
+    assert.equal(calls, 5)
+    assert.equal(sleeps, 4)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("MegaApiClient retries MEGA -3/-4 and reports them after the budget", async () => {
+  const originalFetch = globalThis.fetch
+  let calls = 0
+  const client = new MegaApiClient(
+    { email: "user@example.com", password: "password" },
+    undefined,
+    async () => {},
+  )
+
+  try {
+    globalThis.fetch = (async () => {
+      calls++
+      return jsonResponse(calls === 1 ? [-3] : [0])
+    }) as typeof fetch
+    assert.deepEqual(await client.request([{ a: "f" }]), [0])
+    assert.equal(calls, 2)
+
+    calls = 0
+    globalThis.fetch = (async () => {
+      calls++
+      return jsonResponse([-4])
+    }) as typeof fetch
+    await assert.rejects(
+      () => client.request([{ a: "f" }]),
+      /Mega API error code: -4/,
+    )
+    assert.equal(calls, 5)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("MegaApiClient keeps the solved Hashcash header across a 503 retry", async () => {
+  const originalFetch = globalThis.fetch
+  const calls: Array<RequestInit | undefined> = []
+  const client = new MegaApiClient(
+    { email: "user@example.com", password: "password" },
+    async () => `1:${TOKEN}:AgAAAA`,
+    async () => {},
+  )
+  globalThis.fetch = (async (
+    _input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    calls.push(init)
+    if (calls.length === 1) {
+      return new Response("", {
+        status: 402,
+        headers: { "X-Hashcash": `1:255:ignored:${TOKEN}` },
+      })
+    }
+    if (calls.length === 2) {
+      return new Response("", { status: 503 })
+    }
+    return jsonResponse([0])
+  }) as typeof fetch
+
+  try {
+    assert.deepEqual(await client.request([{ a: "f" }]), [0])
+    assert.equal(calls.length, 3)
+    assert.equal(
+      (calls[2]?.headers as Record<string, string>)?.["X-Hashcash"],
+      `1:${TOKEN}:AgAAAA`,
     )
   } finally {
     globalThis.fetch = originalFetch

@@ -174,6 +174,38 @@ export async function generateHashcashToken(
 }
 
 const MAX_HASHCASH_RETRIES = 1
+const MAX_TRANSIENT_RETRIES = 4
+const TRANSIENT_RETRY_BASE_MS = 400
+const TRANSIENT_RETRY_MAX_MS = 8_000
+/** MEGA 的网关过载/限流状态码；402（Hashcash）由上面的分支单独处理。 */
+const TRANSIENT_HTTP_STATUS = new Set([429, 500, 502, 503, 504])
+
+const MEGA_ERROR_NAMES: Record<number, string> = {
+  [-1]: "EINTERNAL",
+  [-2]: "EARGS",
+  [-3]: "EAGAIN",
+  [-4]: "ERATELIMIT",
+  [-6]: "ETOOMANY",
+  [-9]: "ENOENT",
+  [-11]: "EACCESS",
+  [-15]: "ESID",
+  [-16]: "EBLOCKED",
+  [-17]: "EOVERQUOTA",
+  [-18]: "ETEMPUNAVAIL",
+  [-26]: "EMFAREQUIRED",
+}
+
+/** MEGA 在 HTTP 200 里用负数返回 API 错误，单独建类型便于上层按 code 处理。 */
+export class MegaApiError extends Error {
+  readonly code: number
+
+  constructor(code: number) {
+    const name = MEGA_ERROR_NAMES[code]
+    super(`Mega API error code: ${code}${name ? ` (${name})` : ""}`)
+    this.name = "MegaApiError"
+    this.code = code
+  }
+}
 
 /**
  * 只读响应体的前 limit 字节，读完立刻 cancel。
@@ -226,9 +258,13 @@ function packAttributes(attributes: Record<string, unknown>): Uint8Array {
 
 const ZERO_IV = new Uint8Array(16)
 
+const defaultSleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms))
+
 export class MegaApiClient {
   private addition: MegaAddition
   private solveHashcash: (challenge: string) => Promise<string>
+  private sleep: (ms: number) => Promise<void>
   private sid = ""
   private seq = Math.floor(Math.random() * 0x10000000)
   private masterKey: Uint8Array | null = null
@@ -240,14 +276,32 @@ export class MegaApiClient {
     solveHashcash: (
       challenge: string,
     ) => Promise<string> = generateHashcashToken,
+    sleep: (ms: number) => Promise<void> = defaultSleep,
   ) {
     this.addition = addition
     this.solveHashcash = solveHashcash
+    this.sleep = sleep
   }
 
   private nextSeq(): number {
     this.seq = (this.seq + 1) % 0x10000000
     return this.seq
+  }
+
+  /**
+   * 指数退避。MEGA 的 "Server Too Busy"（503）通常几秒内恢复；Retry-After
+   * 存在时取两者较大值（上限 15 s），并加少量抖动避免同一时刻重试撞车。
+   */
+  private async retryDelay(attempt: number, retryAfter?: string | null) {
+    let delay = Math.min(
+      TRANSIENT_RETRY_MAX_MS,
+      TRANSIENT_RETRY_BASE_MS * 2 ** attempt,
+    )
+    const header = Number(retryAfter)
+    if (Number.isFinite(header) && header > 0) {
+      delay = Math.max(delay, Math.min(header * 1000, 15_000))
+    }
+    await this.sleep(delay + Math.floor(Math.random() * 250))
   }
 
   async request<T = any>(body: any[]): Promise<T> {
@@ -259,15 +313,16 @@ export class MegaApiClient {
 
     const bodyText = JSON.stringify(body)
     let hashcashHeader: string | undefined
-    let res: Response
+    let hashcashRetries = 0
+    let transientRetries = 0
 
-    for (let retry = 0; ; retry++) {
+    for (;;) {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       }
       if (hashcashHeader) headers["X-Hashcash"] = hashcashHeader
 
-      res = await fetch(url, {
+      const res = await fetch(url, {
         method: "POST",
         headers,
         body: bodyText,
@@ -277,34 +332,74 @@ export class MegaApiClient {
       // Other 402 responses (for example, payment/account errors) keep the
       // ordinary error path; challenges are bounded to one retry per request.
       // 注意：挑战绑定本次请求的 id，重试必须复用同一个 url/seq，不能重新生成。
-      if (res.status !== 402) break
-      const challenge = res.headers.get("X-Hashcash")
-      if (!challenge) break
-      if (retry >= MAX_HASHCASH_RETRIES) {
-        throw new Error("Mega API repeated the Hashcash challenge after retry")
+      if (res.status === 402) {
+        const challenge = res.headers.get("X-Hashcash")
+        if (challenge) {
+          if (hashcashRetries >= MAX_HASHCASH_RETRIES) {
+            throw new Error(
+              "Mega API repeated the Hashcash challenge after retry",
+            )
+          }
+          hashcashRetries++
+          try {
+            await res.body?.cancel()
+          } catch {
+            // The response body is not needed after extracting its challenge header.
+          }
+          hashcashHeader = await this.solveHashcash(challenge)
+          continue
+        }
       }
-      try {
-        await res.body?.cancel()
-      } catch {
-        // The response body is not needed after extracting its challenge header.
+
+      // 503 "Server Too Busy" / 429 / 502 等是网关过载或限流，和 PoW 无关，
+      // 官方客户端与 megajs 都是退避后重试；这里做同样的有界重试。
+      if (
+        TRANSIENT_HTTP_STATUS.has(res.status) &&
+        transientRetries < MAX_TRANSIENT_RETRIES
+      ) {
+        const retryAfter = res.headers.get("Retry-After")
+        try {
+          await res.body?.cancel()
+        } catch {
+          // 丢弃响应体，避免连接被占用
+        }
+        await this.retryDelay(transientRetries++, retryAfter)
+        continue
       }
-      hashcashHeader = await this.solveHashcash(challenge)
-    }
 
-    if (!res.ok) {
-      // 上游异常时可能返回整页 HTML；错误信息会进日志与前端提示，必须截断。
-      // 用流式读取而不是 res.text().slice()：后者仍会把整页正文缓冲进内存。
-      const detail = await readTextPrefix(res, 512)
-      throw new Error(
-        `Mega API HTTP error: ${res.status}${detail ? `: ${detail}` : ""}`,
-      )
-    }
+      if (!res.ok) {
+        // 上游异常时可能返回整页 HTML；错误信息会进日志与前端提示，必须截断。
+        // 用流式读取而不是 res.text().slice()：后者仍会把整页正文缓冲进内存。
+        const detail = await readTextPrefix(res, 512)
+        const statusText = res.statusText ? ` ${res.statusText}` : ""
+        throw new Error(
+          `Mega API HTTP error: ${res.status}${statusText}${detail ? `: ${detail}` : ""}`,
+        )
+      }
 
-    const json = (await res.json()) as any
-    if (typeof json === "number" && json < 0) {
-      throw new Error(`Mega API error code: ${json}`)
+      const json = (await res.json()) as any
+      // MEGA 的 API 错误既可能是裸数字，也可能是单元素数组（如 [-9]）。
+      const code =
+        typeof json === "number"
+          ? json
+          : Array.isArray(json) &&
+              json.length === 1 &&
+              typeof json[0] === "number"
+            ? json[0]
+            : undefined
+      if (code !== undefined && code < 0) {
+        // -3 EAGAIN（临时拥塞）与 -4 ERATELIMIT（命令配额）同样值得重试。
+        if (
+          (code === -3 || code === -4) &&
+          transientRetries < MAX_TRANSIENT_RETRIES
+        ) {
+          await this.retryDelay(transientRetries++)
+          continue
+        }
+        throw new MegaApiError(code)
+      }
+      return json as T
     }
-    return json as T
   }
 
   /**
@@ -359,7 +454,12 @@ export class MegaApiClient {
     const twoFa = this.addition.two_fa_code?.trim()
     if (twoFa) loginBody.mfa = twoFa
 
-    const login = await this.request<any[]>([loginBody])
+    const login = await this.request<any[]>([loginBody]).catch((err) => {
+      if (err instanceof MegaApiError) {
+        throw new Error(this.authErrorMessage(err.code))
+      }
+      throw err
+    })
     const authResp = login[0]
     if (typeof authResp === "number" && authResp < 0) {
       throw new Error(this.authErrorMessage(authResp))
