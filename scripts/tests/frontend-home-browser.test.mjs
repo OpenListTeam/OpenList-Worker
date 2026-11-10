@@ -30,7 +30,7 @@ test(
       await page.locator(".drive-file-row").first().waitFor()
       // Clean layout: sidebar with folders, item count, details on demand.
       await page
-        .locator("#drive-desktop-navigation .drive-tree-link", {
+        .locator("#drive-desktop-navigation .drive-mount-link", {
           hasText: "Documents",
         })
         .waitFor()
