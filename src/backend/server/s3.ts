@@ -7,6 +7,7 @@ import {
   removeItems,
 } from "../internal/op/storage"
 import { safeErrorMessage } from "../pkg/errs"
+import { appendDownloadSignToRawUrl } from "../pkg/sign"
 import { readBodyWithinLimit } from "../pkg/upload-limit"
 import {
   canRemove,
@@ -221,7 +222,13 @@ s3Router.get("/*", async (c) => {
     if (!item) return s3Error("NoSuchKey", "NoSuchKey", 404)
     if (item.is_dir) return s3Error("NoSuchKey", "NoSuchKey", 404)
     if (rawUrl) {
-      return c.redirect(rawUrl, 302)
+      // 与 WebDAV / /fs/get 同一套语义：/d、/p 端点没有 Auth 中间件，
+      // 开启 sign_all / link_expiration / 存储级 enable_sign / 密码 meta 时
+      // 裸链接会被判 401 "sign verify failed"（Issue #175）。
+      return c.redirect(
+        await appendDownloadSignToRawUrl(c, rawUrl, virtualPath),
+        302,
+      )
     }
     return s3Error("NoSuchKey", "NoSuchKey", 404)
   } catch (e: any) {
