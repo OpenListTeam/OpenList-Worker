@@ -4,6 +4,9 @@ PDF 预览使用本地部署的 PDF.js 6.3.289 legacy viewer。`disableRange=fal
 `disableStream=true`、`disableAutoFetch=true`，保留默认 64 KiB 分段。
 搜索、打印、下载或文档恢复仍可能读取更多数据；无 Range 的源站自动回退普通下载。
 
+再次打开同一份文档时的浏览器持久缓存见 [文档预览的浏览器持久缓存](document-cache.md)；
+本文描述的是没有缓存数据时的读取过程。
+
 ## 高延迟对比
 
 2026-09-30 使用实际 Chromium 与完整预览器测试同一份 24 页、约 38.8 MB 的 PDF。

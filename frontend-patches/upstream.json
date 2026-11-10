@@ -30,6 +30,7 @@
     "pro-mobile.patch",
     "upload-tray.patch",
     "file-viewer.patch",
-    "clean-layout.patch"
+    "clean-layout.patch",
+    "document-cache.patch"
   ]
 }

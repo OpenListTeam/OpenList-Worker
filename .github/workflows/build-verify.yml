@@ -85,6 +85,7 @@ jobs:
           LOGIN_SCREENSHOT_DIR=home-screenshots node --test scripts/tests/frontend-login-browser.test.mjs
           node --test scripts/tests/frontend-wake-browser.test.mjs
           node --test scripts/tests/pdf-browser-cache.test.mjs
+          node --test scripts/tests/pdf-persistent-cache.test.mjs
           node --test scripts/tests/pdf-viewer.test.mjs scripts/tests/pdf-print-range.test.mjs
           node --test scripts/tests/pdf-print-browser.test.mjs
 
@@ -113,10 +114,11 @@ jobs:
         run: |
           set -e
           test -f dist/index.html
-          test -f dist/static/pdfjs/6.3.289-openlist5/web/viewer.html
-          test -f dist/static/pdfjs/6.3.289-openlist5/web/openlist.mjs
-          test -f dist/static/pdfjs/6.3.289-openlist5/web/openlist-print.mjs
-          test -f dist/static/pdfjs/6.3.289-openlist5/build/pdf.worker.mjs
+          test -f dist/static/pdfjs/6.3.289-openlist6/web/viewer.html
+          test -f dist/static/pdfjs/6.3.289-openlist6/web/openlist.mjs
+          test -f dist/static/pdfjs/6.3.289-openlist6/web/openlist-print.mjs
+          test -f dist/static/pdfjs/6.3.289-openlist6/web/openlist-cache.mjs
+          test -f dist/static/pdfjs/6.3.289-openlist6/build/pdf.worker.mjs
           test -f "dist-server/api/[...route].js"
           test -f "cloud-functions/[[default]].js"
           echo "OK: dist/index.html、dist-server/api/[...route].js、cloud-functions/[[default]].js 均已生成"

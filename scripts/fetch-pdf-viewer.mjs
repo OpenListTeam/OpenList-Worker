@@ -5,9 +5,11 @@ import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-// Keep the frontend URL and integration revision in sync with pdf-range.patch.
+// Keep the frontend URLs in sync with this revision: the viewer entry in
+// previews/pdf.tsx and the cache module in utils/document-cache.ts (both set by
+// document-cache.patch; frontend-document-cache.test.mjs checks them).
 // Bump the revision whenever the viewer/bridge changes, so caches never mix.
-export const PDF_VIEWER_PATH = "static/pdfjs/6.3.289-openlist5"
+export const PDF_VIEWER_PATH = "static/pdfjs/6.3.289-openlist6"
 const ARCHIVE_URL =
   "https://github.com/mozilla/pdf.js/releases/download/v6.3.289/pdfjs-6.3.289-legacy-dist.zip"
 const ARCHIVE_SHA256 =
@@ -37,6 +39,31 @@ export function patchPdfRangeFetch(source) {
   return (
     "/* OpenList customization: bypass browser HTTP cache for PDF ranges. */\n" +
     source.replace(before, after)
+  )
+}
+
+export function patchPdfRangeCache(source) {
+  // Send both document requests (the initial one and every range) through the
+  // optional hook installed by openlist-cache.mjs. Without a hook, or for any
+  // other URL, the request above is issued exactly as before.
+  const call =
+    "fetchUrl(url, headers, withCredentials, this._abortController).then("
+  const helper = "\nfunction fetchUrl("
+  if (source.split(call).length !== 3 || source.split(helper).length !== 2)
+    throw new Error("Unexpected PDF.js document fetch code")
+  return (
+    "/* OpenList customization: persistent document range cache hook. */\n" +
+    source
+      .replaceAll(call, `openListFetchUrl${call.slice("fetchUrl".length)}`)
+      .replace(
+        helper,
+        `
+function openListFetchUrl(url, headers, withCredentials, abortController) {
+  const request = () => fetchUrl(url, headers, withCredentials, abortController);
+  const cache = globalThis.openListPdfFetch;
+  return typeof cache === "function" ? cache(url, headers, request) : request();
+}${helper}`,
+      )
   )
 }
 
@@ -128,7 +155,10 @@ export function installPdfViewer(dist, archive) {
     const worker = path.join(extracted, "build/pdf.worker.mjs")
     fs.writeFileSync(worker, patchPdfPageTree(fs.readFileSync(worker, "utf8")))
     const api = path.join(extracted, "build/pdf.mjs")
-    fs.writeFileSync(api, patchPdfRangeFetch(fs.readFileSync(api, "utf8")))
+    fs.writeFileSync(
+      api,
+      patchPdfRangeCache(patchPdfRangeFetch(fs.readFileSync(api, "utf8"))),
+    )
     const viewer = path.join(extracted, "web/viewer.mjs")
     fs.writeFileSync(
       viewer,
@@ -154,6 +184,10 @@ export function installPdfViewer(dist, archive) {
     fs.copyFileSync(
       path.join(scripts, "pdf-print-preparation.mjs"),
       path.join(extracted, "web/openlist-print.mjs"),
+    )
+    fs.copyFileSync(
+      path.join(scripts, "pdf-range-cache.mjs"),
+      path.join(extracted, "web/openlist-cache.mjs"),
     )
     // Retain LICENSE, fonts, CMaps, WASM and locales. Demo PDFs/maps aren't used.
     function prune(dir) {

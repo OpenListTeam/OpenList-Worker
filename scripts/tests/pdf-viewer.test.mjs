@@ -8,6 +8,7 @@ import {
   installPdfViewer,
   PDF_VIEWER_PATH,
   patchPdfPageTree,
+  patchPdfRangeCache,
 } from "../fetch-pdf-viewer.mjs"
 
 const source = fs.readFileSync(
@@ -21,6 +22,7 @@ async function harness({
   cancelBoot = false,
   autoPrint = false,
   retryPages = null,
+  failCache = false,
 } = {}) {
   const documentEvents = new Map(),
     messages = [],
@@ -32,6 +34,8 @@ async function harness({
   let prints = 0
   const historyUrls = []
   let installedRetryPages
+  const cached = []
+  let stale
   const document = { documentElement: { style: {} } }
   const parent = {
     document: {
@@ -81,6 +85,16 @@ async function harness({
         return () => printInstalled--
       },
     }),
+    loadCache: async () => {
+      if (failCache) throw new Error("missing cache module")
+      return {
+        installPdfRangeCache: (target, hooks) => {
+          assert.equal(target, window)
+          stale = hooks.onStale
+          return { begin: (url, identity) => cached.push({ url, identity }) }
+        },
+      }
+    },
     loadViewer: async () => {
       if (cancelBoot) {
         pagehide()
@@ -104,7 +118,8 @@ async function harness({
   await vm.runInContext(
     `(async () => {${source
       .replace('import("./viewer.mjs")', "loadViewer()")
-      .replace('import("./openlist-print.mjs")', "loadPrint()")}})()`,
+      .replace('import("./openlist-print.mjs")', "loadPrint()")
+      .replace('import("./openlist-cache.mjs")', "loadCache()")}})()`,
     context,
   )
   return {
@@ -120,6 +135,8 @@ async function harness({
     prints: () => prints,
     historyUrls,
     retryPages: () => installedRetryPages,
+    cached,
+    stale: () => stale(),
     message: async (
       data,
       origin = "https://drive.example",
@@ -177,6 +194,35 @@ test("signed cross-origin storage URLs keep their full signature and file name",
   await h.message({ type: "openlist:pdf:open", url, filename: "a b.pdf" })
   assert.equal(h.opens[0].url, url)
   assert.equal(h.opens[0].originalUrl, "a b.pdf")
+})
+test("the file identity reaches the range cache with the exact opened URL", async () => {
+  const h = await harness()
+  const cache = { key: "1|/docs/a.pdf|4096|2026-01-01T00:00:00Z", size: 4096 }
+  await h.message({
+    type: "openlist:pdf:open",
+    url: "/p/docs/a.pdf?sign=secret",
+    cache,
+  })
+  assert.deepEqual(h.cached, [
+    { url: "https://drive.example/p/docs/a.pdf?sign=secret", identity: cache },
+  ])
+  assert.equal(h.opens[0].url, h.cached[0].url)
+  h.stale()
+  assert.deepEqual(h.messages.at(-1), {
+    type: "openlist:pdf:stale",
+    origin: "https://drive.example",
+  })
+  assert.ok(h.messages.every((m) => !JSON.stringify(m).includes("secret")))
+})
+test("a missing cache module leaves the viewer fully usable", async () => {
+  const h = await harness({ failCache: true })
+  await h.message({ type: "openlist:pdf:open", url: "/a.pdf", cache: {} })
+  assert.deepEqual(
+    h.messages.map((message) => message.type),
+    ["openlist:pdf:ready"],
+  )
+  assert.equal(h.opens.length, 1)
+  assert.equal(h.cached.length, 0)
 })
 test("only the same-origin parent can open a document or change the theme", async () => {
   const h = await harness()
@@ -273,4 +319,23 @@ test("page-tree optimization rejects changed or duplicated upstream code", () =>
     () => patchPdfPageTree(guard + guard),
     /Unexpected PDF.js page-tree/,
   )
+})
+
+test("range-cache hook rejects changed or duplicated upstream code", () => {
+  const call =
+    "fetchUrl(url, headers, withCredentials, this._abortController).then("
+  const source = `\nfunction fetchUrl(a) {}\n${call}x);\n${call}y);`
+  const patched = patchPdfRangeCache(source)
+  assert.equal(patched.split(`openListFetchUrl${call.slice(8)}`).length, 3)
+  assert.equal(patched.split("\nfunction fetchUrl(").length, 2)
+  for (const changed of [
+    "unrecognized API",
+    source + call,
+    source.replace(call, ""),
+    source + "\nfunction fetchUrl(b) {}",
+  ])
+    assert.throws(
+      () => patchPdfRangeCache(changed),
+      /Unexpected PDF.js document fetch/,
+    )
 })

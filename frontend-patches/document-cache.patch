@@ -1,0 +1,279 @@
+diff --git a/src/hooks/useDocumentIdentity.ts b/src/hooks/useDocumentIdentity.ts
+new file mode 100644
+index 0000000..2838722
+--- /dev/null
++++ b/src/hooks/useDocumentIdentity.ts
+@@ -0,0 +1,9 @@
++import { me, objStore } from "~/store"
++import { documentIdentity } from "~/utils/document-identity"
++import { useRouter } from "./useRouter"
++
++/** The cache identity of the file being previewed (see documentIdentity). */
++export const useDocumentIdentity = () => {
++  const { pathname } = useRouter()
++  return () => documentIdentity(me().id, pathname(), objStore.obj)
++}
+diff --git a/src/pages/home/previews/doc.tsx b/src/pages/home/previews/doc.tsx
+index 71e1031..ed03d72 100644
+--- a/src/pages/home/previews/doc.tsx
++++ b/src/pages/home/previews/doc.tsx
+@@ -1,6 +1,8 @@
+ import { BoxWithFullScreen, FullLoading, Error as Erro } from "~/components"
+ import { Box, Button, IconButton, Tooltip } from "@hope-ui/solid"
+ import { loadScriptIIFE } from "~/utils"
++import { fetchDocument } from "~/utils/document-cache"
++import { useDocumentIdentity } from "~/hooks/useDocumentIdentity"
+ import { createSignal, onMount, onCleanup, Show } from "solid-js"
+ import { useLink, useT, useCDN } from "~/hooks"
+ 
+@@ -19,6 +21,7 @@ declare global {
+ const DocViewerApp = () => {
+   const t = useT()
+   const { currentObjLink } = useLink()
++  const identity = useDocumentIdentity()
+   const { npm, docxPreviewPath } = useCDN()
+   const [loading, setLoading] = createSignal(true)
+   const [error, setError] = createSignal(false)
+@@ -49,12 +52,7 @@ const DocViewerApp = () => {
+ 
+       // 获取文件URL并下载
+       const fileUrl = currentObjLink()
+-      const response = await fetch(fileUrl)
+-      if (!response.ok) {
+-        throw new Error("Failed to fetch document file")
+-      }
+-
+-      const blob = await response.blob()
++      const blob = await fetchDocument(fileUrl, identity())
+ 
+       // 使用docx-preview渲染文档
+       if (resultRef) {
+diff --git a/src/pages/home/previews/pdf.tsx b/src/pages/home/previews/pdf.tsx
+index c93c0d1..948d4fa 100644
+--- a/src/pages/home/previews/pdf.tsx
++++ b/src/pages/home/previews/pdf.tsx
+@@ -6,24 +6,29 @@ import {
+   onCleanup,
+   onMount,
+   Show,
++  untrack,
+ } from "solid-js"
+ import { currentLang } from "~/app/i18n"
+ import { BoxWithFullScreen } from "~/components"
++import { useDocumentIdentity } from "~/hooks/useDocumentIdentity"
+ import { objStore } from "~/store"
+ import { joinBase } from "~/utils"
++import type { DocumentIdentity } from "~/utils/document-identity"
+ 
+ const PDFFrame = (props: {
+   url: string
+   locale: string
+   filename: string
++  cache?: DocumentIdentity
+   retry: () => void
++  stale: () => void
+ }) => {
+   const { colorMode } = useColorMode()
+   const [ready, setReady] = createSignal(false)
+   const [failed, setFailed] = createSignal(false)
+   let frame: HTMLIFrameElement | undefined
+   const viewer = new URL(
+-    joinBase("static/pdfjs/6.3.289-openlist5/web/viewer.html"),
++    joinBase("static/pdfjs/6.3.289-openlist6/web/viewer.html"),
+     location.origin,
+   )
+   viewer.searchParams.set("locale", props.locale)
+@@ -45,9 +50,12 @@ const PDFFrame = (props: {
+             type: "openlist:pdf:open",
+             url: props.url,
+             filename: props.filename,
++            cache: props.cache,
+           },
+           location.origin,
+         )
++      } else if (event.data?.type === "openlist:pdf:stale") {
++        props.stale()
+       } else if (event.data?.type === "openlist:pdf:error") {
+         window.clearTimeout(timeout)
+         setFailed(true)
+@@ -107,6 +115,10 @@ const PDFFrame = (props: {
+ 
+ const PDFViewer = () => {
+   const [attempt, setAttempt] = createSignal(0)
++  const identity = useDocumentIdentity()
++  // The viewer found cached bytes that no longer match the file. It dropped
++  // them; reload this document once, straight from the network.
++  const [uncached, setUncached] = createSignal(false)
+   // A new URL/locale/retry replaces the iframe, cancelling its worker and all
+   // outstanding range requests instead of leaving the previous file alive.
+   const document = createMemo(() =>
+@@ -115,6 +127,8 @@ const PDFViewer = () => {
+           url: objStore.raw_url,
+           locale: currentLang(),
+           filename: objStore.obj.name,
++          // Read with the URL it belongs to; the path alone changes earlier.
++          cache: uncached() ? undefined : untrack(identity),
+           attempt: attempt(),
+         }
+       : undefined,
+@@ -127,7 +141,9 @@ const PDFViewer = () => {
+             url={doc.url}
+             locale={doc.locale}
+             filename={doc.filename}
++            cache={doc.cache}
+             retry={() => setAttempt((value) => value + 1)}
++            stale={() => setUncached(true)}
+           />
+         )}
+       </Show>
+diff --git a/src/pages/home/previews/xls.tsx b/src/pages/home/previews/xls.tsx
+index e1ddcf2..76d8cdd 100644
+--- a/src/pages/home/previews/xls.tsx
++++ b/src/pages/home/previews/xls.tsx
+@@ -1,6 +1,8 @@
+ import { BoxWithFullScreen, Error as Erro, FullLoading } from "~/components"
+ import { Box, Button, HStack } from "@hope-ui/solid"
+ import { loadScriptIIFE } from "~/utils"
++import { fetchDocument } from "~/utils/document-cache"
++import { useDocumentIdentity } from "~/hooks/useDocumentIdentity"
+ import { createSignal, onMount, For, Show } from "solid-js"
+ import { useLink, useT, useCDN } from "~/hooks"
+ 
+@@ -30,6 +32,7 @@ interface SheetData {
+ const ExcelViewerApp = () => {
+   const t = useT()
+   const { currentObjLink } = useLink()
++  const identity = useDocumentIdentity()
+   const { excelJSPath } = useCDN()
+   const [loading, setLoading] = createSignal(true)
+   const [error, setError] = createSignal(false)
+@@ -50,12 +53,9 @@ const ExcelViewerApp = () => {
+       const fileUrl = currentObjLink()
+ 
+       // 下载文件
+-      const response = await fetch(fileUrl)
+-      if (!response.ok) {
+-        throw new Error("Failed to fetch Excel file")
+-      }
+-
+-      const arrayBuffer = await response.arrayBuffer()
++      const arrayBuffer = await (
++        await fetchDocument(fileUrl, identity())
++      ).arrayBuffer()
+ 
+       // 使用ExcelJS解析文件
+       const workbook = new window.ExcelJS.Workbook()
+diff --git a/src/pages/manage/Header.tsx b/src/pages/manage/Header.tsx
+index 3f6efab..2b90c33 100644
+--- a/src/pages/manage/Header.tsx
++++ b/src/pages/manage/Header.tsx
+@@ -21,6 +21,7 @@ import { useFetch, useRouter, useT } from "~/hooks"
+ import { SideMenu } from "./SideMenu"
+ import { side_menu_items } from "./sidemenu_items"
+ import { changeToken, handleResp, notify, r } from "~/utils"
++import { clearDocumentCache } from "~/utils/document-cache"
+ import { PResp } from "~/types"
+ const { isOpen, onOpen, onClose } = createDisclosure()
+ const [logOutReqLoading, logOutReq] = useFetch((): PResp<any> =>
+@@ -33,6 +34,8 @@ const Header = () => {
+   const logOut = async () => {
+     handleResp(await logOutReq(), () => {
+       changeToken()
++      // Previewed documents stay in the browser; drop them with the session.
++      void clearDocumentCache()
+       notify.success(t("manage.logout_success"))
+       to(`/@login?redirect=${encodeURIComponent(location.pathname)}`)
+     })
+diff --git a/src/utils/document-cache.ts b/src/utils/document-cache.ts
+new file mode 100644
+index 0000000..32952f3
+--- /dev/null
++++ b/src/utils/document-cache.ts
+@@ -0,0 +1,53 @@
++import { joinBase } from "./path"
++import type { DocumentIdentity } from "./document-identity"
++
++// The storage is the module deployed with the PDF viewer
++// (scripts/pdf-range-cache.mjs in the Worker repository), so PDF ranges and
++// whole Office files share one IndexedDB store, one size limit and one cleanup.
++// Keep this path in sync with the viewer entry in previews/pdf.tsx.
++const MODULE = "static/pdfjs/6.3.289-openlist6/web/openlist-cache.mjs"
++
++interface DocumentCacheModule {
++  readDocument(key: string, size: number): Promise<Blob | null>
++  storeDocument(key: string, size: number, blob: Blob): Promise<boolean>
++  clearDocuments(): Promise<void>
++}
++
++let loading: Promise<DocumentCacheModule | undefined> | undefined
++// Browsers without module support, or a missing file, simply skip the cache.
++const load = () =>
++  (loading ??= import(
++    /* @vite-ignore */ new URL(joinBase(MODULE), location.origin).href
++  ).catch(() => undefined))
++
++/**
++ * Download a document for an in-page preview. A file opened before is read
++ * from the browser's cache; the cache never turns a working download into an
++ * error.
++ */
++export async function fetchDocument(
++  url: string,
++  identity?: DocumentIdentity,
++): Promise<Blob> {
++  const cache = identity ? await load() : undefined
++  if (cache && identity) {
++    const hit = await cache
++      .readDocument(identity.key, identity.size)
++      .catch(() => null)
++    if (hit) return hit
++  }
++  const response = await fetch(url)
++  if (!response.ok) throw new Error("Failed to fetch document file")
++  const blob = await response.blob()
++  if (cache && identity)
++    void cache
++      .storeDocument(identity.key, identity.size, blob)
++      .catch(() => false)
++  return blob
++}
++
++/** Forget every cached document, e.g. when the account signs out. */
++export async function clearDocumentCache() {
++  const cache = await load()
++  await cache?.clearDocuments().catch(() => undefined)
++}
+diff --git a/src/utils/document-identity.ts b/src/utils/document-identity.ts
+new file mode 100644
+index 0000000..799faf9
+--- /dev/null
++++ b/src/utils/document-identity.ts
+@@ -0,0 +1,28 @@
++/** Pure helper for the document cache (no imports, unit-testable). */
++
++export interface DocumentIdentity {
++  key: string
++  size: number
++}
++
++/**
++ * What tells one stored file from another: the account, the path, the size and
++ * the modification time. Replacing a file changes its identity, so cached
++ * bytes of the previous version are never read again. Signed URLs are not part
++ * of it because they change between visits.
++ */
++export function documentIdentity(
++  user: number | string | undefined,
++  path: string,
++  obj:
++    | { size?: number; modified?: string; is_dir?: boolean; archive?: unknown }
++    | undefined,
++): DocumentIdentity | undefined {
++  if (!obj || obj.is_dir || obj.archive || !path) return undefined
++  const size = obj.size
++  if (typeof size !== "number" || !Number.isSafeInteger(size) || size <= 0)
++    return undefined
++  // Storages without a real modification time cannot signal a replacement.
++  if (!obj.modified || !(Date.parse(obj.modified) > 0)) return undefined
++  return { key: [user ?? "", path, size, obj.modified].join("|"), size }
++}

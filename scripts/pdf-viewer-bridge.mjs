@@ -26,6 +26,15 @@ const cleanup = () =>
 // cancels the module fetch before the viewer finishes booting.
 window.addEventListener("pagehide", cleanup, { once: true })
 try {
+  // Reopened documents read their earlier ranges from the browser's cache.
+  // Loaded alongside the viewer; without it only the speed-up is lost.
+  const loadingRangeCache = import("./openlist-cache.mjs")
+    .then(({ installPdfRangeCache }) =>
+      installPdfRangeCache(window, {
+        onStale: () => send("openlist:pdf:stale"),
+      }),
+    )
+    .catch(() => null)
   const { PDFViewerApplication: app } = await import("./viewer.mjs")
   await app.initializedPromise
   cleanup()
@@ -41,6 +50,7 @@ try {
     viewerUrl.searchParams.delete("openlistPrintPages")
     history.replaceState(null, "", viewerUrl.href)
   }
+  const rangeCache = await loadingRangeCache
   let opened = false
   window.addEventListener("message", (event) => {
     if (event.origin !== origin || event.source !== parent) return
@@ -63,6 +73,8 @@ try {
     }
     if (!["https:", "http:"].includes(url.protocol)) return
     opened = true
+    // Keyed by the file identity the app supplies, never by the signed URL.
+    rangeCache?.begin(url.href, event.data.cache)
     // Calling open directly supports CORS-enabled signed storage URLs; the
     // generic demo's ?file= origin restriction does not apply to this embed.
     app
