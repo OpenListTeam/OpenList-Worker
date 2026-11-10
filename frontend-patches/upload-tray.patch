@@ -1,0 +1,1997 @@
+diff --git a/src/pages/home/uploads/Upload.tsx b/src/pages/home/uploads/Upload.tsx
+index 2c8d937..b074173 100644
+--- a/src/pages/home/uploads/Upload.tsx
++++ b/src/pages/home/uploads/Upload.tsx
+@@ -28,6 +28,12 @@ import { traverseFileTree } from "./util"
+ import { getUploads, getUploader } from "./uploads"
+ import { UploadQueue, UploadTarget, UploadTask } from "./queue"
+ import { BrowserUploadPersistence } from "./recovery"
++import {
++  commonDirectory,
++  fileKind,
++  splitTasks,
++  totalSpeed,
++} from "./tray-utils"
+ import "./upload-panel.css"
+ 
+ const Upload = () => {
+@@ -52,10 +58,7 @@ const Upload = () => {
+   const [taskStore, setTaskStore] = createStore<{ items: UploadTask[] }>({
+     items: [],
+   })
+-  const [filter, setFilter] = createSignal("all")
+   const tasks = () => taskStore.items
+-  const filteredTasks = () =>
+-    tasks().filter((task) => filter() === "all" || task.status === filter())
+   const succeeded = () =>
+     tasks().length > 0 && tasks().every((task) => task.status === "success")
+   const cancellable = () =>
+@@ -290,7 +293,6 @@ const Upload = () => {
+     owner: number | undefined,
+   ) => {
+     if (owner !== me().id) return
+-    setFilter("all")
+     queue.add(files, target)
+   }
+   const picked = (event: Event) => {
+@@ -323,6 +325,317 @@ const Upload = () => {
+         verifying: text("核对已上传内容", "Verifying uploaded content"),
+       }) as Record<string, string>
+     )[task.status] || t(`home.upload.${task.status}`)
++  const split = createMemo(() => splitTasks(tasks()))
++  const [showDone, setShowDone] = createSignal(false)
++  const pausable = () =>
++    tasks().filter((task) =>
++      [
++        "pending",
++        "verifying",
++        "hashing",
++        "uploading",
++        "backending",
++        "waiting_network",
++      ].includes(task.status),
++    )
++  const resumable = () =>
++    tasks().filter((task) =>
++      ["paused", "waiting_network"].includes(task.status),
++    )
++  const doneCount = () =>
++    tasks().filter((task) => task.status === "success").length
++  const speedText = () => {
++    const speed = totalSpeed(active())
++    return speed > 0 ? `${getFileSize(speed)}/s` : ""
++  }
++  const destinationText = () => {
++    const dir = commonDirectory(active().length ? active() : split().current)
++    return dir
++      ? text(`到 ${dir}`, `to ${dir}`)
++      : text("到多个位置", "to several folders")
++  }
++  const title = () =>
++    active().length
++      ? text(
++          `正在上传 ${active().length} 项`,
++          `Uploading ${active().length} item${active().length === 1 ? "" : "s"}`,
++        )
++      : succeeded()
++        ? text("上传完成", "Uploads complete")
++        : summary()
++  const subtitle = () =>
++    active().length
++      ? [remaining(), speedText(), destinationText()].filter(Boolean).join(" · ")
++      : tasks().length
++        ? text(
++            `已完成 ${doneCount()} 项，共 ${tasks().length} 项`,
++            `${doneCount()} of ${tasks().length} completed`,
++          )
++        : ""
++  const methodLabel = () =>
++    method() === "Multipart" ? text("分片上传", "Multipart") : method()
++  const optionsSummary = () =>
++    `${methodLabel()} · ${
++      uploadConfig.overwrite
++        ? text("覆盖同名", "Overwrite")
++        : text("不覆盖同名", "Keep existing")
++    }`
++  const dropped = async (event: DragEvent) => {
++    event.preventDefault()
++    setDrag(false)
++    if (!canAdd()) return
++    syncTarget()
++    const target = snapshot(),
++      owner = me().id
++    try {
++      const items = Array.from(event.dataTransfer?.items ?? [])
++      const files: File[] = []
++      for (const item of items) {
++        const entry = item.webkitGetAsEntry?.()
++        if (entry?.isDirectory) files.push(...(await traverseFileTree(entry)))
++        else {
++          const file = item.getAsFile()
++          if (file) files.push(file)
++        }
++      }
++      if (!items.length)
++        files.push(...Array.from(event.dataTransfer?.files ?? []))
++      if (!files.length) notify.warning(t("home.upload.no_files_drag"))
++      add(files, target, owner)
++    } catch (error) {
++      notify.error(String(error))
++    }
++  }
++  const copyLink = (task: UploadTask) =>
++    copy(
++      new URL(
++        joinBase(task.directory, task.path)
++          .split("/")
++          .map(encodeURIComponent)
++          .join("/"),
++        location.origin,
++      ).href,
++    )
++  const withBar = (task: UploadTask) =>
++    ["uploading", "hashing", "verifying", "backending", "paused"].includes(
++      task.status,
++    ) ||
++    (["pending", "waiting_network", "needs_file"].includes(task.status) &&
++      task.progress > 0)
++  const detail = (task: UploadTask) => {
++    const size = getFileSize(task.size)
++    switch (task.status) {
++      case "uploading":
++        return `${getFileSize(Math.round((task.size * task.progress) / 100))} / ${size}${
++          task.speed > 0 ? ` · ${getFileSize(task.speed)}/s` : ""
++        }`
++      case "needs_file":
++        return text(
++          `页面刷新后需重新选择原文件 · 已传 ${Math.round(task.progress)}%`,
++          `Choose the original file to continue · ${Math.round(task.progress)}% sent`,
++        )
++      case "success":
++      case "cancelled":
++        return `${size} · ${task.directory}`
++      default:
++        return size
++    }
++  }
++  const Icon = (props: { d: string; label?: string }) => (
++    <svg
++      width="14"
++      height="14"
++      viewBox="0 0 24 24"
++      fill="none"
++      stroke="currentColor"
++      stroke-width="2.2"
++      stroke-linecap="round"
++      stroke-linejoin="round"
++      aria-hidden="true"
++    >
++      <path d={props.d} />
++    </svg>
++  )
++  const KIND_PATHS: Record<string, string> = {
++    video: "M3 5h18v14H3zM10 9l5 3-5 3z",
++    image: "M3 4h18v16H3zM8 10.5a1.5 1.5 0 1 0 0-.01M21 16l-5-5-9 9",
++    audio: "M9 18V6l10-2v12M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0M19 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0",
++    archive: "M4 4h16v16H4zM12 4v4M12 10v2M12 14v2",
++    doc: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h6",
++    file: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5",
++  }
++  const PAUSE = "M9 6v12M15 6v12"
++  const PLAY = "M8 5v14l11-7z"
++  const CLOSE = "M6 6l12 12M18 6 6 18"
++  const Row = (props: { task: UploadTask }) => {
++    const task = () => props.task
++    return (
++      <li class="upload-row" data-status={task().status}>
++        <span
++          class="upload-kind"
++          data-kind={fileKind(task().name)}
++          aria-hidden="true"
++        >
++          <svg
++            width="18"
++            height="18"
++            viewBox="0 0 24 24"
++            fill="none"
++            stroke="currentColor"
++            stroke-width="1.8"
++            stroke-linecap="round"
++            stroke-linejoin="round"
++          >
++            <path d={KIND_PATHS[fileKind(task().name)]} />
++          </svg>
++        </span>
++        <div class="upload-row-main">
++          <div class="upload-row-top">
++            <strong title={task().path}>{task().name}</strong>
++            <span class="upload-row-state">
++              {task().status === "uploading"
++                ? `${Math.round(task().progress)}%`
++                : status(task())}
++            </span>
++          </div>
++          <Show when={withBar(task())}>
++            <div
++              class="upload-bar"
++              role="progressbar"
++              aria-label={`${task().name} ${status(task())}`}
++              aria-valuemin="0"
++              aria-valuemax="100"
++              aria-valuenow={Math.round(task().progress)}
++              data-indeterminate={["hashing", "verifying", "backending"].includes(
++                task().status,
++              )}
++            >
++              <span
++                style={{
++                  width: `${Math.max(0, Math.min(100, task().progress))}%`,
++                }}
++              />
++            </div>
++          </Show>
++          <span class="upload-row-detail" title={task().directory}>
++            {detail(task())}
++          </span>
++          <Show when={task().msg}>
++            <span class="upload-row-error">{task().msg}</span>
++          </Show>
++          <Show when={task().notice}>
++            <span class="upload-row-note">{task().notice}</span>
++          </Show>
++          <Show
++            when={
++              !task().resumable &&
++              ["paused", "waiting_network", "needs_file"].includes(
++                task().status,
++              )
++            }
++          >
++            <span class="upload-row-note">
++              {text(
++                "此上传方式继续时会从头上传。",
++                "This upload method restarts from the beginning.",
++              )}
++            </span>
++          </Show>
++          <Show
++            when={task().status === "needs_file" && task().requiresPassword}
++          >
++            <input
++              class="upload-recovery-password"
++              type="password"
++              autocomplete="off"
++              aria-label={text("原目录密码", "Original folder password")}
++              placeholder={text(
++                "原目录密码（如有）",
++                "Original folder password, if needed",
++              )}
++              value={recoveryPasswords[task().id] || ""}
++              onInput={(e) =>
++                setRecoveryPasswords(task().id, e.currentTarget.value)
++              }
++            />
++          </Show>
++        </div>
++        <div class="upload-row-actions">
++          <Show when={task().status === "needs_file"}>
++            <button
++              class="upload-text-button upload-warn"
++              onClick={() => pickOriginal(task().id)}
++            >
++              {text("选择文件", "Choose file")}
++            </button>
++          </Show>
++          <Show when={task().status === "error"}>
++            <button
++              class="upload-text-button upload-danger"
++              onClick={() => queue.retry(task().id)}
++            >
++              {t("home.upload.retry")}
++            </button>
++            <button
++              class="upload-text-button"
++              onClick={() => queue.restart(task().id)}
++            >
++              {text("从头上传", "Restart")}
++            </button>
++          </Show>
++          <Show
++            when={["paused", "waiting_network"].includes(task().status)}
++          >
++            <button
++              class="upload-icon-button"
++              aria-label={`${text("继续", "Resume")} ${task().name}`}
++              title={text("继续", "Resume")}
++              onClick={() => queue.resume(task().id)}
++            >
++              <Icon d={PLAY} />
++            </button>
++          </Show>
++          <Show
++            when={[
++              "pending",
++              "verifying",
++              "hashing",
++              "uploading",
++              "backending",
++              "waiting_network",
++            ].includes(task().status)}
++          >
++            <button
++              class="upload-icon-button"
++              aria-label={`${text("暂停", "Pause")} ${task().name}`}
++              title={text("暂停", "Pause")}
++              onClick={() => queue.pause(task().id)}
++            >
++              <Icon d={PAUSE} />
++            </button>
++          </Show>
++          <Show when={!["success", "cancelled"].includes(task().status)}>
++            <button
++              class="upload-icon-button"
++              aria-label={`${text("取消", "Cancel")} ${task().name}`}
++              title={text("取消", "Cancel")}
++              onClick={() => queue.cancel(task().id)}
++            >
++              <Icon d={CLOSE} />
++            </button>
++          </Show>
++          <Show when={task().status === "success"}>
++            <button
++              class="upload-text-button"
++              onClick={() => copyLink(task())}
++            >
++              {t("home.toolbar.copy_link")}
++            </button>
++          </Show>
++        </div>
++      </li>
++    )
++  }
+   return (
+     <Portal>
+       <input ref={restoreInput} type="file" hidden onChange={restored} />
+@@ -339,79 +652,109 @@ const Upload = () => {
+         <aside
+           class="upload-center"
+           data-mode={mode()}
++          data-collapsed={!expanded()}
++          data-dragging={drag()}
+           aria-label={text("上传任务", "Upload tasks")}
++          onDragOver={(event) => {
++            if (!canAdd() || !expanded()) return
++            event.preventDefault()
++            setDrag(true)
++          }}
++          onDragLeave={(event) => {
++            if (!event.currentTarget.contains(event.relatedTarget as Node))
++              setDrag(false)
++          }}
++          onDrop={(event) => {
++            if (expanded()) void dropped(event)
++          }}
+         >
+           <Show
+             when={expanded()}
+             fallback={
+               <button
+-                class="upload-dock"
++                class="upload-pill"
+                 data-success={succeeded()}
+                 onClick={expand}
+                 aria-expanded="false"
++                aria-label={`${title()} · ${progress()}%`}
+               >
+-                <span class="upload-mark">{succeeded() ? "✓" : "↑"}</span>
+-                <span class="upload-summary-text">
+-                  <b>{summary()}</b>
+-                  <small>
+-                    {active().length
+-                      ? remaining()
+-                      : `${tasks().filter((task) => task.status === "success").length} / ${tasks().length}`}
+-                  </small>
++                <span
++                  class="upload-ring"
++                  style={{ "--p": `${succeeded() ? 100 : progress()}%` }}
++                  aria-hidden="true"
++                />
++                <span class="upload-pill-text">
++                  {succeeded()
++                    ? text("上传完成", "Uploads complete")
++                    : active().length
++                      ? text(
++                          `上传 ${active().length} 项 · ${progress()}%`,
++                          `${active().length} uploading · ${progress()}%`,
++                        )
++                      : summary()}
+                 </span>
+-                <strong>{progress()}%</strong>
+-                <span>⌃</span>
++                <Show when={active().length}>
++                  <span class="upload-pill-sub">{remaining()}</span>
++                </Show>
+               </button>
+             }
+           >
+-            <header class="upload-center-header">
+-              <div>
+-                <h2>{text("上传项目", "Uploads")}</h2>
+-                <p aria-live="polite">{summary()}</p>
++            <header class="upload-tray-head">
++              <div class="upload-tray-title">
++                <h2>{title()}</h2>
++                <Show when={subtitle()}>
++                  <p aria-live="polite">{subtitle()}</p>
++                </Show>
+               </div>
+-              <Show when={cancellable().length}>
++              <Show when={pausable().length}>
+                 <button
+-                  class="upload-cancel-all"
++                  class="upload-icon-button"
++                  aria-label={text("全部暂停", "Pause all")}
++                  title={text("全部暂停", "Pause all")}
+                   onClick={() => {
+-                    for (const task of cancellable()) queue.cancel(task.id)
++                    for (const task of pausable()) queue.pause(task.id)
+                   }}
+                 >
+-                  {text("全部取消", "Cancel all")}
++                  <Icon d={PAUSE} />
++                </button>
++              </Show>
++              <Show when={!pausable().length && resumable().length}>
++                <button
++                  class="upload-icon-button"
++                  aria-label={text("全部继续", "Resume all")}
++                  title={text("全部继续", "Resume all")}
++                  onClick={() => {
++                    for (const task of resumable()) queue.resume(task.id)
++                  }}
++                >
++                  <Icon d={PLAY} />
+                 </button>
+               </Show>
+               <button
+                 class="upload-icon-button"
+                 aria-label={text("收起上传面板", "Minimize uploads")}
++                title={text("收起", "Minimize")}
+                 onClick={() => setExpanded(false)}
+               >
+-                ⌄
++                <Icon d="m6 9 6 6 6-6" />
+               </button>
++              <Show when={!cancellable().length}>
++                <button
++                  class="upload-icon-button"
++                  aria-label={text("关闭上传面板", "Close uploads")}
++                  title={text("关闭", "Close")}
++                  onClick={() => setOpened(false)}
++                >
++                  <Icon d={CLOSE} />
++                </button>
++              </Show>
+             </header>
+             <Show when={tasks().length}>
+-              <nav
+-                class="upload-filters"
+-                aria-label={text("筛选上传任务", "Filter uploads")}
+-              >
+-                <For
+-                  each={[
+-                    ["all", text("所有上传项", "All")],
+-                    ["success", text("已完成", "Completed")],
+-                    ["cancelled", text("已取消", "Cancelled")],
+-                    ["error", text("失败", "Failed")],
+-                  ]}
+-                >
+-                  {([value, label]) => (
+-                    <button
+-                      aria-pressed={filter() === value}
+-                      onClick={() => setFilter(value)}
+-                    >
+-                      {label}
+-                    </button>
+-                  )}
+-                </For>
+-              </nav>
++              <div class="upload-tray-progress" aria-hidden="true">
++                <span style={{ width: `${progress()}%` }} />
++              </div>
+             </Show>
+-            <div class="upload-center-body">
++            <div class="upload-tray-body">
+               <Show when={storageWarning()}>
+                 <p class="upload-recovery-warning">
+                   {text(
+@@ -428,401 +771,187 @@ const Upload = () => {
+                   )}
+                 </p>
+               </Show>
+-              <Show when={!canAdd() && !tasks().length}>
+-                <p class="upload-empty-hint">
+-                  {text(
+-                    "暂无上传任务。打开一个可写入的文件夹即可添加文件。",
+-                    "No uploads yet. Open a folder you can write to and add files there.",
+-                  )}
+-                </p>
+-              </Show>
+-              <Show when={canAdd()}>
+-                <section
+-                  class="upload-picker"
+-                  hidden={tasks().length > 0}
+-                  data-dragging={drag()}
+-                  onDragOver={(event) => {
+-                    event.preventDefault()
+-                    setDrag(true)
+-                  }}
+-                  onDragLeave={() => setDrag(false)}
+-                  onDrop={async (event) => {
+-                    event.preventDefault()
+-                    setDrag(false)
+-                    const target = snapshot(),
+-                      owner = me().id
+-                    try {
+-                      const items = Array.from(event.dataTransfer?.items ?? [])
+-                      const files: File[] = []
+-                      for (const item of items) {
+-                        const entry = item.webkitGetAsEntry?.()
+-                        if (entry?.isDirectory)
+-                          files.push(...(await traverseFileTree(entry)))
+-                        else {
+-                          const file = item.getAsFile()
+-                          if (file) files.push(file)
+-                        }
+-                      }
+-                      if (!items.length)
+-                        files.push(
+-                          ...Array.from(event.dataTransfer?.files ?? []),
+-                        )
+-                      if (!files.length)
+-                        notify.warning(t("home.upload.no_files_drag"))
+-                      add(files, target, owner)
+-                    } catch (error) {
+-                      notify.error(String(error))
+-                    }
+-                  }}
++              <Show when={!tasks().length}>
++                <Show
++                  when={canAdd()}
++                  fallback={
++                    <p class="upload-empty-hint">
++                      {text(
++                        "暂无上传任务。打开一个可写入的文件夹即可添加文件。",
++                        "No uploads yet. Open a folder you can write to and add files there.",
++                      )}
++                    </p>
++                  }
+                 >
+-                  <p>
+-                    {drag()
+-                      ? text("松开以添加文件", "Drop to add files")
+-                      : text(
+-                          "拖拽文件到这里，或选择文件",
+-                          "Drop files here, or choose files",
+-                        )}
+-                  </p>
+-                  <div class="upload-picker-actions">
+-                    <button class="upload-primary" onClick={() => pick(false)}>
+-                      {text("选择文件", "Choose files")}
+-                    </button>
+-                    <button onClick={() => pick(true)}>
+-                      {text("选择文件夹", "Choose folder")}
+-                    </button>
+-                  </div>
+-                  <p class="upload-destination" title={directory()}>
+-                    {text("上传到", "Upload to")} <strong>{directory()}</strong>
+-                  </p>
+-                </section>
+-                <details class="upload-options">
+-                  <summary>{text("上传选项", "Upload options")}</summary>
+-                  <label>
+-                    {text("方式", "Method")}
+-                    <select
+-                      value={method()}
+-                      onChange={(e) => setMethod(e.currentTarget.value)}
++                  <section class="upload-picker">
++                    <svg
++                      width="28"
++                      height="28"
++                      viewBox="0 0 24 24"
++                      fill="none"
++                      stroke="currentColor"
++                      stroke-width="1.6"
++                      stroke-linecap="round"
++                      aria-hidden="true"
+                     >
+-                      <For each={uploaders()}>
+-                        {(u) => (
+-                          <option value={u.name}>
+-                            {u.name === "Multipart"
+-                              ? text(
+-                                  "分片上传（推荐）",
+-                                  "Multipart (recommended)",
+-                                )
+-                              : u.name}
+-                          </option>
+-                        )}
+-                      </For>
+-                    </select>
+-                  </label>
+-                  <label>
+-                    <input
+-                      type="checkbox"
+-                      checked={uploadConfig.overwrite}
+-                      onChange={(e) =>
+-                        setUploadConfig({ overwrite: e.currentTarget.checked })
+-                      }
+-                    />
+-                    {t("home.conflict_policy.overwrite_existing")}
+-                  </label>
+-                  <label>
+-                    <input
+-                      type="checkbox"
+-                      checked={uploadConfig.rapid}
+-                      onChange={(e) =>
+-                        setUploadConfig({ rapid: e.currentTarget.checked })
+-                      }
+-                    />
+-                    {t("home.upload.try_rapid")}
+-                  </label>
+-                  <label>
+-                    <input
+-                      type="checkbox"
+-                      disabled={method() === "Multipart"}
+-                      checked={method() !== "Multipart" && uploadConfig.asTask}
+-                      onChange={(e) =>
+-                        setUploadConfig({ asTask: e.currentTarget.checked })
+-                      }
+-                    />
+-                    {t("home.upload.add_as_task")}
+-                  </label>
+-                </details>
++                      <path d="M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1-1 9M12 12v8M9 15l3-3 3 3" />
++                    </svg>
++                    <p>
++                      {drag()
++                        ? text("松开以添加文件", "Drop to add files")
++                        : text(
++                            "拖拽文件到这里，或选择文件",
++                            "Drop files here, or choose files",
++                          )}
++                    </p>
++                    <div class="upload-picker-actions">
++                      <button
++                        class="upload-btn upload-btn-primary"
++                        onClick={() => pick(false)}
++                      >
++                        {text("选择文件", "Choose files")}
++                      </button>
++                      <button class="upload-btn" onClick={() => pick(true)}>
++                        {text("选择文件夹", "Choose folder")}
++                      </button>
++                    </div>
++                    <p class="upload-destination" title={directory()}>
++                      {text("上传到", "Upload to")} <strong>{directory()}</strong>
++                    </p>
++                  </section>
++                </Show>
++              </Show>
++              <Show when={split().current.length}>
++                <ul class="upload-rows">
++                  <For each={split().current}>
++                    {(task) => <Row task={task} />}
++                  </For>
++                </ul>
+               </Show>
+-              <Show when={tasks().length}>
+-                <div class="upload-list-heading">
+-                  <span>
+-                    {text("上传项目", "Uploads")} · {filteredTasks().length}
+-                  </span>
++              <Show when={split().done.length}>
++                <div class="upload-done-head">
++                  <button
++                    class="upload-done-toggle"
++                    aria-expanded={showDone()}
++                    onClick={() => setShowDone(!showDone())}
++                  >
++                    <Icon d="m5 12 5 5 9-10" />
++                    {text(
++                      `已结束 ${split().done.length} 项`,
++                      `${split().done.length} finished`,
++                    )}
++                    <span class="upload-link-text">
++                      {showDone() ? text("收起", "Hide") : text("查看", "Show")}
++                    </span>
++                  </button>
+                   <button
+-                    disabled={
+-                      !tasks().some((task) =>
+-                        ["success", "cancelled"].includes(task.status),
+-                      )
+-                    }
++                    class="upload-text-button"
+                     onClick={() => queue.clearDone()}
+                   >
+                     {t("home.upload.clear_done")}
+                   </button>
+                 </div>
+-                <ul class="upload-task-list">
+-                  <For each={filteredTasks()}>
+-                    {(task) => (
+-                      <li class="upload-task" data-status={task.status}>
+-                        <span class="upload-task-symbol" aria-hidden="true">
+-                          {task.status === "success"
+-                            ? "✓"
+-                            : task.status === "error"
+-                              ? "!"
+-                              : task.status === "cancelled"
+-                                ? "×"
+-                                : "↑"}
+-                        </span>
+-                        <span class="upload-file-type">
+-                          {task.name.includes(".")
+-                            ? task.name
+-                                .split(".")
+-                                .pop()!
+-                                .toUpperCase()
+-                                .slice(0, 8)
+-                            : text("文件", "FILE")}
+-                        </span>
+-                        <div class="upload-task-top">
+-                          <strong title={task.path}>{task.name}</strong>
+-                          <span>{getFileSize(task.size)}</span>
+-                        </div>
+-                        <p
+-                          class="upload-task-destination"
+-                          title={task.directory}
+-                        >
+-                          {task.directory}
+-                        </p>
+-                        <div class="upload-task-status">
+-                          <span>
+-                            {status(task)}
+-                            <Show when={task.status === "uploading"}>
+-                              {" "}
+-                              ·{" "}
+-                              {task.progress > 0
+-                                ? getFileSize(
+-                                    Math.round(
+-                                      (task.size * task.progress) / 100,
+-                                    ),
+-                                  )
+-                                : "0 B"}{" "}
+-                              / {getFileSize(task.size)}
+-                            </Show>
+-                          </span>
+-                          <span>
+-                            {task.status === "uploading" && task.speed > 0
+-                              ? `${getFileSize(task.speed)}/s · `
+-                              : ""}
+-                            {Math.round(task.progress)}%
+-                          </span>
+-                        </div>
+-                        <progress
+-                          max="100"
+-                          value={Math.max(0, Math.min(100, task.progress))}
+-                          aria-label={`${task.name} ${status(task)}`}
+-                        />
+-                        <Show when={task.notice}>
+-                          <p class="upload-task-note">{task.notice}</p>
+-                        </Show>
+-                        <Show
+-                          when={
+-                            !task.resumable &&
+-                            [
+-                              "paused",
+-                              "waiting_network",
+-                              "needs_file",
+-                            ].includes(task.status)
+-                          }
+-                        >
+-                          <p class="upload-task-note">
+-                            {text(
+-                              "此上传方式继续时会从头上传。",
+-                              "This upload method restarts from the beginning.",
+-                            )}
+-                          </p>
+-                        </Show>
+-                        <Show
+-                          when={
+-                            task.status === "needs_file" &&
+-                            task.requiresPassword
+-                          }
+-                        >
+-                          <input
+-                            class="upload-recovery-password"
+-                            type="password"
+-                            autocomplete="off"
+-                            aria-label={text(
+-                              "原目录密码",
+-                              "Original folder password",
+-                            )}
+-                            placeholder={text(
+-                              "原目录密码（如有）",
+-                              "Original folder password, if needed",
+-                            )}
+-                            value={recoveryPasswords[task.id] || ""}
+-                            onInput={(e) =>
+-                              setRecoveryPasswords(
+-                                task.id,
+-                                e.currentTarget.value,
+-                              )
+-                            }
+-                          />
+-                        </Show>
+-                        <div class="upload-task-actions">
+-                          <Show when={task.status === "success"}>
+-                            <button
+-                              class="upload-row-action"
+-                              onClick={() =>
+-                                copy(
+-                                  new URL(
+-                                    joinBase(task.directory, task.path)
+-                                      .split("/")
+-                                      .map(encodeURIComponent)
+-                                      .join("/"),
+-                                    location.origin,
+-                                  ).href,
+-                                )
+-                              }
+-                            >
+-                              {t("home.toolbar.copy_link")}
+-                            </button>
+-                          </Show>
+-                          <Show when={task.status === "needs_file"}>
+-                            <button
+-                              class="upload-row-action"
+-                              onClick={() => pickOriginal(task.id)}
+-                            >
+-                              {text("选择原文件继续", "Choose original file")}
+-                            </button>
+-                          </Show>
+-                          <Show
+-                            when={["paused", "waiting_network"].includes(
+-                              task.status,
+-                            )}
+-                          >
+-                            <button
+-                              class="upload-row-action"
+-                              onClick={() => queue.resume(task.id)}
+-                            >
+-                              {text("继续", "Resume")}
+-                            </button>
+-                          </Show>
+-                          <Show
+-                            when={[
+-                              "pending",
+-                              "verifying",
+-                              "hashing",
+-                              "uploading",
+-                              "backending",
+-                              "waiting_network",
+-                            ].includes(task.status)}
+-                          >
+-                            <button
+-                              class="upload-row-action"
+-                              onClick={() => queue.pause(task.id)}
+-                            >
+-                              {text("暂停", "Pause")}
+-                            </button>
+-                          </Show>
+-                          <Show when={task.status === "error"}>
+-                            <button
+-                              class="upload-row-action"
+-                              onClick={() => queue.retry(task.id)}
+-                            >
+-                              {t("home.upload.retry")}
+-                            </button>
+-                            <button
+-                              class="upload-row-action"
+-                              onClick={() => queue.restart(task.id)}
+-                            >
+-                              {text("从头上传", "Restart")}
+-                            </button>
+-                          </Show>
+-                          <Show
+-                            when={
+-                              !["success", "cancelled"].includes(task.status)
+-                            }
+-                          >
+-                            <button
+-                              class="upload-row-action"
+-                              onClick={() => queue.cancel(task.id)}
+-                            >
+-                              {text("取消", "Cancel")}
+-                            </button>
+-                          </Show>
+-                        </div>
+-                        <Show when={task.msg}>
+-                          <p class="upload-error">{task.msg}</p>
+-                        </Show>
+-                      </li>
+-                    )}
+-                  </For>
+-                </ul>
+-                <Show when={!filteredTasks().length}>
+-                  <p class="upload-empty">
+-                    {text("暂无此类上传任务", "No uploads in this category")}
+-                  </p>
++                <Show when={showDone()}>
++                  <ul class="upload-rows upload-rows-done">
++                    <For each={split().done}>
++                      {(task) => <Row task={task} />}
++                    </For>
++                  </ul>
+                 </Show>
+               </Show>
+             </div>
+-            <footer class="upload-center-footer" data-success={succeeded()}>
+-              <span class="upload-mark">{succeeded() ? "✓" : "↑"}</span>
+-              <div class="upload-summary-text" aria-live="polite">
+-                <b>
+-                  {succeeded()
+-                    ? text("上传成功！", "Upload complete!")
+-                    : summary()}
+-                </b>
+-                <small>
+-                  {active().length
+-                    ? remaining()
+-                    : text(
+-                        `已完成 ${tasks().filter((task) => task.status === "success").length} 项，共 ${tasks().length} 项`,
+-                        `${tasks().filter((task) => task.status === "success").length} of ${tasks().length} completed`,
+-                      )}
+-                </small>
+-              </div>
++            <footer class="upload-tray-foot">
++              <Show when={canAdd() && tasks().length}>
++                <button
++                  class="upload-btn"
++                  onClick={() => {
++                    syncTarget()
++                    pick(false)
++                  }}
++                >
++                  <Icon d="M12 5v14M5 12h14" />
++                  {text("添加文件", "Add files")}
++                </button>
++                <button
++                  class="upload-btn"
++                  onClick={() => {
++                    syncTarget()
++                    pick(true)
++                  }}
++                >
++                  {text("文件夹", "Folder")}
++                </button>
++              </Show>
+               <Show when={canAdd()}>
+-                <details class="upload-add-menu">
+-                  <summary>{text("添加", "Add")} ⌄</summary>
+-                  <div>
+-                    <button
+-                      onClick={(e) => {
+-                        syncTarget()
+-                        pick(false)
+-                        e.currentTarget
+-                          .closest("details")
+-                          ?.removeAttribute("open")
+-                      }}
+-                    >
+-                      {text("文件", "Files")}
+-                    </button>
+-                    <button
+-                      onClick={(e) => {
+-                        syncTarget()
+-                        pick(true)
+-                        e.currentTarget
+-                          .closest("details")
+-                          ?.removeAttribute("open")
+-                      }}
+-                    >
+-                      {text("文件夹", "Folder")}
+-                    </button>
++                <details class="upload-options">
++                  <summary>{optionsSummary()}</summary>
++                  <div class="upload-options-panel">
++                    <label>
++                      {text("方式", "Method")}
++                      <select
++                        value={method()}
++                        onChange={(e) => setMethod(e.currentTarget.value)}
++                      >
++                        <For each={uploaders()}>
++                          {(u) => (
++                            <option value={u.name}>
++                              {u.name === "Multipart"
++                                ? text(
++                                    "分片上传（推荐）",
++                                    "Multipart (recommended)",
++                                  )
++                                : u.name}
++                            </option>
++                          )}
++                        </For>
++                      </select>
++                    </label>
++                    <label>
++                      <input
++                        type="checkbox"
++                        checked={uploadConfig.overwrite}
++                        onChange={(e) =>
++                          setUploadConfig({
++                            overwrite: e.currentTarget.checked,
++                          })
++                        }
++                      />
++                      {t("home.conflict_policy.overwrite_existing")}
++                    </label>
++                    <label>
++                      <input
++                        type="checkbox"
++                        checked={uploadConfig.rapid}
++                        onChange={(e) =>
++                          setUploadConfig({ rapid: e.currentTarget.checked })
++                        }
++                      />
++                      {t("home.upload.try_rapid")}
++                    </label>
++                    <label>
++                      <input
++                        type="checkbox"
++                        disabled={method() === "Multipart"}
++                        checked={
++                          method() !== "Multipart" && uploadConfig.asTask
++                        }
++                        onChange={(e) =>
++                          setUploadConfig({ asTask: e.currentTarget.checked })
++                        }
++                      />
++                      {t("home.upload.add_as_task")}
++                    </label>
+                   </div>
+                 </details>
+               </Show>
+-              <Show when={!cancellable().length && tasks().length}>
++              <Show when={cancellable().length}>
+                 <button
+-                  class="upload-icon-button"
+-                  aria-label={text("关闭上传面板", "Close uploads")}
+-                  onClick={() => setOpened(false)}
++                  class="upload-text-button upload-danger upload-cancel-all"
++                  onClick={() => {
++                    for (const task of cancellable()) queue.cancel(task.id)
++                  }}
+                 >
+-                  ×
++                  {text("全部取消", "Cancel all")}
+                 </button>
+               </Show>
+             </footer>
+diff --git a/src/pages/home/uploads/tray-utils.ts b/src/pages/home/uploads/tray-utils.ts
+new file mode 100644
+index 0000000..3432968
+--- /dev/null
++++ b/src/pages/home/uploads/tray-utils.ts
+@@ -0,0 +1,49 @@
++/** Pure helpers for the upload tray (no UI imports, unit-testable). */
++
++export type FileKind = "video" | "image" | "audio" | "archive" | "doc" | "file"
++
++const KINDS: Record<Exclude<FileKind, "file">, string[]> = {
++  video: ["mp4", "mkv", "mov", "avi", "webm", "m4v", "ts", "flv", "wmv", "rmvb"],
++  image: ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "svg", "avif", "tif", "tiff"],
++  audio: ["mp3", "flac", "wav", "aac", "m4a", "ogg", "opus", "ape"],
++  archive: ["zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz", "iso"],
++  doc: ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "epub", "csv"],
++}
++
++export function fileKind(name: string): FileKind {
++  const dot = name.lastIndexOf(".")
++  if (dot <= 0) return "file"
++  const ext = name.slice(dot + 1).toLowerCase()
++  for (const [kind, list] of Object.entries(KINDS))
++    if (list.includes(ext)) return kind as FileKind
++  return "file"
++}
++
++interface TaskLike {
++  status: string
++  speed: number
++  directory: string
++}
++
++const DONE = ["success", "cancelled"]
++
++/** Finished tasks fold into a collapsed group; everything else stays listed. */
++export function splitTasks<T extends TaskLike>(tasks: T[]) {
++  return {
++    current: tasks.filter((task) => !DONE.includes(task.status)),
++    done: tasks.filter((task) => DONE.includes(task.status)),
++  }
++}
++
++export function totalSpeed(tasks: TaskLike[]) {
++  return tasks.reduce(
++    (sum, task) => sum + (task.status === "uploading" ? task.speed || 0 : 0),
++    0,
++  )
++}
++
++/** The one destination of the given tasks, or undefined when they differ. */
++export function commonDirectory(tasks: TaskLike[]) {
++  const dirs = new Set(tasks.map((task) => task.directory))
++  return dirs.size === 1 ? [...dirs][0] : undefined
++}
+diff --git a/src/pages/home/uploads/upload-panel.css b/src/pages/home/uploads/upload-panel.css
+index a248b31..15f298b 100644
+--- a/src/pages/home/uploads/upload-panel.css
++++ b/src/pages/home/uploads/upload-panel.css
+@@ -1,383 +1,589 @@
++/* Upload tray: a floating card at the bottom right that folds into a pill. */
+ .upload-center {
+-  --up-bg: #fff;
+-  --up-text: #1e1919;
+-  --up-muted: #706d69;
+-  --up-border: #e8e5e1;
+-  --up-soft: #f7f5f2;
++  --up-bg: #ffffff;
++  --up-text: #18181b;
++  --up-muted: #71717a;
++  --up-border: #e4e4e7;
++  --up-soft: #f4f4f5;
++  --up-accent: #4f46e5;
++  --up-accent-soft: #eef2ff;
++  --up-on-accent: #ffffff;
++  --up-track: #e4e4e7;
++  --up-danger: #dc2626;
++  --up-danger-soft: #fef2f2;
++  --up-warn: #b45309;
++  --up-warn-soft: #fffbeb;
++  --up-ok: #15803d;
+   position: fixed;
+   z-index: 1200;
+-  right: 24px;
+-  bottom: 24px;
+-  width: 420px;
++  right: 20px;
++  bottom: 44px;
++  width: 400px;
+   max-width: calc(100vw - 24px);
+   color: var(--up-text);
+   background: var(--up-bg);
+   border: 1px solid var(--up-border);
+   border-radius: 14px;
+-  box-shadow: 0 12px 48px #1e191929;
+-  font-size: 14px;
++  box-shadow:
++    0 2px 6px #18181b14,
++    0 16px 40px #18181b24;
++  font-size: 13px;
++  line-height: 1.4;
+   overflow: hidden;
++  display: flex;
++  flex-direction: column;
+ }
+ .upload-center[data-mode="dark"] {
+-  --up-bg: #242424;
+-  --up-text: #f3f1ed;
+-  --up-muted: #aaa8a3;
+-  --up-border: #414141;
+-  --up-soft: #303030;
++  --up-bg: #1f1f23;
++  --up-text: #f4f4f5;
++  --up-muted: #a1a1aa;
++  --up-border: #3f3f46;
++  --up-soft: #2a2a30;
++  --up-accent: #a5b4fc;
++  --up-accent-soft: #312e81;
++  --up-on-accent: #1e1b4b;
++  --up-track: #3f3f46;
++  --up-danger: #f87171;
++  --up-danger-soft: #3b1d1d;
++  --up-warn: #fbbf24;
++  --up-warn-soft: #3a2d12;
++  --up-ok: #4ade80;
++  box-shadow: 0 16px 40px #00000080;
++}
++.upload-center[data-collapsed="true"] {
++  width: auto;
++  border-radius: 999px;
++}
++.upload-center[data-dragging="true"] {
++  border-color: var(--up-accent);
++  box-shadow:
++    0 0 0 3px var(--up-accent-soft),
++    0 16px 40px #18181b24;
++}
++.upload-center p,
++.upload-center h2,
++.upload-center ul {
++  margin: 0;
+ }
+ .upload-center button,
+-.upload-center select {
++.upload-center select,
++.upload-center input {
+   font: inherit;
+   color: inherit;
++}
++.upload-center button {
+   cursor: pointer;
+-  background: var(--up-bg);
+-  border: 1px solid var(--up-border);
+-  border-radius: 6px;
+-  padding: 9px 12px;
++  background: none;
++  border: 0;
++  padding: 0;
+ }
+-.upload-center button:hover {
+-  background: var(--up-soft);
++.upload-center button:focus-visible,
++.upload-center summary:focus-visible {
++  outline: 2px solid var(--up-accent);
++  outline-offset: 2px;
++}
++
++/* Collapsed pill */
++.upload-pill {
++  display: flex;
++  align-items: center;
++  gap: 10px;
++  padding: 8px 16px 8px 8px !important;
++  min-height: 44px;
++  white-space: nowrap;
+ }
+-.upload-center button:disabled {
+-  opacity: 0.45;
+-  cursor: default;
++.upload-ring {
++  --p: 0%;
++  width: 26px;
++  height: 26px;
++  flex: none;
++  border-radius: 50%;
++  background:
++    radial-gradient(closest-side, var(--up-bg) 72%, transparent 74%),
++    conic-gradient(var(--up-accent) var(--p), var(--up-track) 0);
++}
++.upload-pill[data-success="true"] .upload-ring {
++  background:
++    radial-gradient(closest-side, var(--up-bg) 72%, transparent 74%),
++    conic-gradient(var(--up-ok) 100%, var(--up-track) 0);
++}
++.upload-pill-text {
++  font-weight: 600;
++}
++.upload-pill-sub {
++  color: var(--up-muted);
+ }
+-.upload-center-header {
++
++/* Header */
++.upload-tray-head {
+   display: flex;
+   align-items: center;
+-  gap: 12px;
+-  padding: 18px 20px;
+-  border-bottom: 1px solid var(--up-border);
++  gap: 4px;
++  padding: 14px 10px 12px 16px;
+ }
+-.upload-center h2 {
+-  font-size: 17px;
+-  font-weight: 650;
+-  margin: 0;
++.upload-tray-title {
++  flex: 1;
++  min-width: 0;
+ }
+-.upload-center p {
+-  margin: 0;
++.upload-tray-title h2 {
++  font-size: 15px;
++  font-weight: 650;
+ }
+-.upload-center-header p {
+-  font-size: 12px;
++.upload-tray-title p {
++  margin-top: 2px;
+   color: var(--up-muted);
+-  margin-top: 3px;
++  font-size: 12px;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
+ }
+-.upload-mark {
+-  display: grid;
++.upload-icon-button {
++  width: 30px;
++  height: 30px;
++  flex: none;
++  display: inline-grid;
+   place-items: center;
+-  width: 32px;
+-  height: 32px;
+   border-radius: 8px;
+-  background: #eaf2ff;
+-  color: #0061ff;
+-  font-size: 23px;
+-  flex-shrink: 0;
++  color: var(--up-muted) !important;
+ }
+-.upload-center .upload-icon-button {
+-  margin-left: auto;
+-  border: 0;
+-  font-size: 24px;
+-  line-height: 1;
+-  padding: 8px;
++.upload-icon-button:hover {
++  background: var(--up-soft) !important;
++  color: var(--up-text) !important;
++}
++.upload-tray-progress {
++  height: 3px;
++  background: var(--up-track);
+ }
+-.upload-center-body {
+-  max-height: min(62dvh, 560px);
+-  overflow: auto;
++.upload-tray-progress > span {
++  display: block;
++  height: 100%;
++  background: var(--up-accent);
++  transition: width 0.3s ease;
++}
++
++/* Body */
++.upload-tray-body {
++  max-height: min(360px, 52vh);
++  overflow-y: auto;
+   overscroll-behavior: contain;
+ }
++.upload-recovery-warning {
++  margin: 10px 12px 0 !important;
++  padding: 8px 10px;
++  border-radius: 8px;
++  color: var(--up-warn);
++  background: var(--up-warn-soft);
++  font-size: 12px;
++}
++.upload-empty-hint {
++  padding: 20px 16px !important;
++  color: var(--up-muted);
++  text-align: center;
++  line-height: 1.6;
++}
+ .upload-picker {
+-  margin: 16px 20px 10px;
+-  padding: 18px 12px;
++  margin: 4px 12px 12px;
++  padding: 20px 16px 16px;
++  border: 1.5px dashed var(--up-border);
++  border-radius: 12px;
+   text-align: center;
+-  background: var(--up-soft);
+-  border: 1px dashed var(--up-border);
+-  border-radius: 8px;
++  color: var(--up-muted);
++  transition:
++    border-color 0.15s,
++    background 0.15s;
+ }
+-.upload-picker[data-dragging="true"] {
+-  border-color: #0061ff;
+-  background: #eaf2ff;
+-  color: #1e1919;
++.upload-center[data-dragging="true"] .upload-picker {
++  border-color: var(--up-accent);
++  background: var(--up-accent-soft);
++  color: var(--up-accent);
++}
++.upload-picker > svg {
++  display: block;
++  margin: 0 auto;
++  color: var(--up-accent);
++}
++.upload-picker > p {
++  margin-top: 6px !important;
+ }
+ .upload-picker-actions {
+   display: flex;
+   justify-content: center;
+   gap: 8px;
+-  margin: 14px 0;
+-}
+-.upload-center .upload-primary {
+-  background: #0061ff;
+-  color: white;
+-  border-color: #0061ff;
+-}
+-.upload-center .upload-primary:hover {
+-  background: #0052d9;
++  margin-top: 14px;
+ }
+ .upload-destination {
++  margin-top: 12px !important;
+   font-size: 12px;
+-  color: var(--up-muted);
+-  overflow-wrap: anywhere;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
+ }
+ .upload-destination strong {
+-  font-weight: 500;
++  color: var(--up-text);
++  font-weight: 600;
+ }
+-.upload-options {
+-  margin: 0 20px 12px;
+-  font-size: 12px;
++.upload-btn {
++  flex: none;
++  display: inline-flex;
++  align-items: center;
++  gap: 6px;
++  min-height: 32px;
++  padding: 0 12px !important;
++  border: 1px solid var(--up-border) !important;
++  border-radius: 8px;
++  background: var(--up-bg) !important;
++  font-weight: 550;
+ }
+-.upload-options summary {
+-  cursor: pointer;
+-  color: var(--up-muted);
+-  padding: 8px 0;
++.upload-btn:hover {
++  background: var(--up-soft) !important;
+ }
+-.upload-options label {
+-  display: flex;
+-  align-items: center;
+-  gap: 8px;
+-  margin: 8px 0;
++.upload-btn-primary {
++  border-color: var(--up-accent) !important;
++  background: var(--up-accent) !important;
++  color: var(--up-on-accent) !important;
+ }
+-.upload-options select {
+-  margin-left: auto;
+-  max-width: 75%;
+-  padding: 5px;
++.upload-btn-primary:hover {
++  filter: brightness(1.08);
++  background: var(--up-accent) !important;
+ }
+-.upload-options input {
+-  accent-color: #0061ff;
++
++/* Rows */
++.upload-rows {
++  list-style: none;
++  padding: 4px 6px !important;
+ }
+-.upload-list-heading {
++.upload-row {
+   display: flex;
+-  align-items: center;
+-  justify-content: space-between;
+-  padding: 8px 20px;
+-  color: var(--up-muted);
+-  font-size: 12px;
++  align-items: flex-start;
++  gap: 10px;
++  padding: 9px 8px;
++  border-radius: 10px;
+ }
+-.upload-center .upload-list-heading button {
+-  padding: 5px 8px;
+-  border: 0;
+-  color: #0061ff;
++.upload-row:hover {
++  background: var(--up-soft);
+ }
+-.upload-task-list {
+-  list-style: none;
+-  margin: 0;
+-  padding: 0;
++.upload-row[data-status="error"] {
++  background: var(--up-danger-soft);
+ }
+-.upload-task {
+-  border-top: 1px solid var(--up-border);
+-  padding: 16px 20px;
++.upload-row[data-status="needs_file"] {
++  background: var(--up-warn-soft);
+ }
+-.upload-task-top {
++.upload-kind {
++  width: 32px;
++  height: 32px;
++  flex: none;
++  display: grid;
++  place-items: center;
++  border-radius: 8px;
++  color: var(--up-accent);
++  background: var(--up-accent-soft);
++}
++.upload-kind[data-kind="video"] {
++  color: #7c3aed;
++  background: #f5f3ff;
++}
++.upload-kind[data-kind="image"] {
++  color: #0891b2;
++  background: #ecfeff;
++}
++.upload-kind[data-kind="audio"] {
++  color: #db2777;
++  background: #fdf2f8;
++}
++.upload-kind[data-kind="archive"] {
++  color: #b45309;
++  background: #fffbeb;
++}
++.upload-center[data-mode="dark"] .upload-kind {
++  background: var(--up-soft);
++}
++.upload-center[data-mode="dark"] .upload-kind[data-kind="video"] {
++  color: #c4b5fd;
++}
++.upload-center[data-mode="dark"] .upload-kind[data-kind="image"] {
++  color: #67e8f9;
++}
++.upload-center[data-mode="dark"] .upload-kind[data-kind="audio"] {
++  color: #f9a8d4;
++}
++.upload-center[data-mode="dark"] .upload-kind[data-kind="archive"] {
++  color: #fcd34d;
++}
++.upload-row[data-status="success"] .upload-kind {
++  color: var(--up-ok);
++}
++.upload-row[data-status="cancelled"] {
++  opacity: 0.65;
++}
++.upload-row-main {
++  flex: 1;
++  min-width: 0;
++  display: flex;
++  flex-direction: column;
++  gap: 3px;
++}
++.upload-row-top {
+   display: flex;
+-  gap: 12px;
+-  justify-content: space-between;
+   align-items: baseline;
++  gap: 8px;
+ }
+-.upload-task-top strong {
++.upload-row-top strong {
++  flex: 1;
++  min-width: 0;
+   font-weight: 550;
+   overflow: hidden;
+   text-overflow: ellipsis;
+   white-space: nowrap;
+ }
+-.upload-task-top span {
+-  flex-shrink: 0;
++.upload-row-state {
++  flex: none;
++  max-width: 45%;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
+   color: var(--up-muted);
+   font-size: 12px;
++  font-variant-numeric: tabular-nums;
+ }
+-.upload-task-destination {
+-  color: var(--up-muted);
+-  font-size: 11px;
+-  padding-top: 4px;
+-  overflow-wrap: anywhere;
++.upload-row[data-status="uploading"] .upload-row-state {
++  color: var(--up-accent);
++  font-weight: 600;
+ }
+-.upload-task-status {
+-  display: flex;
+-  justify-content: space-between;
+-  color: var(--up-muted);
+-  font-size: 12px;
+-  margin: 10px 0 6px;
++.upload-row[data-status="error"] .upload-row-state {
++  color: var(--up-danger);
+ }
+-.upload-task[data-status="success"] .upload-task-status {
+-  color: #168244;
++.upload-row[data-status="needs_file"] .upload-row-state {
++  color: var(--up-warn);
+ }
+-.upload-task[data-status="error"] .upload-task-status,
+-.upload-error {
+-  color: #b72c2c;
++.upload-row[data-status="success"] .upload-row-state {
++  color: var(--up-ok);
+ }
+-.upload-center progress {
+-  display: block;
+-  width: 100%;
++.upload-bar {
+   height: 4px;
+-  border: 0;
+-  border-radius: 4px;
++  border-radius: 999px;
++  background: var(--up-track);
+   overflow: hidden;
+-  accent-color: #0061ff;
+-  background: var(--up-soft);
+ }
+-.upload-center progress::-webkit-progress-bar {
+-  background: var(--up-soft);
++.upload-bar > span {
++  display: block;
++  height: 100%;
++  border-radius: inherit;
++  background: var(--up-accent);
++  transition: width 0.3s ease;
++}
++.upload-row[data-status="paused"] .upload-bar > span,
++.upload-row[data-status="waiting_network"] .upload-bar > span {
++  background: var(--up-muted);
++}
++.upload-row[data-status="needs_file"] .upload-bar > span {
++  background: var(--up-warn);
++}
++.upload-bar[data-indeterminate="true"] > span {
++  width: 35% !important;
++  animation: upload-slide 1.2s ease-in-out infinite;
++}
++@keyframes upload-slide {
++  from {
++    transform: translateX(-100%);
++  }
++  to {
++    transform: translateX(290%);
++  }
+ }
+-.upload-center progress::-webkit-progress-value {
+-  background: #0061ff;
+-  border-radius: 4px;
++@media (prefers-reduced-motion: reduce) {
++  .upload-bar[data-indeterminate="true"] > span {
++    animation: none;
++    width: 100% !important;
++    opacity: 0.4;
++  }
+ }
+-.upload-center progress::-moz-progress-bar {
+-  background: #0061ff;
++.upload-row-detail {
++  color: var(--up-muted);
++  font-size: 12px;
++  font-variant-numeric: tabular-nums;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
+ }
+-.upload-error {
++.upload-row-error {
++  color: var(--up-danger);
+   font-size: 12px;
+   overflow-wrap: anywhere;
+-  padding-top: 8px;
+ }
+-.upload-center .upload-row-action {
+-  padding: 4px 0;
+-  margin-top: 8px;
+-  border: 0;
+-  background: transparent;
+-  color: #0061ff;
++.upload-row-note {
++  color: var(--up-muted);
+   font-size: 12px;
+ }
+-.upload-center-footer {
+-  padding: 12px 20px;
++.upload-recovery-password {
++  margin-top: 4px;
++  padding: 6px 8px;
++  border: 1px solid var(--up-border);
++  border-radius: 6px;
++  background: var(--up-bg);
++}
++.upload-row-actions {
++  display: flex;
++  align-items: center;
++  gap: 2px;
++  flex: none;
++  margin-top: 1px;
++}
++.upload-text-button {
++  padding: 5px 8px !important;
++  border-radius: 6px;
++  color: var(--up-accent) !important;
++  font-weight: 550;
++  font-size: 12px;
++  white-space: nowrap;
++}
++.upload-text-button:hover {
++  background: var(--up-accent-soft) !important;
++}
++.upload-text-button.upload-danger {
++  color: var(--up-danger) !important;
++}
++.upload-text-button.upload-danger:hover {
++  background: var(--up-danger-soft) !important;
++}
++.upload-text-button.upload-warn {
++  color: var(--up-bg) !important;
++  background: var(--up-warn) !important;
++}
++.upload-text-button.upload-warn:hover {
++  filter: brightness(1.08);
++}
++
++/* Finished group */
++.upload-done-head {
++  display: flex;
++  align-items: center;
++  gap: 4px;
++  margin: 2px 6px 6px;
++  padding: 4px 4px 4px 8px;
+   border-top: 1px solid var(--up-border);
+-  color: var(--up-muted);
+-  font-size: 11px;
+ }
+-.upload-dock {
++.upload-done-toggle {
++  flex: 1;
+   display: flex;
+   align-items: center;
+-  gap: 10px;
+-  width: 100%;
++  gap: 6px;
++  min-height: 30px;
++  color: var(--up-muted) !important;
+   text-align: left;
+ }
+-.upload-center .upload-dock {
+-  border: 0;
+-  border-radius: 0;
+-  padding: 12px 16px;
++.upload-done-toggle svg {
++  color: var(--up-ok);
+ }
+-.upload-dock strong {
+-  margin-left: auto;
+-  font-size: 12px;
+-}
+-.upload-dock span:nth-child(2) {
++.upload-link-text {
++  color: var(--up-accent);
+   font-weight: 550;
+ }
+-@media (max-width: 600px) {
+-  .upload-center {
+-    right: 12px;
+-    bottom: calc(12px + env(safe-area-inset-bottom));
+-    width: calc(100vw - 24px);
+-  }
+-  .upload-center-body {
+-    max-height: 55dvh;
+-  }
+-  .upload-center-header {
+-    padding: 14px 16px;
+-  }
+-  .upload-picker {
+-    margin: 12px 16px 8px;
+-  }
+-  .upload-task {
+-    padding: 14px 16px;
+-  }
+-  .upload-center button {
+-    min-height: 40px;
+-  }
+-  .upload-center .upload-row-action {
+-    min-height: 36px;
+-  }
+-  .upload-center .upload-list-heading button {
+-    min-height: 36px;
+-  }
+-  .upload-center-footer {
+-    padding: 10px 16px;
+-  }
++.upload-rows-done {
++  padding-top: 0 !important;
+ }
+ 
+-.upload-task-actions {
++/* Footer */
++.upload-tray-foot {
+   display: flex;
+   align-items: center;
+-  gap: 16px;
+-  flex-wrap: wrap;
+-}
+-.upload-recovery-warning {
+-  margin: 12px 20px !important;
++  gap: 6px;
+   padding: 10px 12px;
++  border-top: 1px solid var(--up-border);
++  background: var(--up-soft);
++}
++.upload-tray-foot:empty {
++  display: none;
++}
++.upload-options {
++  position: relative;
++  min-width: 0;
++  margin-left: auto;
++}
++.upload-options summary {
++  list-style: none;
++  cursor: pointer;
++  padding: 6px 8px;
+   border-radius: 6px;
+-  background: #fff4dc;
+-  color: #7b5116;
++  color: var(--up-muted);
+   font-size: 12px;
+-  line-height: 1.5;
++  white-space: nowrap;
++  overflow: hidden;
++  text-overflow: ellipsis;
+ }
+-.upload-task-note {
+-  font-size: 12px;
+-  color: var(--up-muted);
+-  line-height: 1.5;
+-  padding-top: 8px;
+-  overflow-wrap: anywhere;
++.upload-options summary::-webkit-details-marker {
++  display: none;
+ }
+-.upload-recovery-password {
+-  display: block;
+-  width: 100%;
+-  box-sizing: border-box;
+-  margin-top: 10px;
+-  padding: 9px 10px;
++.upload-options summary::after {
++  content: " ▾";
++}
++.upload-options[open] summary::after {
++  content: " ▴";
++}
++.upload-options summary:hover {
++  background: var(--up-bg);
+   color: var(--up-text);
++}
++.upload-options-panel {
++  position: absolute;
++  right: 0;
++  bottom: calc(100% + 6px);
++  z-index: 1;
++  width: 250px;
++  display: grid;
++  gap: 10px;
++  padding: 12px;
+   background: var(--up-bg);
+   border: 1px solid var(--up-border);
++  border-radius: 10px;
++  box-shadow: 0 10px 30px #18181b29;
++}
++.upload-options-panel label {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++}
++.upload-options-panel label:first-child {
++  justify-content: space-between;
++}
++.upload-options-panel select {
++  max-width: 150px;
++  padding: 5px 8px;
++  border: 1px solid var(--up-border);
+   border-radius: 6px;
+-  font: inherit;
++  background: var(--up-bg);
++}
++.upload-options-panel input[type="checkbox"] {
++  accent-color: var(--up-accent);
++}
++.upload-cancel-all {
++  flex: none;
+ }
+-.upload-task[data-status="paused"] progress::-webkit-progress-value,
+-.upload-task[data-status="needs_file"] progress::-webkit-progress-value {
+-  background: #929292;
++.upload-tray-foot:not(:has(.upload-btn)) .upload-options {
++  margin-left: 0;
++}
++.upload-tray-foot:not(:has(.upload-options)) .upload-cancel-all {
++  margin-left: auto;
+ }
+ 
+-/* Dropbox-style task center; its fixed dock never changes the file layout. */
+-.upload-center, .upload-center[data-mode="dark"] { --up-bg: #1e1919; --up-text: #f7f5f2; --up-muted: #b5b1ad; --up-border: #57534f; --up-soft: #34302e; width: 460px; border-radius: 20px; box-shadow: 0 10px 32px #0003; }
+-.upload-center-header { padding: 20px 24px 12px; border: 0; gap: 10px; }
+-.upload-center-header > div { flex: 1; min-width: 0; }
+-.upload-center h2 { font-size: 22px; font-weight: 500; }
+-.upload-center-header p { display: none; }
+-.upload-center .upload-cancel-all { padding: 6px 10px; font-size: 12px; }
+-.upload-center .upload-icon-button { margin-left: 0; flex-shrink: 0; }
+-.upload-filters { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 24px 18px; }
+-.upload-center .upload-filters button { border-radius: 24px; border: 1px solid transparent; background: var(--up-soft); padding: 6px 10px; font-size: 12px; }
+-.upload-center .upload-filters button[aria-pressed="true"] { border-color: #f7f5f2; background: #484440; }
+-.upload-center-body { min-height: 230px; max-height: min(54dvh, 470px); }
+-.upload-list-heading { padding: 8px 24px 16px; }
+-.upload-task { margin: 0 24px; padding: 12px 0 18px 26px; position: relative; border-top: 0; }
+-.upload-task-symbol { position: absolute; left: 0; top: 12px; font-size: 16px; color: var(--up-muted); }
+-.upload-file-type { float: right; margin: 0 0 6px 8px; background: var(--up-soft); padding: 2px 5px; border-radius: 4px; color: var(--up-text); font-size: 10px; font-weight: 650; }
+-.upload-task-top { gap: 6px; }
+-.upload-task-top strong { font-weight: 600; }
+-.upload-task-top > span { display: none; }
+-.upload-task-status { gap: 8px; line-height: 1.6; align-items: flex-end; }
+-.upload-task[data-status="success"] .upload-task-status { color: #83d0b2; }
+-.upload-task[data-status="success"] progress, .upload-task[data-status="cancelled"] progress { display: none; }
+-.upload-center .upload-row-action { color: var(--up-text); border-radius: 6px; background: var(--up-soft); padding: 5px 10px; margin: 0; }
+-.upload-task-actions { gap: 8px; padding-top: 8px; }
+-.upload-center-footer { margin: 12px; padding: 14px 12px; display: flex; align-items: center; gap: 12px; border: 0; border-radius: 12px; background: #0061ff; color: white; font-size: 13px; }
+-.upload-center-footer[data-success="true"] { background: #217b5e; }
+-.upload-mark { width: 42px; height: 42px; background: #0053d9; color: white; border-radius: 8px; font-size: 28px; }
+-.upload-center-footer[data-success="true"] .upload-mark { background: #19694f; }
+-.upload-summary-text { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
+-.upload-summary-text b { font-size: 14px; font-weight: 550; }
+-.upload-summary-text small { font-size: 11px; opacity: .85; font-weight: 400; }
+-.upload-center .upload-dock { padding: 12px; gap: 12px; min-height: 80px; background: var(--up-bg); }
+-.upload-dock[data-success="true"] .upload-mark { background: #217b5e; }
+-.upload-dock .upload-summary-text { font-weight: 400; }
+-.upload-add-menu { position: relative; flex-shrink: 0; }
+-.upload-add-menu summary { list-style: none; cursor: pointer; padding: 8px 10px; border: 1px solid #ffffff80; border-radius: 8px; }
+-.upload-add-menu summary::-webkit-details-marker { display: none; }
+-.upload-add-menu > div { position: absolute; right: 0; bottom: calc(100% + 8px); display: grid; width: 140px; padding: 6px; background: var(--up-soft); border: 1px solid var(--up-border); border-radius: 8px; z-index: 2; }
+-.upload-add-menu button { text-align: left; border: 0; }
+-.upload-empty { padding: 30px 24px; color: var(--up-muted); text-align: center; }
+-@media (max-width: 600px) {
+-  .upload-center { width: calc(100vw - 24px); }
+-  .upload-center-header { padding: 16px 16px 8px; }
+-  .upload-filters { padding: 12px 16px; gap: 6px; }
+-  .upload-center-body { min-height: 180px; max-height: 48dvh; }
+-  .upload-task { margin: 0 16px; }
+-  .upload-center-footer { margin: 8px; gap: 8px; padding: 10px; }
+-  .upload-summary-text b { font-size: 12px; }
+-}
+-.upload-empty-hint { margin: 0; padding: 20px 16px; color: var(--up-muted); text-align: center; line-height: 1.6; }
++@media (max-width: 760px) {
++  .upload-center {
++    left: 8px;
++    right: 8px;
++    bottom: calc(8px + env(safe-area-inset-bottom));
++    width: auto;
++    max-width: none;
++  }
++  .upload-center[data-collapsed="true"] {
++    left: auto;
++  }
++  .upload-tray-body {
++    max-height: 48vh;
++  }
++  .upload-icon-button {
++    width: 36px;
++    height: 36px;
++  }
++  .upload-options-panel {
++    width: min(280px, calc(100vw - 40px));
++  }
++}
