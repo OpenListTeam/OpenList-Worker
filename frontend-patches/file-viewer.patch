@@ -1,3 +1,30 @@
+diff --git a/src/hooks/usePath.ts b/src/hooks/usePath.ts
+index f0ce86f..018a71b 100644
+--- a/src/hooks/usePath.ts
++++ b/src/hooks/usePath.ts
+@@ -31,6 +31,7 @@ import { useFetch } from "./useFetch"
+ import { useRouter } from "./useRouter"
+ 
+ import { recordRecent } from "~/pages/home/recent/record"
++import { returningToViewerFolder } from "~/pages/home/file/viewer-state"
+ 
+ let first_fetch = true
+ let navigationVersion = 0
+@@ -149,6 +150,14 @@ export const usePath = () => {
+     ObjStore.setRevalidating(false)
+     retry_pass = rp ?? false
+     ObjStore.setErr("")
++    // Closing the file viewer: the folder's list is still on screen behind
++    // it. Show it as is and refresh in the background, without a rebuild.
++    if (!force && !rp && returningToViewerFolder(path)) {
++      setPathAs(path)
++      ObjStore.setState(State.Folder)
++      ObjStore.setRevalidating(true)
++      return handleFolder(path, index, undefined, false, false, false, true)
++    }
+     const snapshot =
+       !force && !rp && canSnapshot()
+         ? directorySnapshots.get(snapshotKey(path, index))
 diff --git a/src/hooks/useRouter.ts b/src/hooks/useRouter.ts
 index 2e20eee..11deac7 100644
 --- a/src/hooks/useRouter.ts
@@ -37,18 +64,44 @@ index 788990c..71028b4 100644
                </Switch>
              </main>
 diff --git a/src/pages/home/Obj.tsx b/src/pages/home/Obj.tsx
-index aa28b74..7c99c94 100644
+index aa28b74..271e53d 100644
 --- a/src/pages/home/Obj.tsx
 +++ b/src/pages/home/Obj.tsx
-@@ -29,7 +29,6 @@ import {
+@@ -27,9 +27,9 @@ import {
+   me,
+ } from "~/store"
  import { UserMethods } from "~/types"
++import { viewerKeepsFolder } from "./file/viewer-state"
  
  const Folder = lazy(() => import("./folder/Folder"))
 -const File = lazy(() => import("./file/File"))
  const Password = lazy(() => import("./Password"))
  // const ListSkeleton = lazy(() => import("./Folder/ListSkeleton"));
  // const GridSkeleton = lazy(() => import("./Folder/GridSkeleton"));
-@@ -185,9 +184,7 @@ export const Obj = () => {
+@@ -146,9 +146,11 @@ export const Obj = () => {
+               />
+             </Match>
+             <Match
+-              when={[State.FetchingObj, State.FetchingObjs].includes(
+-                objStore.state,
+-              )}
++              when={
++                [State.FetchingObj, State.FetchingObjs].includes(
++                  objStore.state,
++                ) && !viewerKeepsFolder(pathname())
++              }
+             >
+               <FullLoading />
+               {/* <Show when={layout() === "list"} fallback={<GridSkeleton />}>
+@@ -181,13 +183,14 @@ export const Obj = () => {
+               </Password>
+             </Match>
+             <Match
+-              when={[State.Folder, State.FetchingMore].includes(objStore.state)}
++              when={
++                [State.Folder, State.FetchingMore].includes(objStore.state) ||
++                viewerKeepsFolder(pathname())
++              }
              >
                <Folder />
              </Match>
@@ -705,12 +758,13 @@ index 0000000..383c499
 +}
 diff --git a/src/pages/home/file/viewer-state.ts b/src/pages/home/file/viewer-state.ts
 new file mode 100644
-index 0000000..810caf2
+index 0000000..f67938f
 --- /dev/null
 +++ b/src/pages/home/file/viewer-state.ts
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,59 @@
 +import { createSignal } from "solid-js"
-+import type { ViewerItem } from "./viewer-utils"
++import { objStore, State } from "~/store"
++import { parentFolder, type ViewerItem } from "./viewer-utils"
 +
 +// Set when a file is opened from a page of this app, so closing the viewer can
 +// step back in history instead of pushing the folder again.
@@ -736,6 +790,24 @@ index 0000000..810caf2
 +    items: items?.map((item) => ({ name: item.name, is_dir: item.is_dir })),
 +    scroll: scroller()?.scrollTop || window.scrollY,
 +  })
++}
++
++// The viewer covers a file's state only; the folder it was opened from keeps
++// its list (objStore.objs is untouched by file loads).
++const showingFile = () =>
++  objStore.state === State.File || objStore.state === State.FetchingObj
++
++/** Keep the folder's list mounted behind the viewer, so closing never rebuilds it. */
++export function viewerKeepsFolder(path: string) {
++  const from = origin()
++  if (!from?.folder || !from.items || !showingFile()) return false
++  return from.folder === path || from.folder === parentFolder(path)
++}
++
++/** Back in the folder the viewer was opened over: its list is still loaded. */
++export function returningToViewerFolder(path: string) {
++  const from = origin()
++  return !!from?.folder && !!from.items && from.folder === path && showingFile()
 +}
 +
 +export function clearViewerOrigin() {
