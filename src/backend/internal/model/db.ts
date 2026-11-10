@@ -1007,6 +1007,23 @@ export const defaultDb = {
       group: 12,
       flag: 1,
     },
+    // ── 上传行为 ──
+    // Issue #100：阿里云盘经 WebDAV 上传同名文件时会生成 xxx_(1) 副本而不是
+    // 覆盖。驱动接口本身没有 overwrite 语义，只能在上传前主动删除旧文件。
+    // 代价是每次上传多一次存在性检查（命中时再多一次删除），故默认关闭。
+    {
+      key: "upload_force_overwrite",
+      value: "false",
+      type: "bool",
+      help:
+        "Before every upload, check whether the target file exists and delete it first. " +
+        "This makes uploads truly overwrite files on drivers that would otherwise create " +
+        "numbered copies (e.g. Aliyun Drive via WebDAV), but it adds one existence check " +
+        "and, when the file exists, one extra delete request per upload. " +
+        "Leave it off unless you need overwrite semantics.",
+      group: 4,
+      flag: 1,
+    },
   ],
   storages: [],
   users: [

@@ -13,6 +13,7 @@ import {
 } from "../internal/op/storage"
 import { resolveShare } from "../internal/op/share"
 import { resolvePath } from "../internal/model/db"
+import { prepareUploadTarget } from "../internal/op/upload"
 import { getUserFromContext } from "./middlewares"
 import {
   can,
@@ -978,6 +979,8 @@ fsRouter.put("/put", async (c) => {
   try {
     const body = await readBodyWithinLimit(c)
     if (!body.ok) return tooLargeResponse(c, body.limit)
+    // 先校验请求体再删旧文件：避免「请求被拒但原文件已丢」
+    await prepareUploadTarget(reqPath, requestContext)
     await putItem(reqPath, body.buffer, requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
@@ -1018,6 +1021,8 @@ fsRouter.put("/form", async (c) => {
     // multipart 的 Content-Length 只覆盖整个表单，仍需按文件实际字节复核
     const max = getUploadSizeLimit(c, false)
     if (buffer.length > max) return tooLargeResponse(c, max)
+    // 先校验体积再删旧文件：避免「请求被拒但原文件已丢」
+    await prepareUploadTarget(reqPath, requestContext)
     await putItem(reqPath, buffer, requestContext)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
@@ -1392,6 +1397,15 @@ fsRouter.post("/get_direct_upload_info", async (c) => {
     } catch {
       // 目标不存在 / 无法读取：继续签发流程
     }
+  } else {
+    // 全局「强制覆盖」：客户端直传时 Worker 不经手数据，只能在签发前删旧文件，
+    // 否则驱动会生成 xxx_(1) 副本（Issue #100）。
+    // 显式 Overwrite:false 优先，保持「拒绝覆盖」的语义。
+    try {
+      await prepareUploadTarget(dstPath, getStorageRequestContext(c))
+    } catch (e: any) {
+      return c.json({ code: 500, message: safeErrorMessage(e), data: null }, 500)
+    }
   }
   try {
     const resolved = await resolvePath(dirPath)
@@ -1498,6 +1512,12 @@ fsRouter.post("/multipart/init", async (c) => {
       session = existing
       resumed = true
     } else {
+      // 只在新会话时清理旧文件：续传会话的目标可能已经在首次 init 时删过，
+      // 再次删除会破坏正在进行的上传。
+      await prepareUploadTarget(
+        `${actualDir}/${name}`.replace(/\/{2,}/g, "/"),
+        requestContext,
+      )
       const info = await (driver as any).createUploadSession(
         actualDir,
         resolved.physical!,
