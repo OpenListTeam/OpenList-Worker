@@ -1066,7 +1066,40 @@ async function createDriver(
     normDriver.includes("mega")
   ) {
     const addition = parseAddition(storageConfig)
-    driver = new MegaDriver(addition)
+    driver = new MegaDriver(addition, async (session) => {
+      try {
+        const db = await getDb()
+        const st = (db.storages || []).find((s: any) => s.id === storageConfig?.id)
+        if (!st) return
+        const stAddition =
+          typeof st.addition === "string"
+            ? JSON.parse(st.addition || "{}")
+            : st.addition || {}
+        if (
+          stAddition.sid === session.sid &&
+          stAddition.master_key === session.masterKey
+        ) {
+          return
+        }
+        stAddition.sid = session.sid
+        stAddition.master_key = session.masterKey
+        st.addition = JSON.stringify(stAddition)
+        // /admin/storage/update 会用提交前的 updatedStorage 覆盖 db，这里同步
+        // 写回它，避免刚拿到的会话被旧快照冲掉（与 139/GuangYaPan 的处理一致）。
+        if (deferredTokenPersistence.has(storageConfig)) {
+          storageConfig.addition = JSON.stringify({
+            ...parseAddition(storageConfig),
+            sid: session.sid,
+            master_key: session.masterKey,
+          })
+          return
+        }
+        storageConfig.addition = st.addition
+        await saveDb(db)
+      } catch (e) {
+        console.warn("[Mega] failed to persist session:", e)
+      }
+    })
     await driver.init?.()
   } else if (
     normDriver === "115share" ||
