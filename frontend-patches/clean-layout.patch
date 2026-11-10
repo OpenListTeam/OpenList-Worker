@@ -1,0 +1,1625 @@
+diff --git a/src/pages/home/Body.tsx b/src/pages/home/Body.tsx
+index f4da4d5..c89cdf5 100644
+--- a/src/pages/home/Body.tsx
++++ b/src/pages/home/Body.tsx
+@@ -4,7 +4,8 @@ import { Obj } from "./Obj"
+ import { Readme } from "./Readme"
+ import { Container } from "./Container"
+ import { DriveSelection } from "./DriveSelection"
+-import { DriveHeading, DriveViewToolbar, DriveFileSection } from "./DriveChrome"
++import { DriveHeading } from "./DriveChrome"
++import { DriveTypeFilter } from "./DriveClean"
+ import { Sidebar } from "./Sidebar"
+ 
+ export const Body = () => {
+@@ -23,9 +24,8 @@ export const Body = () => {
+         <Nav />
+         <DriveHeading />
+         <div class="drive-list-toolbar">
+-          <DriveFileSection />
++          <DriveTypeFilter />
+           <DriveSelection />
+-          <DriveViewToolbar />
+         </div>
+         <Obj />
+         <Readme
+diff --git a/src/pages/home/DriveChrome.tsx b/src/pages/home/DriveChrome.tsx
+index 463578e..d5f1204 100644
+--- a/src/pages/home/DriveChrome.tsx
++++ b/src/pages/home/DriveChrome.tsx
+@@ -11,7 +11,7 @@ import {
+ } from "solid-icons/bs"
+ import { useRouter, usePath, useT } from "~/hooks"
+ import { currentLang } from "~/app/i18n"
+-import { getSetting, me, objStore, State, userCan, haveSelected } from "~/store"
++import { getSetting, me, objStore, State, userCan } from "~/store"
+ import { UserMethods } from "~/types"
+ import { Layout } from "./header/layout"
+ import { bus } from "~/utils"
+@@ -176,14 +176,6 @@ export const DriveAccount = () => {
+   )
+ }
+ 
+-export const DriveViewToolbar = () => (
+-  <Show when={objStore.state === State.Folder}>
+-    <div class="drive-view-toolbar">
+-      <Layout />
+-    </div>
+-  </Show>
+-)
+-
+ export const DriveHeading = () => {
+   const t = useT()
+   const { pathname, isShare } = useRouter()
+@@ -201,17 +193,6 @@ export const DriveHeading = () => {
+             ? driveText("files")
+             : pathname().split("/").filter(Boolean).pop()}
+         </h1>
+-        <Show when={objStore.state === State.Folder}>
+-          <p class="drive-heading-description">
+-            {String(currentLang()).startsWith("zh")
+-              ? pathname() === "/"
+-                ? "你的文件，井然有序。"
+-                : "浏览、整理与分享此文件夹中的内容。"
+-              : pathname() === "/"
+-                ? "A place for everything you work on."
+-                : "Browse, organize and share this folder."}
+-          </p>
+-        </Show>
+       </div>
+       <div class="drive-actions">
+         <button
+@@ -223,24 +204,20 @@ export const DriveHeading = () => {
+           <Icon as={BsArrowClockwise} />
+         </button>
+         <Show when={canWrite()}>
++          <button
++            class="drive-button drive-heading-upload"
++            onClick={() => bus.emit("tool", "upload")}
++          >
++            <Icon as={BsArrowUp} />
++            <span>{t("home.toolbar.upload")}</span>
++          </button>
+           <button
+             class="drive-button drive-heading-mkdir"
+-            aria-label={t("home.toolbar.mkdir")}
+-            title={t("home.toolbar.mkdir")}
+             onClick={() => bus.emit("tool", "mkdir")}
+           >
+             <Icon as={BsFolderPlus} />
+             <span>{t("home.toolbar.mkdir")}</span>
+           </button>
+-          <button
+-            class="drive-button drive-button-primary drive-heading-upload"
+-            aria-label={t("home.toolbar.upload")}
+-            title={t("home.toolbar.upload")}
+-            onClick={() => bus.emit("tool", "upload")}
+-          >
+-            <Icon as={BsArrowUp} />
+-            <span>{t("home.toolbar.upload")}</span>
+-          </button>
+         </Show>
+         <div class="drive-heading-layout">
+           <Show when={objStore.state === State.Folder}>
+@@ -252,21 +229,3 @@ export const DriveHeading = () => {
+     </div>
+   )
+ }
+-
+-export const DriveFileSection = () => (
+-  <Show
+-    when={
+-      [State.Folder, State.FetchingMore].includes(objStore.state) &&
+-      !haveSelected()
+-    }
+-  >
+-    <div class="drive-file-section">
+-      <span>
+-        {String(currentLang()).startsWith("zh")
+-          ? "文件与文件夹"
+-          : "Files and folders"}
+-      </span>
+-      <span class="drive-item-count">{objStore.total}</span>
+-    </div>
+-  </Show>
+-)
+diff --git a/src/pages/home/DriveClean.tsx b/src/pages/home/DriveClean.tsx
+new file mode 100644
+index 0000000..2d1937c
+--- /dev/null
++++ b/src/pages/home/DriveClean.tsx
+@@ -0,0 +1,314 @@
++import { Icon, Menu, MenuContent, MenuItem, MenuTrigger } from "@hope-ui/solid"
++import { For, Show, createEffect, createMemo, on } from "solid-js"
++import { useContextMenu } from "solid-contextmenu"
++import {
++  BsArrowUp,
++  BsFileEarmarkPlus,
++  BsFolderPlus,
++  BsPlusLg,
++  BsThreeDots,
++} from "solid-icons/bs"
++import { currentLang } from "~/app/i18n"
++import { useDownload, useRouter, useT } from "~/hooks"
++import {
++  State,
++  checkboxOpen,
++  getSettingBool,
++  haveSelected,
++  layout,
++  me,
++  objStore,
++  selectAll,
++  selectedObjs,
++  toggleCheckbox,
++  userCan,
++} from "~/store"
++import { UserMethods } from "~/types"
++import { bus, notify } from "~/utils"
++import { uploadStatus } from "~/utils/upload_status"
++import { DriveBrand } from "./DriveChrome"
++import { NavButton, DriveTree, useNavItems } from "./DrivePro"
++import { DriveUsage } from "./DriveUsage"
++import { TYPE_FILTERS, TypeFilter, countByType } from "./drive-clean-utils"
++import { setTypeFilter, typeFilter } from "./folder/type-filter"
++
++const zh = () => String(currentLang()).startsWith("zh")
++const text = (cn: string, en: string) => (zh() ? cn : en)
++
++/* ------------------------------------------------------------------ */
++/* Type filter: reset when the folder changes. */
++
++const FILTER_LABELS: Record<TypeFilter, [string, string]> = {
++  all: ["全部", "All"],
++  folder: ["文件夹", "Folders"],
++  video: ["视频", "Videos"],
++  image: ["图片", "Images"],
++  doc: ["文档", "Documents"],
++}
++
++const canWriteHere = (isShare: () => boolean) =>
++  objStore.state === State.Folder &&
++  !isShare() &&
++  (userCan("write_content") || objStore.write_content_bypass) &&
++  objStore.write
++
++export const DriveTypeFilter = () => {
++  const { pathname } = useRouter()
++  const counts = createMemo(() => countByType(objStore.objs))
++  // A paginated listing holds one page: say so instead of a wrong count.
++  const complete = () => objStore.objs.length >= objStore.total
++  createEffect(on(pathname, () => setTypeFilter("all"), { defer: true }))
++  const choose = (filter: TypeFilter) => {
++    if (filter === typeFilter()) return
++    // Hidden items must not stay selected behind the filter.
++    selectAll(false)
++    setTypeFilter(filter)
++  }
++  return (
++    <Show when={[State.Folder, State.FetchingMore].includes(objStore.state)}>
++      <div class="drive-filter-row">
++        <div
++          class="drive-filter-chips"
++          role="group"
++          aria-label={text("按类型筛选", "Filter by type")}
++        >
++          <For each={TYPE_FILTERS}>
++            {(filter) => (
++              <button
++                type="button"
++                class="drive-chip"
++                aria-pressed={typeFilter() === filter}
++                disabled={filter !== "all" && complete() && !counts()[filter]}
++                onClick={() => choose(filter)}
++              >
++                {text(...FILTER_LABELS[filter])}
++                <Show when={filter !== "all" && counts()[filter] > 0}>
++                  <span class="drive-chip-count">{counts()[filter]}</span>
++                </Show>
++              </button>
++            )}
++          </For>
++        </div>
++        <span class="drive-filter-total" role="status">
++          {typeFilter() === "all"
++            ? text(`${objStore.total} 项`, `${objStore.total} items`)
++            : text(
++                `显示 ${counts()[typeFilter()]} / ${objStore.total} 项`,
++                `${counts()[typeFilter()]} of ${objStore.total} items`,
++              )}
++        </span>
++      </div>
++    </Show>
++  )
++}
++
++/* ------------------------------------------------------------------ */
++/* Sidebar */
++
++const NewMenu = () => {
++  const t = useT()
++  const { isShare } = useRouter()
++  const canWrite = () => canWriteHere(isShare)
++  return (
++    <Menu placement="bottom-start">
++      <MenuTrigger
++        as="button"
++        class="drive-new-button"
++        disabled={!canWrite()}
++        title={
++          canWrite()
++            ? undefined
++            : text("打开一个可写入的文件夹后可新建", "Open a folder you can write to")
++        }
++      >
++        <Icon as={BsPlusLg} />
++        <span>{text("新建", "New")}</span>
++      </MenuTrigger>
++      <MenuContent>
++        <MenuItem onSelect={() => bus.emit("tool", "upload")}>
++          <Icon as={BsArrowUp} />
++          {t("home.toolbar.upload")}
++        </MenuItem>
++        <MenuItem onSelect={() => bus.emit("tool", "mkdir")}>
++          <Icon as={BsFolderPlus} />
++          {t("home.toolbar.mkdir")}
++        </MenuItem>
++        <MenuItem onSelect={() => bus.emit("tool", "new_file")}>
++          <Icon as={BsFileEarmarkPlus} />
++          {t("home.toolbar.new_file")}
++        </MenuItem>
++      </MenuContent>
++    </Menu>
++  )
++}
++
++const UploadCard = () => (
++  <Show when={uploadStatus().active > 0}>
++    <div class="drive-upload-card" role="status">
++      <div class="drive-upload-card-head">
++        <strong>
++          {text(
++            `正在上传 ${uploadStatus().active} 项`,
++            `Uploading ${uploadStatus().active} item${uploadStatus().active === 1 ? "" : "s"}`,
++          )}
++        </strong>
++        <button
++          type="button"
++          class="drive-link-button"
++          onClick={() => bus.emit("tool", "transfers")}
++        >
++          {text("查看", "View")}
++        </button>
++      </div>
++      <div class="drive-progress drive-upload-card-bar" aria-hidden="true">
++        <span style={{ width: `${uploadStatus().progress}%` }} />
++      </div>
++      <span class="drive-upload-card-name" title={uploadStatus().name}>
++        {uploadStatus().name} · {uploadStatus().progress}%
++      </span>
++    </div>
++  </Show>
++)
++
++export const DriveSidebar = () => {
++  const { items } = useNavItems()
++  const { isShare } = useRouter()
++  return (
++    <aside
++      id="drive-desktop-navigation"
++      class="drive-sidebar"
++      aria-label={text("侧栏", "Sidebar")}
++    >
++      <DriveBrand />
++      <Show when={!isShare()}>
++        <NewMenu />
++      </Show>
++      <nav class="drive-side-nav" aria-label={text("主导航", "Main")}>
++        <For each={items()}>
++          {(item) => <NavButton item={item} class="drive-side-item" />}
++        </For>
++      </nav>
++      <Show when={!isShare()}>
++        <div class="drive-side-section">
++          <p class="drive-side-label">{text("挂载", "Storage")}</p>
++          <DriveTree embedded />
++        </div>
++      </Show>
++      <div class="drive-side-end">
++        <UploadCard />
++        <DriveUsage />
++      </div>
++    </aside>
++  )
++}
++
++/* ------------------------------------------------------------------ */
++/* Floating bar for the selected items */
++
++export const DriveSelectionBar = () => {
++  const t = useT()
++  const { isShare } = useRouter()
++  const { batchDownloadSelected } = useDownload()
++  const { show } = useContextMenu({ id: 1 })
++  const shown = () =>
++    haveSelected() &&
++    [State.Folder, State.FetchingMore].includes(objStore.state)
++  // Same rules as the context menu.
++  const blocked = () => selectedObjs().some((obj) => !!(obj as any).migration)
++  const may = (name: "move" | "copy" | "delete") =>
++    userCan(name) && objStore.write && !isShare() && !blocked()
++  const download = () => {
++    if (selectedObjs().some((obj) => obj.is_dir)) {
++      if (!UserMethods.is_admin(me()) && !getSettingBool("package_download")) {
++        notify.warning(t("home.toolbar.package_download_disabled"))
++        return
++      }
++      bus.emit("tool", "package_download")
++      return
++    }
++    batchDownloadSelected()
++  }
++  const clear = () => {
++    selectAll(false)
++    if (layout() !== "list" && checkboxOpen()) toggleCheckbox()
++  }
++  return (
++    <Show when={shown()}>
++      <div
++        class="drive-selection-bar"
++        role="toolbar"
++        aria-label={text("已选项目操作", "Selected items")}
++        onKeyDown={(event: KeyboardEvent) => {
++          if (event.key === "Escape") clear()
++        }}
++      >
++        <span class="drive-selection-bar-count" role="status">
++          {text(
++            `已选 ${selectedObjs().length} 项`,
++            `${selectedObjs().length} selected`,
++          )}
++        </span>
++        <button type="button" onClick={download}>
++          {t("home.toolbar.download")}
++        </button>
++        <Show when={may("move")}>
++          <button type="button" onClick={() => bus.emit("tool", "move")}>
++            {t("home.toolbar.move")}
++          </button>
++        </Show>
++        <Show when={may("copy")}>
++          <button type="button" onClick={() => bus.emit("tool", "copy")}>
++            {t("home.toolbar.copy")}
++          </button>
++        </Show>
++        <Show when={userCan("share") && !isShare()}>
++          <button type="button" onClick={() => bus.emit("tool", "share")}>
++            {t("home.toolbar.share")}
++          </button>
++        </Show>
++        <Show when={may("delete")}>
++          <button
++            type="button"
++            class="drive-selection-bar-danger"
++            onClick={() => bus.emit("tool", "delete")}
++          >
++            {t("home.toolbar.delete")}
++          </button>
++        </Show>
++        <button
++          type="button"
++          class="drive-selection-bar-icon"
++          aria-label={t("home.toolbar.more")}
++          title={t("home.toolbar.more")}
++          onClick={(event) => {
++            event.preventDefault()
++            event.stopPropagation()
++            show(event, { props: selectedObjs()[0] })
++          }}
++        >
++          <Icon as={BsThreeDots} />
++        </button>
++        <button
++          type="button"
++          class="drive-selection-bar-icon drive-selection-bar-close"
++          aria-label={text("取消选择", "Clear selection")}
++          title={text("取消选择", "Clear selection")}
++          onClick={clear}
++        >
++          <svg
++            width="16"
++            height="16"
++            viewBox="0 0 24 24"
++            fill="none"
++            stroke="currentColor"
++            stroke-width="2"
++            stroke-linecap="round"
++            aria-hidden="true"
++          >
++            <path d="M6 6l12 12M18 6 6 18" />
++          </svg>
++        </button>
++      </div>
++    </Show>
++  )
++}
+diff --git a/src/pages/home/DrivePro.tsx b/src/pages/home/DrivePro.tsx
+index 4a7187c..4bcdee9 100644
+--- a/src/pages/home/DrivePro.tsx
++++ b/src/pages/home/DrivePro.tsx
+@@ -18,7 +18,6 @@ import {
+   BsCloudUploadFill,
+   BsDownload,
+   BsFolder2,
+-  BsGearFill,
+   BsInfoCircle,
+   BsLink45deg,
+   BsPersonCircle,
+@@ -46,7 +45,6 @@ import {
+ } from "~/utils"
+ import { getIconByObj } from "~/utils/icon"
+ import { uploadStatus } from "~/utils/upload_status"
+-import { DriveUsage } from "./DriveUsage"
+ import { openItem } from "./folder/open-item"
+ import {
+   INSPECTOR_DOCK_WIDTH,
+@@ -81,9 +79,7 @@ export const createInspectorState = () => {
+     saved = localStorage.getItem(INSPECTOR_KEY)
+   } catch {}
+   // The docked column remembers its state; the overlay never opens by itself.
+-  const [docked, setDocked] = createSignal(
+-    initialInspectorOpen(saved, window.innerWidth),
+-  )
++  const [docked, setDocked] = createSignal(initialInspectorOpen(saved))
+   const [overlay, setOverlay] = createSignal(false)
+   const media = window.matchMedia(`(min-width: ${INSPECTOR_DOCK_WIDTH}px)`)
+   const [wide, setWide] = createSignal(media.matches)
+@@ -134,7 +130,7 @@ export const DriveInspectorToggle = (props: { placement?: "header" }) => {
+ }
+ 
+ /* ------------------------------------------------------------------ */
+-/* Navigation: icon rail (desktop) and tab bar (phone) share one list. */
++/* Navigation: sidebar (desktop) and tab bar (phone) share one list. */
+ 
+ type NavItem = {
+   key: string
+@@ -145,7 +141,7 @@ type NavItem = {
+   onClick: () => void
+ }
+ 
+-const useNavItems = () => {
++export const useNavItems = () => {
+   const { to, isShare, pathname } = useRouter()
+   const signedIn = () => !!me().id && !UserMethods.is_guest(me())
+   // Account-level, not per page, so the navigation never shifts between
+@@ -193,7 +189,7 @@ const useNavItems = () => {
+   return { items, signedIn, to }
+ }
+ 
+-const NavButton = (props: { item: NavItem; class: string }) => (
++export const NavButton = (props: { item: NavItem; class: string }) => (
+   <button
+     type="button"
+     class={props.class}
+@@ -209,39 +205,6 @@ const NavButton = (props: { item: NavItem; class: string }) => (
+   </button>
+ )
+ 
+-export const DriveIconRail = () => {
+-  const { items, signedIn, to } = useNavItems()
+-  return (
+-    <nav class="drive-icon-rail" aria-label={text("主导航", "Main")}>
+-      <button
+-        type="button"
+-        class="drive-icon-rail-brand"
+-        aria-label={text("返回首页", "Go home")}
+-        onClick={() => to("/")}
+-      >
+-        O
+-      </button>
+-      <For each={items()}>
+-        {(item) => <NavButton item={item} class="drive-icon-rail-item" />}
+-      </For>
+-      <Show when={signedIn()}>
+-        <div class="drive-icon-rail-end">
+-          <NavButton
+-            class="drive-icon-rail-item"
+-            item={{
+-              key: "manage",
+-              label: text("管理", "Manage"),
+-              icon: BsGearFill,
+-              current: false,
+-              onClick: () => to("/@manage"),
+-            }}
+-          />
+-        </div>
+-      </Show>
+-    </nav>
+-  )
+-}
+-
+ export const DriveTabBar = () => {
+   const { items, signedIn, to } = useNavItems()
+   // Lets floating panels outside the shell (the upload panel) clear the bar.
+@@ -406,10 +369,10 @@ const TreeBranch = (props: { path: string; depth: number }) => {
+ }
+ 
+ /**
+- * Folder tree. The desktop column (always mounted) keeps the shared store in
+- * sync; the phone drawer (`drawer`) only renders it.
++ * Folder tree. The desktop sidebar's copy (`embedded`, always mounted) keeps
++ * the shared store in sync; the phone drawer (`drawer`) only renders it.
+  */
+-export const DriveTree = (props: { drawer?: boolean }) => {
++export const DriveTree = (props: { drawer?: boolean; embedded?: boolean }) => {
+   const { pathname, to, isShare } = useRouter()
+ 
+   if (!props.drawer) {
+@@ -456,6 +419,18 @@ export const DriveTree = (props: { drawer?: boolean }) => {
+     )
+   }
+ 
++  // In the sidebar: only the folders, under its own heading.
++  if (props.embedded)
++    return (
++      <ul
++        role="tree"
++        class="drive-tree-list drive-side-tree"
++        aria-label={text("目录树", "Folder tree")}
++      >
++        <TreeBranch path="/" depth={0} />
++      </ul>
++    )
++
+   return (
+     <aside
+       id={props.drawer ? "drive-drawer-tree" : "drive-desktop-navigation"}
+@@ -485,11 +460,6 @@ export const DriveTree = (props: { drawer?: boolean }) => {
+           <TreeBranch path="/" depth={0} />
+         </ul>
+       </Show>
+-      <Show when={!props.drawer}>
+-        <div class="drive-tree-footer">
+-          <DriveUsage />
+-        </div>
+-      </Show>
+     </aside>
+   )
+ }
+@@ -795,55 +765,3 @@ export const DriveInspector = () => {
+     </>
+   )
+ }
+-
+-/* ------------------------------------------------------------------ */
+-/* Status bar */
+-
+-export const DriveStatusBar = () => {
+-  const selectedTotals = createMemo(() => summarize(selectedObjs()))
+-  return (
+-    <Show when={[State.Folder, State.FetchingMore].includes(objStore.state)}>
+-      <footer class="drive-status-bar" role="status">
+-        <span>{text(`${objStore.total} 项`, `${objStore.total} items`)}</span>
+-        <Show when={haveSelected()}>
+-          <span>
+-            {text(
+-              `已选 ${selectedObjs().length} 项`,
+-              `${selectedObjs().length} selected`,
+-            )}
+-            <Show when={selectedTotals().files > 0}>
+-              {" · "}
+-              <span class="drive-mono">
+-                {getFileSize(selectedTotals().bytes)}
+-              </span>
+-            </Show>
+-          </span>
+-        </Show>
+-        <Show when={uploadStatus().active > 0}>
+-          <button
+-            type="button"
+-            class="drive-status-upload"
+-            onClick={() => bus.emit("tool", "upload")}
+-          >
+-            <span class="drive-status-upload-name">
+-              {text(
+-                `上传 ${uploadStatus().name}`,
+-                `Uploading ${uploadStatus().name}`,
+-              )}
+-              <Show when={uploadStatus().active > 1}>
+-                {text(
+-                  ` 等 ${uploadStatus().active} 项`,
+-                  ` +${uploadStatus().active - 1}`,
+-                )}
+-              </Show>
+-            </span>
+-            <span class="drive-progress" aria-hidden="true">
+-              <span style={{ width: `${uploadStatus().progress}%` }} />
+-            </span>
+-            <span class="drive-mono">{uploadStatus().progress}%</span>
+-          </button>
+-        </Show>
+-      </footer>
+-    </Show>
+-  )
+-}
+diff --git a/src/pages/home/DriveSelection.tsx b/src/pages/home/DriveSelection.tsx
+index 1dd63f0..575638f 100644
+--- a/src/pages/home/DriveSelection.tsx
++++ b/src/pages/home/DriveSelection.tsx
+@@ -20,7 +20,8 @@ import { currentLang } from "~/app/i18n"
+ import { bus, notify } from "~/utils"
+ import { UserMethods } from "~/types"
+ 
+-// Keep file operations alongside the list, and use the existing handlers.
++// Selecting in the grid and photo views; once something is selected the
++// floating selection bar takes over.
+ export const DriveSelection = () => {
+   const t = useT()
+   const { batchDownloadSelected } = useDownload()
+@@ -49,7 +50,7 @@ export const DriveSelection = () => {
+       ? "勾选文件后可下载或管理"
+       : "Select files to download or manage"
+   return (
+-    <Show when={isFolder()}>
++    <Show when={isFolder() && !haveSelected()}>
+       <div class="drive-file-tools" role="group" aria-label={selectLabel()}>
+         <Show when={haveSelected() || layout() !== "list"}>
+           <Show
+diff --git a/src/pages/home/Layout.tsx b/src/pages/home/Layout.tsx
+index 71028b4..96105b3 100644
+--- a/src/pages/home/Layout.tsx
++++ b/src/pages/home/Layout.tsx
+@@ -6,14 +6,12 @@ import { getSetting } from "~/store"
+ import { notify } from "~/utils"
+ import { DriveSidebarContext } from "./DriveChrome"
+ import {
+-  DriveIconRail,
+   DriveInspector,
+-  DriveStatusBar,
+   DriveTabBar,
+-  DriveTree,
+   InspectorContext,
+   createInspectorState,
+ } from "./DrivePro"
++import { DriveSelectionBar, DriveSidebar } from "./DriveClean"
+ import "./drive.css"
+ import "./drive-home.css"
+ import "./drive-pro.css"
+@@ -46,15 +44,14 @@ const Index = () => {
+       >
+         <InspectorContext.Provider value={inspector}>
+           <div
+-            class="drive-shell drive-pro"
++            class="drive-shell drive-pro drive-clean"
+             classList={{
+               "drive-sidebar-collapsed": collapsed(),
+               "drive-inspector-open": inspector.open() && filesRoute(),
+             }}
+             data-drive-mode={mode()}
+           >
+-            <DriveIconRail />
+-            <DriveTree />
++            <DriveSidebar />
+             <main class="drive-main">
+               <Switch>
+                 <Match when={pathname() === "/@links"}>
+@@ -73,7 +70,7 @@ const Index = () => {
+                   <Show when={search.active()}>
+                     <Search />
+                   </Show>
+-                  <DriveStatusBar />
++                  <DriveSelectionBar />
+                   <FileViewer />
+                 </Match>
+               </Switch>
+diff --git a/src/pages/home/drive-clean-utils.ts b/src/pages/home/drive-clean-utils.ts
+new file mode 100644
+index 0000000..d111409
+--- /dev/null
++++ b/src/pages/home/drive-clean-utils.ts
+@@ -0,0 +1,71 @@
++/** Pure helpers for the clean workspace layout (unit-testable). */
++
++export type TypeFilter = "all" | "folder" | "video" | "image" | "doc"
++
++export const TYPE_FILTERS: TypeFilter[] = [
++  "all",
++  "folder",
++  "video",
++  "image",
++  "doc",
++]
++
++// ObjType from ~/types: 1 folder, 2 video, 3 audio, 4 text, 5 image.
++const DOC_EXTS = [
++  "pdf",
++  "doc",
++  "docx",
++  "xls",
++  "xlsx",
++  "ppt",
++  "pptx",
++  "odt",
++  "ods",
++  "odp",
++  "rtf",
++  "txt",
++  "md",
++  "csv",
++  "epub",
++]
++const IMAGE_EXTS = ["heic", "heif", "avif"]
++
++interface ObjLike {
++  name: string
++  is_dir: boolean
++  type: number
++}
++
++const ext = (name: string) => {
++  const dot = name.lastIndexOf(".")
++  return dot > 0 ? name.slice(dot + 1).toLowerCase() : ""
++}
++
++/** Which filter chip an item belongs to, if any besides "all". */
++export function kindOf(obj: ObjLike): Exclude<TypeFilter, "all"> | undefined {
++  if (obj.is_dir || obj.type === 1) return "folder"
++  if (obj.type === 2) return "video"
++  if (obj.type === 5 || IMAGE_EXTS.includes(ext(obj.name))) return "image"
++  if (obj.type === 4 || DOC_EXTS.includes(ext(obj.name))) return "doc"
++  return undefined
++}
++
++export function matchesType(obj: ObjLike, filter: TypeFilter) {
++  return filter === "all" || kindOf(obj) === filter
++}
++
++/** Count per chip, so empty chips can say so. */
++export function countByType(objs: ObjLike[]) {
++  const counts: Record<TypeFilter, number> = {
++    all: objs.length,
++    folder: 0,
++    video: 0,
++    image: 0,
++    doc: 0,
++  }
++  for (const obj of objs) {
++    const kind = kindOf(obj)
++    if (kind) counts[kind]++
++  }
++  return counts
++}
+diff --git a/src/pages/home/drive-pro-utils.ts b/src/pages/home/drive-pro-utils.ts
+index 0a296fe..811b8c9 100644
+--- a/src/pages/home/drive-pro-utils.ts
++++ b/src/pages/home/drive-pro-utils.ts
+@@ -38,19 +38,14 @@ export function summarize(items: SizedItem[]) {
+   return { folders, files, bytes }
+ }
+ 
+-export const INSPECTOR_KEY = "drive_inspector"
+-export const INSPECTOR_MIN_WIDTH = 1280
++// A new key: the clean layout starts with details closed for everyone.
++export const INSPECTOR_KEY = "drive_details"
+ /** From this width the details panel docks as a column (matches the CSS). */
+ export const INSPECTOR_DOCK_WIDTH = 1101
+ 
+-/** Remembered choice wins; otherwise open on wide screens only. */
+-export function initialInspectorOpen(
+-  saved: string | null,
+-  width: number,
+-): boolean {
+-  if (saved === "open") return true
+-  if (saved === "closed") return false
+-  return width >= INSPECTOR_MIN_WIDTH
++/** Details stay closed until asked for; the choice is remembered. */
++export function initialInspectorOpen(saved: string | null): boolean {
++  return saved === "open"
+ }
+ 
+ /** "3 个文件夹 · 1 个文件" / "3 folders · 1 file" */
+diff --git a/src/pages/home/drive-pro.css b/src/pages/home/drive-pro.css
+index 48e3b30..0b5dec4 100644
+--- a/src/pages/home/drive-pro.css
++++ b/src/pages/home/drive-pro.css
+@@ -1,41 +1,56 @@
+-/* Pro file browser: icon rail, folder tree, dense list, details panel. */
++/* Clean workspace: light sidebar, roomy list, details on demand. */
+ .drive-shell.drive-pro,
+ .drive-mobile-drawer {
+   --drive-bg: #ffffff;
+-  --drive-rail: #fafafa;
+-  --drive-text: #18181b;
+-  --drive-muted: #52525b;
+-  --drive-line: #e4e4e7;
+-  --drive-hover: #f4f4f5;
+-  --drive-selected: #eef2ff;
+-  --drive-blue: #4f46e5;
+-  --drive-blue-hover: #4338ca;
+-  --drive-icon-rail: #18181b;
+-  --drive-job-bg: #fffbeb;
+-  --drive-job-line: #fde68a;
+-  --drive-job-text: #78350f;
++  --drive-rail: #f7f7f5;
++  --drive-field: #f3f3f1;
++  --drive-text: #1a1a19;
++  --drive-muted: #63625e;
++  --drive-line: #ecebe8;
++  --drive-line-strong: #dddcd8;
++  --drive-hover: #f1f0ed;
++  --drive-selected: #f2f6fd;
++  --drive-current: #e7eefb;
++  --drive-current-text: #0b4fb8;
++  --drive-blue: #0b63e5;
++  --drive-blue-hover: #0b4fb8;
++  --drive-on-blue: #ffffff;
++  --drive-ink: #1a1a19;
++  --drive-on-ink: #ffffff;
++  --drive-danger-on-ink: #ffb4ab;
++  --drive-job-bg: #fff4e0;
++  --drive-job-line: #f3dcb4;
++  --drive-job-text: #8a4b00;
+   --drive-mono:
+     ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+ }
+ .drive-shell.drive-pro[data-drive-mode="dark"],
+ .drive-mobile-drawer[data-drive-mode="dark"] {
+-  --drive-bg: #141416;
+-  --drive-rail: #1b1b1f;
+-  --drive-text: #f4f4f5;
+-  --drive-muted: #a1a1aa;
+-  --drive-line: #2e2e33;
+-  --drive-hover: #222226;
+-  --drive-selected: #262a4a;
+-  --drive-blue: #a5b4fc;
+-  --drive-blue-hover: #c7d2fe;
+-  --drive-icon-rail: #0c0c0e;
+-  --drive-job-bg: #2a2111;
++  --drive-bg: #161615;
++  --drive-rail: #1d1d1b;
++  --drive-field: #262624;
++  --drive-text: #f2f1ee;
++  --drive-muted: #a8a7a2;
++  --drive-line: #2c2c29;
++  --drive-line-strong: #3a3a37;
++  --drive-hover: #242422;
++  --drive-selected: #1b2738;
++  --drive-current: #1f3352;
++  --drive-current-text: #a8c8ff;
++  --drive-blue: #6ea8ff;
++  --drive-blue-hover: #a8c8ff;
++  --drive-on-blue: #0b1b33;
++  --drive-ink: #f2f1ee;
++  --drive-on-ink: #161615;
++  --drive-danger-on-ink: #b42318;
++  --drive-job-bg: #2e2312;
+   --drive-job-line: #5b4512;
+   --drive-job-text: #fcd34d;
+ }
+ .drive-shell.drive-pro {
+   font-family:
+-    "IBM Plex Sans",
++    "Inter",
++    "Noto Sans SC",
+     system-ui,
+     -apple-system,
+     "Segoe UI",
+@@ -43,7 +58,9 @@
+     "Hiragino Sans GB",
+     "Microsoft YaHei",
+     sans-serif;
+-  font-size: 13px;
++  font-size: 14px;
++  color: var(--drive-text);
++  background: var(--drive-bg);
+ }
+ .drive-pro .drive-mono {
+   font-family: var(--drive-mono);
+@@ -54,12 +71,12 @@
+ @media (min-width: 761px) {
+   .drive-shell.drive-pro {
+     display: grid;
+-    grid-template-columns: 72px 240px minmax(0, 1fr);
++    grid-template-columns: 248px minmax(0, 1fr);
+   }
+   .drive-shell.drive-pro.drive-sidebar-collapsed {
+-    grid-template-columns: 72px minmax(0, 1fr);
++    grid-template-columns: minmax(0, 1fr);
+   }
+-  .drive-pro.drive-sidebar-collapsed .drive-tree {
++  .drive-pro.drive-sidebar-collapsed .drive-sidebar {
+     display: none;
+   }
+   .drive-pro .drive-main {
+@@ -70,72 +87,159 @@
+ }
+ @media (min-width: 761px) and (max-width: 1100px) {
+   .drive-shell.drive-pro {
+-    grid-template-columns: 72px 200px minmax(0, 1fr);
++    grid-template-columns: 220px minmax(0, 1fr);
+   }
+ }
+ @media (min-width: 1101px) {
+   .drive-shell.drive-pro.drive-inspector-open {
+-    grid-template-columns: 72px 240px minmax(0, 1fr) 320px;
++    grid-template-columns: 248px minmax(0, 1fr) 320px;
+   }
+   .drive-shell.drive-pro.drive-inspector-open.drive-sidebar-collapsed {
+-    grid-template-columns: 72px minmax(0, 1fr) 320px;
++    grid-template-columns: minmax(0, 1fr) 320px;
+   }
+ }
+ 
+-/* ---------- Icon rail ---------- */
+-.drive-icon-rail {
++/* ---------- Sidebar ---------- */
++.drive-sidebar {
+   position: sticky;
+   top: 0;
+   height: 100vh;
+   box-sizing: border-box;
+-  padding: 14px 6px;
+   display: flex;
+   flex-direction: column;
+-  align-items: center;
+-  gap: 6px;
+-  background: var(--drive-icon-rail);
++  gap: 18px;
++  padding: 18px 14px 16px;
++  background: var(--drive-rail);
++  overflow-y: auto;
+ }
+-.drive-icon-rail-brand {
+-  width: 36px;
+-  height: 36px;
+-  margin-bottom: 12px;
++.drive-sidebar .drive-brand {
++  padding: 4px 8px;
++  font-size: 16px;
++  font-weight: 700;
++}
++.drive-new-button {
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  gap: 8px;
++  min-height: 44px;
+   border: 0;
+-  border-radius: 9px;
++  border-radius: 10px;
+   background: var(--drive-blue);
+-  color: #ffffff;
++  color: var(--drive-on-blue);
++  font: inherit;
+   font-weight: 600;
++  cursor: pointer;
+ }
+-.drive-pro[data-drive-mode="dark"] .drive-icon-rail-brand {
+-  color: #18181b;
++.drive-new-button:hover:not(:disabled) {
++  background: var(--drive-blue-hover);
+ }
+-.drive-icon-rail-item {
+-  width: 60px;
+-  min-height: 52px;
++.drive-new-button:disabled {
++  opacity: 0.45;
++  cursor: not-allowed;
++}
++.drive-side-nav {
+   display: flex;
+   flex-direction: column;
++  gap: 2px;
++}
++.drive-side-item {
++  display: flex;
+   align-items: center;
+-  justify-content: center;
+-  gap: 3px;
++  gap: 10px;
++  min-height: 42px;
++  padding: 0 12px;
+   border: 0;
+-  border-radius: 10px;
++  border-radius: 8px;
+   background: transparent;
+-  color: #d4d4d8;
+-  font-size: 11px;
++  color: var(--drive-text);
++  font: inherit;
++  text-align: left;
++  cursor: pointer;
+ }
+-.drive-icon-rail-item svg {
+-  width: 20px;
+-  height: 20px;
++.drive-side-item svg {
++  width: 18px;
++  height: 18px;
++  color: var(--drive-muted);
+ }
+-.drive-icon-rail-item:hover {
+-  background: #27272a;
+-  color: #ffffff;
++.drive-side-item:hover {
++  background: var(--drive-hover);
+ }
+-.drive-icon-rail-item-current {
+-  background: #27272a;
+-  color: #ffffff;
++.drive-side-item-current,
++.drive-side-item-current:hover {
++  background: var(--drive-current);
++  color: var(--drive-current-text);
++  font-weight: 600;
+ }
+-.drive-icon-rail-end {
++.drive-side-item-current svg {
++  color: inherit;
++}
++.drive-side-item .drive-nav-badge {
++  margin-left: auto;
++  color: var(--drive-blue-hover);
++}
++.drive-side-section {
++  display: flex;
++  flex-direction: column;
++  gap: 2px;
++  min-height: 0;
++}
++.drive-side-label {
++  margin: 0 12px 4px;
++  color: var(--drive-muted);
++  font-size: 12px;
++  font-weight: 600;
++}
++.drive-side-tree .drive-tree-row {
++  min-height: 38px;
++}
++.drive-side-end {
+   margin-top: auto;
++  display: flex;
++  flex-direction: column;
++  gap: 12px;
++}
++.drive-upload-card {
++  display: flex;
++  flex-direction: column;
++  gap: 8px;
++  padding: 12px 14px;
++  border: 1px solid var(--drive-line-strong);
++  border-radius: 12px;
++  background: var(--drive-bg);
++  font-size: 13px;
++}
++.drive-upload-card-head {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: 8px;
++}
++.drive-upload-card .drive-upload-card-bar {
++  width: 100%;
++  height: 6px;
++  border-radius: 3px;
++}
++.drive-upload-card-name {
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++  color: var(--drive-muted);
++  font-size: 12px;
++}
++.drive-link-button {
++  min-height: 32px;
++  padding: 0 6px;
++  border: 0;
++  border-radius: 6px;
++  background: transparent;
++  color: var(--drive-blue-hover);
++  font: inherit;
++  font-weight: 600;
++  cursor: pointer;
++}
++.drive-link-button:hover {
++  background: var(--drive-current);
+ }
+ 
+ /* ---------- Folder tree ---------- */
+@@ -221,52 +325,136 @@
+   font-size: 11px;
+   color: var(--drive-job-text);
+ }
+-.drive-tree-footer {
+-  margin-top: auto;
+-}
+ 
+-/* ---------- Header and heading: one compact toolbar ---------- */
++/* ---------- Header, heading and filters ---------- */
+ @media (min-width: 761px) {
+   .drive-pro .drive-container {
+     max-width: none;
+-    padding-inline: 20px;
++    padding-inline: 36px;
+   }
+   .drive-pro .drive-header {
+-    border-bottom: 1px solid var(--drive-line);
++    background: var(--drive-bg);
+   }
+   .drive-pro .drive-header-inner {
+-    height: 56px;
+-    gap: 10px;
++    height: 72px;
++    gap: 12px;
++  }
++  .drive-pro .drive-header .drive-search,
++  .drive-pro .drive-header-search {
++    max-width: 560px;
+   }
+   .drive-pro .body {
+-    padding-top: 10px;
+-    gap: 10px;
++    padding-top: 4px;
++    gap: 18px;
+     min-height: 0;
+   }
+   .drive-pro .drive-heading {
+     margin: 0;
+-    gap: 12px;
++    gap: 16px;
+     flex-wrap: wrap;
++    align-items: flex-end;
+   }
+   .drive-pro .drive-heading h1 {
+-    font-size: 18px;
+-    font-weight: 600;
+-    letter-spacing: 0;
+-  }
+-  .drive-pro .drive-heading-description {
+-    display: none;
++    font-size: 28px;
++    font-weight: 700;
++    letter-spacing: -0.5px;
+   }
+   .drive-pro .drive-button {
+     min-height: 40px;
+-    border-radius: 8px;
++    padding: 0 14px;
++    border: 1px solid var(--drive-line-strong);
++    border-radius: 9px;
++    background: var(--drive-bg);
++    color: var(--drive-text);
++  }
++  .drive-pro .drive-button:hover {
++    background: var(--drive-hover);
+   }
+ }
++.drive-pro .drive-heading-description {
++  display: none;
++}
++/* Filled buttons keep their own colors over the outline style above. */
++.drive-pro .drive-button.drive-button-primary,
++.drive-pro .drive-button.drive-button-primary:hover,
++.drive-pro .drive-new-button {
++  background: var(--drive-blue);
++  border-color: var(--drive-blue);
++  color: var(--drive-on-blue);
++}
+ .drive-pro .drive-button-primary {
+   background: var(--drive-blue);
+   border-color: var(--drive-blue);
++  color: var(--drive-on-blue);
++}
++.drive-pro .drive-list-toolbar {
++  height: auto;
++  min-height: 0;
++  border-bottom: 0;
++  flex-wrap: wrap;
++}
++.drive-pro .drive-list-toolbar .drive-file-tools {
++  flex: none;
++  height: auto;
++  min-height: 0;
++}
++.drive-pro .drive-list-toolbar .drive-file-tools:empty {
++  display: none;
++}
++.drive-pro .drive-heading-layout {
++  display: block;
++}
++.drive-filter-row {
++  flex: 1 1 auto;
++  min-width: 0;
++  display: flex;
++  align-items: center;
++  gap: 12px;
++  flex-wrap: wrap;
+ }
+-.drive-pro[data-drive-mode="dark"] .drive-button-primary {
+-  color: #18181b;
++.drive-filter-chips {
++  display: flex;
++  gap: 8px;
++  flex-wrap: wrap;
++}
++.drive-chip {
++  display: inline-flex;
++  align-items: center;
++  gap: 6px;
++  min-height: 34px;
++  padding: 0 14px;
++  border: 1px solid var(--drive-line-strong);
++  border-radius: 17px;
++  background: var(--drive-bg);
++  color: var(--drive-text);
++  font: inherit;
++  font-size: 13px;
++  cursor: pointer;
++}
++.drive-chip:hover:not(:disabled):not([aria-pressed="true"]) {
++  background: var(--drive-hover);
++}
++.drive-chip[aria-pressed="true"],
++.drive-chip[aria-pressed="true"]:hover {
++  border-color: var(--drive-ink);
++  background: var(--drive-ink);
++  color: var(--drive-on-ink);
++}
++.drive-chip:disabled {
++  color: var(--drive-muted);
++  opacity: 0.55;
++  cursor: default;
++}
++.drive-chip-count {
++  font-size: 12px;
++  font-variant-numeric: tabular-nums;
++  opacity: 0.7;
++}
++.drive-filter-total {
++  margin-left: auto;
++  color: var(--drive-muted);
++  font-size: 13px;
++  font-variant-numeric: tabular-nums;
+ }
+ /* One toggle sits in the heading (docked panel), one in the header (overlay). */
+ .drive-inspector-toggle {
+@@ -287,40 +475,55 @@
+   background: var(--drive-selected);
+ }
+ 
+-/* ---------- Dense list ---------- */
++/* ---------- List ---------- */
+ @media (min-width: 761px) {
+   .drive-pro .list .title,
+   .drive-pro .drive-list-title {
+-    background: var(--drive-rail);
++    background: transparent;
++    border-bottom: 1px solid var(--drive-line);
++    border-radius: 0;
+   }
+   .drive-pro .list .title {
+-    padding: 8px 12px;
++    min-height: 40px;
++    padding: 0 12px;
++    color: var(--drive-muted);
++    font-size: 12px;
++    font-weight: 600;
++  }
++  .drive-pro .drive-file-row {
++    border-bottom: 1px solid var(--drive-line);
+   }
+   .drive-pro .drive-file-row .list-item,
+   .drive-pro .list-item {
+-    min-height: 36px;
+-    padding: 6px 12px;
+-  }
+-  .drive-pro .list-item .icon {
+-    width: 18px;
+-    height: 18px;
+-    margin-right: 8px;
++    min-height: 56px;
++    padding: 8px 12px;
++    border-radius: 0;
+   }
+   .drive-pro .list-item .name {
+-    font-weight: 400;
++    font-weight: 500;
+   }
+   .drive-pro .list-item .size,
+   .drive-pro .list-item .modified {
+-    font-family: var(--drive-mono);
+-    font-size: 12px;
+-  }
+-  .drive-pro .drive-file-row-selected {
+-    box-shadow: inset 2px 0 0 var(--drive-blue);
+-  }
+-  .drive-pro .drive-file-row-selected .list-item .name {
+-    font-weight: 600;
++    color: var(--drive-muted);
++    font-size: 13px;
++    font-variant-numeric: tabular-nums;
+   }
+ }
++/* File type icons sit on a soft tile, as in the design. */
++.drive-pro .list-item .icon {
++  box-sizing: border-box;
++  width: 36px;
++  height: 36px;
++  margin-right: 10px;
++  padding: 7px;
++  border-radius: 8px;
++  background: var(--drive-field);
++  flex-shrink: 0;
++}
++.drive-pro .drive-file-row-selected,
++.drive-pro .drive-file-row-selected:hover {
++  background: var(--drive-selected);
++}
+ 
+ /* ---------- Details panel ---------- */
+ .drive-inspector {
+@@ -471,45 +674,55 @@
+   background: #b45309;
+ }
+ 
+-/* ---------- Status bar ---------- */
+-.drive-status-bar {
+-  display: none;
+-}
+-@media (min-width: 761px) {
+-  .drive-pro .drive-status-bar {
+-    position: sticky;
+-    bottom: 0;
+-    margin-top: auto;
+-    display: flex;
+-    align-items: center;
+-    gap: 20px;
+-    min-height: 32px;
+-    padding: 0 20px;
+-    border-top: 1px solid var(--drive-line);
+-    background: var(--drive-rail);
+-    color: var(--drive-muted);
+-    font-size: 12px;
+-  }
+-}
+-.drive-status-upload {
+-  margin-left: auto;
++/* ---------- Selection bar ---------- */
++.drive-selection-bar {
++  position: sticky;
++  bottom: 20px;
++  z-index: 1150;
++  align-self: center;
++  width: fit-content;
++  max-width: calc(100% - 32px);
++  margin: 12px auto 20px;
++  box-sizing: border-box;
+   display: flex;
+   align-items: center;
+-  gap: 8px;
+-  min-width: 0;
+-  min-height: 32px;
+-  padding: 0 4px;
++  flex-wrap: wrap;
++  gap: 2px;
++  padding: 6px 6px 6px 18px;
++  border-radius: 14px;
++  background: var(--drive-ink);
++  color: var(--drive-on-ink);
++  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.24);
++}
++.drive-selection-bar-count {
++  margin-right: 10px;
++  font-weight: 600;
++  white-space: nowrap;
++}
++.drive-selection-bar button {
++  min-height: 40px;
++  padding: 0 14px;
+   border: 0;
++  border-radius: 9px;
+   background: transparent;
+   color: inherit;
+-  font-size: 12px;
++  font: inherit;
++  cursor: pointer;
+ }
+-.drive-status-upload-name {
+-  min-width: 0;
+-  max-width: 280px;
+-  overflow: hidden;
+-  text-overflow: ellipsis;
+-  white-space: nowrap;
++.drive-selection-bar button:hover {
++  background: rgba(127, 127, 127, 0.22);
++}
++.drive-selection-bar .drive-selection-bar-danger {
++  color: var(--drive-danger-on-ink);
++}
++.drive-selection-bar .drive-selection-bar-icon {
++  width: 40px;
++  padding: 0;
++  display: inline-grid;
++  place-items: center;
++}
++.drive-selection-bar .drive-selection-bar-close {
++  background: rgba(127, 127, 127, 0.24);
+ }
+ 
+ /* ---------- Details as an overlay below the docking width ---------- */
+@@ -584,14 +797,43 @@
+   font-size: 10px;
+   line-height: 1;
+ }
+-.drive-icon-rail-item .drive-nav-badge {
+-  color: var(--drive-blue);
+-}
+ @media (max-width: 760px) {
+-  .drive-icon-rail,
+-  .drive-tree:not(.drive-tree-drawer) {
++  .drive-sidebar {
+     display: none;
+   }
++  /* Above the tab bar. */
++  .drive-selection-bar {
++    position: fixed;
++    left: 12px;
++    right: 12px;
++    bottom: calc(68px + env(safe-area-inset-bottom));
++    width: auto;
++    max-width: none;
++    margin: 0;
++    justify-content: center;
++    padding: 6px;
++  }
++  .drive-selection-bar {
++    flex-wrap: nowrap;
++    overflow-x: auto;
++    justify-content: flex-start;
++    scrollbar-width: none;
++  }
++  .drive-selection-bar-count {
++    margin: 0 4px 0 10px;
++  }
++  .drive-selection-bar button {
++    flex: none;
++    padding: 0 10px;
++  }
++  .drive-filter-chips {
++    flex-wrap: nowrap;
++    overflow-x: auto;
++    scrollbar-width: none;
++  }
++  .drive-chip {
++    flex: none;
++  }
+   .drive-pro .drive-main {
+     padding-bottom: calc(64px + env(safe-area-inset-bottom));
+   }
+diff --git a/src/pages/home/folder/Grid.tsx b/src/pages/home/folder/Grid.tsx
+index 2116692..9494491 100644
+--- a/src/pages/home/folder/Grid.tsx
++++ b/src/pages/home/folder/Grid.tsx
+@@ -1,5 +1,6 @@
+ import { Grid } from "@hope-ui/solid"
+-import { For } from "solid-js"
++import { For, Show } from "solid-js"
++import { shownByType } from "./type-filter"
+ import { GridItem } from "./GridItem"
+ import "lightgallery/css/lightgallery-bundle.css"
+ import { layout, local, objStore } from "~/store"
+@@ -23,9 +24,11 @@ const GridLayout = () => {
+         }px,1fr))`}
+       >
+         <For each={objStore.objs}>
+-          {(obj, i) => {
+-            return <GridItem obj={obj} index={i()} size={itemSize()} />
+-          }}
++          {(obj, i) => (
++            <Show when={shownByType(obj)}>
++              <GridItem obj={obj} index={i()} size={itemSize()} />
++            </Show>
++          )}
+         </For>
+       </Grid>
+     </>
+diff --git a/src/pages/home/folder/Images.tsx b/src/pages/home/folder/Images.tsx
+index a97bd09..a0e7a76 100644
+--- a/src/pages/home/folder/Images.tsx
++++ b/src/pages/home/folder/Images.tsx
+@@ -1,5 +1,6 @@
+ import { Flex, Grid, Heading, VStack } from "@hope-ui/solid"
+ import { For, Show, createMemo } from "solid-js"
++import { shownByType } from "./type-filter"
+ import { ImageItem } from "./ImageItem"
+ import { local, objStore } from "~/store"
+ import { GridItem } from "./GridItem"
+@@ -42,9 +43,11 @@ const ImageLayout = (props: { images: StoreObj[] }) => {
+       >
+         <Flex w="$full" gap="$1" flexWrap="wrap" class="image-images">
+           <For each={objStore.objs}>
+-            {(obj, i) => {
+-              return <ImageItem obj={obj} index={i()} />
+-            }}
++            {(obj, i) => (
++              <Show when={shownByType(obj)}>
++                <ImageItem obj={obj} index={i()} />
++              </Show>
++            )}
+           </For>
+         </Flex>
+       </Show>
+diff --git a/src/pages/home/folder/List.tsx b/src/pages/home/folder/List.tsx
+index 0d26504..c2b434c 100644
+--- a/src/pages/home/folder/List.tsx
++++ b/src/pages/home/folder/List.tsx
+@@ -1,6 +1,7 @@
+ import { currentLang } from "~/app/i18n"
+ import { HStack, VStack, Text } from "@hope-ui/solid"
+ import { batch, createEffect, createSignal, For, Show, onMount } from "solid-js"
++import { shownByType } from "./type-filter"
+ import { useT, useRouter } from "~/hooks"
+ import {
+   allChecked,
+@@ -171,9 +172,11 @@ const ListLayout = () => {
+         initialReverse={initialReverse()}
+       />
+       <For each={objStore.objs}>
+-        {(obj, i) => {
+-          return <ListItem obj={obj} index={i()} />
+-        }}
++        {(obj, i) => (
++          <Show when={shownByType(obj)}>
++            <ListItem obj={obj} index={i()} />
++          </Show>
++        )}
+       </For>
+     </VStack>
+   )
+diff --git a/src/pages/home/folder/type-filter.ts b/src/pages/home/folder/type-filter.ts
+new file mode 100644
+index 0000000..8ff4e7e
+--- /dev/null
++++ b/src/pages/home/folder/type-filter.ts
+@@ -0,0 +1,13 @@
++import { createSignal } from "solid-js"
++import { matchesType, type TypeFilter } from "../drive-clean-utils"
++
++// The type chips above the list; every layout (list, grid, photos) hides the
++// items the current chip leaves out.
++const [typeFilter, setTypeFilter] = createSignal<TypeFilter>("all")
++export { typeFilter, setTypeFilter }
++
++export const shownByType = (obj: {
++  name: string
++  is_dir: boolean
++  type: number
++}) => matchesType(obj, typeFilter())
+diff --git a/src/pages/home/uploads/upload-panel.css b/src/pages/home/uploads/upload-panel.css
+index 15f298b..4fa10d5 100644
+--- a/src/pages/home/uploads/upload-panel.css
++++ b/src/pages/home/uploads/upload-panel.css
+@@ -5,8 +5,8 @@
+   --up-muted: #71717a;
+   --up-border: #e4e4e7;
+   --up-soft: #f4f4f5;
+-  --up-accent: #4f46e5;
+-  --up-accent-soft: #eef2ff;
++  --up-accent: #0b63e5;
++  --up-accent-soft: #e7eefb;
+   --up-on-accent: #ffffff;
+   --up-track: #e4e4e7;
+   --up-danger: #dc2626;
+@@ -39,9 +39,9 @@
+   --up-muted: #a1a1aa;
+   --up-border: #3f3f46;
+   --up-soft: #2a2a30;
+-  --up-accent: #a5b4fc;
+-  --up-accent-soft: #312e81;
+-  --up-on-accent: #1e1b4b;
++  --up-accent: #6ea8ff;
++  --up-accent-soft: #1f3352;
++  --up-on-accent: #0b1b33;
+   --up-track: #3f3f46;
+   --up-danger: #f87171;
+   --up-danger-soft: #3b1d1d;

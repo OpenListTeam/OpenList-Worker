@@ -79,11 +79,11 @@ test(
     try {
       const rail = () =>
         page
-          .locator(".drive-icon-rail .drive-icon-rail-item > span:first-of-type")
+          .locator(".drive-side-nav .drive-side-item > span:first-of-type")
           .allInnerTexts()
-      const expected = ["Files", "Recent", "Shared", "Transfers", "Manage"]
+      const expected = ["Files", "Recent", "Shared", "Transfers"]
       const item = (label) =>
-        page.locator(".drive-icon-rail-item", { hasText: label })
+        page.locator(".drive-side-item", { hasText: label })
       const panel = page.locator(".upload-center")
 
       await page.goto(base + "/B2")
@@ -95,7 +95,7 @@ test(
       await item("Transfers").click()
       await panel.waitFor({ state: "detached" })
 
-      // Recent and Shared keep the previous folder's state; the rail must not
+      // Recent and Shared keep the previous folder's state; the sidebar must not
       // change and uploading must not follow to these pages.
       for (const [label, path] of [
         ["Recent", "/@recent"],
@@ -103,7 +103,7 @@ test(
       ]) {
         await item(label).click()
         await page.waitForURL(base + path)
-        assert.deepEqual(await rail(), expected, `rail on ${path}`)
+        assert.deepEqual(await rail(), expected, `sidebar on ${path}`)
       }
       await item("Transfers").click()
       await panel.waitFor()
@@ -138,7 +138,7 @@ test(
       const panel = page.locator(".upload-center")
       await page.goto(base + "/B2")
       await page.locator(".drive-file-row").first().waitFor()
-      await page.locator(".drive-icon-rail-item", { hasText: "Transfers" }).click()
+      await page.locator(".drive-side-item", { hasText: "Transfers" }).click()
       const chooser = page.waitForEvent("filechooser")
       await panel.getByRole("button", { name: "Choose files" }).click()
       await (await chooser).setFiles([
@@ -240,6 +240,58 @@ test(
       await viewer.getByRole("button", { name: "Close preview" }).click()
       await page.waitForURL(base + "/Backup")
       await page.locator(".drive-file-row", { hasText: "one.bin" }).waitFor()
+      assert.deepEqual(errors, [])
+    } finally {
+      await close()
+    }
+  },
+)
+
+test(
+  "type chips filter the list and the selection bar acts on the selected items",
+  { timeout: 60000 },
+  async () => {
+    const { page, base, errors, close } = await open(0)
+    try {
+      const chip = (label) => page.locator(".drive-chip", { hasText: label })
+      const rows = () => page.locator(".drive-file-row .name").allInnerTexts()
+      await page.goto(base + "/B2")
+      await page.locator(".drive-file-row").first().waitFor()
+      assert.equal(await chip("All").getAttribute("aria-pressed"), "true")
+      assert.match(await chip("Folders").innerText(), /2/)
+      // Nothing to show: a complete listing disables the empty chips.
+      assert.equal(await chip("Images").isDisabled(), true)
+
+      await chip("Videos").click()
+      assert.deepEqual(await rows(), ["a.mkv"])
+      assert.match(
+        await page.locator(".drive-filter-total").innerText(),
+        /1 of 3 items/,
+      )
+
+      const bar = page.locator(".drive-selection-bar")
+      assert.equal(await bar.count(), 0)
+      await page.getByRole("checkbox", { name: "Select a.mkv", exact: true }).press("Space")
+      await bar.waitFor()
+      assert.match(await bar.innerText(), /1 selected/)
+      for (const action of ["Download", "Move", "Copy", "Share", "Delete"])
+        await bar.getByRole("button", { name: action, exact: true }).waitFor()
+      // Changing the filter clears a selection it would hide.
+      await chip("Folders").click()
+      await bar.waitFor({ state: "detached" })
+      assert.deepEqual(await rows(), ["Movies", "Shows"])
+      await page.getByRole("checkbox", { name: "Select Movies", exact: true }).press("Space")
+      await bar.waitFor()
+      await bar.getByRole("button", { name: "Clear selection" }).click()
+      await bar.waitFor({ state: "detached" })
+
+      // A new folder starts unfiltered.
+      await page
+        .locator("#drive-desktop-navigation .drive-tree-link", { hasText: "Movies" })
+        .click()
+      await page.waitForURL(base + "/B2/Movies")
+      await page.locator(".drive-file-row", { hasText: "Inter.mkv" }).waitFor()
+      assert.equal(await chip("All").getAttribute("aria-pressed"), "true")
       assert.deepEqual(errors, [])
     } finally {
       await close()

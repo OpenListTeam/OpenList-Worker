@@ -29,6 +29,7 @@
     "pro-layout.patch",
     "pro-mobile.patch",
     "upload-tray.patch",
-    "file-viewer.patch"
+    "file-viewer.patch",
+    "clean-layout.patch"
   ]
 }

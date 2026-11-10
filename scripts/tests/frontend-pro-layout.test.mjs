@@ -69,10 +69,38 @@ test("details labels, totals and the default panel state", async () => {
   assert.equal(countLabel(1, 1, false), "1 folder · 1 file")
   assert.equal(countLabel(2, 0, false), "2 folders · 0 files")
   assert.equal(countLabel(2, 3, true), "2 个文件夹 · 3 个文件")
-  assert.equal(initialInspectorOpen(null, 1440), true)
-  assert.equal(initialInspectorOpen(null, 1100), false)
-  assert.equal(initialInspectorOpen("closed", 1920), false)
-  assert.equal(initialInspectorOpen("open", 900), true)
+  // Details stay closed until asked for, on any screen; the choice sticks.
+  assert.equal(initialInspectorOpen(null), false)
+  assert.equal(initialInspectorOpen("closed"), false)
+  assert.equal(initialInspectorOpen("open"), true)
+})
+
+test("type chips: what each item counts as", async () => {
+  const { kindOf, matchesType, countByType } = await load(
+    "src/pages/home/drive-clean-utils.ts",
+  )
+  const item = (name, type, is_dir = false) => ({ name, type, is_dir })
+  assert.equal(kindOf(item("Movies", 1, true)), "folder")
+  assert.equal(kindOf(item("a.mkv", 2)), "video")
+  assert.equal(kindOf(item("photo.jpg", 5)), "image")
+  // Some formats arrive without an image type; the extension decides.
+  assert.equal(kindOf(item("IMG_0412.HEIC", 0)), "image")
+  assert.equal(kindOf(item("bill.pdf", 0)), "doc")
+  assert.equal(kindOf(item("notes.txt", 4)), "doc")
+  assert.equal(kindOf(item("song.flac", 3)), undefined)
+  assert.equal(kindOf(item("backup.zip", 0)), undefined)
+  assert.equal(matchesType(item("backup.zip", 0), "all"), true)
+  assert.equal(matchesType(item("a.mkv", 2), "image"), false)
+  assert.deepEqual(
+    countByType([
+      item("Movies", 1, true),
+      item("a.mkv", 2),
+      item("b.mp4", 2),
+      item("bill.pdf", 0),
+      item("backup.zip", 0),
+    ]),
+    { all: 5, folder: 1, video: 2, image: 0, doc: 1 },
+  )
 })
 
 test("upload summary reports the active file and weighted progress", async () => {
