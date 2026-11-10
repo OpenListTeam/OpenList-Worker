@@ -1007,6 +1007,102 @@ export const defaultDb = {
       group: 12,
       flag: 1,
     },
+    // ── 任务系统（group 11 = TRAFFIC，与 Go 版任务设置同组） ──
+    // TS 端用「时间预算」而不是线程数：Worker 的执行以 tick 为单位，
+    // 每次 tick 能跑多久直接决定吞吐与是否触发 CPU 超限。
+    {
+      key: "task_enabled",
+      value: "true",
+      type: "bool",
+      help:
+        "Enable the persistent task queue. When disabled, large file operations run inline (old behaviour) and no task history is recorded.",
+      group: 11,
+      flag: 1,
+    },
+    {
+      key: "task_sync_threshold_mb",
+      value: "32",
+      type: "number",
+      help:
+        "Operations whose total size is at or below this value run synchronously; larger ones become background tasks. 0 means always async.",
+      group: 11,
+      flag: 1,
+    },
+    {
+      key: "task_probe_max_entries",
+      value: "200",
+      type: "number",
+      help:
+        "Maximum number of entries probed when deciding sync vs async. Exceeding it always switches to a background task.",
+      group: 11,
+      flag: 1,
+    },
+    {
+      key: "task_tick_budget_ms",
+      value: "0",
+      type: "number",
+      help:
+        "Time budget per execution tick in milliseconds (200-60000). 0 = automatic (2000ms on Cloudflare, conservative for the free plan). Paid plans should raise this to 20000.",
+      group: 11,
+      flag: 1,
+    },
+    {
+      key: "task_parallel_units",
+      value: "1",
+      type: "number",
+      help:
+        "Number of tasks executed concurrently per tick (1-4). Cloudflare allows at most 6 outgoing connections per invocation; each transfer usually uses 2.",
+      group: 11,
+      flag: 1,
+    },
+    {
+      key: "task_keep_done",
+      value: "50",
+      type: "number",
+      help: "How many finished tasks to keep per type. Older ones are pruned.",
+      group: 11,
+      flag: 1,
+    },
+    {
+      key: "task_copy_max_retry",
+      value: "2",
+      type: "number",
+      help: "Maximum retries for copy tasks",
+      group: 11,
+      flag: 1,
+    },
+    {
+      key: "task_move_max_retry",
+      value: "2",
+      type: "number",
+      help: "Maximum retries for move tasks",
+      group: 11,
+      flag: 1,
+    },
+    {
+      key: "task_decompress_max_retry",
+      value: "2",
+      type: "number",
+      help: "Maximum retries for decompress tasks",
+      group: 11,
+      flag: 1,
+    },
+    {
+      key: "task_download_max_retry",
+      value: "2",
+      type: "number",
+      help: "Maximum retries for offline download tasks",
+      group: 11,
+      flag: 1,
+    },
+    {
+      key: "task_seed_max_retry",
+      value: "2",
+      type: "number",
+      help: "Maximum retries for seed hashing/transfer tasks",
+      group: 11,
+      flag: 1,
+    },
   ],
   storages: [],
   users: [

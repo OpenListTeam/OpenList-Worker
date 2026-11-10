@@ -731,10 +731,42 @@ export async function getStoreBackend(env?: any): Promise<StoreBackend> {
   return {
     name: driver.name,
     load: (e?: any) => format.load(driver, e),
-    save: (data: any, e?: any) => format.save(data, driver, e),
+    save: (data: any, e?: any) =>
+      format.save(data, driver, e),
     isConfigured: (e?: any) => driver.isAvailable(e),
     init: (e?: any) => driver.init(e),
     health: (e?: any) => driver.health(e),
+  }
+}
+
+/**
+ * 原始键值访问器（供任务文档等「配置之外」的数据使用）。
+ *
+ * 为什么不复用 `db.ts` 的 getDb/saveDb：那份数据是「整份配置对象」，任何一次
+ * saveDb 都会重写 storages/users/settings 全量内容。任务进度是高频小写入，
+ * 若并入配置对象，两个 isolate 并发写时必然互相覆盖（一个写设置、一个写进度，
+ * 后写的会把先写的整份覆盖）。这里复用同一套 Driver，但使用独立的 key 空间。
+ *
+ * 注意：`list` 在 blob 驱动上意义有限，任务文档使用固定 key，不依赖它。
+ */
+export interface KvAccessor {
+  /** 底层驱动名（blob/kv/cfkv/d1/do/mysql） */
+  name: string
+  get(key: string, env?: any): Promise<string | null>
+  put(key: string, value: string, env?: any): Promise<void>
+  delete(key: string, env?: any): Promise<void>
+  list(prefix: string, env?: any): Promise<string[]>
+}
+
+export async function getKvAccessor(env?: any): Promise<KvAccessor> {
+  const { driver } = await getStorageBackend(env)
+  return {
+    name: driver.name,
+    get: (key: string, e?: any) => driver.get(key, e ?? env),
+    put: (key: string, value: string, e?: any) =>
+      driver.put(key, value, e ?? env),
+    delete: (key: string, e?: any) => driver.delete(key, e ?? env),
+    list: (prefix: string, e?: any) => driver.list(prefix, e ?? env),
   }
 }
 

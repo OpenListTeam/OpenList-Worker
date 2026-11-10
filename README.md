@@ -162,6 +162,41 @@ pnpm run deploy:worker
 
 完整环境变量，请参阅[配置变量](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 
+### 任务系统（异步操作）
+
+大文件复制/移动不再阻塞请求：超过阈值（默认 32MB）的操作会转成持久化任务，
+由 `TaskRunner` Durable Object 用 alarm 自驱执行，进度可在前端任务页查看。
+
+- **调度**：Cloudflare 上由 `TASK_DO`（TaskRunner）驱动，入队即开始执行；每分钟的
+  cron 只是看门狗。没有 DO 绑定时（EdgeOne / ESA / Vercel / Node）自动降级为
+  「任务文档 + 请求内时间片」。
+- **单次 tick 预算**：设置项 `task_tick_budget_ms`，默认 `0`（自动）。Cloudflare
+  自动值为 2000ms —— **免费计划的保守值**；付费计划建议改为 20000，
+  必要时可调到 60000。
+- **并发**：`task_parallel_units` 默认 1，最大 4（Cloudflare 每次调用最多 6 条
+  出站连接，每个传输通常占 2 条）。
+- **免费计划提醒**：Workers 免费计划 CPU 上限很低，大文件流式传输容易触发
+  CPU 超限；建议对大文件使用支持服务端直传（`putUrl`）的目标存储，或升级付费计划。
+- **非 Cloudflare 平台**：EdgeOne 的 `schedules` 最小间隔为一天，无法作为分钟级
+  任务泵。请用外部 cron 每分钟请求一次：
+
+  ```bash
+  curl -X POST https://your-domain/api/task/run \
+    -H "X-Cron-Secret: $JWT_SECRET"
+  ```
+
+  该接口只执行已入队的任务，不接受任何路径/URL 参数。
+
+任务相关设置（设置页「流量」分组）：`task_enabled`、`task_sync_threshold_mb`、
+`task_probe_max_entries`、`task_tick_budget_ms`、`task_parallel_units`、
+`task_keep_done` 以及各类型的 `task_*_max_retry`。
+
+**URL 离线下载**也走同一套任务队列（`POST /api/fs/add_offline_download`）。
+出于安全考虑默认关闭：必须配置 `ALLOW_OFFLINE_DOWNLOAD`（主机白名单，
+逗号分隔，支持 `*.example.com`），否则请求直接返回 403。目标存储没有流式/
+分片上传能力时，单文件受内存上限约束（可用 `TASK_DOWNLOAD_MAX_BYTES` 调整，
+默认 64MB）。
+
 
 ## 帮助支持
 

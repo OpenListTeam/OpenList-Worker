@@ -139,4 +139,28 @@
   // "r2_buckets": [
   //   { "binding": "R2", "bucket_name": "your-bucket" }
   // ],
+
+  // ===========================================================================
+  // 任务系统（必选，免费计划同样支持）
+  //
+  // TaskRunner 用内置 SQLite 存任务、用 alarm 自驱执行：入队后立刻开跑，
+  // 跑完再排下一次，不再受「请求返回即终止」限制。
+  // 没有这个 binding 时自动降级为「任务文档 + cron/请求内时间片」，功能可用
+  // 但延迟更高（EdgeOne/ESA/Vercel 等平台走这条路径）。
+  //
+  // 注意：`limits.cpu_ms` 只在付费计划生效；免费计划 CPU 上限很低，
+  // 因此 `task_tick_budget_ms` 默认 2000ms（可在设置里调整）。
+  // ===========================================================================
+  "durable_objects": {
+    "bindings": [{ "name": "TASK_DO", "class_name": "TaskRunner" }]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["OpenListDB"] },
+    { "tag": "v2", "new_sqlite_classes": ["TaskRunner"] }
+  ],
+
+  // 每分钟一次：仅作为 alarm 链的看门狗（cron 只转发给 DO，几乎不耗 CPU）。
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
 }
