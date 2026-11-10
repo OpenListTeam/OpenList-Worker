@@ -152,6 +152,12 @@ After deployment, set the following variables:
 | `DB_DRIVER` | `auto` | `auto` / `blob` / `cfkv` / `kv` / `d1` / `do` / `mysql` |
 | `DB_CIPHER` | `none` | At-rest cipher for sensitive fields, e.g. `aes-256-gcm` |
 
+> **KV quota note**: `DB_FORMAT=key` maintains a global index key (`openlist_key_index`),
+> so after the first read of legacy data, load/save no longer consume KV `list` quota.
+> Each save still writes one entry per record (about 100+ with the default config), and
+> the Cloudflare KV free tier allows only 1000 writes/day — prefer `DB_DRIVER=d1` or
+> `DB_FORMAT=map` for long-term use.
+
 For the full variable list, see [Configuration variables](https://doc.oplist.org/ecosystem/official_worker/guide_env).
 
 ## Support

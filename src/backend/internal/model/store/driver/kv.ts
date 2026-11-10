@@ -9,6 +9,7 @@
  */
 import { sanitizeProxyOrigin } from "../proxy"
 import { KV_HEALTH_PROBE_KEY, readFormat } from "../config"
+import { KEY_INDEX_KEY } from "../keycodec"
 import type { Driver, EnvContext } from "../types"
 
 /**
@@ -295,6 +296,50 @@ function requireProxyBaseUrl(env?: EnvContext): string {
   return baseUrl
 }
 
+/**
+ * 读取 binding 的文本值并归一化为 `string | null`。
+ *
+ * 只从 binding 读取，不涉及代理分支。抽成独立函数的原因：
+ * `get()` 与 `health()` 都需要「兼容两种 get 签名」，各写一份迟早漂移。
+ *
+ * Cloudflare KV 用 `get(key, "text")`，EdgeOne KV 用 `get(key, {type:"text"})`，
+ * 两者签名不兼容，需按序尝试并归一化返回值（避免拿到对象导致上游 JSON.parse 失败）。
+ *
+ * 但要区分「签名不兼容」与「真实故障」：
+ *   - 签名不兼容会抛 TypeError（参数类型不符），此时才应回退到第二种签名；
+ *   - 网络/权限错误（401、超时等）必须**原样抛出**，否则会被第二次尝试
+ *     掩盖成 "key not found"，让调用方误判为数据不存在而写入错误状态。
+ */
+async function kvGetText(kv: any, key: string): Promise<string | null> {
+  const isSignatureError = (e: any): boolean =>
+    e instanceof TypeError ||
+    /not a function|invalid|unexpected|argument/i.test(String(e?.message || ""))
+
+  let value: any
+  try {
+    value = await kv.get(key, "text")
+  } catch (e) {
+    if (!isSignatureError(e)) throw e
+    value = undefined
+  }
+
+  if (value === undefined || value === null) {
+    try {
+      value = await kv.get(key, { type: "text" })
+    } catch (e) {
+      // 若第一种签名已成功执行（未抛签名错误），说明第二种只是"空结果"的回退，
+      // 此时真实错误同样要抛出，不得吞掉。
+      if (!isSignatureError(e)) throw e
+      value = null
+    }
+  }
+
+  if (value === undefined || value === null) return null
+  if (typeof value === "string") return value
+  // 绑定误返回对象时统一序列化，保持 Driver.get 的 string 契约
+  return JSON.stringify(value)
+}
+
 export const kvDriver: Driver = {
   name: "kv",
 
@@ -326,42 +371,7 @@ export const kvDriver: Driver = {
 
     // 模式1: Binding 模式
     if (kv) {
-      // Cloudflare KV 用 get(key, "text")，EdgeOne KV 用 get(key, {type:"text"})，
-      // 两者签名不兼容，需按序尝试并归一化返回值（避免拿到对象导致上游 JSON.parse 失败）。
-      //
-      // 但要区分「签名不兼容」与「真实故障」：
-      //   - 签名不兼容会抛 TypeError（参数类型不符），此时才应回退到第二种签名；
-      //   - 网络/权限错误（401、超时等）必须**原样抛出**，否则会被第二次尝试
-      //     掩盖成 "key not found"，让调用方误判为数据不存在而写入错误状态。
-      const isSignatureError = (e: any): boolean =>
-        e instanceof TypeError ||
-        /not a function|invalid|unexpected|argument/i.test(
-          String(e?.message || ""),
-        )
-
-      let value: any
-      try {
-        value = await kv.get(key, "text")
-      } catch (e) {
-        if (!isSignatureError(e)) throw e
-        value = undefined
-      }
-
-      if (value === undefined || value === null) {
-        try {
-          value = await kv.get(key, { type: "text" })
-        } catch (e) {
-          // 若第一种签名已成功执行（未抛签名错误），说明第二种只是"空结果"的回退，
-          // 此时真实错误同样要抛出，不得吞掉。
-          if (!isSignatureError(e)) throw e
-          value = null
-        }
-      }
-
-      if (value === undefined || value === null) return null
-      if (typeof value === "string") return value
-      // 绑定误返回对象时统一序列化，保持 Driver.get 的 string 契约
-      return JSON.stringify(value)
+      return kvGetText(kv, key)
     }
 
     // 模式2: HTTP 代理模式（无原生 binding → 经 Edge Function 代理）
@@ -564,11 +574,12 @@ export const kvDriver: Driver = {
         } else {
           await kv.get(KV_HEALTH_PROBE_KEY)
         }
-        // key 格式的 load/save 依赖 list；map 格式只读写固定的 openlist_config,
-        // 不要求 EdgeKV 暴露 list API（ESA EdgeKV 内置 API 仅提供 get/put/delete）。
-        // 只有 key 格式才探测 list，避免 map 格式部署被不支持的 list() 误判为
-        // 存储不可用（issue #159）。对 key 格式仍检查 list，防止配额耗尽/接口异常
-        // 导致 env_check 误报 ready（issue #125）。使用专用前缀，取回空页只耗 1 次。
+        // key 格式的稳态读写只依赖 get/put + 全局索引（issue #125）：
+        //   - 索引键存在时：一次 load 只花 1 次索引 get + N 次记录 get，不需要 list；
+        //   - 索引缺失时（旧部署首次升级 / 超大索引）：load/save 会回退 list，
+        //     此时必须确认 list 可用，否则初始化会 500。
+        // 因此这里先读索引键（1 次 read，比 list 便宜两个数量级），只有索引缺失
+        // 才真的调用 list 探测。map 格式不读写索引，完全不涉及 list。
         // 直接复用后端的 readFormat()：健康检查与真实读写必须用同一份解析逻辑
         // （env 优先级、缺省 map、DB_DRIVER=json 别名），复刻一份迟早漂移。
         if (readFormat(env) === "key") {
@@ -577,7 +588,14 @@ export const kvDriver: Driver = {
               "KV binding does not support list(), which is required by DB_FORMAT=key",
             )
           }
-          await kv.list({ prefix: KV_HEALTH_PROBE_KEY, cursor: "", limit: 256 })
+          const indexRaw = await kvGetText(kv, KEY_INDEX_KEY)
+          if (indexRaw === null) {
+            await kv.list({
+              prefix: KV_HEALTH_PROBE_KEY,
+              cursor: "",
+              limit: 256,
+            })
+          }
         }
         return {
           driver: "kv",
