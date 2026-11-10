@@ -138,30 +138,38 @@ export class DriverTeambition implements StorageDriver {
 
   async move(
     _srcDir: string,
-    dstDir: string,
+    _dstDir: string,
     _names: string[],
     srcPhysical: string,
-    _dstPhysical: string,
+    dstPhysical: string,
   ): Promise<void> {
     const entry = await this.resolveEntry(srcPhysical)
-    await this.client.move(entry.id, await this.pathToId(dstDir), entry.isDir)
+    const dstParentId = await this.pathToId(parentOf(dstPhysical))
+    await this.client.move(entry.id, dstParentId, entry.isDir)
     this.pathCache.clear()
   }
 
   async copy(
     _srcDir: string,
-    dstDir: string,
+    _dstDir: string,
     _names: string[],
     srcPhysical: string,
-    _dstPhysical: string,
+    dstPhysical: string,
   ): Promise<void> {
     const entry = await this.resolveEntry(srcPhysical)
-    await this.client.copy(entry.id, await this.pathToId(dstDir), entry.isDir)
+    const dstParentId = await this.pathToId(parentOf(dstPhysical))
+    await this.client.copy(entry.id, dstParentId, entry.isDir)
     this.pathCache.clear()
   }
 
-  async put(): Promise<void> {
-    throw new Error("[Teambition] upload not supported in stateless environment")
+  async put(
+    _virtualPath: string,
+    _physicalPath: string,
+    _content: Uint8Array,
+  ): Promise<void> {
+    throw new Error(
+      "[Teambition] upload is not supported on this runtime (list/download/rename/move/copy/remove are supported)",
+    )
   }
 
   private async resolveEntry(physicalPath: string): Promise<{ id: string; isDir: boolean }> {
@@ -177,14 +185,14 @@ export class DriverTeambition implements StorageDriver {
     throw new Error(`[Teambition] '${name}' not found`)
   }
 
-  /** 物理路径 → 目录 ID（根目录返回空串） */
+  /** 物理路径 → 目录 ID（根目录返回 root_folder_id，未配置则为空串） */
   private async pathToId(physicalPath: string): Promise<string> {
     const clean = physicalPath.split("/").filter(Boolean).join("/")
-    if (!clean) return ""
+    if (!clean) return this.client.rootId
     if (this.pathCache.has(clean)) return this.pathCache.get(clean)!
 
     const parts = clean.split("/")
-    let currentId = ""
+    let currentId = this.client.rootId
     for (let i = 0; i < parts.length; i++) {
       const { folders } = await this.client.getFiles(currentId)
       const target = folders.find((c) => c.title === parts[i])
@@ -195,4 +203,13 @@ export class DriverTeambition implements StorageDriver {
     }
     return currentId
   }
+}
+
+/** 物理路径的父目录（"a/b/c" → "/a/b"，"a" → "/"） */
+function parentOf(physicalPath: string): string {
+  const parts = String(physicalPath || "")
+    .split("/")
+    .filter(Boolean)
+  parts.pop()
+  return "/" + parts.join("/")
 }

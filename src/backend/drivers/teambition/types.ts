@@ -5,6 +5,8 @@ export interface DriverTeambitionAddition {
   region: string // "china" | "international"
   cookie: string
   project_id: string
+  /** 对齐 Go driver.RootID：留空表示项目根目录 */
+  root_folder_id?: string
   order_by?: string
   order_direction?: string
 }

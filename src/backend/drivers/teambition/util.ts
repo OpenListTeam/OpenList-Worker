@@ -21,11 +21,17 @@ export class ClientTeambition {
   async init(): Promise<void> {
     if (!this.addition.cookie) throw new Error("[Teambition] cookie is required")
     if (!this.addition.project_id) throw new Error("[Teambition] project_id is required")
+    if (!this.addition.region) this.addition.region = "china"
     // 验证 cookie 有效
     const resp = await fetch(`${this.baseUrl}/api/v2/roles`, {
       headers: { Cookie: this.addition.cookie },
     })
     if (resp.status >= 400) throw new Error(`[Teambition] init failed: HTTP ${resp.status}`)
+  }
+
+  /** 根目录 ID：对齐 Go driver.RootID，留空表示项目根目录 */
+  get rootId(): string {
+    return (this.addition.root_folder_id || "").trim()
   }
 
   private async request<T = any>(pathname: string, method: string, body?: any, query?: Record<string, string>): Promise<T> {
@@ -37,12 +43,36 @@ export class ClientTeambition {
       headers["Content-Type"] = "application/json"
     }
     const resp = await fetch(`${this.baseUrl}${pathname}${qs}`, options)
-    if (resp.status === 204 || resp.status === 201) return {} as T
-    const data = await resp.json().catch(() => ({}))
-    if ((data as TbErrResp).name || (data as TbErrResp).message) {
-      throw new Error(`[Teambition] ${(data as TbErrResp).message || (data as TbErrResp).name}`)
+    if (resp.status === 204) return {} as T
+
+    const text = await resp.text()
+    let data: any = null
+    if (text.trim()) {
+      try {
+        data = JSON.parse(text)
+      } catch {
+        data = null
+      }
     }
-    return data as T
+    // 成功响应里也可能带 message 字段（如部分集合对象），只有带 name+message
+    // 且不含业务主键时才当作错误体，避免把正常结果误判为失败。
+    const err = data as TbErrResp | null
+    const isErrPayload =
+      !!err &&
+      typeof err === "object" &&
+      !Array.isArray(err) &&
+      typeof err.name === "string" &&
+      typeof err.message === "string" &&
+      !("_id" in (err as any))
+    if (!resp.ok || isErrPayload) {
+      const reason = isErrPayload
+        ? (err as TbErrResp).message || (err as TbErrResp).name
+        : text.trim()
+          ? `HTTP ${resp.status}: ${text.slice(0, 200)}`
+          : `HTTP ${resp.status}`
+      throw new Error(`[Teambition] ${method} ${pathname} failed: ${reason}`)
+    }
+    return (data ?? {}) as T
   }
 
   async getFiles(parentId: string): Promise<{ folders: TbCollection[]; works: TbWork[] }> {
