@@ -186,6 +186,7 @@ export const normalizeDriver = (driverName: string): string => {
   if (norm.startsWith("githubrelease")) return "GitHub Releases"
   if (norm.startsWith("cnbrelease")) return "CNB Releases"
   if (norm.startsWith("github")) return "GitHub API"
+  if (norm.includes("teambition") || norm === "tb") return "Teambition"
   if (norm === "local") return "Local"
   if (norm.includes("pikpak")) return "PikPak"
   if (norm.includes("seafile")) return "Seafile"
@@ -556,6 +557,7 @@ adminRouter.get("/driver/names", (c) => {
       "ProtonDrive",
       "GitHub Releases",
       "CNB Releases",
+      "Teambition",
     ],
   })
 })
@@ -4672,6 +4674,68 @@ const driverConfigs: Record<string, any> = {
       no_upload: true,
       need_ms: false,
       default_root: "root",
+    },
+  },
+  // 对齐 Go drivers/teambition：Cookie 认证，无 MustProxy / PreferProxy
+  Teambition: {
+    name: "Teambition",
+    default_mount_path: "/teambition",
+    common: COMMON_FIELDS,
+    additional: [
+      {
+        name: "region",
+        type: "select",
+        options: "china,international",
+        default: "china",
+        required: true,
+        help: "china = www.teambition.com，international = us.teambition.com",
+      },
+      {
+        name: "cookie",
+        type: "text",
+        default: "",
+        required: true,
+        help: "浏览器登录 Teambition 后从开发者工具复制完整 Cookie 请求头",
+      },
+      {
+        name: "project_id",
+        type: "string",
+        default: "",
+        required: true,
+        help: "项目 ID：打开项目页面，地址栏 /project/<project_id>/... 中的那一段",
+      },
+      {
+        name: "root_folder_id",
+        type: "string",
+        default: "",
+        required: false,
+        help: "可选根目录 ID（对齐 Go RootID）；留空表示项目根目录",
+      },
+      {
+        name: "order_by",
+        type: "select",
+        options: "fileName,fileSize,updated,created",
+        default: "fileName",
+        required: false,
+      },
+      {
+        name: "order_direction",
+        type: "select",
+        options: "Asc,Desc",
+        default: "Asc",
+        required: false,
+      },
+    ],
+    config: {
+      name: "Teambition",
+      local_sort: false,
+      only_local: false,
+      only_proxy: false,
+      no_cache: false,
+      // Go 版支持上传（S3 / 分片）；TS 无状态实现 put 直接报错，先隐藏上传入口
+      no_upload: true,
+      need_ms: false,
+      default_root: "",
     },
   },
 }

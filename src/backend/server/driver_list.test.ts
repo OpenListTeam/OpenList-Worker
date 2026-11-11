@@ -228,3 +228,46 @@ test("存储列表中的驱动配置可被 driver/info 复用（前端编辑页�
     )
   }
 })
+
+test("Teambition 出现在驱动列表中，且字段与 Go 版对齐", async () => {
+  const env = await setupEnv()
+  const app = makeApp()
+
+  const list = await app.request(
+    "/api/admin/driver/list",
+    { method: "GET", headers: authHeaders },
+    env,
+  )
+  const listBody: any = await list.json()
+  const tb = listBody.data["Teambition"]
+  assert.ok(tb, "Teambition 必须出现在驱动列表中")
+  assert.equal(tb.name, "Teambition")
+  assert.equal(tb.default_mount_path, "/teambition")
+  assert.equal(tb.config.only_proxy, false)
+  assert.equal(tb.config.no_upload, true)
+
+  const fields = tb.additional.map((f: any) => f.name)
+  for (const field of [
+    "region",
+    "cookie",
+    "project_id",
+    "root_folder_id",
+    "order_by",
+    "order_direction",
+  ]) {
+    assert.ok(fields.includes(field), `缺少字段 ${field}`)
+  }
+
+  const region = tb.additional.find((f: any) => f.name === "region")
+  assert.equal(region.required, true)
+  assert.equal(region.options, "china,international")
+  assert.equal(region.default, "china")
+
+  const names = await app.request(
+    "/api/admin/driver/names",
+    { method: "GET", headers: authHeaders },
+    env,
+  )
+  const namesBody: any = await names.json()
+  assert.ok(namesBody.data.includes("Teambition"))
+})
