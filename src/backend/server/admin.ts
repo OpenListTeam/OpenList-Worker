@@ -2911,10 +2911,31 @@ const driverConfigs: Record<string, any> = {
         required: false,
       },
       {
+        name: "client_id",
+        type: "string",
+        default: "",
+        required: false,
+        help: "可选。留空使用内置 PikPak 官方客户端应用标识；仅在自有 PikPak 应用场景填写。",
+      },
+      {
+        name: "client_secret",
+        type: "string",
+        default: "",
+        required: false,
+        help: "可选。与 client_id 配套，留空使用内置默认值。",
+      },
+      {
         name: "disable_media_link",
         type: "bool",
         default: "true",
         required: false,
+      },
+      {
+        name: "skip_verification",
+        type: "bool",
+        default: "false",
+        required: false,
+        help: "忽略 captcha 接口返回的人工验证链接（默认视为失败）；开启后可能触发 PikPak 风控。",
       },
       {
         name: "order_by",

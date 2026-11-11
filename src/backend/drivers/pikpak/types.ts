@@ -7,6 +7,11 @@ export interface PikPakAddition {
   device_id?: string
   root_folder_id?: string
   disable_media_link?: boolean
+  /**
+   * 忽略 captcha API 返回的人工验证链接（与 Go 版 skip_verification 对齐）。
+   * 默认关闭：返回 url 即视为失败，避免用未签名 token 继续登录。
+   */
+  skip_verification?: boolean
   order_by?: string
   order_direction?: string
   /** 可选：覆盖内置 OAuth 客户端凭据（产品化时使用自有应用） */
