@@ -37,6 +37,7 @@ import {
   copyItems,
 } from "../internal/op/storage"
 import { buildWebDavPropfindResponse } from "../internal/webdav/webdav"
+import { prepareUploadTarget } from "../internal/op/upload"
 import { safeErrorMessage } from "../pkg/errs"
 import { encodeDownloadPath } from "../pkg/path"
 import { appendDownloadSignToRawUrl } from "../pkg/sign"
@@ -397,6 +398,9 @@ webdavRouter.all("/*", async (c) => {
         }
         // Uint8Array 而非 Buffer：ESA 边缘运行时没有全局 Buffer（Issue #169）
         const buffer = new Uint8Array(await c.req.arrayBuffer())
+        // Issue #100：阿里云盘等驱动上传同名文件会生成 xxx_(1) 副本。
+        // 开启 upload_force_overwrite 后，先删旧文件再写。
+        await prepareUploadTarget(actualPath, ctx)
         await putItem(actualPath, buffer, ctx)
         return c.body(null, 201)
       }

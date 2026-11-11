@@ -6,6 +6,7 @@ import {
   putItem,
   removeItems,
 } from "../internal/op/storage"
+import { prepareUploadTarget } from "../internal/op/upload"
 import { safeErrorMessage } from "../pkg/errs"
 import { appendDownloadSignToRawUrl } from "../pkg/sign"
 import { readBodyWithinLimit } from "../pkg/upload-limit"
@@ -298,6 +299,8 @@ s3Router.put("/*", async (c) => {
         400,
       )
     }
+    // 体积校验通过后再清理旧文件（Issue #100：驱动会生成 xxx_(1) 副本）
+    await prepareUploadTarget(virtualPath, getCtx(c))
     await putItem(virtualPath, body.buffer, getCtx(c))
     // 不再返回伪造的 ETag。
     //
