@@ -286,10 +286,10 @@ async function createDriver(
   ) {
     driver = new QuarkDriver(parseAddition(storageConfig))
     await driver.init?.()
-  // 注意：115 / 115Open 统一走 Pan115Driver（115open 目录）。
-  // 旧 drivers/115（Client115）端点写成 /open + /open/ufile/files → /open/open/ufile/files，
-  // 且用 POST+JSON，115 开放平台实际要求 GET+query，会报 "Method POST does not exist"，
-  // 再经错误模板输出为 "[115] API error ()"。该分支已在下方 normDriver.startsWith("115") 处理。
+    // 注意：115 / 115Open 统一走 Pan115Driver（115open 目录）。
+    // 旧 drivers/115（Client115）端点写成 /open + /open/ufile/files → /open/open/ufile/files，
+    // 且用 POST+JSON，115 开放平台实际要求 GET+query，会报 "Method POST does not exist"，
+    // 再经错误模板输出为 "[115] API error ()"。该分支已在下方 normDriver.startsWith("115") 处理。
   } else if (
     normDriver === "cloudreve" ||
     normDriver === "cloudrevev3" ||
@@ -846,9 +846,16 @@ async function createDriver(
     })
     await driver.init?.()
   } else if (
-    normDriver === "pikpak" ||
     normDriver === "pikpakshare" ||
-    normDriver.includes("pikpak")
+    (normDriver.includes("pikpak") && normDriver.includes("share"))
+  ) {
+    // Share storage uses share_id/passcode and must bypass account token login.
+    const addition = parseAddition(storageConfig)
+    driver = new PikPakShareDriver(addition)
+    await driver.init?.()
+  } else if (
+    normDriver === "pikpak" ||
+    (normDriver.includes("pikpak") && !normDriver.includes("share"))
   ) {
     const addition = parseAddition(storageConfig)
     driver = new PikPakDriver(addition, async (tokens) => {
@@ -1137,13 +1144,6 @@ async function createDriver(
     driver = new OnedriveSharelinkDriver(addition)
     await driver.init?.()
   } else if (
-    normDriver === "pikpakshare" ||
-    (normDriver.includes("pikpak") && normDriver.includes("share"))
-  ) {
-    const addition = parseAddition(storageConfig)
-    driver = new PikPakShareDriver(addition)
-    await driver.init?.()
-  } else if (
     normDriver === "smb" ||
     normDriver === "samba" ||
     normDriver === "cifs" ||
@@ -1307,8 +1307,8 @@ export async function getDriver(
 ): Promise<StorageDriver> {
   const deferTokenPersistence = Boolean(
     options.deferTokenPersistence &&
-      storageConfig &&
-      typeof storageConfig === "object",
+    storageConfig &&
+    typeof storageConfig === "object",
   )
   if (deferTokenPersistence) deferredTokenPersistence.add(storageConfig)
 

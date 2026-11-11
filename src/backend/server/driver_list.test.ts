@@ -33,6 +33,24 @@ function makeApp(): Hono {
   return app
 }
 
+test("PikPakShare exposes share credentials, not account credentials", async () => {
+  const env = await setupEnv()
+  const response = await makeApp().request(
+    "/api/admin/driver/info?driver=PikPakShare",
+    { method: "GET", headers: authHeaders },
+    env,
+  )
+  assert.equal(response.status, 200)
+  const body: any = await response.json()
+  assert.equal(body.data.name, "PikPakShare")
+  const fields = body.data.additional.map((field: any) => field.name)
+  assert.ok(fields.includes("share_id"))
+  assert.ok(fields.includes("share_pwd"))
+  assert.ok(!fields.includes("username"))
+  assert.ok(!fields.includes("password"))
+  assert.ok(!fields.includes("refresh_token"))
+})
+
 test("driver/list 包含 GitHub Releases 与 CNB Releases", async () => {
   const env = await setupEnv()
   const res = await makeApp().request(
