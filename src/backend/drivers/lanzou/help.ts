@@ -117,7 +117,7 @@ export function removeJSComment(data: string): string {
         inComment = true
         i++
         continue
-      } else if (nextChar === "/") {
+      } else if (nextChar === "/" && !isUrlDoubleSlash(result)) {
         inSingleLineComment = true
         i++
         continue
@@ -127,6 +127,22 @@ export function removeJSComment(data: string): string {
   }
 
   return result
+}
+
+/**
+ * 判断紧随其后的 '//' 是否为 URL 的一部分（而非行注释）。
+ * 两类已知误伤都要放过：
+ * 1. 'https://' —— scheme 冒号紧跟 '//'（改版后页面大量使用绝对地址）；
+ * 2. 协议相对地址 '//'cdn...'' —— 出现在字符串字面量里，前一个已输出字符是引号。
+ * 宁多保留、不误删：多留一段注释文本无害，截断真实 URL 致命。
+ */
+function isUrlDoubleSlash(emitted: string): boolean {
+  return (
+    emitted.endsWith(":") ||
+    emitted.endsWith("'") ||
+    emitted.endsWith('"') ||
+    emitted.endsWith("`")
+  )
 }
 
 function unbox(hexStr: string): string {
