@@ -133,6 +133,7 @@ function replaceDist(src) {
   copyManifestToRoot()
   stampFrontendVersion(src)
   patchManifestCredentials()
+  patchTasksNav()
   console.log(`✓ Frontend dist ready (${DEST})`)
 }
 
@@ -206,6 +207,52 @@ function patchManifestCredentials() {
     )
   }
 }
+
+/**
+ * 修复前端：任务页菜单项硬编码 `backend:[go]`，但我们这个 Worker 后端的
+ * `backend` 设置值是 `ts-worker`，导致"/@manage/tasks" 永远不会出现在设置页
+ * 侧边栏里（导航被过滤掉，任务页直接白屏）。
+ *
+ * 官方前端仓库（OpenList-Frontend）会在后续版本把 `backend` 改为
+ * `[`go`, \`ts-worker\`]`，这里只在已发布的 dist 里手动补上 `ts-worker`。
+ *
+ * 注意：只改 `manage.sidemenu.tasks` 所在的那一项，
+ * `manage.sidemenu.ldap`（纯 Go 后端设置）保持原样。
+ */
+function patchTasksNav() {
+  const FILES = [
+    "manage-Dd9hu6i0.js",
+    "manage-legacy-wVsoDBHa.js",
+  ]
+  const TASK_TITLE = "title:`manage.sidemenu.tasks`"
+  const fix = "backend:[`go`, `ts-worker`]"
+  let patched = 0
+  for (const f of FILES) {
+    const target = path.join(DEST, "assets", f)
+    if (!fs.existsSync(target)) continue
+    let src = fs.readFileSync(target, "utf-8")
+    const t = src.indexOf(TASK_TITLE)
+    if (t < 0) {
+      console.warn(`  [fetch-frontend] patchTasksNav skipped: no tasks title in ${f}`)
+      continue
+    }
+    // 任务菜单项的 window 以完成任务标题为起点，只修它后面第一个 backend filter
+    const win = src.slice(t, t + 300)
+    const m = win.match(/backend:\[[^\]]*\]/)
+    if (!m) {
+      console.warn(`  [fetch-frontend] patchTasksNav skipped: no backend filter near tasks in ${f}`)
+      continue
+    }
+    const relStart = win.indexOf(m[0])
+    src = src.slice(0, t + relStart) + fix + src.slice(t + relStart + m[0].length)
+    fs.writeFileSync(target, src)
+    patched += 1
+    console.log(`  Patched ${target}: backend=${m[0]} -> ${fix}`)
+  }
+  if (patched > 0) console.log(`\u2713 Frontend nav patched (${patched} files)`)
+  else console.warn("  [fetch-frontend] patchTasksNav: nothing to patch")
+}
+
 
 /**
  * 构建期戳：把前端版本号写入 dist/index.html 的 <meta name="frontend-version">。
