@@ -48,6 +48,11 @@
 > - 部署时请填写 `JWT_SECRET`（≥16 随机串，用于 JWT 签名与加密）
 > - 数据存储默认自动选择平台自带的持久化后端，其余变量见 [配置变量](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 > - 部署完成后首次访问站点，通过**安装向导**完成初始化并设置账号密码
+>
+> [!WARNING]
+> **从源仓库重新部署会清空手动绑定的存储**：Cloudflare Worker 的存储绑定（D1 / KV / DO）属于当前部署版本，每次通过 Deploy 按钮或 `wrangler deploy` 重新部署时，都会按 `wrangler.jsonc` 的声明重建绑定。由于本项目默认**注释掉了所有存储绑定**，若你此前是在 Cloudflare 控制台手动绑定的 D1/KV，重新部署后这些绑定会丢失，站点报 `NO_STORAGE` / `No storage backend is available`（已有数据不会删除，只是暂时读不到）。
+>
+> 恢复方式（任选其一）：部署后在控制台重新绑定；或在 `wrangler.jsonc` 的 `d1_databases` / `kv_namespaces` 中填入**已有**资源的 `database_id` / `id` 再部署（注意复用原资源、勿新建，否则读不到旧数据）。详见 [配置变量](https://doc.oplist.org/ecosystem/official_worker/guide_env)。
 
 
 ## 功能简介
