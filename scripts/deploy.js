@@ -68,6 +68,26 @@ function run(cmd, opts = {}) {
 }
 
 function main() {
+  // 重要提醒：重新部署会按 wrangler.jsonc 重建版本绑定。
+  // 若用户此前在 Cloudflare 控制台手动绑定了 D1/KV（而 wrangler.jsonc 中
+  // 这些绑定默认被注释），本次部署会使那些手动绑定丢失，站点将报
+  // NO_STORAGE / No storage backend is available。数据本身不会被删除。
+  console.log(
+    "\n⚠️  [提醒] 重新部署会按 wrangler.jsonc 重建 Worker 绑定。",
+  )
+  console.log(
+    "   如果你之前是在 Cloudflare 控制台手动绑定的 D1/KV，而 wrangler.jsonc 中",
+  )
+  console.log(
+    "   相应绑定仍被注释，部署后这些绑定会丢失（站点报 NO_STORAGE）。",
+  )
+  console.log(
+    "   请先取消注释并填入已有资源的 id，或部署后到控制台重新绑定。",
+  )
+  console.log(
+    "   详见 https://doc.oplist.org/ecosystem/official_worker/guide_env\n",
+  )
+
   console.log(
     `[KV] wrangler.jsonc 已声明 KV 绑定（省略 id 字段），由 wrangler 自动创建/复用。`,
   )

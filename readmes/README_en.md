@@ -47,6 +47,11 @@ Click the button below to deploy this project to the corresponding platform with
 > - Set `JWT_SECRET` during deployment (≥16 random chars) for JWT signing and encryption
 > - Storage automatically uses the platform's built-in persistent backend (`DB_DRIVER=auto`) — no configuration needed; for other variables see [Environment Variables](https://doc.oplist.org/ecosystem/official_worker/guide_env)
 > - After deployment, the first visit opens the **install wizard**: set the admin account and password in the browser to finish initialization; set `ADMIN_PASS` to skip the wizard
+>
+> [!WARNING]
+> **Redeploying from the source repository clears manually added storage bindings.** Cloudflare Worker storage bindings (D1 / KV / DO) belong to the deployed version: every redeploy via the Deploy button or `wrangler deploy` rebuilds bindings from `wrangler.jsonc`. Since this project **comments out all storage bindings by default**, if you previously bound D1/KV manually in the Cloudflare dashboard, those bindings are lost after a redeploy and the site reports `NO_STORAGE` / `No storage backend is available` (existing data is not deleted — it is just temporarily unreachable).
+>
+> To recover (pick one): re-bind in the dashboard after deploying; or fill the `database_id` / `id` of your **existing** resources into `d1_databases` / `kv_namespaces` in `wrangler.jsonc` before redeploying (reuse the original resources — do not create new ones, or the old data will not be readable). See [Environment Variables](https://doc.oplist.org/ecosystem/official_worker/guide_env).
 
 
 ## Features
