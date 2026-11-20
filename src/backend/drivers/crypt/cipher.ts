@@ -1,89 +1,94 @@
-// rclone crypt v1 兼容的加密实现（内容加密，AES-CTR）
-// 移植自 OpenList Go 版 drivers/crypt（其底层使用 rclone/backend/crypt）。
+// rclone crypt facade: key material + filename cipher + content crypto.
+// New writes use the rclone secretbox format (./data); reads dispatch on the
+// "RCLONE\0\0" magic and fall back to the legacy AES-CTR format (./legacy)
+// so data written before the rclone migration stays downloadable.
 //
-// 文件格式（v1）：
-//   [nonce: 16 bytes][reserved: 16 bytes][AES-256-CTR 加密数据]
-//   即 32 字节文件头 + 密文。EncryptedSize = plainSize + 32。
-//
-// 密钥派生（scrypt，与 rclone crypt 完全一致）：
-//   scrypt(password, salt, N=16384, r=8, p=1, dkLen=64)
-//   dataKey = dk[0:32]（数据加密密钥）
-//   nameKey = dk[32:64]（文件名加密密钥，off 模式下未使用）
-import { scrypt } from "hash-wasm"
+// Algorithm stack (rclone v1.75.2 backend/crypt, MIT - see vendor/ for ports).
+import { deriveKeys } from "./kdf"
+import {
+  NameCipher,
+  type FileNameEncoding,
+  type NameEncryptionMode,
+} from "./names"
+import {
+  decryptBlockSlice,
+  decryptData,
+  decryptDataRange,
+  decryptedSize,
+  encryptData,
+  encryptedSize,
+} from "./data"
+import { isRcloneFormat, legacyDecrypt } from "./legacy"
 
-const FILE_HEADER_SIZE = 32
-const NONCE_SIZE = 16
+export interface CipherOptions {
+  mode: NameEncryptionMode
+  dirNameEncrypt: boolean
+  filenameEncoding: FileNameEncoding
+  /** validated/normalized by the caller (driver init) */
+  encryptedSuffix: string
+}
 
 export class CryptCipher {
-  private dataKey: CryptoKey
+  readonly names: NameCipher
+  readonly dataKey: Uint8Array
+  private readonly legacyPassword: string
+  private readonly legacySalt: string
 
-  private constructor(dataKey: CryptoKey) {
-    this.dataKey = dataKey
-  }
-
-  static async create(password: string, salt: string): Promise<CryptCipher> {
-    if (!password) {
-      throw new Error("[Crypt] password 不能为空")
-    }
-    const dk = (await scrypt({
-      password,
-      salt: salt || "",
-      costFactor: 16384, // N = 2^14，必须是 2 的幂
-      blockSize: 8, // r
-      parallelism: 1, // p
-      hashLength: 64, // dkLen
-      outputType: "binary",
-    })) as Uint8Array
-    const dataKey = await crypto.subtle.importKey(
-      "raw",
-      dk.slice(0, 32),
-      { name: "AES-CTR" },
-      false,
-      ["encrypt", "decrypt"],
-    )
-    return new CryptCipher(dataKey)
+  constructor(password: string, salt: string, opts: CipherOptions) {
+    const keys = deriveKeys(password, salt)
+    this.dataKey = keys.dataKey
+    this.names = new NameCipher({
+      nameKey: keys.nameKey,
+      nameTweak: keys.nameTweak,
+      mode: opts.mode,
+      dirNameEncrypt: opts.dirNameEncrypt,
+      filenameEncoding: opts.filenameEncoding,
+      encryptedSuffix: opts.encryptedSuffix,
+    })
+    // legacy data was derived with dkLen=64 and the raw salt
+    this.legacyPassword = password
+    this.legacySalt = salt
   }
 
   encryptedSize(plainSize: number): number {
-    return plainSize + FILE_HEADER_SIZE
+    return encryptedSize(plainSize)
   }
 
-  decryptedSize(encryptedSize: number): number {
-    return Math.max(0, encryptedSize - FILE_HEADER_SIZE)
+  decryptedSize(encSize: number): number {
+    return decryptedSize(encSize)
   }
 
-  /** 加密明文，返回 32 字节头 + 密文 */
-  async encrypt(plain: Uint8Array): Promise<Uint8Array> {
-    const nonce = crypto.getRandomValues(new Uint8Array(NONCE_SIZE))
-    const header = new Uint8Array(FILE_HEADER_SIZE)
-    header.set(nonce, 0)
-    crypto.getRandomValues(header.subarray(NONCE_SIZE))
-    const ciphertext = new Uint8Array(
-      await crypto.subtle.encrypt(
-        { name: "AES-CTR", counter: nonce as BufferSource, length: 128 },
-        this.dataKey,
-        plain as BufferSource,
-      ),
-    )
-    const out = new Uint8Array(FILE_HEADER_SIZE + ciphertext.length)
-    out.set(header, 0)
-    out.set(ciphertext, FILE_HEADER_SIZE)
-    return out
+  encryptData(plain: Uint8Array): Uint8Array {
+    return encryptData(this.dataKey, plain)
   }
 
-  /** 解密（data 必须包含 32 字节头） */
-  async decrypt(data: Uint8Array): Promise<Uint8Array> {
-    if (data.length < FILE_HEADER_SIZE) {
-      throw new Error("[Crypt] 加密文件过短（缺少文件头）")
-    }
-    const nonce = data.slice(0, NONCE_SIZE)
-    const ciphertext = data.slice(FILE_HEADER_SIZE)
-    return new Uint8Array(
-      await crypto.subtle.decrypt(
-        { name: "AES-CTR", counter: nonce as BufferSource, length: 128 },
-        this.dataKey,
-        ciphertext as BufferSource,
-      ),
+  decryptData(input: Uint8Array): Uint8Array {
+    if (isRcloneFormat(input)) return decryptData(this.dataKey, input)
+    return legacyDecrypt(this.legacyPassword, this.legacySalt, input)
+  }
+
+  decryptDataRange(
+    input: Uint8Array,
+    offset: number,
+    limit: number,
+  ): Uint8Array {
+    return decryptDataRange(this.dataKey, input, offset, limit)
+  }
+
+  decryptBlockSlice(
+    initialNonce: Uint8Array,
+    blocks: number,
+    discard: number,
+    count: number,
+    slice: Uint8Array,
+  ): Uint8Array {
+    return decryptBlockSlice(
+      this.dataKey,
+      initialNonce,
+      blocks,
+      discard,
+      count,
+      slice,
     )
   }
 }
