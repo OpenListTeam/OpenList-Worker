@@ -1817,6 +1817,7 @@ export async function putItem(
   // Uint8Array 而非 Node Buffer：ESA 等边缘运行时没有全局 Buffer（Issue #169）
   content: Uint8Array,
   requestContext?: StorageRequestContext,
+  md5?: string,
 ): Promise<void> {
   const resolved = await resolvePath(virtualPath, requestContext?.env)
   if (resolved.isVirtual) {
@@ -1824,7 +1825,7 @@ export async function putItem(
   }
   const driver = await getDriver(resolved.storage!.driver, resolved.storage)
   try {
-    await driver.put(virtualPath, resolved.physical!, content)
+    await driver.put(virtualPath, resolved.physical!, content, md5)
   } finally {
     await flushPendingDriverState(
       resolved.storage!.driver,

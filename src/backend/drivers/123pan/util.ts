@@ -12,6 +12,7 @@ import {
   Pan123S3PreSignedURLs,
   Pan123MkdirResp,
 } from "./types"
+import { md5 as md5Hex } from "../../pkg/crypto"
 
 const MAIN_API = "https://yun.123pan.com/b/api"
 const LOGIN_API = "https://login.123pan.com/api"
@@ -651,14 +652,11 @@ export class Pan123Client {
     parentId: string,
     fileName: string,
     content: Uint8Array,
+    md5?: string,
   ): Promise<void> {
-    let etag = ""
-    try {
-      const cryptoMod = await import("node:crypto")
-      etag = cryptoMod.createHash("md5").update(content).digest("hex")
-    } catch {
-      etag = ""
-    }
+    // 优先用调用方（前端 X-File-Md5）已算好的 MD5：边缘运行时没有 node:crypto，
+    // 也不该为整文件重算 MD5 耗 CPU。缺失时用纯 JS 的 pkg/crypto.md5 兜底。
+    const etag = md5?.trim() || md5Hex(content)
 
     const upload = await this.createUpload(
       fileName,

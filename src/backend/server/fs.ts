@@ -978,7 +978,8 @@ fsRouter.put("/put", async (c) => {
   try {
     const body = await readBodyWithinLimit(c)
     if (!body.ok) return tooLargeResponse(c, body.limit)
-    await putItem(reqPath, body.buffer, requestContext)
+    const md5 = c.req.header("X-File-Md5") || ""
+    await putItem(reqPath, body.buffer, requestContext, md5)
     return c.json({ code: 200, message: "success", data: null })
   } catch (e: any) {
     return c.json({ code: 500, message: safeErrorMessage(e), data: null })
