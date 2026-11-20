@@ -438,3 +438,81 @@ test("createReadStream falls back to raw_url fetch for drivers without streams",
   assert.equal(new TextDecoder().decode(part), "ream")
   await new Promise<void>((r) => server.close(() => r()))
 })
+
+// ---------------------------------------------------------------------------
+// review fixes: NoLinkURL thumb parity, legacy size rescue, truncated header
+// ---------------------------------------------------------------------------
+test("list strips underlying thumb/raw_url/sign (Go discards them)", async () => {
+  const cipher = new CryptCipher("potato", "", {
+    mode: "off",
+    dirNameEncrypt: false,
+    filenameEncoding: "base64",
+    encryptedSuffix: ".bin",
+  })
+  const stub: StorageDriver = {
+    list: async () => [
+      {
+        name: "a.txt.bin",
+        size: 148, // rclone plain size 100 (passes the block formula)
+        is_dir: false,
+        modified: new Date().toISOString(),
+        sign: "underlying-sign",
+        type: 0,
+        thumb: "http://underlying.example/thumb.jpg",
+        raw_url: "http://underlying.example/a.txt.bin",
+        raw_url_headers: { Cookie: "secret" },
+      } as FileItem,
+    ],
+    get: async () => ({}) as FileItem,
+    mkdir: async () => {},
+    rename: async () => {},
+    remove: async () => {},
+    move: async () => {},
+    copy: async () => {},
+    put: async () => {},
+  }
+  const d = new CryptDriver({
+    password: "potato",
+  } as CryptAddition) as unknown as {
+    remoteDriver: StorageDriver
+    remoteRoot: string
+    cipher: CryptCipher
+    list: (v: string, p: string) => Promise<FileItem[]>
+  }
+  d.remoteDriver = stub
+  d.remoteRoot = ""
+  d.cipher = cipher
+
+  const items = await d.list("", "/")
+  assert.equal(items.length, 1)
+  assert.equal(items[0]!.name, "a.txt")
+  assert.equal(items[0]!.thumb, undefined)
+  assert.equal(items[0]!.raw_url, "")
+  assert.equal(items[0]!.raw_url_headers, undefined)
+  assert.equal(items[0]!.sign, "")
+})
+
+test("legacy-size files stay visible with recovered sizes (not filtered)", async () => {
+  const { d, root } = await setup({})
+  // sizes whose rclone block formula throws (residue 1..16): legacy P+32
+  await writeFile(joinFs(root, "tiny.bin"), new Uint8Array(42)) // P=10
+  await writeFile(joinFs(root, "one.bin"), new Uint8Array(33)) // P=1
+  await writeFile(joinFs(root, "block.bin"), new Uint8Array(65585)) // P=65553
+  // <32 bytes is invalid in BOTH formats -> still filtered
+  await writeFile(joinFs(root, "junk.bin"), new Uint8Array(10))
+
+  const items = await d.list("", "/")
+  const byName = new Map(items.map((i) => [i.name, i.size]))
+  assert.equal(byName.get("tiny"), 10)
+  assert.equal(byName.get("one"), 1)
+  assert.equal(byName.get("block"), 65553)
+  assert.equal(byName.has("junk"), false)
+})
+
+test("createReadStream rejects a truncated rclone-header file", async () => {
+  const { d, root } = await setup({})
+  const head = new Uint8Array(10)
+  head.set([0x52, 0x43, 0x4c, 0x4f, 0x4e, 0x45, 0x00, 0x00], 0) // RCLONE\0\0
+  await writeFile(joinFs(root, "trunc.bin"), head)
+  await assert.rejects(d.createReadStream("/trunc"), /too short/)
+})

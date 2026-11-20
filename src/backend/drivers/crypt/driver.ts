@@ -14,8 +14,9 @@ import {
 import { encodeDownloadPath } from "../../pkg/path"
 import { CryptCipher } from "./cipher"
 import type { FileNameEncoding, NameEncryptionMode } from "./names"
-import { isRcloneFormat } from "./legacy"
-import { calculateUnderlying } from "./data"
+import { isRcloneFormat, LEGACY_HEADER_SIZE } from "./legacy"
+import { calculateUnderlying, FILE_HEADER_SIZE } from "./data"
+import { errorEncryptedFileTooShort } from "./vendor/rclone-core"
 import { deobfuscatePassword } from "./obscure"
 
 export interface CryptAddition {
@@ -164,7 +165,14 @@ export class CryptDriver implements StorageDriver {
       try {
         size = this.cipher!.decryptedSize(item.size)
       } catch {
-        if (strict) return null
+        // Pre-rclone AES-CTR files have no block structure; recover their
+        // plain size (encSize-32) so they stay visible during the mixed
+        // period. <32B is invalid in both formats.
+        if (item.size < LEGACY_HEADER_SIZE) {
+          if (strict) return null
+        } else {
+          size = item.size - LEGACY_HEADER_SIZE
+        }
       }
       try {
         name = names.decryptFileName(item.name)
@@ -173,6 +181,7 @@ export class CryptDriver implements StorageDriver {
       }
     }
     // hashes/signs of the ciphertext are meaningless; never leak the raw URL
+    // or the underlying thumbnail (Go builds a fresh object without them)
     return {
       ...item,
       name,
@@ -183,7 +192,7 @@ export class CryptDriver implements StorageDriver {
       raw_url_headers: undefined,
       hash: undefined,
       hashes: undefined,
-      thumb: item.thumb,
+      thumb: undefined,
     }
   }
 
@@ -309,6 +318,8 @@ export class CryptDriver implements StorageDriver {
     this.ensureReady()
     const encPath = this.joinRemote(this.encryptPath(physicalPath, false))
     const item = await this.remoteDriver!.get("", encPath)
+    if (item.size < FILE_HEADER_SIZE)
+      throw new Error(errorEncryptedFileTooShort)
 
     const head = await this.readUnderlying(encPath, item, 0, 32)
     if (!isRcloneFormat(head)) {

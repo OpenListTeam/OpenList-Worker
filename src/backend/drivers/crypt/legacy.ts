@@ -6,7 +6,7 @@
 import { scrypt } from "@noble/hashes/scrypt.js"
 import { aesCtrCrypt } from "./vendor/rclone-core"
 
-const LEGACY_HEADER_SIZE = 32
+export const LEGACY_HEADER_SIZE = 32
 const LEGACY_NONCE_SIZE = 16
 
 function legacyDeriveKey(password: string, salt: string): Uint8Array {
