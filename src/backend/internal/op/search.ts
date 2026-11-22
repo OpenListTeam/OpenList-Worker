@@ -1,5 +1,5 @@
 import { listItems } from "./storage"
-import { FileItem } from "../driver/base"
+import { FileItem, PublicFileItem, toPublicFileItem } from "../driver/base"
 import { canAccess, getNearestMeta } from "../../pkg/meta"
 import type { Meta } from "../../pkg/meta"
 import type { UserPermissionObj } from "../../pkg/permission"
@@ -25,7 +25,17 @@ export interface SearchOptions {
   password?: string
 }
 
-export interface SearchResultItem extends FileItem {
+/**
+ * 搜索结果的对外形态：白名单元数据 + 虚拟父目录。
+ *
+ * 历史缺陷（Issue #204）：曾直接继承驱动返回的 FileItem 并原样序列化返回，
+ * 而 WebDAV 等驱动的 list() 会在每项上填充 raw_url（上游直链）与
+ * raw_url_headers（上游鉴权头，如 Authorization: Basic ...），启用 guest 的
+ * 部署里未认证访客即可借此拿到上游存储凭据、绕过 OpenList 直连后端。
+ * 现统一在出口经 toPublicFileItem() 白名单脱敏（sign 恒为空，下载签名由
+ * server 层签发；Go 版搜索响应同样只含节点元数据，不含直链）。
+ */
+export interface SearchResultItem extends PublicFileItem {
   /** Virtual parent directory where this file resides */
   parent: string
 }
@@ -53,7 +63,7 @@ export async function search(
   const maxDepth = Math.min(20, Math.max(0, opts.max_depth ?? 10))
   const maxResults = Math.min(2000, Math.max(1, opts.max_results ?? 500))
 
-  const matches: SearchResultItem[] = []
+  const matches: (FileItem & { parent: string })[] = []
   const enforceAcl = opts.user !== undefined
 
   async function walk(dirPath: string, depth: number) {
@@ -127,8 +137,15 @@ export async function search(
   const offset = (page - 1) * perPage
   const pageItems = matches.slice(offset, offset + perPage)
 
+  // 出口统一脱敏：只回白名单元数据，剥离 raw_url / raw_url_headers /
+  // raw_url_error / 驱动塞进 sign 的内部字段（Issue #204）。
+  // 这里的返回值也会被 admin 索引/扫描（admin/index/build、admin/scan/start）
+  // 原样落库，脱敏后可避免上游凭据随索引持久化到数据库。
   return {
-    content: pageItems,
+    content: pageItems.map((it) => ({
+      ...toPublicFileItem(it),
+      parent: it.parent,
+    })),
     total,
   }
 }
