@@ -4,7 +4,11 @@ import { Hono } from "hono"
 import { verify } from "hono/jwt"
 import { getDb, saveDb } from "../internal/model/db"
 import { setupRouter } from "./router"
-import { generateOidcState, verifyOidcState } from "./sso"
+import {
+  generateOidcState,
+  resolvePopupTargetOrigins,
+  verifyOidcState,
+} from "./sso"
 
 function createApp() {
   const api = new Hono()
@@ -267,6 +271,24 @@ test("Stateless HMAC OIDC state works across isolates and rejects replay, tamper
   assert.equal(ipMismatchRes.status, 400)
   assert.equal(await ipMismatchRes.text(), "incorrect or expired state parameter")
 
+  // Concurrent callbacks within same isolate only accept one invocation
+  const concurrentState = await generateOidcState(
+    env.JWT_SECRET,
+    "oidc-client-id",
+    "198.51.100.23",
+  )
+  const concurrentResults = await Promise.all(
+    Array.from({ length: 5 }, () =>
+      verifyOidcState(
+        env.JWT_SECRET,
+        "oidc-client-id",
+        "198.51.100.23",
+        concurrentState,
+      ),
+    ),
+  )
+  assert.equal(concurrentResults.filter(Boolean).length, 1)
+
   // Expired state is rejected
   const expiredState = await generateOidcState(
     env.JWT_SECRET,
@@ -324,7 +346,53 @@ test("Non-compatibility popup mode returns HTML with matching CSP nonce and Cach
 
   const html = await res.text()
   assert.ok(html.includes(`<script nonce="${cspMatch[1]}">`))
-  assert.ok(html.includes("window.opener.postMessage"))
+  assert.ok(html.includes("window.opener.postMessage(payload, origins[i])"))
+  assert.ok(html.includes('["https://drive.example.com"]'))
+  assert.ok(!html.includes('"*"'))
+})
+
+test("Popup postMessage target origins respect ALLOW_URLS and reject unsafe values", async (t) => {
+  const env: any = {
+    JWT_SECRET: "sso-test-secret-popup-allow-urls",
+    ALLOW_URLS: "https://ui.example.com, https://admin.example.com/sub, *, javascript:alert(1)",
+  }
+  const resolved = resolvePopupTargetOrigins({
+    req: { url: "https://drive.example.com/api/auth/sso_callback" },
+    env,
+  })
+  assert.deepEqual(resolved, [
+    "https://drive.example.com",
+    "https://ui.example.com",
+    "https://admin.example.com",
+  ])
+
+  await seedSsoDb(env, {
+    settings: [{ key: "sso_compatibility_mode", value: "false" }],
+  })
+  mockOidcFetch(t)
+  const app = createApp()
+
+  const state = await generateOidcState(
+    env.JWT_SECRET,
+    "oidc-client-id",
+    "203.0.113.31",
+  )
+  const res = await app.request(
+    `https://drive.example.com/api/auth/sso_callback?method=sso_get_token&code=popup-code-allow&state=${encodeURIComponent(state)}`,
+    {
+      headers: { "CF-Connecting-IP": "203.0.113.31" },
+    },
+    env,
+  )
+  assert.equal(res.status, 200)
+  const html = await res.text()
+  assert.ok(
+    html.includes(
+      '["https://drive.example.com","https://ui.example.com","https://admin.example.com"]',
+    ),
+  )
+  assert.ok(!html.includes('"*"'))
+  assert.ok(!html.includes("javascript:alert(1)"))
 })
 
 test("Auto-register persists new user with sso_default_dir and sso_default_permission", async (t) => {

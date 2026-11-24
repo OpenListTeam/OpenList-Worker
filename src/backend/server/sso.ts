@@ -159,6 +159,12 @@ export async function verifyOidcState(
   if (!timingSafeEqual(providedMac, expectedMac)) {
     return false
   }
+  // hmacSha256 为异步调用，同一隔离区内并发携带同一 state 的请求可能同时通过上方预检；
+  // 在无 await 的同步临界区内再次确认并占坑，消除竞态重放。
+  const usedExpAfter = usedStateNonces.get(normalizedNonce)
+  if (usedExpAfter !== undefined && usedExpAfter > now) {
+    return false
+  }
   usedStateNonces.set(normalizedNonce, exp)
   pruneUsedStateNonces(now)
   return true
@@ -324,18 +330,62 @@ async function autoRegister(
   return user
 }
 
-function postMessageHtml(field: string, value: string, nonce: string): string {
-  const safePayload = JSON.stringify({ [field]: String(value) })
+function serializeJsLiteral(value: unknown): string {
+  return JSON.stringify(value)
     .replace(/</g, "\\u003c")
     .replace(/>/g, "\\u003e")
     .replace(/\u2028/g, "\\u2028")
     .replace(/\u2029/g, "\\u2029")
+}
+
+/** 解析弹窗模式 postMessage 允许接收令牌的可信前端 Origin（同源 + ALLOW_URLS 白名单，永不使用 "*"） */
+export function resolvePopupTargetOrigins(c: any): string[] {
+  const origins = new Set<string>()
+  const addOrigin = (raw: string) => {
+    const trimmed = raw.trim()
+    if (!trimmed || trimmed === "*") return
+    try {
+      const u = new URL(trimmed)
+      if ((u.protocol === "http:" || u.protocol === "https:") && u.origin !== "null") {
+        origins.add(u.origin)
+      }
+    } catch {}
+  }
+
+  addOrigin(c.req?.url || "")
+
+  const env = c?.env || {}
+  const allowedRaw =
+    env.ALLOW_URLS ||
+    (typeof process !== "undefined" ? process.env?.ALLOW_URLS : "") ||
+    ""
+  for (const entry of String(allowedRaw).split(",")) {
+    addOrigin(entry)
+  }
+
+  return Array.from(origins)
+}
+
+function postMessageHtml(
+  field: string,
+  value: string,
+  nonce: string,
+  targetOrigins: string[],
+): string {
+  const safePayload = serializeJsLiteral({ [field]: String(value) })
+  const safeOrigins = serializeJsLiteral(targetOrigins)
   return `<!DOCTYPE html>
 <head></head>
 <body>
 <script nonce="${nonce}">
 if (window.opener) {
-  window.opener.postMessage(${safePayload}, "*")
+  var payload = ${safePayload};
+  var origins = ${safeOrigins};
+  for (var i = 0; i < origins.length; i++) {
+    try {
+      window.opener.postMessage(payload, origins[i]);
+    } catch (e) {}
+  }
 }
 window.close()
 </script>
@@ -344,7 +394,8 @@ window.close()
 
 function postMessageResponse(c: any, field: string, value: string) {
   const nonce = randomHex(16)
-  return c.html(postMessageHtml(field, value, nonce), 200, {
+  const targetOrigins = resolvePopupTargetOrigins(c)
+  return c.html(postMessageHtml(field, value, nonce, targetOrigins), 200, {
     "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'; frame-ancestors 'none'`,
     "Cache-Control": "no-store",
   })
