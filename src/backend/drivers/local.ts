@@ -149,4 +149,45 @@ export class LocalDriver implements StorageDriver {
     await fs.mkdir(path.dirname(physicalPath), { recursive: true })
     await fs.writeFile(physicalPath, content)
   }
+
+  /**
+   * Web 流式读取（Crypt 等上层驱动的解密下载字节源；对齐 raw.ts 的
+   * {start, end} 语义，end 含端点）。Node 专有路径，Edge 运行时不可用。
+   */
+  async createReadStream(
+    physicalPath: string,
+    range?: { start: number; end: number },
+  ): Promise<ReadableStream<Uint8Array>> {
+    await initNodeModules()
+    if (!fs || !path)
+      throw new Error("LocalDriver is not supported in Edge Runtime")
+    const stat = await fs.stat(physicalPath)
+    const start = Math.max(0, range?.start ?? 0)
+    const end = Math.min(range?.end ?? stat.size - 1, stat.size - 1)
+    const handle = await fs.open(physicalPath, "r")
+    const CHUNK = 64 * 1024
+    let pos = start
+    return new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        if (pos > end) {
+          await handle.close()
+          controller.close()
+          return
+        }
+        const len = Math.min(CHUNK, end - pos + 1)
+        const buf = new Uint8Array(len)
+        const { bytesRead } = await handle.read(buf, 0, len, pos)
+        if (bytesRead <= 0) {
+          await handle.close()
+          controller.close()
+          return
+        }
+        pos += bytesRead
+        controller.enqueue(buf.subarray(0, bytesRead))
+      },
+      async cancel() {
+        await handle.close()
+      },
+    })
+  }
 }
