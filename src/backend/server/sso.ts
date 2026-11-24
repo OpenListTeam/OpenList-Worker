@@ -21,7 +21,58 @@ import { setUserPassword, passwordStampOf } from "../pkg/password"
 export const ssoRouter = new Hono()
 
 const STATE_EXPIRE_MS = 5 * 60 * 1000
-const stateStore = new Map<string, { ip: string; exp: number }>()
+const MAX_USED_NONCE_CACHE = 1000
+const usedStateNonces = new Map<string, number>()
+
+function randomHex(byteLen = 16): string {
+  const bytes = new Uint8Array(byteLen)
+  crypto.getRandomValues(bytes)
+  return bytesToHex(bytes)
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")
+}
+
+function hexToBytes(hex: string): Uint8Array | null {
+  if (!hex || hex.length % 2 !== 0 || !/^[0-9a-f]+$/i.test(hex)) {
+    return null
+  }
+  const out = new Uint8Array(hex.length / 2)
+  for (let i = 0; i < out.length; i++) {
+    out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+  }
+  return out
+}
+
+function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) {
+    diff |= a[i] ^ b[i]
+  }
+  return diff === 0
+}
+
+async function hmacSha256(secret: string, message: string): Promise<Uint8Array> {
+  const enc = new TextEncoder()
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  )
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(message))
+  return new Uint8Array(sig)
+}
+
+function pruneUsedStateNonces(now: number): void {
+  if (usedStateNonces.size <= MAX_USED_NONCE_CACHE) return
+  for (const [nonce, exp] of usedStateNonces) {
+    if (exp <= now) usedStateNonces.delete(nonce)
+  }
+}
 
 function getSetting(db: any, key: string, def = ""): string {
   const item = (db.settings || []).find((s: any) => s.key === key)
@@ -51,20 +102,72 @@ function apiOrigin(c: any): string {
   }
 }
 
-function generateState(clientId: string, ip: string): string {
-  const bytes = new Uint8Array(16)
-  crypto.getRandomValues(bytes)
-  const state = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")
-  stateStore.set(`${clientId}_${state}`, { ip, exp: Date.now() + STATE_EXPIRE_MS })
-  return state
+/**
+ * 生成无状态签名 OIDC state（`<expHex>.<nonceHex>.<hmacHex>`）。
+ *
+ * Workers / Serverless 多实例与冷启动不共享进程内存，使用基于 JWT 密钥的
+ * HMAC-SHA256 绑定 clientId、客户端 IP 与过期时间，避免跨实例校验失败。
+ */
+export async function generateOidcState(
+  secret: string,
+  clientId: string,
+  ip: string,
+  now = Date.now(),
+): Promise<string> {
+  const expHex = (now + STATE_EXPIRE_MS).toString(16)
+  const nonceHex = randomHex(16)
+  const mac = await hmacSha256(
+    secret,
+    `sso-oidc-state:v1:${expHex}:${nonceHex}:${clientId}:${ip}`,
+  )
+  return `${expHex}.${nonceHex}.${bytesToHex(mac)}`
 }
 
-function verifyState(clientId: string, ip: string, state: string): boolean {
-  const key = `${clientId}_${state}`
-  const rec = stateStore.get(key)
-  if (!rec) return false
-  stateStore.delete(key)
-  return rec.ip === ip && rec.exp > Date.now()
+/** 校验无状态签名 OIDC state，并在单实例内做一次性重放拦截 */
+export async function verifyOidcState(
+  secret: string,
+  clientId: string,
+  ip: string,
+  state: string,
+  now = Date.now(),
+): Promise<boolean> {
+  const parts = state.split(".")
+  if (parts.length !== 3 || parts.some((p) => !p)) return false
+  const [expHex, nonceHex, macHex] = parts
+  if (
+    !/^[0-9a-f]+$/i.test(expHex) ||
+    !/^[0-9a-f]{32}$/i.test(nonceHex) ||
+    !/^[0-9a-f]{64}$/i.test(macHex)
+  ) {
+    return false
+  }
+  const exp = Number.parseInt(expHex, 16)
+  if (!Number.isFinite(exp) || exp <= now || exp > now + STATE_EXPIRE_MS + 60_000) {
+    return false
+  }
+  const normalizedNonce = nonceHex.toLowerCase()
+  const usedExp = usedStateNonces.get(normalizedNonce)
+  if (usedExp !== undefined && usedExp > now) {
+    return false
+  }
+  const providedMac = hexToBytes(macHex)
+  if (!providedMac) return false
+  const expectedMac = await hmacSha256(
+    secret,
+    `sso-oidc-state:v1:${expHex}:${nonceHex}:${clientId}:${ip}`,
+  )
+  if (!timingSafeEqual(providedMac, expectedMac)) {
+    return false
+  }
+  // hmacSha256 为异步调用，同一隔离区内并发携带同一 state 的请求可能同时通过上方预检；
+  // 在无 await 的同步临界区内再次确认并占坑，消除竞态重放。
+  const usedExpAfter = usedStateNonces.get(normalizedNonce)
+  if (usedExpAfter !== undefined && usedExpAfter > now) {
+    return false
+  }
+  usedStateNonces.set(normalizedNonce, exp)
+  pruneUsedStateNonces(now)
+  return true
 }
 
 /** 平台预设端点 */
@@ -187,7 +290,13 @@ async function generateToken(user: any, c: any): Promise<string> {
 }
 
 /** SSO 自动注册 */
-async function autoRegister(db: any, username: string, ssoId: string): Promise<any> {
+async function autoRegister(
+  db: any,
+  username: string,
+  ssoId: string,
+  env: any,
+): Promise<any> {
+  if (!Array.isArray(db.users)) db.users = []
   let uname = username || ssoId
   if (db.users.some((u: any) => u.username === uname)) {
     uname = `${uname}_${ssoId}`
@@ -195,13 +304,20 @@ async function autoRegister(db: any, username: string, ssoId: string): Promise<a
   const id = db.users.length
     ? Math.max(...db.users.map((u: any) => Number(u.id) || 0)) + 1
     : 1
+  const defaultDir = getSetting(db, "sso_default_dir", "/") || "/"
+  const parsedPerm = Number.parseInt(
+    getSetting(db, "sso_default_permission", "0"),
+    10,
+  )
+  const defaultPermission =
+    Number.isFinite(parsedPerm) && parsedPerm >= 0 ? parsedPerm : 0
   const user: any = {
     id,
     username: uname,
     password: "",
     role: 0,
-    permission: 0,
-    base_path: "/",
+    permission: defaultPermission,
+    base_path: defaultDir,
     disabled: false,
     sso_id: ssoId,
     allow_ldap: false,
@@ -210,20 +326,79 @@ async function autoRegister(db: any, username: string, ssoId: string): Promise<a
   // SSO 用户不通过本地口令登录，但仍以双层哈希存储随机口令，避免存明文
   await setUserPassword(user, generateRandomPassword())
   db.users.push(user)
-  await saveDb(db, db.env)
+  await saveDb(db, env)
   return user
 }
 
-function postMessageHtml(field: string, value: string): string {
-  const safe = String(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e")
+function serializeJsLiteral(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029")
+}
+
+/** 解析弹窗模式 postMessage 允许接收令牌的可信前端 Origin（同源 + ALLOW_URLS 白名单，永不使用 "*"） */
+export function resolvePopupTargetOrigins(c: any): string[] {
+  const origins = new Set<string>()
+  const addOrigin = (raw: string) => {
+    const trimmed = raw.trim()
+    if (!trimmed || trimmed === "*") return
+    try {
+      const u = new URL(trimmed)
+      if ((u.protocol === "http:" || u.protocol === "https:") && u.origin !== "null") {
+        origins.add(u.origin)
+      }
+    } catch {}
+  }
+
+  addOrigin(c.req?.url || "")
+
+  const env = c?.env || {}
+  const allowedRaw =
+    env.ALLOW_URLS ||
+    (typeof process !== "undefined" ? process.env?.ALLOW_URLS : "") ||
+    ""
+  for (const entry of String(allowedRaw).split(",")) {
+    addOrigin(entry)
+  }
+
+  return Array.from(origins)
+}
+
+function postMessageHtml(
+  field: string,
+  value: string,
+  nonce: string,
+  targetOrigins: string[],
+): string {
+  const safePayload = serializeJsLiteral({ [field]: String(value) })
+  const safeOrigins = serializeJsLiteral(targetOrigins)
   return `<!DOCTYPE html>
 <head></head>
 <body>
-<script>
-window.opener.postMessage({"${field}":"${safe}"}, "*")
+<script nonce="${nonce}">
+if (window.opener) {
+  var payload = ${safePayload};
+  var origins = ${safeOrigins};
+  for (var i = 0; i < origins.length; i++) {
+    try {
+      window.opener.postMessage(payload, origins[i]);
+    } catch (e) {}
+  }
+}
 window.close()
 </script>
 </body>`
+}
+
+function postMessageResponse(c: any, field: string, value: string) {
+  const nonce = randomHex(16)
+  const targetOrigins = resolvePopupTargetOrigins(c)
+  return c.html(postMessageHtml(field, value, nonce, targetOrigins), 200, {
+    "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'; frame-ancestors 'none'`,
+    "Cache-Control": "no-store",
+  })
 }
 
 // GET /api/auth/sso?method=sso_get_token | get_sso_id
@@ -252,7 +427,8 @@ ssoRouter.get("/sso", async (c) => {
   try {
     if (platform === "OIDC") {
       const ep = await oidcDiscovery(discoveryUrl || ssoLoginUrl)
-      const state = generateState(clientId, clientIpOf(c))
+      const secret = await getJwtSecret(c)
+      const state = await generateOidcState(secret, clientId, clientIpOf(c))
       const params = new URLSearchParams({
         response_type: "code",
         client_id: clientId,
@@ -280,23 +456,35 @@ ssoRouter.get("/sso", async (c) => {
   }
 })
 
-// GET /api/auth/sso_callback?method=...&code=...
-ssoRouter.get("/sso_callback", async (c) => {
+async function handleSsoCallback(
+  c: any,
+  forcedMethod?: "get_sso_id" | "sso_get_token",
+) {
   const db = await getDb(c.env)
   if (!getBool(db, "sso_login_enabled")) {
     return c.text("Single sign-on is not enabled", 403)
   }
-  const method = c.req.query("method") || ""
+  const method = forcedMethod || c.req.query("method") || ""
   if (method !== "get_sso_id" && method !== "sso_get_token") {
     return c.text("invalid request", 400)
+  }
+  const oauthError = c.req.query("error")
+  if (oauthError) {
+    const desc = c.req.query("error_description")
+    return c.text(
+      desc ? `SSO error: ${oauthError} (${desc})` : `SSO error: ${oauthError}`,
+      400,
+    )
   }
   const platform = getSetting(db, "sso_login_platform")
   const clientId = getSetting(db, "sso_client_id")
   const clientSecret = getSetting(db, "sso_client_secret")
-  const useCompat = getBool(db, "sso_compatibility_mode")
-  const redirectUri = useCompat
-    ? `${apiOrigin(c)}/api/auth/${method}`
-    : `${apiOrigin(c)}/api/auth/sso_callback?method=${method}`
+  const useCompat = !!forcedMethod || getBool(db, "sso_compatibility_mode")
+  const redirectUri = forcedMethod
+    ? `${apiOrigin(c)}/api/auth/${forcedMethod}`
+    : useCompat
+      ? `${apiOrigin(c)}/api/auth/${method}`
+      : `${apiOrigin(c)}/api/auth/sso_callback?method=${method}`
 
   const ssoLoginUrl = getSetting(db, "sso_login_url")
   const ssoTokenUrl = getSetting(db, "sso_token_url")
@@ -320,10 +508,21 @@ ssoRouter.get("/sso_callback", async (c) => {
       idField = "sub"
       usernameField = "preferred_username"
       scope = ssoScopes || "openid profile"
-      if (!verifyState(clientId, clientIpOf(c), c.req.query("state") || "")) {
+      const secret = await getJwtSecret(c)
+      if (
+        !(await verifyOidcState(
+          secret,
+          clientId,
+          clientIpOf(c),
+          c.req.query("state") || "",
+        ))
+      ) {
         return c.text("incorrect or expired state parameter", 400)
       }
       const code = c.req.query("code") || ""
+      if (!code) {
+        return c.text("No code provided", 400)
+      }
       const tokenResp = await fetch(tokenUrl, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
@@ -338,7 +537,11 @@ ssoRouter.get("/sso_callback", async (c) => {
       })
       const tokenData: any = await tokenResp.json().catch(() => ({}))
       accessToken = tokenData.access_token
-      if (!accessToken) throw new Error("no access_token in token response")
+      if (!accessToken) {
+        const detail =
+          tokenData.error_description || tokenData.error || `HTTP ${tokenResp.status}`
+        throw new Error(`OIDC token exchange failed: ${detail}`)
+      }
       if (userUrl) {
         const uResp = await fetch(userUrl, {
           headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
@@ -425,9 +628,10 @@ ssoRouter.get("/sso_callback", async (c) => {
 
     if (method === "get_sso_id") {
       if (useCompat) {
+        c.header("Cache-Control", "no-store")
         return c.redirect(`${apiOrigin(c)}/@manage?sso_id=${encodeURIComponent(userID)}`, 302)
       }
-      return c.html(postMessageHtml("sso_id", userID))
+      return postMessageResponse(c, "sso_id", userID)
     }
 
     // sso_get_token
@@ -438,17 +642,25 @@ ssoRouter.get("/sso_callback", async (c) => {
         return c.text("user not found and auto register is disabled", 400)
       }
       const username = String(userInfo?.login ?? userInfo?.[usernameField] ?? userInfo?.name ?? "")
-      user = await autoRegister(db, username || userID, userID)
+      user = await autoRegister(db, username || userID, userID, c.env)
     }
     const token = await generateToken(user, c)
     if (useCompat) {
+      c.header("Cache-Control", "no-store")
       return c.redirect(`${apiOrigin(c)}/@login?token=${encodeURIComponent(token)}`, 302)
     }
-    return c.html(postMessageHtml("token", token))
+    return postMessageResponse(c, "token", token)
   } catch (e: any) {
     return c.text(e.message || "SSO error", 500)
   }
-})
+}
+
+// GET /api/auth/sso_callback?method=...&code=...
+ssoRouter.get("/sso_callback", (c) => handleSsoCallback(c))
+
+// 兼容模式回调端点（无 query 参数，供 Auth0 等严格校验 Allowed Callback URLs 的平台使用）
+ssoRouter.get("/sso_get_token", (c) => handleSsoCallback(c, "sso_get_token"))
+ssoRouter.get("/get_sso_id", (c) => handleSsoCallback(c, "get_sso_id"))
 
 /** 解析 JWT payload（仅解码，不验证签名——OIDC 下 code 已交换） */
 function parseJwtPayload(token: string): any {
