@@ -294,10 +294,12 @@ export function setupRouter(app: Hono) {
     await next()
     c.res.headers.set("X-Frame-Options", "DENY")
     c.res.headers.set("X-Content-Type-Options", "nosniff")
-    c.res.headers.set(
-      "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; frame-ancestors 'none'",
-    )
+    if (!c.res.headers.has("Content-Security-Policy")) {
+      c.res.headers.set(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; frame-ancestors 'none'",
+      )
+    }
     c.res.headers.set(
       "Strict-Transport-Security",
       "max-age=31536000; includeSubDomains",
