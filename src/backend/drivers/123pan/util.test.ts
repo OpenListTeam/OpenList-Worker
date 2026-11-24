@@ -34,3 +34,26 @@ test("uploadFile falls back to edge-safe md5 when none provided", async () => {
   assert.equal(getEtag(), md5(content))
   assert.match(getEtag()!, /^[0-9a-f]{32}$/)
 })
+
+test("uploadFile normalizes a valid uppercase client MD5", async () => {
+  const { client, getEtag } = stubClient()
+  const content = new TextEncoder().encode("hello world")
+  const upper = "0123456789ABCDEF0123456789ABCDEF"
+  await client.uploadFile("0", "f.mp4", content, upper)
+  assert.equal(getEtag(), upper.toLowerCase())
+})
+
+test("uploadFile rejects malformed client MD5 and falls back", async () => {
+  const { client, getEtag } = stubClient()
+  const content = new TextEncoder().encode("hello world")
+  await client.uploadFile("0", "f.mp4", content, "not-an-md5")
+  assert.equal(getEtag(), md5(content))
+})
+
+test("uploadFile fallback hashes multi-block binary content", async () => {
+  const { client, getEtag } = stubClient()
+  const content = new Uint8Array(1024)
+  for (let i = 0; i < content.length; i++) content[i] = (i * 31 + 7) & 0xff
+  await client.uploadFile("0", "f.mp4", content)
+  assert.equal(getEtag(), "63b2177a7af739b5cc52ab1d1c714702")
+})
