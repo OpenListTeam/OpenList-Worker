@@ -1,5 +1,5 @@
 // rclone crypt key derivation (backend/crypt cipher.go Key(), rclone v1.75.2).
-// scrypt(password, salt || DEFAULT_SALT, N=16384, r=8, p=1, dkLen=80)
+// scrypt(password, salt (defaultSalt when empty), N=16384, r=8, p=1, dkLen=80)
 //   -> dataKey(32) || nameKey(32) || nameTweak(16)
 // Empty password yields all-zero keys (rclone behavior, used by its tests).
 import { scrypt } from "@noble/hashes/scrypt.js"
