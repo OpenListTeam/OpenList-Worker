@@ -392,6 +392,7 @@ export class Pan123Driver implements StorageDriver {
     _virtualPath: string,
     physicalPath: string,
     content: Uint8Array,
+    md5?: string,
   ): Promise<void> {
     this.budget.used = 0
     const segs = String(physicalPath || "")
@@ -408,7 +409,7 @@ export class Pan123Driver implements StorageDriver {
     })()
     const parentPath = "/" + segs.slice(0, segs.length - 1).join("/")
     const parentId = await this.ensureFolderId(parentPath)
-    await this.client.uploadFile(parentId, decodedName, content)
+    await this.client.uploadFile(parentId, decodedName, content, md5)
   }
 
   // ---- 分片会话上传（解决大文件整体缓冲导致的内存/请求体超限卡死）----

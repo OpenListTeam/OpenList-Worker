@@ -179,5 +179,6 @@ export interface StorageDriver {
     virtualPath: string,
     physicalPath: string,
     content: Uint8Array,
+    md5?: string,
   ): Promise<void>
 }
